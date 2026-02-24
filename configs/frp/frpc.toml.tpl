@@ -1,18 +1,18 @@
-# FRP 客户端配置模板
-# 由 scripts/build.sh 通过 envsubst 渲染，勿直接编辑渲染后的文件
+# FRP 客户端配置
+# ${...}  由 scripts/build.sh 在构建时通过 envsubst 替换（服务端信息）
+# %%...%% 由 provision-node.sh 在首次启动时通过 sed 替换（每台设备唯一）
 
 serverAddr = "${FRP_SERVER_ADDR}"
 serverPort = ${FRP_SERVER_PORT}
 
 auth.method = "token"
-auth.token = "${FRP_AUTH_TOKEN}"
+auth.token  = "${FRP_AUTH_TOKEN}"
 
 transport.tcpMux = true
 
-# remotePort 由首次启动脚本根据 MAC 地址哈希动态计算后替换 REMOTE_PORT_PLACEHOLDER
 [[proxies]]
-name = "ssh-HOSTNAME_PLACEHOLDER"
-type = "tcp"
-localIP = "127.0.0.1"
-localPort = 22
-remotePort = REMOTE_PORT_PLACEHOLDER
+name       = "ssh-%%HOSTNAME%%"
+type       = "tcp"
+localIP    = "127.0.0.1"
+localPort  = 22
+remotePort = %%FRP_PORT%%

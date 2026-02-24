@@ -1,0 +1,16 @@
+[Unit]
+Description=Cloudflare Tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --config /etc/cloudflared/config.yml run
+Restart=on-failure
+RestartSec=10
+KillMode=process
+# config.yml 由 provision-node.sh 生成，启动前等待
+ExecStartPre=/bin/sh -c 'until [ -f /etc/cloudflared/config.yml ]; do sleep 2; done'
+
+[Install]
+WantedBy=multi-user.target

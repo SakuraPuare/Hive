@@ -23,18 +23,32 @@ if [ ! -f "${ARMBIAN_DIR}/compile.sh" ]; then
     exit 1
 fi
 
+# 检查关键二进制是否已下载
+OVERLAY_BIN="${ROOT_DIR}/armbian-build/userpatches/overlay/usr/local/bin"
+for bin in xray cloudflared frpc easytier-core; do
+    if [ ! -f "${OVERLAY_BIN}/${bin}" ]; then
+        echo "ERROR: ${bin} not found. Run: ./scripts/download-binaries.sh"
+        exit 1
+    fi
+done
+
 # 将 userpatches/ 同步到 Armbian build 目录
 # Armbian 以 compile.sh 所在目录为根查找 userpatches/
 echo ">>> Syncing userpatches to Armbian build dir..."
 rsync -a --delete "${ROOT_DIR}/armbian-build/userpatches/" "${ARMBIAN_DIR}/userpatches/"
 
-# 渲染配置模板（用 envsubst 替换占位符）
+# 渲染配置模板（envsubst 替换 ${VAR} 占位符，%%VAR%% 占位符留给首次启动脚本处理）
 echo ">>> Rendering config templates..."
+
+# /etc/edge/config.env — 所有共享凭证烧入镜像
+envsubst < "${ROOT_DIR}/configs/edge/config.env.tpl" \
+    > "${ARMBIAN_DIR}/userpatches/overlay/etc/edge/config.env"
+
+# /etc/frp/frpc.toml — 服务端信息在构建时渲染，%%FRP_PORT%%/%%HOSTNAME%% 留给首次启动
 envsubst < "${ROOT_DIR}/configs/frp/frpc.toml.tpl" \
     > "${ARMBIAN_DIR}/userpatches/overlay/etc/frp/frpc.toml"
 
-cp "${ROOT_DIR}/configs/mihomo/config.yaml.tpl" \
-    "${ARMBIAN_DIR}/userpatches/overlay/etc/mihomo/config.yaml"
+echo ">>> Templates rendered."
 
 # 执行 Armbian 构建
 echo ">>> Starting Armbian build..."

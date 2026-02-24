@@ -1,0 +1,18 @@
+[Unit]
+Description=Xray Service (VLESS+WebSocket proxy)
+After=network.target
+Documentation=https://xtls.github.io
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/xray run -c /etc/xray/config.json
+Restart=on-failure
+RestartSec=5
+Environment="GOGC=20"
+LimitNOFILE=65535
+MemoryHigh=200M
+MemoryMax=300M
+
+[Install]
+WantedBy=multi-user.target

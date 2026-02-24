@@ -1,0 +1,17 @@
+[Unit]
+Description=EasyTier Mesh Network
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/edge/config.env
+ExecStart=/usr/local/bin/easytier-core \
+    --network-name ${EASYTIER_NETWORK_NAME} \
+    --network-secret ${EASYTIER_SECRET} \
+    --peers tcp://${EASYTIER_RELAY}:11010
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

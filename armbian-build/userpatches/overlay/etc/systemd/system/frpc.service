@@ -1,0 +1,14 @@
+[Unit]
+Description=FRP Client (last-resort tunnel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# frpc.toml 由 provision-node.sh 渲染（替换端口和主机名占位符）
+ExecStart=/usr/local/bin/frpc -c /etc/frp/frpc.toml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

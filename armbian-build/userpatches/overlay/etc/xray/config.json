@@ -1,0 +1,49 @@
+{
+    "log": {
+        "loglevel": "warning"
+    },
+    "inbounds": [
+        {
+            "port": 10077,
+            "listen": "127.0.0.1",
+            "protocol": "vless",
+            "settings": {
+                "clients": [
+                    {
+                        "id": "%%XRAY_UUID%%",
+                        "level": 0,
+                        "email": "default@example.com"
+                    }
+                ],
+                "decryption": "none"
+            },
+            "sniffing": {
+                "enabled": true,
+                "destOverride": ["http", "tls"]
+            },
+            "streamSettings": {
+                "network": "ws",
+                "security": "none",
+                "wsSettings": {
+                    "path": "/ray"
+                }
+            }
+        }
+    ],
+    "outbounds": [
+        {
+            "tag": "direct",
+            "protocol": "freedom",
+            "settings": {
+                "domainStrategy": "UseIP"
+            }
+        },
+        {
+            "tag": "block",
+            "protocol": "blackhole"
+        }
+    ],
+    "routing": {
+        "domainStrategy": "IPIfNonMatch"
+    }
+}

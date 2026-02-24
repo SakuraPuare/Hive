@@ -1,0 +1,20 @@
+# /etc/edge/config.env
+# 由 scripts/build.sh 从此模板渲染，烧录进镜像
+# 所有节点共享同一份（每台设备首次启动时从此读取凭证）
+
+# ===== Cloudflare Tunnel =====
+CF_API_TOKEN=${CF_API_TOKEN}
+CF_ACCOUNT_ID=${CF_ACCOUNT_ID}
+CF_ZONE_ID=${CF_ZONE_ID}
+CF_DOMAIN=${CF_DOMAIN}
+
+# ===== Tailscale =====
+TAILSCALE_AUTHKEY=${TAILSCALE_AUTHKEY}
+
+# ===== EasyTier =====
+EASYTIER_NETWORK_NAME=${EASYTIER_NETWORK_NAME}
+EASYTIER_SECRET=${EASYTIER_SECRET}
+EASYTIER_RELAY=${EASYTIER_RELAY}
+
+# ===== Node Registry（可选，无则跳过注册）=====
+NODE_REGISTRY_URL=${NODE_REGISTRY_URL}

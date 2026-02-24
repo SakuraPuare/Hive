@@ -10,13 +10,15 @@
 armbian-build/*
 !armbian-build/userpatches/
 
-# 渲染后的实际配置（含密钥，由模板生成）
-armbian-build/userpatches/overlay/etc/mihomo/config.yaml
+# 渲染后的实际配置（含密钥，由 build.sh 生成，不入库）
+armbian-build/userpatches/overlay/etc/edge/config.env
 armbian-build/userpatches/overlay/etc/frp/frpc.toml
-armbian-build/userpatches/overlay/etc/xray/config.json
 
-# 预编译二进制（由 scripts/download-binaries.sh 下载）
-armbian-build/userpatches/overlay/usr/local/bin/
+# 预编译二进制（由 scripts/download-binaries.sh 下载，不入库）
+armbian-build/userpatches/overlay/usr/local/bin/xray
+armbian-build/userpatches/overlay/usr/local/bin/cloudflared
+armbian-build/userpatches/overlay/usr/local/bin/frpc
+armbian-build/userpatches/overlay/usr/local/bin/easytier-core
 
 # 镜像文件
 *.img
