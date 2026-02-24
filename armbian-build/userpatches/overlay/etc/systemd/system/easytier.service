@@ -5,11 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/edge/config.env
-ExecStart=/usr/local/bin/easytier-core \
-    --network-name ${EASYTIER_NETWORK_NAME} \
-    --network-secret ${EASYTIER_SECRET} \
-    --peers tcp://${EASYTIER_RELAY}:11010
+ExecStart=/usr/local/bin/start-easytier.sh
 Restart=always
 RestartSec=10
 

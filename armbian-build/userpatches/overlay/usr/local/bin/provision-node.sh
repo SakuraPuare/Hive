@@ -49,13 +49,27 @@ sed -i "s/%%XRAY_UUID%%/${UUID}/g" /etc/xray/config.json
 echo ">>> xray UUID: ${UUID}"
 
 # ─────────────────────────────────────────────
-# 3. FRP 端口（MAC 哈希 → 10000-60000，不冲突）
+# 3. 三套管理通道地址（全部从 MAC6 确定性推导）
 # ─────────────────────────────────────────────
+
+# FRP 端口：MAC 全段 md5 哈希 → 10000-60000
 PORT_OFFSET=$(echo "$MAC" | md5sum | tr -dc '0-9' | cut -c1-4)
 FRP_PORT=$((10000 + 10#$PORT_OFFSET % 50000))
-sed -i "s/%%FRP_PORT%%/${FRP_PORT}/g"   /etc/frp/frpc.toml
-sed -i "s/%%HOSTNAME%%/${HOSTNAME}/g"   /etc/frp/frpc.toml
+sed -i "s/%%FRP_PORT%%/${FRP_PORT}/g"  /etc/frp/frpc.toml
+sed -i "s/%%HOSTNAME%%/${HOSTNAME}/g"  /etc/frp/frpc.toml
 echo ">>> FRP port: ${FRP_PORT}"
+
+# EasyTier IP：MAC6 的三个字节直接映射到 10.x.x.x
+# 例：MAC6=a4b2c1 → 10.164.178.193/8
+ET_B1=$(printf "%d" "0x${MAC6:0:2}")
+ET_B2=$(printf "%d" "0x${MAC6:2:2}")
+ET_B3=$(printf "%d" "0x${MAC6:4:2}")
+EASYTIER_IP="10.${ET_B1}.${ET_B2}.${ET_B3}"
+echo ">>> EasyTier IP: ${EASYTIER_IP}"
+
+# Tailscale：hostname 固定为 edge-<mac6>，MagicDNS 自动解析
+# IP 由 Tailscale 云分配（不可预测），但 hostname 始终可达
+echo ">>> Tailscale hostname: ${HOSTNAME}"
 
 # ─────────────────────────────────────────────
 # 4. Cloudflare Tunnel（参考用户提供的脚本）
@@ -112,14 +126,38 @@ EOF
 echo ">>> cloudflared config written."
 
 # ─────────────────────────────────────────────
-# 5. 启动核心服务
+# 5. 写入节点信息汇总文件（运维查阅用）
+# ─────────────────────────────────────────────
+TAILSCALE_IP_PENDING="pending"
+cat > /etc/edge/node-info << EOF
+# 本节点访问信息（由 provision-node.sh 生成）
+HOSTNAME=${HOSTNAME}
+MAC=${MAC}
+MAC6=${MAC6}
+
+# 三套管理通道（全部从 MAC6 确定性推导）
+EASYTIER_IP=${EASYTIER_IP}
+FRP_PORT=${FRP_PORT}
+TAILSCALE_HOST=${HOSTNAME}
+
+# 代理接入
+CF_URL=https://${FULL_DOMAIN}
+XRAY_UUID=${UUID}
+
+# CF Tunnel
+TUNNEL_ID=${TUNNEL_ID}
+EOF
+echo ">>> node-info written to /etc/edge/node-info"
+
+# ─────────────────────────────────────────────
+# 6. 启动核心服务
 # ─────────────────────────────────────────────
 echo ">>> Starting services..."
 systemctl enable --now xray
 systemctl enable --now cloudflared
 systemctl enable --now frpc
 
-# EasyTier（将 config.env 变量注入 service）
+# EasyTier：start-easytier.sh 从 node-info 读取 --ipv4 参数
 systemctl enable --now easytier
 
 # ─────────────────────────────────────────────
@@ -136,9 +174,13 @@ tailscale up \
     || echo ">>> Tailscale up failed (will retry on next boot via tailscaled)"
 
 # ─────────────────────────────────────────────
-# 7. 上报 Node Registry（非关键，失败不中止）
+# 8. 上报 Node Registry（非关键，失败不中止）
 # ─────────────────────────────────────────────
 TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "pending")
+# 更新 node-info 里的 Tailscale IP
+sed -i "s/^TAILSCALE_HOST=.*/TAILSCALE_HOST=${HOSTNAME}\nTAILSCALE_IP=${TAILSCALE_IP}/" \
+    /etc/edge/node-info
+
 if [ -n "${NODE_REGISTRY_URL}" ]; then
     curl -sf -X POST "${NODE_REGISTRY_URL}/api/nodes/register" \
         -H "Content-Type: application/json" \
@@ -148,17 +190,24 @@ if [ -n "${NODE_REGISTRY_URL}" ]; then
           \"hostname\":     \"${HOSTNAME}\",
           \"cf_url\":       \"https://${FULL_DOMAIN}\",
           \"tailscale_ip\": \"${TAILSCALE_IP}\",
-          \"xray_uuid\":    \"${UUID}\",
-          \"frp_port\":     ${FRP_PORT}
+          \"easytier_ip\":  \"${EASYTIER_IP}\",
+          \"frp_port\":     ${FRP_PORT},
+          \"xray_uuid\":    \"${UUID}\"
         }" && echo ">>> Registered with Node Registry." \
         || echo ">>> Registry unavailable (non-fatal)."
 fi
 
 # ─────────────────────────────────────────────
-# 8. 完成，自我禁用
+# 9. 完成，自我禁用
 # ─────────────────────────────────────────────
 touch "$DONE_MARKER"
 systemctl disable provision-node.service
 
 echo "=== provision-node done: $(date) ==="
-echo "=== Node: ${HOSTNAME} | CF: https://${FULL_DOMAIN} | TS: ${TAILSCALE_IP} ==="
+echo "============================================"
+echo "  NODE    : ${HOSTNAME}"
+echo "  Tailscale: ssh root@${HOSTNAME}  (MagicDNS)"
+echo "  EasyTier : ssh root@${EASYTIER_IP}"
+echo "  FRP      : ssh -p ${FRP_PORT} root@<VPS>"
+echo "  CF Proxy : https://${FULL_DOMAIN}"
+echo "============================================"
