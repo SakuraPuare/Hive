@@ -86,7 +86,7 @@ CF_ZONE_ID=
 CF_DOMAIN=
 
 # Tailscale（04-tailscale-key.md 完成后填）
-TAILSCALE_AUTHKEY=
+TAILSCALE_OAUTH_SECRET=
 
 # 中国 VPS（02-china-vps.md 完成后填）
 NODE_REGISTRY_URL=https://registry.yourdomain.com

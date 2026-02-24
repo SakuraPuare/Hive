@@ -137,9 +137,9 @@ EOF
 ### 3.3 Tailscale
 
 ```bash
-# 首次启动时执行（使用嵌入的可复用 Auth Key）
+# 首次启动时执行（使用嵌入的 OAuth Client Secret）
 tailscale up \
-  --authkey="${TAILSCALE_AUTHKEY}" \
+  --authkey="${TAILSCALE_OAUTH_SECRET}" \
   --hostname="edge-${MAC6}" \
   --accept-dns=false \
   --advertise-tags=tag:hive
@@ -234,7 +234,7 @@ systemctl enable --now xray
 systemctl enable --now cloudflared
 systemctl enable --now easytier
 systemctl enable --now frpc
-tailscale up --authkey="${TAILSCALE_AUTHKEY}" \
+tailscale up --authkey="${TAILSCALE_OAUTH_SECRET}" \
   --hostname="edge-${MAC6}" \
   --accept-dns=false \
   --advertise-tags=tag:hive
@@ -401,7 +401,7 @@ QR 码生成由 Node Registry 的 `/api/labels` 页面完成，打印即用。
 ```bash
 # 1. 复制并填写环境变量
 cp .env.example .env
-# 编辑 .env，填入 CF_API_TOKEN、TAILSCALE_AUTHKEY 等
+# 编辑 .env，填入 CF_API_TOKEN、TAILSCALE_OAUTH_SECRET 等
 
 # 2. 初始化 Armbian 构建框架（首次）
 ./scripts/setup-armbian.sh
