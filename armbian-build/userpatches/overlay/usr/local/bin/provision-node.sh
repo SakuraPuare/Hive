@@ -166,11 +166,35 @@ systemctl enable --now easytier
 echo ">>> Joining Tailscale..."
 systemctl enable --now tailscaled
 sleep 2
+
+# 用 OAuth Client Secret 先生成一个非临时（ephemeral=false）的 pre-auth key
+# 直接将 OAuth Secret 传给 tailscale up 会默认创建 ephemeral 设备
+TS_AUTHKEY=$(curl -sf -X POST "https://api.tailscale.com/api/v2/tailnet/-/keys" \
+    -u "${TAILSCALE_OAUTH_SECRET}:" \
+    -H "Content-Type: application/json" \
+    -d "{
+        \"capabilities\": {
+            \"devices\": {
+                \"create\": {
+                    \"reusable\": false,
+                    \"ephemeral\": false,
+                    \"preauthorized\": true,
+                    \"tags\": [\"tag:hive\"]
+                }
+            }
+        },
+        \"expirySeconds\": 300
+    }" | jq -r '.key')
+
+if [ -z "${TS_AUTHKEY}" ] || [ "${TS_AUTHKEY}" = "null" ]; then
+    echo "!!! Failed to generate Tailscale auth key, falling back to OAuth secret"
+    TS_AUTHKEY="${TAILSCALE_OAUTH_SECRET}"
+fi
+
 tailscale up \
-    --authkey="${TAILSCALE_OAUTH_SECRET}" \
+    --authkey="${TS_AUTHKEY}" \
     --hostname="${HOSTNAME}" \
     --accept-dns=false \
-    --advertise-tags=tag:hive \
     || echo ">>> Tailscale up failed (will retry on next boot via tailscaled)"
 
 # ─────────────────────────────────────────────
