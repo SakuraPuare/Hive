@@ -22,10 +22,11 @@
                 "destOverride": ["http", "tls"]
             },
             "streamSettings": {
-                "network": "ws",
+                "network": "xhttp",
                 "security": "none",
-                "wsSettings": {
-                    "path": "/ray"
+                "xhttpSettings": {
+                    "path": "/ray",
+                    "host": ""
                 }
             }
         }
