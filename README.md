@@ -150,10 +150,11 @@ tailscale up \
 ### 3.4 EasyTier
 
 ```bash
+# 由 start-easytier.sh 调用，--peers 根据 EASYTIER_PEERS（逗号分隔）生成，单 peer 填一个即可
 easytier-core \
   --network-name "${EASYTIER_NETWORK_NAME}" \
   --network-secret "${EASYTIER_SECRET}" \
-  --peers tcp://${EASYTIER_RELAY}:11010 \
+  --peers "tcp://<EASYTIER_PEERS 中的地址>:11010" \
   --hostname "hive-${MAC6}"
 ```
 

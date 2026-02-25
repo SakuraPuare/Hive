@@ -172,7 +172,7 @@ FRP_SERVER_ADDR=<这台机器的公网 IP 或域名>
 FRP_SERVER_PORT=7000
 FRP_AUTH_TOKEN=<你在 frps.toml 里设置的 token>
 
-EASYTIER_RELAY=<这台机器的公网 IP 或域名>
+EASYTIER_PEERS=<这台机器的公网 IP 或域名，多中继逗号分隔>
 EASYTIER_NETWORK_NAME=<你设置的网络名>
 EASYTIER_SECRET=<你设置的密钥>
 ```

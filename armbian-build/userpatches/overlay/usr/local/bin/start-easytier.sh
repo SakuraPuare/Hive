@@ -23,11 +23,29 @@ fi
 source "$NODE_INFO"
 source "$CONFIG_ENV"
 
+# 构造 --peers 参数：EASYTIER_PEERS 逗号分隔，单 peer 填一个即可
+PEER_ARGS=()
+if [ -n "${EASYTIER_PEERS}" ]; then
+    IFS=',' read -ra PARSED <<< "${EASYTIER_PEERS}"
+    for p in "${PARSED[@]}"; do
+        p=$(echo "$p" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [ -z "$p" ] && continue
+        if [[ "$p" != *://* ]]; then
+            if [[ "$p" == *:* ]]; then
+                p="tcp://${p}"
+            else
+                p="tcp://${p}:11010"
+            fi
+        fi
+        PEER_ARGS+=(--peers "$p")
+    done
+fi
+
 echo "start-easytier: ${HOSTNAME} @ ${EASYTIER_IP}/8"
 
 exec /usr/local/bin/easytier-core \
     --network-name  "${EASYTIER_NETWORK_NAME}" \
     --network-secret "${EASYTIER_SECRET}" \
-    --peers         "tcp://${EASYTIER_RELAY}:11010" \
+    "${PEER_ARGS[@]}" \
     --ipv4          "${EASYTIER_IP}/8" \
     --hostname      "${HOSTNAME}"
