@@ -58,7 +58,7 @@ print('\n'.join(b64[i:i+64] for i in range(0, len(b64), 64)))
     "${PKCS8_B64}" > /etc/ssh/ssh_host_ed25519_key)
 
 # 转成 OpenSSH 私钥格式（sshd 标准格式）
-ssh-keygen -P "" -N "" -p -m OpenSSH -f /etc/ssh/ssh_host_ed25519_key >/dev/null 2>&1
+ssh-keygen -P "" -N "" -p -f /etc/ssh/ssh_host_ed25519_key
 
 # 导出公钥
 ssh-keygen -y -f /etc/ssh/ssh_host_ed25519_key > /etc/ssh/ssh_host_ed25519_key.pub
