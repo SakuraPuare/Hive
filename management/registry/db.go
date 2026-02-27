@@ -19,9 +19,9 @@ func initDB() {
 	pass := getenv("MYSQL_PASSWORD", "")
 	dbname := getenv("MYSQL_DB", "hive_registry")
 
-	// timeout=10s: 连接超时；charset+collation: 全 utf8mb4
+	// time_zone=%27%2B00%3A00%27 → '+00:00'，强制会话 UTC，与 Go time.Now().UTC() 保持一致
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&timeout=10s&readTimeout=30s&writeTimeout=30s",
+		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&time_zone=%%27%%2B00%%3A00%%27&timeout=10s&readTimeout=30s&writeTimeout=30s",
 		user, pass, host, port, dbname,
 	)
 
