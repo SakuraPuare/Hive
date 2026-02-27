@@ -12,7 +12,8 @@ services:
       - '--storage.tsdb.retention.time=30d'
       - '--web.enable-lifecycle'
       - '--web.listen-address=127.0.0.1:4230'
-      - '--web.external-url=${PROMETHEUS_EXTERNAL_URL:-/prometheus}'                        # 内部路由在 /，nginx 剥前缀
+      - '--web.external-url=${PROMETHEUS_EXTERNAL_URL:-/prometheus/}'
+      - '--web.route-prefix=/'                             # 内部路由保持 /，nginx 负责剥前缀
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
