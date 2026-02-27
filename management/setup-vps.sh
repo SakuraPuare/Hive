@@ -93,12 +93,15 @@ if $need_go; then
     rm -rf /usr/local/go
     tar -C /usr/local -xzf "/tmp/${GO_TAR}"
     rm -f "/tmp/${GO_TAR}"
-    export PATH=$PATH:/usr/local/go/bin
     echo ">>> Go installed: $(go version)"
 else
-    echo ">>> Go already installed: $(go version)"
-    export PATH=$PATH:/usr/local/go/bin
+    echo ">>> Go already installed: $(/usr/local/go/bin/go version)"
 fi
+
+# 写入 profile.d，对所有后续 shell session 永久生效
+echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
+chmod 644 /etc/profile.d/golang.sh
+export PATH=$PATH:/usr/local/go/bin   # 当前脚本进程立即生效
 
 # ─────────────────────────────────────────────
 # 5. 编译并安装 hive-registry
