@@ -18,11 +18,6 @@ scrape_configs:
       - source_labels: [hostname]
         target_label: instance
 
-  # Prometheus 自身（--web.route-prefix=/ 后内部路径为 /metrics）
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
-
   # 管理 VPS 自身（host.docker.internal 指向宿主机，需 extra_hosts: host-gateway）
   - job_name: 'management-server'
     static_configs:
