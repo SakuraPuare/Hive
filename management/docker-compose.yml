@@ -12,8 +12,7 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=30d'
       - '--web.enable-lifecycle'
-      - '--web.external-url=${PROMETHEUS_EXTERNAL_URL:-/prometheus}'  # 对外展示的完整 URL
-      - '--web.route-prefix=/'              # 容器内部路由保持 /metrics /targets，nginx 负责剥离前缀
+      - '--web.external-url=${PROMETHEUS_EXTERNAL_URL}' # 保持 https://.../prometheus          # 容器内部路由保持 /metrics /targets，nginx 负责剥离前缀
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
