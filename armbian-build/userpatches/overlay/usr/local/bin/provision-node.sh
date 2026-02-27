@@ -240,8 +240,12 @@ systemctl enable --now frpc
 # EasyTier：start-easytier.sh 从 node-info 读取 --ipv4 参数
 systemctl enable --now easytier
 
+# 安全加固：防火墙 + 入侵防护
+systemctl enable --now hive-firewall
+systemctl enable --now hive-fail2ban
+
 # ─────────────────────────────────────────────
-# 6. Tailscale 加入（使用嵌入的可复用 AuthKey）
+# 7. Tailscale 加入（使用嵌入的可复用 AuthKey）
 # ─────────────────────────────────────────────
 echo ">>> Joining Tailscale..."
 systemctl enable --now tailscaled
@@ -256,21 +260,21 @@ TS_ACCESS_TOKEN=$(curl -sf -X POST "https://api.tailscale.com/api/v2/oauth/token
     -d "client_secret=${TAILSCALE_OAUTH_SECRET}" | jq -r '.access_token // empty')
 
 if [ -n "${TS_ACCESS_TOKEN}" ]; then
-TS_AUTHKEY=$(curl -sf -X POST "https://api.tailscale.com/api/v2/tailnet/-/keys" \
+    TS_AUTHKEY=$(curl -sf -X POST "https://api.tailscale.com/api/v2/tailnet/-/keys" \
         -H "Authorization: Bearer ${TS_ACCESS_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{
-        \"capabilities\": {
-            \"devices\": {
-                \"create\": {
-                    \"reusable\": false,
-                    \"ephemeral\": false,
-                    \"preauthorized\": true,
-                    \"tags\": [\"tag:hive\"]
+        -H "Content-Type: application/json" \
+        -d "{
+            \"capabilities\": {
+                \"devices\": {
+                    \"create\": {
+                        \"reusable\": false,
+                        \"ephemeral\": false,
+                        \"preauthorized\": true,
+                        \"tags\": [\"tag:hive\"]
+                    }
                 }
-            }
-        },
-        \"expirySeconds\": 300
+            },
+            \"expirySeconds\": 300
         }" | jq -r '.key // empty')
 fi
 

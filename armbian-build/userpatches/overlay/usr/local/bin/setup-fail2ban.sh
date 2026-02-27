@@ -119,29 +119,13 @@ EOF
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 cat > /etc/fail2ban/jail.d/hive-services.conf << 'EOF'
-# 保护系统服务
-[systemd-login]
+# PAM 通用认证失败（涵盖 sudo、su、login 等）
+[pam-generic]
 enabled = true
-filter = systemd-login
+filter = pam-generic
 backend = systemd
 maxretry = 5
 bantime = 3600
-
-# 保护 sudo 滥用
-[sudo-auth]
-enabled = true
-filter = sudo-auth
-backend = systemd
-maxretry = 3
-bantime = 3600
-
-# 通用系统认证失败
-[systemd-auth]
-enabled = true
-filter = systemd-auth
-backend = systemd
-maxretry = 5
-bantime = 1800
 EOF
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
