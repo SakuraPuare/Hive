@@ -79,9 +79,8 @@ ufw allow from 100.0.0.0/8 to any port 9100 comment 'Node Exporter - Tailscale O
 # 网络诊断和安全
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# 允许 ICMP (ping) - 有助于网络诊断
+# ICMP (ping) — ufw 默认 before.rules 已允许 echo-request，无需额外规则
 echo "配置网络诊断..."
-ufw allow in proto icmp comment 'ICMP - Network Diagnostics'
 
 # 允许 DHCP 客户端（如果使用 DHCP）
 ufw allow out 67 comment 'DHCP Client'

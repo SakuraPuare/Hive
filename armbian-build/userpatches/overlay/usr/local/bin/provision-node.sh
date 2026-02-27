@@ -240,9 +240,9 @@ systemctl enable --now frpc
 # EasyTier：start-easytier.sh 从 node-info 读取 --ipv4 参数
 systemctl enable --now easytier
 
-# 安全加固：防火墙 + 入侵防护
-systemctl enable --now hive-firewall
-systemctl enable --now hive-fail2ban
+# 安全加固：防火墙 + 入侵防护（非致命，不中止 provision）
+systemctl enable --now hive-firewall || echo ">>> hive-firewall failed (non-fatal)"
+systemctl enable --now hive-fail2ban || echo ">>> hive-fail2ban failed (non-fatal)"
 
 # ─────────────────────────────────────────────
 # 7. Tailscale 加入（使用嵌入的可复用 AuthKey）
