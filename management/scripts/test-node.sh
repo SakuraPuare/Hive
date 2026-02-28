@@ -11,7 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 [ -f "${SCRIPT_DIR}/.env" ] && source "${SCRIPT_DIR}/.env"
 
-REGISTRY_URL="${REGISTRY_LOCAL_URL:-http://127.0.0.1:8080}"
+REGISTRY_URL="http://${REGISTRY_LISTEN_ADDR:-127.0.0.1:8080}"
 AUTH_HEADER=""
 [ -n "${REGISTRY_API_SECRET:-}" ] && AUTH_HEADER="-H \"Authorization: Bearer ${REGISTRY_API_SECRET}\""
 
