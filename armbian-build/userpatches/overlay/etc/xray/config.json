@@ -4,7 +4,7 @@
     },
     "inbounds": [
         {
-            "port": 10077,
+            "port": 10079,
             "listen": "127.0.0.1",
             "protocol": "vless",
             "settings": {
@@ -15,17 +15,7 @@
                         "email": "default@example.com"
                     }
                 ],
-                "decryption": "none",
-                "fallbacks": [
-                    {
-                        "path": "/ray",
-                        "dest": 10078,
-                        "xver": 0
-                    },
-                    {
-                        "dest": 10078
-                    }
-                ]
+                "decryption": "none"
             },
             "sniffing": {
                 "enabled": true,
