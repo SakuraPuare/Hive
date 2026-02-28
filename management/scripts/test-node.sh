@@ -58,22 +58,20 @@ test_node() {
     # 1. Registry 可达性（节点能查到就算通过）
     pass "registry" "node found, last_seen=${last_seen}"
 
-    # 2. Tailscale MagicDNS
+    # 2. Tailscale
     if [ -n "${tailscale_ip}" ] && [ "${tailscale_ip}" != "pending" ]; then
-        if ping -c1 -W3 "${tailscale_ip}" &>/dev/null; then
+        if ping -c1 -W2 "${tailscale_ip}" &>/dev/null; then
             pass "tailscale-ping" "${tailscale_ip} reachable"
         else
             fail "tailscale-ping" "${tailscale_ip} unreachable"
         fi
-        # SSH 端口检测
         if timeout 3 bash -c "echo >/dev/tcp/${tailscale_ip}/22" 2>/dev/null; then
             pass "tailscale-ssh" "port 22 open on ${tailscale_ip}"
         else
             warn "tailscale-ssh" "port 22 not reachable on ${tailscale_ip}"
         fi
-        # Node Exporter
-        METRIC_LINES=$(curl -sf --max-time 5 "http://${tailscale_ip}:9100/metrics" 2>/dev/null | wc -l)
-        if [ "${METRIC_LINES:-0}" -gt 10 ]; then
+        METRIC_LINES=$(curl -sf --max-time 5 "http://${tailscale_ip}:9100/metrics" 2>/dev/null | wc -l || echo 0)
+        if [ "${METRIC_LINES}" -gt 10 ]; then
             pass "node-exporter" "http://${tailscale_ip}:9100/metrics OK (${METRIC_LINES} lines)"
         else
             fail "node-exporter" "http://${tailscale_ip}:9100/metrics unreachable"
@@ -84,7 +82,7 @@ test_node() {
 
     # 3. EasyTier
     if [ -n "${easytier_ip}" ]; then
-        if ping -c1 -W3 "${easytier_ip}" &>/dev/null; then
+        if ping -c1 -W2 "${easytier_ip}" &>/dev/null; then
             pass "easytier-ping" "${easytier_ip} reachable"
         else
             fail "easytier-ping" "${easytier_ip} unreachable"
@@ -106,14 +104,13 @@ test_node() {
 
     # 5. Cloudflare Tunnel + Xray WebSocket
     if [ -n "${cf_url}" ]; then
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "${cf_url}" 2>/dev/null)
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "${cf_url}" 2>/dev/null || echo "000")
         if [[ "$HTTP_CODE" =~ ^(101|200|400|404)$ ]]; then
             pass "cf-tunnel" "${cf_url} → HTTP ${HTTP_CODE}"
         else
-            fail "cf-tunnel" "${cf_url} → HTTP ${HTTP_CODE:-timeout}"
+            fail "cf-tunnel" "${cf_url} → HTTP ${HTTP_CODE}"
         fi
 
-        # Xray WebSocket 握手
         if [ -n "${xray_uuid}" ]; then
             CF_HOST="${cf_url#https://}"
             WS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 \
@@ -121,11 +118,11 @@ test_node() {
                 -H "Connection: Upgrade" \
                 -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
                 -H "Sec-WebSocket-Version: 13" \
-                "https://${CF_HOST}/ray" 2>/dev/null)
+                "https://${CF_HOST}/ray" 2>/dev/null || echo "000")
             if [ "$WS_CODE" = "101" ]; then
                 pass "xray-ws" "WebSocket 101 OK via ${CF_HOST}"
             else
-                warn "xray-ws" "WebSocket returned HTTP ${WS_CODE:-timeout} via ${CF_HOST}"
+                warn "xray-ws" "WebSocket returned HTTP ${WS_CODE} via ${CF_HOST}"
             fi
         fi
     else
