@@ -17,9 +17,9 @@ AUTH_ARGS=()
 
 PASS=0; FAIL=0; WARN=0
 
-pass() { printf "\e[0;92m[PASS]\e[0m %-22s %s\n" "$1" "$2"; ((PASS++)); }
-fail() { printf "\e[0;91m[FAIL]\e[0m %-22s %s\n" "$1" "$2"; ((FAIL++)); }
-warn() { printf "\e[0;93m[WARN]\e[0m %-22s %s\n" "$1" "$2"; ((WARN++)); }
+pass() { printf "\e[0;92m[PASS]\e[0m %-22s %s\n" "$1" "$2"; PASS=$((PASS+1)); }
+fail() { printf "\e[0;91m[FAIL]\e[0m %-22s %s\n" "$1" "$2"; FAIL=$((FAIL+1)); }
+warn() { printf "\e[0;93m[WARN]\e[0m %-22s %s\n" "$1" "$2"; WARN=$((WARN+1)); }
 
 # ── 获取节点信息 ──────────────────────────────────────────────────────────────
 fetch_node() {
