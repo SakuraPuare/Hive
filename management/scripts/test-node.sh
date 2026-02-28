@@ -102,9 +102,9 @@ test_node() {
         warn "frp" "FRP_SERVER_ADDR not set or frp_port missing, skipping"
     fi
 
-    # 5. Cloudflare Tunnel + Xray WebSocket
+    # 5. Cloudflare Tunnel + Xray
     if [ -n "${cf_url}" ]; then
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "${cf_url}" 2>/dev/null || echo "000")
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "${cf_url}" 2>/dev/null || true)
         if [[ "$HTTP_CODE" =~ ^(101|200|400|404)$ ]]; then
             pass "cf-tunnel" "${cf_url} → HTTP ${HTTP_CODE}"
         else
@@ -113,16 +113,62 @@ test_node() {
 
         if [ -n "${xray_uuid}" ]; then
             CF_HOST="${cf_url#https://}"
-            WS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 \
-                -H "Upgrade: websocket" \
-                -H "Connection: Upgrade" \
-                -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-                -H "Sec-WebSocket-Version: 13" \
-                "https://${CF_HOST}/ray" 2>/dev/null || true)
-            if [ "$WS_CODE" = "101" ]; then
-                pass "xray-ws" "WebSocket 101 OK via ${CF_HOST}"
+
+            # 5a. 通过 Tailscale SSH 检查节点上 xray 进程是否运行
+            if [ -n "${tailscale_ip}" ] && [ "${tailscale_ip}" != "pending" ]; then
+                if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
+                        "root@${tailscale_ip}" "systemctl is-active xray" &>/dev/null; then
+                    pass "xray-service" "xray.service active on ${tailscale_ip}"
+                else
+                    fail "xray-service" "xray.service not active on ${tailscale_ip}"
+                fi
             else
-                warn "xray-ws" "WebSocket returned HTTP ${WS_CODE} via ${CF_HOST} (xray may be down or CF not routing WS)"
+                warn "xray-service" "no Tailscale IP, skipping xray service check"
+            fi
+
+            # 5b. 端到端 VLESS 链路测试（需要管理 VPS 上有 xray 二进制）
+            if command -v xray &>/dev/null; then
+                local _tmp_cfg _tmp_port _xray_pid _http_code
+                _tmp_cfg=$(mktemp /tmp/xray-test-XXXXXX.json)
+                _tmp_port=$((RANDOM % 10000 + 20000))
+                cat > "${_tmp_cfg}" <<XRAYCFG
+{
+  "log": { "loglevel": "none" },
+  "inbounds": [{ "port": ${_tmp_port}, "protocol": "socks", "settings": { "udp": false } }],
+  "outbounds": [{
+    "protocol": "vless",
+    "settings": { "vnext": [{ "address": "${CF_HOST}", "port": 443,
+      "users": [{ "id": "${xray_uuid}", "encryption": "none" }] }] },
+    "streamSettings": { "network": "ws", "security": "tls",
+      "wsSettings": { "path": "/ray" } }
+  }]
+}
+XRAYCFG
+                xray run -c "${_tmp_cfg}" &>/dev/null &
+                _xray_pid=$!
+                sleep 2
+                _http_code=$(curl -x "socks5h://127.0.0.1:${_tmp_port}" -s -o /dev/null \
+                    -w "%{http_code}" --max-time 10 \
+                    "https://www.google.com/generate_204" 2>/dev/null || true)
+                kill "${_xray_pid}" 2>/dev/null || true
+                rm -f "${_tmp_cfg}"
+                if [ "${_http_code}" = "204" ] || [ "${_http_code}" = "200" ]; then
+                    pass "xray-e2e" "VLESS proxy OK (generate_204 → HTTP ${_http_code})"
+                else
+                    fail "xray-e2e" "VLESS proxy failed (generate_204 → HTTP ${_http_code})"
+                fi
+            else
+                # xray 不可用时退回 WebSocket 握手检测
+                WS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 \
+                    -H "Upgrade: websocket" -H "Connection: Upgrade" \
+                    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+                    -H "Sec-WebSocket-Version: 13" \
+                    "https://${CF_HOST}/ray" 2>/dev/null || true)
+                if [ "$WS_CODE" = "101" ]; then
+                    pass "xray-ws" "WebSocket 101 OK via ${CF_HOST}"
+                else
+                    warn "xray-ws" "WebSocket ${WS_CODE} via ${CF_HOST} (install xray on mgmt VPS for full e2e test)"
+                fi
             fi
         fi
     else
