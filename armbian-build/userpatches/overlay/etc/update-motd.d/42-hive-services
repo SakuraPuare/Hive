@@ -151,7 +151,7 @@ if [[ -f /etc/hive/node-info ]]; then
 
     if [[ -n "${XRAY_UUID:-}" && -n "${CF_URL:-}" ]]; then
         CF_HOST="${CF_URL#https://}"
-        VLESS_LINK="vless://${XRAY_UUID}@${CF_HOST}:443?type=xhttp&security=tls&path=%2Fray#${HOSTNAME:-hive}"
+        VLESS_LINK="vless://${XRAY_UUID}@${CF_HOST}:443?type=ws&security=tls&path=%2Fray#${HOSTNAME:-hive}"
         printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "Xray (VLESS)" "${VLESS_LINK}"
     fi
 fi
