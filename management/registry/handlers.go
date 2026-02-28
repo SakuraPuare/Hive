@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -107,6 +109,19 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 		"hostname":      req.Hostname,
 		"registered_at": registeredAt,
 	})
+
+	// 异步放开 FRP 端口（非致命，不影响注册响应）
+	if req.FRPPort > 0 {
+		go func(port int, hostname string) {
+			comment := fmt.Sprintf("FRP: %s", hostname)
+			out, err := exec.Command("ufw", "allow", fmt.Sprintf("%d/tcp", port), "comment", comment).CombinedOutput()
+			if err != nil {
+				log.Printf("ufw allow %d/tcp failed: %v: %s", port, err, out)
+			} else {
+				log.Printf("ufw allowed %d/tcp for %s", port, hostname)
+			}
+		}(req.FRPPort, req.Hostname)
+	}
 }
 
 // ── 节点查询 ──────────────────────────────────────────────────────────────────
@@ -211,6 +226,12 @@ func handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mac := r.PathValue("mac")
+
+	// 删除前先查端口，用于后续关闭防火墙规则
+	var frpPort int
+	var hostname string
+	_ = db.QueryRow("SELECT frp_port, hostname FROM nodes WHERE mac=?", mac).Scan(&frpPort, &hostname)
+
 	result, err := db.Exec("DELETE FROM nodes WHERE mac=?", mac)
 	if err != nil {
 		jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
@@ -221,6 +242,18 @@ func handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, map[string]string{"status": "ok"})
+
+	// 异步关闭 FRP 端口
+	if frpPort > 0 {
+		go func(port int, h string) {
+			out, err := exec.Command("ufw", "delete", "allow", fmt.Sprintf("%d/tcp", port)).CombinedOutput()
+			if err != nil {
+				log.Printf("ufw delete %d/tcp failed: %v: %s", port, err, out)
+			} else {
+				log.Printf("ufw removed %d/tcp for %s", port, h)
+			}
+		}(frpPort, hostname)
+	}
 }
 
 // ── Prometheus ────────────────────────────────────────────────────────────────
