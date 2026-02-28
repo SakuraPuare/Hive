@@ -25,15 +25,28 @@ echo "配置 fail2ban 基础设置..."
 # 基础配置
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-cat > /etc/fail2ban/jail.d/hive-defaults.conf << 'EOF'
+# 构建 ignoreip：静态地址段 + EasyTier 中继服务器 IP
+IGNOREIP="127.0.0.1/8 ::1 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 100.0.0.0/8 fe80::/10"
+
+if [ -n "${EASYTIER_PEERS:-}" ]; then
+    echo "  解析 EasyTier 中继服务器 IP..."
+    RELAY_HOSTS=$(echo "${EASYTIER_PEERS}" | tr ',' '\n' \
+        | sed 's|.*://||;s|:.*||' | sed '/^[[:space:]]*$/d' | sort -u)
+    for HOST in $RELAY_HOSTS; do
+        [ -z "$HOST" ] && continue
+        IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1; exit}')
+        IP=${IP:-$HOST}
+        IGNOREIP="$IGNOREIP $IP"
+        echo "  EasyTier 中继白名单: $HOST → $IP"
+    done
+else
+    echo "  EASYTIER_PEERS 未配置，跳过中继 IP 解析"
+fi
+
+cat > /etc/fail2ban/jail.d/hive-defaults.conf << EOF
 [DEFAULT]
 # 白名单（不被封禁的 IP）
-ignoreip = 127.0.0.1/8
-           ::1
-           192.168.0.0/16
-           10.0.0.0/8
-           172.16.0.0/12
-           100.0.0.0/8
+ignoreip = ${IGNOREIP}
 
 # 封禁时间（默认 1 小时）
 bantime = 3600
@@ -132,18 +145,20 @@ EOF
 # UFW 集成配置
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+# 确保 UFW 开启 IPv6 支持（否则无法封禁 IPv6 地址）
+sed -i 's/^IPV6=no/IPV6=yes/' /etc/default/ufw
+
 cat > /etc/fail2ban/action.d/ufw.conf << 'EOF'
-# UFW 封禁动作
+# UFW 封禁动作（兼容 IPv4 + IPv6）
 [Definition]
 
 actionstart =
 actionstop =
-actioncheck =
-actionban = ufw insert 1 deny from <ip>
-actionunban = ufw --force delete deny from <ip>
+actioncheck = ufw status | grep -q active
+actionban = ufw insert 1 deny from <ip> to any
+actionunban = ufw --force delete deny from <ip> to any
 
 [Init]
-# 无需初始化参数
 EOF
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
