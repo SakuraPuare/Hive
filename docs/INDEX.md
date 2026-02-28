@@ -48,7 +48,9 @@
      ↓  CF Tunnel
 [cloudflared]  ← 主接入，节点无需公网 IP
      ↓
-[xray-core]    ← VLESS 监听 127.0.0.1:10077
+[nginx]        ← 监听 127.0.0.1:10077，WebSocket /ray → xray
+     ↓
+[xray-core]    ← VLESS+WS 监听 127.0.0.1:10079
      ↓
 [本地互联网出口]
 
@@ -75,7 +77,11 @@ EasyTier   = 10.<mac6[0:2]>.<mac6[2:4]>.<mac6[4:6]>
 | `/etc/hive/node-info` | 节点信息汇总（provision 后生成） |
 | `/etc/hive/provisioned` | provision 完成标记 |
 | `/var/log/provision-node.log` | provision 全量日志 |
-| `/etc/xray/config.json` | xray 代理配置 |
+| `/etc/nginx/sites-available/hive` | nginx 节点配置（监听 10077，代理 xray） |
+| `/etc/xray/config.json` | xray 代理配置（监听 10079） |
 | `/etc/cloudflared/config.yml` | CF Tunnel 配置 |
 | `/etc/cloudflared/cert.json` | CF Tunnel 凭证（Tunnel Secret） |
 | `/etc/frp/frpc.toml` | FRP 客户端配置 |
+| `/etc/default/armbian-ramlog` | ramlog 配置（日志写入 RAM，128M） |
+| `/etc/default/armbian-zram-config` | zram 配置（压缩 swap） |
+| `/etc/systemd/journald.conf.d/hive.conf` | journald 日志大小限制（30M） |

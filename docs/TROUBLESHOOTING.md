@@ -235,14 +235,22 @@ ssh-keygen -R 100.x.x.x
 systemctl status cloudflared
 journalctl -u cloudflared --since "10 min ago"
 
-# 检查 xray 是否在监听
+# 检查 nginx 是否在监听（CF Tunnel 的后端）
 ss -tlnp | grep 10077
 
-# 本地 xray 连通测试
-curl -v http://127.0.0.1:10077
+# 检查 xray 是否在监听（nginx 的后端）
+ss -tlnp | grep 10079
+
+# 本地 WebSocket 握手测试（期望 101）
+curl -s -o /dev/null -w "%{http_code}" \
+    -H "Upgrade: websocket" -H "Connection: Upgrade" \
+    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+    -H "Sec-WebSocket-Version: 13" \
+    http://127.0.0.1:10077/ray
 ```
 
 **常见原因**：
+- nginx 未启动 → `systemctl start nginx`
 - xray 未启动 → `systemctl start xray`
 - cloudflared 未连接 CF 网络 → 检查 cert.json 是否存在
 - cert.json 损坏 → 删除后重新 provision
@@ -393,10 +401,13 @@ grep '&>/dev/null' /etc/update-motd.d/41-commands
 
 ```bash
 # 一键检查所有关键服务
-for svc in xray cloudflared frpc easytier tailscaled ufw fail2ban prometheus-node-exporter; do
+for svc in nginx xray cloudflared frpc easytier tailscaled ufw fail2ban prometheus-node-exporter; do
     echo -n "$svc: "
     systemctl is-active "$svc" 2>/dev/null || echo "not found"
 done
+
+# 一键自测（输出 PASS/FAIL/WARN）
+hive-test.sh
 
 # 查看最近 1 小时的错误日志
 journalctl -p err --since "1 hour ago" --no-pager

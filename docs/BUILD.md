@@ -204,13 +204,16 @@ echo "所有 SD 卡烧录完成"
 |------|-----------|
 | Debian | trixie (Debian 13) |
 | Kernel | Rockchip vendor kernel（优化版） |
-| xray | 最新 arm64 版 |
+| nginx | 反向代理（监听 10077，WebSocket → xray） |
+| xray | 最新 arm64 版（VLESS+WS，监听 10079） |
 | cloudflared | 最新 arm64 版 |
 | frpc | 0.67.0 arm64 |
 | easytier-core | v2.4.5 arm64 |
 | Tailscale | 官方 apt 源安装 |
-| 防火墙 | UFW + fail2ban |
+| 防火墙 | UFW + fail2ban（UFW 日志默认关闭） |
 | 监控 | Prometheus Node Exporter |
+| ramlog | armbian-ramlog（日志写入 RAM，128M，rsync 落盘） |
+| zram | armbian-zram-config（zstd 压缩 swap） |
 
 **嵌入镜像的凭证**（来自 `.env`）：
 

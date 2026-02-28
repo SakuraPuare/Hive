@@ -82,13 +82,25 @@ ssh -p 23456 root@vps.example.com
 
 ```bash
 # 所有 hive 相关服务
-systemctl status xray cloudflared frpc easytier tailscaled \
+systemctl status nginx xray cloudflared frpc easytier tailscaled \
     ufw fail2ban prometheus-node-exporter
 ```
+
+### 一键自测
+
+```bash
+hive-test.sh
+```
+
+输出各服务的 PASS/FAIL/WARN 状态，包括 WebSocket 握手、CF Tunnel 可达性、FRP 连接、EasyTier mesh 等。
 
 ### 核心服务操作
 
 ```bash
+# nginx（WebSocket 代理，xray 前端）
+systemctl restart nginx
+journalctl -u nginx -f --no-pager
+
 # xray（代理）
 systemctl restart xray
 journalctl -u xray -f --no-pager
@@ -233,7 +245,7 @@ ansible-playbook playbooks/ping.yml
 
 ### Prometheus 抓取
 
-Prometheus 通过 Tailscale IP 自动发现并抓取节点指标（`100.x.x.x:9100`）。
+Prometheus 通过 Node Registry 动态发现节点，target 格式为 `hostname:9100`（依赖 Tailscale MagicDNS 解析）。
 
 ```bash
 # 在管理服务器查看节点列表
@@ -257,6 +269,21 @@ http://<管理服务器 Tailscale IP>:3000
 ```bash
 # 在节点上直接查看 metrics
 curl http://127.0.0.1:9100/metrics | grep -E "^node_(cpu|memory|network).*{" | head -20
+```
+
+### Prometheus targets 手动更新（管理服务器）
+
+```bash
+# 通过 Node Registry 接口刷新（无需 cron）
+curl -sf -H "Authorization: Bearer <API_SECRET>" \
+    http://127.0.0.1:8080/prometheus-targets \
+    > /opt/rk3528-hive/management/prometheus/targets/nodes.json
+
+# 通知 Prometheus 热重载
+curl -sf -X POST http://127.0.0.1:4230/-/reload
+
+# 通过 Tailscale API 动态发现（update-targets.sh 脚本）
+/opt/rk3528-hive/management/scripts/update-targets.sh
 ```
 
 ---

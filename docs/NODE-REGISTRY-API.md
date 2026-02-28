@@ -11,9 +11,8 @@
 
 ## 认证
 
-- **设备注册**（POST /api/nodes/register）和所有 GET 接口：**无需认证**
-- **管理操作**（PATCH / DELETE）：需携带请求头 `Authorization: Bearer <API_SECRET>`
-  - `API_SECRET` 通过环境变量注入服务，留空则关闭认证
+- **所有接口**均需携带请求头 `Authorization: Bearer <API_SECRET>`
+  - `API_SECRET` 通过环境变量注入服务，留空则关闭认证（开发/内网环境）
 
 ---
 
@@ -242,15 +241,15 @@ Prometheus `file_sd_configs` 格式，供 cron 每分钟更新：
 # 直连 Go 服务（无 /api 前缀），cron 在本机运行
 curl -sf -H "Authorization: Bearer <API_SECRET>" \
     http://127.0.0.1:8080/prometheus-targets \
-    > /etc/prometheus/targets/nodes.json
+    > /opt/rk3528-hive/management/prometheus/targets/nodes.json
 ```
 
-**响应**（只包含 tailscale_ip 不为 pending 的节点）：
+**响应**（只包含 tailscale_ip 不为 pending 的节点，target 使用 hostname 而非 IP）：
 
 ```json
 [
   {
-    "targets": ["100.64.0.1:9100"],
+    "targets": ["hive-ccddeeff:9100"],
     "labels": {
       "instance": "hive-ccddeeff",
       "cf_url":   "https://hive-ccddeeff.example.com",

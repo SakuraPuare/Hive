@@ -149,7 +149,8 @@ EASYTIER_IP="10.${ET_B1}.${ET_B2}.${ET_B3}"
 按顺序 enable 并立即启动：
 
 ```
-xray          — VLESS 代理（监听 127.0.0.1:10077）
+nginx         — 反向代理（监听 127.0.0.1:10077，WebSocket /ray → xray）
+xray          — VLESS+WS 代理（监听 127.0.0.1:10079）
 cloudflared   — CF Tunnel（连接到 CF edge）
 frpc          — FRP 客户端（SSH 应急隧道）
 easytier      — P2P mesh 网络
@@ -173,7 +174,10 @@ systemctl enable --now hive-fail2ban || echo "non-fatal"
 2. POST /api/v2/oauth/token → access token
 3. POST /api/v2/tailnet/-/keys → 生成 5 分钟有效期的 pre-auth key
 4. tailscale up --authkey=<生成的 key>
+5. 清理同名 stale 节点（重刷镜像后可能残留旧记录）
 ```
+
+**Stale 节点清理**：`tailscale up` 完成后，脚本会查询 tailnet 中所有同 hostname 的设备，删除非当前设备的旧记录，防止 Tailscale 控制台出现重复条目。
 
 **回退机制**：若 OAuth 流程失败，直接使用 OAUTH_SECRET 尝试（旧版行为）。
 
@@ -221,10 +225,10 @@ systemctl disable provision-node.service
     │
     ├─► 写入 /etc/hive/node-info
     │
-    ├─► systemctl enable --now xray cloudflared frpc easytier
+    ├─► systemctl enable --now nginx xray cloudflared frpc easytier
     ├─► systemctl enable --now hive-firewall hive-fail2ban（非致命）
     │
-    ├─► Tailscale：OAuth → auth key → tailscale up
+    ├─► Tailscale：OAuth → auth key → tailscale up → 清理 stale 节点
     │
     ├─► 上报 Node Registry（非致命）
     │

@@ -7,6 +7,19 @@
 
 ## 一、基础准备
 
+大多数组件可通过一键脚本完成安装。在项目根目录执行：
+
+```bash
+git clone <your-repo> /opt/rk3528-hive
+cd /opt/rk3528-hive
+cp .env.example .env && nano .env   # 填入所有必填项
+bash management/setup-vps.sh
+```
+
+脚本会自动完成：Docker、Ansible、Go 安装、hive-registry 编译安装、Prometheus + Grafana 启动、cron 配置。
+
+下面是各步骤的手动说明（供参考或排障）：
+
 ```bash
 apt update && apt install -y curl wget unzip jq \
     prometheus-node-exporter docker.io docker-compose-v2
@@ -36,23 +49,26 @@ EXIT;
 
 ### 2.1 编译并安装二进制
 
+`setup-vps.sh` 会自动安装 Go（如已安装则跳过）并编译安装 hive-registry。手动步骤如下：
+
 ```bash
 # 安装 Go 1.22+（若尚未安装）
 wget -q https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
 tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
+echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
 
-# 上传项目或 git clone
+# 进入 registry 目录并编译
 cd /opt/rk3528-hive/management/registry
-
-# 拉取依赖并编译（生成静态链接二进制）
 make build
 
-# 安装到系统路径
-cp hive-registry /usr/local/bin/hive-registry
+# 原子替换安装（服务运行中也安全）
+cp hive-registry /usr/local/bin/hive-registry.new
+chmod +x /usr/local/bin/hive-registry.new
+mv /usr/local/bin/hive-registry.new /usr/local/bin/hive-registry
 ```
 
-> 如果管理服务器是 ARM64：`make build-arm64` 然后复制 `hive-registry-arm64`。
+> 如果管理服务器是 ARM64：`make build-arm64` 然后使用 `hive-registry-arm64`。
 
 ### 2.2 创建环境变量文件
 
@@ -113,16 +129,19 @@ systemctl status hive-registry
 ### 2.4 验证
 
 ```bash
-# 健康检查（含 DB 连通性）
-curl http://127.0.0.1:8080/health
+# 健康检查（含 DB 连通性）—— 直连 Go 服务，路径无 /api 前缀
+curl -H "Authorization: Bearer <API_SECRET>" http://127.0.0.1:8080/health
 # → {"status":"ok"}
 
 # 节点列表（空）
-curl http://127.0.0.1:8080/api/nodes
+curl -H "Authorization: Bearer <API_SECRET>" http://127.0.0.1:8080/nodes
 # → []
 
+# 通过 nginx（外部路径，含 /api 前缀）
+curl -H "Authorization: Bearer <API_SECRET>" http://localhost/api/nodes
+
 # 控制台 Dashboard
-curl -s http://127.0.0.1:8080/ | grep -o 'Total:.*'
+curl -s -H "Authorization: Bearer <API_SECRET>" http://127.0.0.1:8080/ | grep -o 'Total:.*'
 ```
 
 API 完整规范见 [docs/NODE-REGISTRY-API.md](../../docs/NODE-REGISTRY-API.md)。
@@ -133,12 +152,12 @@ API 完整规范见 [docs/NODE-REGISTRY-API.md](../../docs/NODE-REGISTRY-API.md)
 
 ```bash
 # 创建 Prometheus targets 目录（cron 会把节点列表写在这里）
-mkdir -p /etc/prometheus/targets
-echo '[]' > /etc/prometheus/targets/nodes.json
+mkdir -p /opt/rk3528-hive/management/prometheus/targets
+echo '[]' > /opt/rk3528-hive/management/prometheus/targets/nodes.json
 
-cd /opt/rk3528-edge/management
+cd /opt/rk3528-hive/management
 
-# 修改 docker-compose.yml 里的 GF_SECURITY_ADMIN_PASSWORD
+# 修改 docker-compose.yml 里的 GF_SECURITY_ADMIN_PASSWORD（或在 .env 中设置）
 nano docker-compose.yml
 
 docker compose up -d
@@ -147,14 +166,19 @@ docker compose ps
 
 ### 3.1 定时更新 Prometheus 节点列表
 
-Node Registry 提供 `/api/prometheus-targets` 接口，cron 每分钟调用一次写入文件：
+`setup-vps.sh` 会自动创建 `/etc/cron.d/hive-targets`。手动写入：
 
 ```bash
-cat > /etc/cron.d/registry-prometheus << 'EOF'
-* * * * * root curl -sf http://127.0.0.1:8080/api/prometheus-targets \
-    > /etc/prometheus/targets/nodes.json
+TARGETS_FILE="/opt/rk3528-hive/management/prometheus/targets/nodes.json"
+AUTH_HEADER='-H "Authorization: Bearer <API_SECRET>"'   # 若无认证则删除此行
+
+cat > /etc/cron.d/hive-targets << EOF
+* * * * * root curl -sf ${AUTH_HEADER} -o ${TARGETS_FILE} http://127.0.0.1:8080/prometheus-targets
 EOF
+chmod 0644 /etc/cron.d/hive-targets
 ```
+
+> **注意**：cron 直连 Go 服务（`127.0.0.1:8080`），路径**无** `/api` 前缀。
 
 ### 3.2 Grafana 配置
 
@@ -312,18 +336,25 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 ## 八、整体验证清单
 
 ```bash
-# Node Registry 本地可用
-curl http://127.0.0.1:8080/api/nodes
+# Node Registry 本地可用（路径无 /api 前缀）
+curl -H "Authorization: Bearer <API_SECRET>" http://127.0.0.1:8080/health
+curl -H "Authorization: Bearer <API_SECRET>" http://127.0.0.1:8080/nodes
+
+# Node Registry 通过 nginx（含 /api 前缀）
+curl -H "Authorization: Bearer <API_SECRET>" http://localhost/api/health
 
 # Node Registry 通过 CF Tunnel 全球可用
-curl https://registry.yourdomain.com/api/nodes
+curl -H "Authorization: Bearer <API_SECRET>" https://registry.yourdomain.com/api/nodes
 
 # Prometheus 在跑
-curl http://127.0.0.1:9090/-/healthy
+curl http://127.0.0.1:4230/-/healthy
 
 # Grafana 在跑
-curl http://127.0.0.1:3000/api/health
+curl http://127.0.0.1:4231/api/health
+
+# cron 已安装
+cat /etc/cron.d/hive-targets
 
 # 节点列表更新到 Prometheus（有节点上线后）
-cat /etc/prometheus/targets/nodes.json
+cat /opt/rk3528-hive/management/prometheus/targets/nodes.json
 ```

@@ -16,7 +16,10 @@
 [cloudflared]   ← 节点无需公网 IP
      │
      ▼
-[xray-core]     VLESS 监听 127.0.0.1:10077
+[nginx]         ← 监听 127.0.0.1:10077，WebSocket /ray → xray
+     │
+     ▼
+[xray-core]     VLESS+WS 监听 127.0.0.1:10079
      │
      ▼
 [本地出口]      节点所在国家直连
@@ -133,17 +136,18 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| xray | 127.0.0.1:10077 | VLESS+ws 代理入口 |
-| cloudflared | — | CF Tunnel，暴露 xray 到公网 |
+| nginx | 127.0.0.1:10077 | WebSocket 反向代理，/ray → xray |
+| xray | 127.0.0.1:10079 | VLESS+WS 代理核心 |
+| cloudflared | — | CF Tunnel，暴露 nginx 到公网 |
 | frpc | — | FRP 客户端，暴露 SSH 到 VPS |
 | easytier | — | P2P mesh，提供备用管理 IP |
 | tailscaled | — | Tailscale VPN，主管理通道 |
 | prometheus-node-exporter | 9100 | 指标采集（仅 Tailscale 可达） |
-| ufw | — | 防火墙，开机自动配置 |
+| ufw | — | 防火墙，开机自动配置（日志默认关闭） |
 | fail2ban | — | SSH 暴力破解防护 |
 | auditd | — | 系统审计日志 |
 
-**xray 协议**：VLESS + WebSocket（`/ray`），经 CF Tunnel 对外暴露为 HTTPS。
+**xray 协议**：VLESS + WebSocket（`/ray`），经 nginx 和 CF Tunnel 对外暴露为 HTTPS。
 客户端链接格式（登录节点后 MOTD 自动显示）：
 
 ```
