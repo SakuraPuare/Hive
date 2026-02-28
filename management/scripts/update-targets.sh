@@ -61,6 +61,7 @@ RESULT=$(curl -sf \
 
 # 只有查询成功才写文件（避免 API 故障清空 targets）
 if echo "$RESULT" | jq -e 'type == "array"' > /dev/null 2>&1; then
+    mkdir -p "$(dirname "$OUTPUT")"
     echo "$RESULT" > "$OUTPUT"
     echo "$(date): updated $(echo "$RESULT" | jq 'length') targets" \
         >> /var/log/update-targets.log
