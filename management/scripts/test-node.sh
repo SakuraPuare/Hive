@@ -12,8 +12,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 [ -f "${SCRIPT_DIR}/.env" ] && source "${SCRIPT_DIR}/.env"
 
 REGISTRY_URL="http://${REGISTRY_LISTEN_ADDR:-127.0.0.1:8080}"
-AUTH_HEADER=""
-[ -n "${REGISTRY_API_SECRET:-}" ] && AUTH_HEADER="-H \"Authorization: Bearer ${REGISTRY_API_SECRET}\""
+AUTH_ARGS=()
+[ -n "${REGISTRY_API_SECRET:-}" ] && AUTH_ARGS=(-H "Authorization: Bearer ${REGISTRY_API_SECRET}")
 
 PASS=0; FAIL=0; WARN=0
 
@@ -24,24 +24,16 @@ warn() { printf "\e[0;93m[WARN]\e[0m %-22s %s\n" "$1" "$2"; ((WARN++)); }
 # ── 获取节点信息 ──────────────────────────────────────────────────────────────
 fetch_node() {
     local query="$1"
-    local url
-
-    # 支持 hostname（hive-xxxx）或 mac6（6位hex）或完整 mac
     if [[ "$query" == "hive-"* ]]; then
-        # 从 hostname 反查 mac6
-        local mac6="${query#hive-}"
-        url="${REGISTRY_URL}/nodes"
-        eval curl -sf ${AUTH_HEADER} "${url}" 2>/dev/null \
-            | jq -r --arg h "$query" '.[] | select(.hostname == $h)'
+        curl -sf "${AUTH_ARGS[@]}" "${REGISTRY_URL}/nodes" 2>/dev/null \
+            | jq -c --arg h "$query" '.[] | select(.hostname == $h)'
     else
-        # 直接用 mac 查
-        url="${REGISTRY_URL}/nodes/${query}"
-        eval curl -sf ${AUTH_HEADER} "${url}" 2>/dev/null
+        curl -sf "${AUTH_ARGS[@]}" "${REGISTRY_URL}/nodes/${query}" 2>/dev/null
     fi
 }
 
 fetch_all_nodes() {
-    eval curl -sf ${AUTH_HEADER} "${REGISTRY_URL}/nodes" 2>/dev/null
+    curl -sf "${AUTH_ARGS[@]}" "${REGISTRY_URL}/nodes" 2>/dev/null
 }
 
 # ── 测试单个节点 ──────────────────────────────────────────────────────────────
