@@ -27,10 +27,22 @@ fi
 exec 9>"$LOCK"
 flock -n 9 || exit 0
 
+# 从 tskey-client-<ID>-<SECRET> 提取 client_id，换取 access token
+TS_CLIENT_ID=$(echo "${TAILSCALE_OAUTH_SECRET}" | sed 's/tskey-client-\([^-]*\)-.*/\1/')
+ACCESS_TOKEN=$(curl -sf "https://api.tailscale.com/api/v2/oauth/token" \
+    -d "client_id=${TS_CLIENT_ID}" \
+    -d "client_secret=${TAILSCALE_OAUTH_SECRET}" \
+    | jq -r '.access_token // empty')
+
+if [ -z "${ACCESS_TOKEN}" ]; then
+    echo "$(date): failed to obtain access token" >> /var/log/update-targets.log
+    exit 1
+fi
+
 # 查询 Tailscale API，过滤 tag:hive，生成 file_sd 格式
 RESULT=$(curl -sf \
     "https://api.tailscale.com/api/v2/tailnet/${TAILNET}/devices" \
-    -H "Authorization: Bearer ${TAILSCALE_OAUTH_SECRET}" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     | jq --arg tag "$TAG" '
         [.devices[]
          | select(.tags != null and any(.tags[]; . == $tag))
