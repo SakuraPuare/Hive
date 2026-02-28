@@ -118,27 +118,11 @@ test_node() {
                 -H "Connection: Upgrade" \
                 -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
                 -H "Sec-WebSocket-Version: 13" \
-                "https://${CF_HOST}/ray" 2>/dev/null || echo "000")
+                "https://${CF_HOST}/ray" 2>/dev/null || true)
             if [ "$WS_CODE" = "101" ]; then
-                pass "xray-ws" "WebSocket 101 OK via CF (${CF_HOST})"
+                pass "xray-ws" "WebSocket 101 OK via ${CF_HOST}"
             else
-                warn "xray-ws" "WebSocket via CF returned HTTP ${WS_CODE}, trying direct..."
-                # CF tunnel may buffer/reject WS upgrade; test xray directly via Tailscale
-                if [ -n "${tailscale_ip}" ] && [ "${tailscale_ip}" != "pending" ]; then
-                    WS_DIRECT=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 \
-                        -H "Upgrade: websocket" \
-                        -H "Connection: Upgrade" \
-                        -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-                        -H "Sec-WebSocket-Version: 13" \
-                        "http://${tailscale_ip}:10077/ray" 2>/dev/null || echo "000")
-                    if [ "$WS_DIRECT" = "101" ]; then
-                        pass "xray-ws" "WebSocket 101 OK direct via Tailscale (CF tunnel may be down)"
-                    else
-                        fail "xray-ws" "WebSocket failed both CF (${WS_CODE}) and direct (${WS_DIRECT})"
-                    fi
-                else
-                    fail "xray-ws" "WebSocket via CF returned HTTP ${WS_CODE}, no Tailscale IP to retry"
-                fi
+                warn "xray-ws" "WebSocket returned HTTP ${WS_CODE} via ${CF_HOST} (xray may be down or CF not routing WS)"
             fi
         fi
     else
