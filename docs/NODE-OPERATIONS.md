@@ -183,7 +183,7 @@ cat /etc/hive/node-info | grep XRAY_UUID
 MOTD 登录时会自动显示 VLESS 链接，格式：
 
 ```
-vless://<UUID>@<cf-domain>:443?type=xhttp&security=tls&path=%2Fray#hive-<mac6>
+vless://<UUID>@<cf-domain>:443?type=ws&security=tls&path=%2Fray#hive-<mac6>
 ```
 
 ---

@@ -8,7 +8,7 @@
 
 ```
 [v2ray 用户]
-     │  VLESS+xhttp+TLS
+     │  VLESS+ws+TLS
      ▼
 [Cloudflare Edge]
      │  CF Tunnel (http2)
@@ -133,7 +133,7 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| xray | 127.0.0.1:10077 | VLESS+xhttp 代理入口 |
+| xray | 127.0.0.1:10077 | VLESS+ws 代理入口 |
 | cloudflared | — | CF Tunnel，暴露 xray 到公网 |
 | frpc | — | FRP 客户端，暴露 SSH 到 VPS |
 | easytier | — | P2P mesh，提供备用管理 IP |
@@ -143,11 +143,11 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 | fail2ban | — | SSH 暴力破解防护 |
 | auditd | — | 系统审计日志 |
 
-**xray 协议**：VLESS + xhttp（`/ray`），经 CF Tunnel 对外暴露为 HTTPS。
+**xray 协议**：VLESS + WebSocket（`/ray`），经 CF Tunnel 对外暴露为 HTTPS。
 客户端链接格式（登录节点后 MOTD 自动显示）：
 
 ```
-vless://<uuid>@<hive-mac6.yourdomain.com>:443?type=xhttp&security=tls&path=%2Fray#hive-<mac6>
+vless://<uuid>@<hive-mac6.yourdomain.com>:443?type=ws&security=tls&path=%2Fray#hive-<mac6>
 ```
 
 ---
