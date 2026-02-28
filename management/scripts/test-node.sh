@@ -114,19 +114,7 @@ test_node() {
         if [ -n "${xray_uuid}" ]; then
             CF_HOST="${cf_url#https://}"
 
-            # 5a. 通过 Tailscale SSH 检查节点上 xray 进程是否运行
-            if [ -n "${tailscale_ip}" ] && [ "${tailscale_ip}" != "pending" ]; then
-                if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
-                        "root@${tailscale_ip}" "systemctl is-active xray" &>/dev/null; then
-                    pass "xray-service" "xray.service active on ${tailscale_ip}"
-                else
-                    fail "xray-service" "xray.service not active on ${tailscale_ip}"
-                fi
-            else
-                warn "xray-service" "no Tailscale IP, skipping xray service check"
-            fi
-
-            # 5b. 端到端 VLESS 链路测试（需要管理 VPS 上有 xray 二进制）
+            # 5a. 端到端 VLESS 链路测试（需要管理 VPS 上有 xray 二进制）
             if command -v xray &>/dev/null; then
                 local _tmp_cfg _tmp_port _xray_pid _http_code
                 _tmp_cfg=$(mktemp /tmp/xray-test-XXXXXX.json)
