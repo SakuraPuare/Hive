@@ -12,6 +12,9 @@
 
 set -e
 
+# 加载节点配置（EASYTIER_PEERS、FRP_SERVER_PORT 等）
+[ -f /etc/hive/config.env ] && source /etc/hive/config.env
+
 echo ">>> 配置 Hive Node 防火墙..."
 
 # 检查是否已安装 ufw
@@ -125,11 +128,7 @@ ufw allow out 443 comment 'Cloudflare Tunnel - HTTPS (optional)'
 
 # FRP Client - 根据您的 FRP_SERVER_PORT 配置（默认 7000）
 # 从 .env 读取端口或使用默认值
-FRP_PORT=7000
-if [[ -f "/etc/hive/config.env" ]]; then
-    source /etc/hive/config.env 2>/dev/null || true
-    FRP_PORT=${FRP_SERVER_PORT:-7000}
-fi
+FRP_PORT=${FRP_SERVER_PORT:-7000}
 
 ufw allow out $FRP_PORT comment "FRP Client - Port $FRP_PORT"
 
