@@ -131,7 +131,8 @@ test_node() {
 
     echo ""
     local total=$((PASS + FAIL + WARN))
-    echo "=== ${hostname}: ${total} tests — \e[0;92m${PASS} passed\e[0m, \e[0;91m${FAIL} failed\e[0m, \e[0;93m${WARN} warnings\e[0m ==="
+    printf $'=== %s: %d tests \u2014 \033[0;92m%d passed\033[0m, \033[0;91m%d failed\033[0m, \033[0;93m%d warnings\033[0m ===\n' \
+        "${hostname}" "${total}" "${PASS}" "${FAIL}" "${WARN}"
 }
 
 # ── 入口 ──────────────────────────────────────────────────────────────────────
