@@ -1,0 +1,118 @@
+name: Build Image
+
+on:
+  release:
+    types: [published]  # 发布新版本或手动触发
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360  # Armbian 首次构建最长约 90 分钟
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── 释放磁盘空间（runner 默认约 14GB，Armbian 需要 50GB+）───────────
+      - name: Free disk space
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY"
+          sudo docker system prune -af
+          df -h
+
+      # ── 构建依赖 ─────────────────────────────────────────────────────────
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y \
+            git curl wget jq \
+            build-essential python3 \
+            ccache unzip zip \
+            qemu-user-static binfmt-support \
+            debootstrap
+
+      # ── ccache 持久化（命中后构建时间从 60 分钟降至 10 分钟）────────────
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/armbian-ccache
+          key: armbian-ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            armbian-ccache-${{ github.ref_name }}-
+            armbian-ccache-
+
+      # ── Armbian 框架 ─────────────────────────────────────────────────────
+      - name: Setup Armbian framework
+        run: ./scripts/setup-armbian.sh
+
+      # ── 下载 arm64 二进制 ────────────────────────────────────────────────
+      - name: Download binaries
+        run: ./scripts/download-binaries.sh
+
+      # ── 从 secrets 生成 .env ─────────────────────────────────────────────
+      - name: Create .env
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
+          TAILSCALE_OAUTH_SECRET: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
+          EASYTIER_NETWORK_NAME: ${{ secrets.EASYTIER_NETWORK_NAME }}
+          EASYTIER_SECRET: ${{ secrets.EASYTIER_SECRET }}
+          EASYTIER_PEERS: ${{ secrets.EASYTIER_PEERS }}
+          FRP_SERVER_ADDR: ${{ secrets.FRP_SERVER_ADDR }}
+          FRP_SERVER_PORT: ${{ secrets.FRP_SERVER_PORT }}
+          FRP_AUTH_TOKEN: ${{ secrets.FRP_AUTH_TOKEN }}
+          DEFAULT_ROOT_PASSWORD: ${{ secrets.DEFAULT_ROOT_PASSWORD }}
+          NODE_REGISTRY_URL: ${{ secrets.NODE_REGISTRY_URL }}
+          REGISTRY_API_SECRET: ${{ secrets.REGISTRY_API_SECRET }}
+          CAMOUFLAGE_URL: ${{ secrets.CAMOUFLAGE_URL }}
+        run: |
+          printf 'CF_API_TOKEN=%s\n'            "$CF_API_TOKEN"            > .env
+          printf 'CF_ACCOUNT_ID=%s\n'           "$CF_ACCOUNT_ID"           >> .env
+          printf 'CF_ZONE_ID=%s\n'              "$CF_ZONE_ID"              >> .env
+          printf 'CF_DOMAIN=%s\n'               "$CF_DOMAIN"               >> .env
+          printf 'TAILSCALE_OAUTH_SECRET=%s\n'  "$TAILSCALE_OAUTH_SECRET"  >> .env
+          printf 'EASYTIER_NETWORK_NAME=%s\n'   "$EASYTIER_NETWORK_NAME"   >> .env
+          printf 'EASYTIER_SECRET=%s\n'         "$EASYTIER_SECRET"         >> .env
+          printf 'EASYTIER_PEERS=%s\n'          "$EASYTIER_PEERS"          >> .env
+          printf 'FRP_SERVER_ADDR=%s\n'         "$FRP_SERVER_ADDR"         >> .env
+          printf 'FRP_SERVER_PORT=%s\n'         "$FRP_SERVER_PORT"         >> .env
+          printf 'FRP_AUTH_TOKEN=%s\n'          "$FRP_AUTH_TOKEN"          >> .env
+          printf 'DEFAULT_ROOT_PASSWORD=%s\n'   "$DEFAULT_ROOT_PASSWORD"   >> .env
+          printf 'NODE_REGISTRY_URL=%s\n'       "$NODE_REGISTRY_URL"       >> .env
+          printf 'REGISTRY_API_SECRET=%s\n'     "$REGISTRY_API_SECRET"     >> .env
+          printf 'CAMOUFLAGE_URL=%s\n'          "$CAMOUFLAGE_URL"          >> .env
+
+      # ── 构建镜像 ─────────────────────────────────────────────────────────
+      - name: Build image
+        run: ./scripts/build.sh NO_HOST_RELEASE_CHECK=yes EXPERT=yes
+
+      # ── 定位产物 ──────────────────────────────────────────────────────────
+      - name: Locate output image
+        id: image
+        run: |
+          path=$(ls armbian-build/build/output/images/*.img.xz 2>/dev/null | head -1)
+          echo "path=${path}"       >> $GITHUB_OUTPUT
+          echo "name=$(basename $path)" >> $GITHUB_OUTPUT
+
+      # ── workflow_dispatch 手动触发：上传为 Artifact ──────────────────────
+      - name: Upload artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.image.outputs.name }}
+          path: ${{ steps.image.outputs.path }}
+
+      # ── release 触发：附加到对应的 GitHub Release ────────────────────────
+      - name: Upload to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.image.outputs.path }}
