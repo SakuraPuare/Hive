@@ -62,7 +62,8 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
         id: pages
-        # 自动检测 GitHub Pages base path（如 /rk3528-hive/）
+        with:
+          enablement: true
 
       - run: npm ci
 
