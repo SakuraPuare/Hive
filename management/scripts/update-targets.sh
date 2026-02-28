@@ -36,7 +36,7 @@ RESULT=$(curl -sf \
          | select(.tags != null and any(.tags[]; . == $tag))
          | {
              "targets": [
-               (.addresses[] | select(startswith("100."))) + ":9100"
+               .name + ":9100"
              ],
              "labels": {
                "__meta_hostname": .hostname,
