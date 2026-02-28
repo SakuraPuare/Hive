@@ -66,6 +66,9 @@ systemctl enable --now prometheus-node-exporter
 # ─────────────────────────────────────────────
 # 4. 安装 Go（若缺失或版本过旧）
 # ─────────────────────────────────────────────
+# 先把 /usr/local/go/bin 加入 PATH，避免检测时找不到已安装的 go
+export PATH=$PATH:/usr/local/go/bin
+
 GO_MIN="1.22"
 need_go=false
 if ! command -v go &>/dev/null; then
@@ -101,7 +104,7 @@ fi
 # 写入 profile.d，对所有后续 shell session 永久生效
 echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
 chmod 644 /etc/profile.d/golang.sh
-export PATH=$PATH:/usr/local/go/bin   # 当前脚本进程立即生效
+# PATH 已在检测阶段 export，此处无需重复
 
 # ─────────────────────────────────────────────
 # 5. 编译并安装 hive-registry
