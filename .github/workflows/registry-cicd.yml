@@ -1,0 +1,69 @@
+name: Registry CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "management/registry/**"
+      - ".github/workflows/registry-cicd.yml"
+  pull_request:
+    paths:
+      - "management/registry/**"
+      - ".github/workflows/registry-cicd.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: management/registry
+
+jobs:
+  # ── CI：代码检查 & 构建验证 ───────────────────────────────────
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: management/registry/go.mod
+          cache-dependency-path: management/registry/go.sum
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Build (amd64)
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /dev/null .
+
+      - name: Build (arm64)
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o /dev/null .
+
+  # ── CD：编译产物 & 部署（仅 main 分支）──────────────────────
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: management/registry/go.mod
+          cache-dependency-path: management/registry/go.sum
+
+      - name: Build amd64
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o hive-registry-amd64 .
+
+      - name: Build arm64
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o hive-registry-arm64 .
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-registry-${{ github.sha }}
+          path: |
+            management/registry/hive-registry-amd64
+            management/registry/hive-registry-arm64
