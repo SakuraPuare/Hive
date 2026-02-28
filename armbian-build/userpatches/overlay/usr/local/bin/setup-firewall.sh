@@ -68,12 +68,28 @@ ufw allow from 100.0.0.0/8 to any port 9100 comment 'Node Exporter - Tailscale O
 # ufw allow from YOUR_MONITORING_IP to any port 9100 comment 'Node Exporter - Monitoring'
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# P2P 和 VPN 服务（EasyTier 动态端口）
+# EasyTier（纯客户端模式，无 --listeners）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# EasyTier 可能需要动态端口，但主要是出站连接
-# 如果遇到连接问题，可以临时开放端口范围：
-# ufw allow out 11010:11020/udp comment 'EasyTier P2P - Outbound'
+# 问题：EasyTier 发出 UDP 时源端口随机（如 43232→relay:11010），
+#       中继 STUN 回包源端口不同（如 relay:40836→43232），
+#       conntrack 无法识别为 ESTABLISHED，UFW 直接 BLOCK。
+# 解法：允许来自中继服务器 IP 的全部 UDP 入站（不限端口）。
+echo "配置 EasyTier 中继服务器 UDP 放行..."
+if [ -n "${EASYTIER_PEERS}" ]; then
+    # 提取所有唯一主机名（去协议前缀和端口）
+    RELAY_HOSTS=$(echo "${EASYTIER_PEERS}" | tr ',' '\n' \
+        | sed 's|.*://||;s|:.*||' | tr -d '[:space:]' | sort -u)
+    for HOST in $RELAY_HOSTS; do
+        [ -z "$HOST" ] && continue
+        # 解析主机名为 IP（失败则直接用原值）
+        IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1; exit}')
+        IP=${IP:-$HOST}
+        ufw allow in proto udp from "$IP" comment "EasyTier relay: $HOST"
+        echo "  允许 UDP 入站来自 $HOST ($IP)"
+    done
+else
+    echo "  EASYTIER_PEERS 未配置，跳过"
+fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 网络诊断和安全

@@ -44,8 +44,8 @@ fi
 echo "start-easytier: ${HOSTNAME} @ ${EASYTIER_IP}/8"
 
 exec /usr/local/bin/easytier-core \
-    --network-name  "${EASYTIER_NETWORK_NAME}" \
+    --network-name   "${EASYTIER_NETWORK_NAME}" \
     --network-secret "${EASYTIER_SECRET}" \
     "${PEER_ARGS[@]}" \
-    --ipv4          "${EASYTIER_IP}/8" \
-    --hostname      "${HOSTNAME}"
+    --ipv4           "${EASYTIER_IP}/8" \
+    --hostname       "${HOSTNAME}"
