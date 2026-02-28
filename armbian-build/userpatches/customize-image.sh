@@ -88,6 +88,7 @@ apt-get install -y --no-install-recommends \
     fail2ban \
     unattended-upgrades \
     auditd \
+    nginx \
     zsh \
     net-tools \
     vim
@@ -212,6 +213,10 @@ fi
 
 systemctl enable tailscaled.service   # daemon 预启动，tailscale up 由 provision 执行
 systemctl enable prometheus-node-exporter.service
+# nginx：禁用默认站点，启用 hive 站点
+rm -f /etc/nginx/sites-enabled/default
+ln -sf /etc/nginx/sites-available/hive /etc/nginx/sites-enabled/hive
+systemctl enable nginx.service
 systemctl enable hive-firewall.service  # 启动时自动配置防火墙
 systemctl enable hive-fail2ban.service  # 启动时自动配置入侵防护
 systemctl enable auditd.service        # 系统审计日志

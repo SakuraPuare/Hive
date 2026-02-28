@@ -15,7 +15,12 @@
                         "email": "default@example.com"
                     }
                 ],
-                "decryption": "none"
+                "decryption": "none",
+                "fallbacks": [
+                    {
+                        "dest": 10078
+                    }
+                ]
             },
             "sniffing": {
                 "enabled": true,

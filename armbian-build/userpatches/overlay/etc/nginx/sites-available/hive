@@ -1,0 +1,21 @@
+server {
+    listen 127.0.0.1:10078;
+    server_name _;
+
+    root /var/www/hive;
+    index index.html;
+
+    # 连通性检测端点
+    location = /health {
+        default_type application/json;
+        return 200 '{"status":"ok"}';
+    }
+
+    # 静态页面
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    access_log off;
+    error_log /dev/null;
+}

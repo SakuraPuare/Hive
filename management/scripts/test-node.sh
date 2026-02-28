@@ -105,7 +105,7 @@ test_node() {
     # 5. Cloudflare Tunnel + Xray
     if [ -n "${cf_url}" ]; then
         HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "${cf_url}" 2>/dev/null || true)
-        if [[ "$HTTP_CODE" =~ ^(101|200|400|404)$ ]]; then
+        if [[ "$HTTP_CODE" =~ ^(200|301|302)$ ]]; then
             pass "cf-tunnel" "${cf_url} → HTTP ${HTTP_CODE}"
         else
             fail "cf-tunnel" "${cf_url} → HTTP ${HTTP_CODE}"
