@@ -4,6 +4,7 @@ export default defineConfig({
   title: 'Hive',
   description: 'RK3528A 分布式边缘节点集群管理系统',
   lang: 'zh-CN',
+  base: process.env.VITE_BASE ?? '/',
   themeConfig: {
     nav: [
       { text: '快速开始', link: '/BUILD' },
