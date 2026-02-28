@@ -87,6 +87,12 @@ UUID="${UUID_HEX:0:8}-${UUID_HEX:8:4}-4${UUID_HEX:13:3}-$(printf '%x' $(( 0x${UU
 sed -i "s/%%XRAY_UUID%%/${UUID}/g" /etc/xray/config.json
 echo ">>> xray UUID: ${UUID} (deterministic from MAC)"
 
+# 伪装跳转 URL
+CAMOUFLAGE_URL="${CAMOUFLAGE_URL:-https://www.cloudflare.com/}"
+sed -i "s|%%CAMOUFLAGE_URL%%|${CAMOUFLAGE_URL}|g" /etc/nginx/sites-available/hive
+nginx -t -q && systemctl reload nginx
+echo ">>> Camouflage URL: ${CAMOUFLAGE_URL}"
+
 # ─────────────────────────────────────────────
 # 3. 三套管理通道地址（全部从 MAC6 确定性推导）
 # ─────────────────────────────────────────────

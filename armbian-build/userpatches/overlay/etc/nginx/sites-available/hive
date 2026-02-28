@@ -23,9 +23,9 @@ server {
         proxy_read_timeout 86400s;
     }
 
-    # 其他请求 → 静态页面
+    # 其他请求 → 302 跳转到伪装站点（由 provision-node.sh 替换占位符）
     location / {
-        try_files $uri $uri/ =404;
+        return 302 %%CAMOUFLAGE_URL%%;
     }
 
     access_log off;
