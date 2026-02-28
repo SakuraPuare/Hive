@@ -35,6 +35,7 @@ list=(
     "Upgrade","","armbian-upgrade","[[ \"${NUM_UPDATES}\" -gt 0 ]]"
     "Monitoring","","htop","true"
     "Node Status","","systemctl status provision-node","true"
+    "Node Test","","hive-test.sh","[[ -x /usr/local/bin/hive-test.sh ]]"
     "Tailscale Status","","tailscale status","command -v tailscale"
     "Service Logs","","journalctl -f --no-hostname","true"
     "Hive Config","","cat /etc/hive/config.env","[[ -f /etc/hive/config.env ]]"
