@@ -104,7 +104,7 @@ printf ' Running on \e[1;94m%s\e[0m with Linux kernel \e[0;92m%s\x1B[0m\n' \
 HARDWARE_STATUS=""
 if [[ "${IMAGE_TYPE:-}" != "stable" ]]; then
 	case "${IMAGE_TYPE:-}" in
-		"user-built") HARDWARE_STATUS=$'\e[0;91mDIY\x1B[0m (custom image)\x1B[0m' ;;
+		"user-built") HARDWARE_STATUS=$'\e[0;96mSakuraPuare\x1B[0m <sakurapuare@sakurapuare.com>' ;;
 		"nightly")    HARDWARE_STATUS=$'\e[0;91mfor advanced users\x1B[0m (rolling release)\x1B[0m' ;;
 	esac
 else
