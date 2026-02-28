@@ -26,6 +26,7 @@ fi
 # 重置防火墙规则
 echo "重置防火墙规则..."
 ufw --force reset
+ufw logging off
 
 # 设置默认策略：拒绝入站，允许出站，拒绝转发
 ufw default deny incoming
@@ -81,7 +82,7 @@ echo "配置 EasyTier 中继服务器 UDP 放行..."
 if [ -n "${EASYTIER_PEERS}" ]; then
     # 提取所有唯一主机名（去协议前缀和端口）
     RELAY_HOSTS=$(echo "${EASYTIER_PEERS}" | tr ',' '\n' \
-        | sed 's|.*://||;s|:.*||' | tr -d '[:space:]' | sort -u)
+        | sed 's|.*://||;s|:.*||' | sed '/^[[:space:]]*$/d' | sort -u)
     for HOST in $RELAY_HOSTS; do
         [ -z "$HOST" ] && continue
         # 解析主机名为 IP（失败则直接用原值）
