@@ -98,9 +98,21 @@ jobs:
       - name: Locate output image
         id: image
         run: |
-          path=$(ls armbian-build/build/output/images/*.img.xz 2>/dev/null | head -1)
-          echo "path=${path}"       >> $GITHUB_OUTPUT
-          echo "name=$(basename $path)" >> $GITHUB_OUTPUT
+          echo "=== output/images 目录内容 ==="
+          ls -lh armbian-build/build/output/images/ 2>/dev/null || echo "(空目录)"
+          # 按优先级匹配：xz > zst > gz > 未压缩 img
+          path=$(ls armbian-build/build/output/images/*.img.xz \
+                    armbian-build/build/output/images/*.img.zst \
+                    armbian-build/build/output/images/*.img.gz \
+                    armbian-build/build/output/images/*.img \
+                 2>/dev/null | head -1)
+          if [ -z "$path" ]; then
+            echo "ERROR: 未找到任何 .img* 文件" >&2
+            exit 1
+          fi
+          echo "找到镜像: $path"
+          echo "path=${path}"        >> $GITHUB_OUTPUT
+          echo "name=$(basename "$path")" >> $GITHUB_OUTPUT
 
       # ── workflow_dispatch 手动触发：上传为 Artifact ──────────────────────
       - name: Upload artifact
