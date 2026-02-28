@@ -37,17 +37,17 @@ sudo apt install -y ccache
 
 | 变量 | 来源 | 文档 |
 |------|------|------|
-| `CF_API_TOKEN` | Cloudflare Dashboard | [03-cloudflare-tokens.md](../management/docs/03-cloudflare-tokens.md) |
+| `CF_API_TOKEN` | Cloudflare Dashboard | 见服务端部署文档 |
 | `CF_ACCOUNT_ID` | Cloudflare Dashboard | 同上 |
 | `CF_ZONE_ID` | Cloudflare Dashboard | 同上 |
 | `CF_DOMAIN` | 你的域名 | 同上 |
-| `TAILSCALE_OAUTH_SECRET` | Tailscale Admin Console | [04-tailscale-key.md](../management/docs/04-tailscale-key.md) |
-| `FRP_SERVER_ADDR` | 境外 VPS IP | [01-foreign-vps.md](../management/docs/01-foreign-vps.md) |
+| `TAILSCALE_OAUTH_SECRET` | Tailscale Admin Console | 见服务端部署文档 |
+| `FRP_SERVER_ADDR` | 境外 VPS IP | 见服务端部署文档 |
 | `FRP_AUTH_TOKEN` | frps.toml 里的 token | 同上 |
 | `EASYTIER_PEERS` | 境外 VPS IP | 同上 |
 | `EASYTIER_NETWORK_NAME` | 自定义 | — |
 | `EASYTIER_SECRET` | 自定义 | — |
-| `NODE_REGISTRY_URL` | 中国 VPS 域名 | [02-china-vps.md](../management/docs/02-china-vps.md) |
+| `NODE_REGISTRY_URL` | 中国 VPS 域名 | 见服务端部署文档 |
 
 ---
 
@@ -115,7 +115,7 @@ NODE_REGISTRY_URL=https://registry.example.com
 
 | 软件 | 说明 |
 |------|------|
-| `xray` | VLESS 代理核心 |
+| `xray` | WebSocket 流量转发核心 |
 | `cloudflared` | Cloudflare Tunnel 客户端 |
 | `frpc` | FRP 客户端（SSH 应急隧道） |
 | `easytier-core` | P2P mesh 网络 |
@@ -205,7 +205,7 @@ echo "所有 SD 卡烧录完成"
 | Debian | trixie (Debian 13) |
 | Kernel | Rockchip vendor kernel（优化版） |
 | nginx | 反向代理（监听 10077，WebSocket → xray） |
-| xray | 最新 arm64 版（VLESS+WS，监听 10079） |
+| xray | 最新 arm64 版（WebSocket 转发，监听 10079） |
 | cloudflared | 最新 arm64 版 |
 | frpc | 0.67.0 arm64 |
 | easytier-core | v2.4.5 arm64 |

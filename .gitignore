@@ -25,6 +25,11 @@ armbian-build/userpatches/overlay/usr/local/bin/easytier-core
 *.img.xz
 *.img.zst
 
+# VitePress
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
 # 编辑器
 .vscode/
 .idea/

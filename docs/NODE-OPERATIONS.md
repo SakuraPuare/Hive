@@ -97,11 +97,11 @@ hive-test.sh
 ### 核心服务操作
 
 ```bash
-# nginx（WebSocket 代理，xray 前端）
+# nginx（WebSocket 转发，xray 前端）
 systemctl restart nginx
 journalctl -u nginx -f --no-pager
 
-# xray（代理）
+# xray（流量转发）
 systemctl restart xray
 journalctl -u xray -f --no-pager
 
@@ -122,7 +122,7 @@ systemctl restart tailscaled
 tailscale status
 ```
 
-### 查看 xray 代理日志
+### 查看 xray 日志
 
 ```bash
 journalctl -u xray --since "1 hour ago" --no-pager
@@ -190,12 +190,12 @@ grep -oP '"id":\s*"\K[^"]+' /etc/xray/config.json
 cat /etc/hive/node-info | grep XRAY_UUID
 ```
 
-### 生成 VLESS 链接
+### 获取节点连接配置
 
-MOTD 登录时会自动显示 VLESS 链接，格式：
+MOTD 登录时会自动显示节点连接配置（含域名、UUID 及 WebSocket 路径）。也可通过 Node Registry 订阅接口批量获取：
 
-```
-vless://<UUID>@<cf-domain>:443?type=ws&security=tls&path=%2Fray#hive-<mac6>
+```bash
+curl https://registry.example.com/api/subscription
 ```
 
 ---

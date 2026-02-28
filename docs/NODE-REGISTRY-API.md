@@ -27,7 +27,7 @@
 | GET | /api/nodes/{mac} | Bearer | 单节点详情 |
 | PATCH | /api/nodes/{mac} | Bearer | 更新 location/note/tailscale_ip |
 | DELETE | /api/nodes/{mac} | Bearer | 删除节点 |
-| GET | /api/subscription | Bearer | VLESS+ws 订阅（Base64） |
+| GET | /api/subscription | Bearer | 节点订阅（Base64） |
 | GET | /api/subscription/clash | Bearer | Clash/Mihomo YAML 订阅 |
 | GET | /api/prometheus-targets | Bearer | Prometheus file_sd JSON |
 | GET | /api/labels | Bearer | 可打印标签 HTML |
@@ -189,14 +189,9 @@ curl -sf -X POST "${NODE_REGISTRY_URL}/nodes/register" \
 
 ## GET /api/subscription
 
-返回 Base64 编码的 VLESS+ws 订阅内容，每行一个链接。
+返回 Base64 编码的节点订阅内容，每行一个节点配置。
 
-**链接格式**：
-```
-vless://{xray_uuid}@{cf_domain}:443?type=ws&security=tls&sni={cf_domain}&path=%2Fray#{location_or_hostname}
-```
-
-兼容：v2rayN、NekoBox、Hiddify、v2rayNG 等主流客户端。
+包含节点的域名、UUID、WebSocket 路径等连接参数，兼容主流客户端导入格式。
 
 ---
 

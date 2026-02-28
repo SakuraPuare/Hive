@@ -93,7 +93,7 @@ UUID 遵循 RFC 4122 v4 格式规范（version=4, variant=10xx）。
 
 **设计原理**：
 - 每台设备有独立的 UUID，一台泄露不影响其他节点
-- 重刷镜像后 UUID 不变，已配置的 v2ray 客户端无需更新
+- 重刷镜像后 UUID 不变，已配置的客户端无需更新
 
 ---
 
@@ -150,7 +150,7 @@ EASYTIER_IP="10.${ET_B1}.${ET_B2}.${ET_B3}"
 
 ```
 nginx         — 反向代理（监听 127.0.0.1:10077，WebSocket /ray → xray）
-xray          — VLESS+WS 代理（监听 127.0.0.1:10079）
+xray          — WebSocket 流量转发（监听 127.0.0.1:10079）
 cloudflared   — CF Tunnel（连接到 CF edge）
 frpc          — FRP 客户端（SSH 应急隧道）
 easytier      — P2P mesh 网络

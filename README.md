@@ -1,14 +1,14 @@
-# Hive — RK3528A 边缘代理集群
+# Hive — RK3528A 边缘节点集群
 
-将一张编译好的 IMG 写到 100 张 SD 卡，设备上电后约 2 分钟自动成为可用的 v2ray 代理节点，无需逐台手工配置。
+Hive 是面向 RK3528A 的边缘节点大规模部署框架。同一镜像写入任意数量的设备，上电约两分钟后每台设备自主完成身份注册、隧道建立和服务初始化——无需逐台介入，集群规模与运维成本彻底解耦。
 
 ---
 
 ## 架构
 
 ```
-[v2ray 用户]
-     │  VLESS+ws+TLS
+[终端用户]
+     │  ws+TLS
      ▼
 [Cloudflare Edge]
      │  CF Tunnel (http2)
@@ -22,7 +22,7 @@
 [xray-core]     VLESS+WS 监听 127.0.0.1:10079
      │
      ▼
-[本地出口]      节点所在国家直连
+[本地出口]      节点本地网络出口
 
 ────────── 管理平面（三套冗余）──────────
 [Tailscale mesh]  → 主通道：SSH / Ansible / Prometheus
@@ -36,7 +36,7 @@
 
 ## 零配置原理
 
-所有节点烧录同一张镜像（嵌入共享凭证），首次上电自动完成个性化：
+所有节点共享同一镜像，凭证在构建期嵌入。首次上电时，节点从网卡 MAC 地址确定性派生全部身份信息，无需外部分配：
 
 | 生成内容 | 方式 | 重刷镜像是否变化 |
 |----------|------|------------------|
@@ -137,7 +137,7 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 | 服务 | 端口 | 说明 |
 |------|------|------|
 | nginx | 127.0.0.1:10077 | WebSocket 反向代理，/ray → xray |
-| xray | 127.0.0.1:10079 | VLESS+WS 代理核心 |
+| xray | 127.0.0.1:10079 | WebSocket 流量转发核心 |
 | cloudflared | — | CF Tunnel，暴露 nginx 到公网 |
 | frpc | — | FRP 客户端，暴露 SSH 到 VPS |
 | easytier | — | P2P mesh，提供备用管理 IP |
@@ -147,12 +147,8 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 | fail2ban | — | SSH 暴力破解防护 |
 | auditd | — | 系统审计日志 |
 
-**xray 协议**：VLESS + WebSocket（`/ray`），经 nginx 和 CF Tunnel 对外暴露为 HTTPS。
-客户端链接格式（登录节点后 MOTD 自动显示）：
-
-```
-vless://<uuid>@<hive-mac6.yourdomain.com>:443?type=ws&security=tls&path=%2Fray#hive-<mac6>
-```
+**数据通道**：xray 基于 WebSocket（`/ray`），经 nginx 和 CF Tunnel 对外暴露为 HTTPS/WSS。
+节点连接配置在登录后 MOTD 自动显示，也可通过 Node Registry 订阅接口批量获取。
 
 ---
 
@@ -162,10 +158,10 @@ vless://<uuid>@<hive-mac6.yourdomain.com>:443?type=ws&security=tls&path=%2Fray#h
 
 | 步骤 | 文档 | 内容 |
 |------|------|------|
-| 1 | [01-foreign-vps.md](management/docs/01-foreign-vps.md) | 境外 VPS：frps + EasyTier 中继 |
-| 2 | [03-cloudflare-tokens.md](management/docs/03-cloudflare-tokens.md) | 获取 CF API Token / Account ID / Zone ID |
-| 3 | [04-tailscale-key.md](management/docs/04-tailscale-key.md) | 创建 Tailscale OAuth Client + 配置 ACL |
-| 4 | [02-china-vps.md](management/docs/02-china-vps.md) | 管理 VPS：Node Registry + Prometheus + Grafana |
+| 1 | [01-foreign-vps.md](docs/management/01-foreign-vps.md) | 境外 VPS：frps + EasyTier 中继 |
+| 2 | [03-cloudflare-tokens.md](docs/management/03-cloudflare-tokens.md) | 获取 CF API Token / Account ID / Zone ID |
+| 3 | [04-tailscale-key.md](docs/management/04-tailscale-key.md) | 创建 Tailscale OAuth Client + 配置 ACL |
+| 4 | [02-china-vps.md](docs/management/02-china-vps.md) | 管理 VPS：Node Registry + Prometheus + Grafana |
 | 5 | — | 填 `.env`，构建镜像，批量烧录 |
 
 ---
