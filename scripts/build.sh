@@ -156,6 +156,27 @@ envsubst < "${ROOT_DIR}/configs/frp/frpc.toml.tpl" \
     > "${ARMBIAN_DIR}/userpatches/overlay/etc/frp/frpc.toml"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 镜像源配置（本地构建自动用大陆镜像）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# REGIONAL_MIRROR 可在 .env 中覆盖；CI 环境默认不切换（runner 在境外）
+if [ -z "${REGIONAL_MIRROR:-}" ]; then
+  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    REGIONAL_MIRROR=""   # CI：用官方源，runner 在美国
+  else
+    REGIONAL_MIRROR="china"  # 本地：自动切换大陆镜像
+  fi
+fi
+
+MIRROR_ARGS=""
+if [ -n "$REGIONAL_MIRROR" ]; then
+  MIRROR_ARGS="REGIONAL_MIRROR=${REGIONAL_MIRROR}"
+  echo "镜像源: REGIONAL_MIRROR=${REGIONAL_MIRROR}"
+else
+  echo "镜像源: 官方（CI 环境）"
+fi
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 开始构建
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -174,6 +195,7 @@ time ./compile.sh build \
     BUILD_MINIMAL=no \
     KERNEL_CONFIGURE="${KERNEL_CONFIGURE:-linux-rk35xx-vendor-optimized}" \
     COMPRESS_OUTPUTIMAGE=yes \
+    ${MIRROR_ARGS} \
     "$@"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
