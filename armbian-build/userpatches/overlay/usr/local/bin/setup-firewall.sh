@@ -129,9 +129,6 @@ FRP_PORT=7000
 if [[ -f "/etc/hive/config.env" ]]; then
     source /etc/hive/config.env 2>/dev/null || true
     FRP_PORT=${FRP_SERVER_PORT:-7000}
-elif [[ -f "$(dirname "$0")/../../../.env" ]]; then
-    source "$(dirname "$0")/../../../.env" 2>/dev/null || true
-    FRP_PORT=${FRP_SERVER_PORT:-7000}
 fi
 
 ufw allow out $FRP_PORT comment "FRP Client - Port $FRP_PORT"

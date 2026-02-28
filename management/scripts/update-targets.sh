@@ -4,18 +4,19 @@
 #
 # 部署方式（VPS 上执行一次）：
 #   crontab -e
-#   * * * * * /opt/hive-management/scripts/update-targets.sh
+#   * * * * * /opt/rk3528-hive/management/scripts/update-targets.sh
 
 set -e
 
 TAILNET="-"   # "-" = 当前账号默认 tailnet
-OUTPUT="/opt/hive-management/prometheus/targets/nodes.json"
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+OUTPUT="${SCRIPT_DIR}/management/prometheus/targets/nodes.json"
 LOCK="/tmp/update-targets.lock"
 TAG="tag:hive"
 
 # 从环境变量或文件读取 token
 if [ -z "${TAILSCALE_OAUTH_SECRET}" ]; then
-    [ -f /opt/hive-management/.env ] && source /opt/hive-management/.env
+    [ -f "${SCRIPT_DIR}/.env" ] && source "${SCRIPT_DIR}/.env"
 fi
 
 if [ -z "${TAILSCALE_OAUTH_SECRET}" ]; then
@@ -63,8 +64,12 @@ RESULT=$(curl -sf \
 if echo "$RESULT" | jq -e 'type == "array"' > /dev/null 2>&1; then
     mkdir -p "$(dirname "$OUTPUT")"
     echo "$RESULT" > "$OUTPUT"
-    echo "$(date): updated $(echo "$RESULT" | jq 'length') targets" \
-        >> /var/log/update-targets.log
+    COUNT=$(echo "$RESULT" | jq 'length')
+    echo "$(date): updated ${COUNT} targets" >> /var/log/update-targets.log
+    # 通知 Prometheus 热重载（非致命）
+    curl -sf -X POST http://127.0.0.1:4230/-/reload \
+        && echo "$(date): prometheus reloaded" >> /var/log/update-targets.log \
+        || echo "$(date): prometheus reload failed (non-fatal)" >> /var/log/update-targets.log
 else
     echo "$(date): API query failed, keeping existing targets" \
         >> /var/log/update-targets.log

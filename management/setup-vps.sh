@@ -195,12 +195,11 @@ if [ -n "${REGISTRY_API_SECRET}" ]; then
 fi
 
 # cron 直连 Go 服务（不经 nginx），路径无 /api 前缀
-CRON_LINE="* * * * * root curl -sf ${AUTH_HEADER} -o ${TARGETS_FILE} ${REGISTRY_LOCAL_URL}/prometheus-targets"
-# 替换同名 cron 行（grep 匹配 prometheus-targets，保证幂等）
-TMP=$(mktemp)
-(crontab -l 2>/dev/null | grep -v "prometheus-targets"; echo "$CRON_LINE") > "$TMP"
-crontab "$TMP"
-rm -f "$TMP"
+# 写入 /etc/cron.d/（支持用户字段格式，幂等覆盖）
+cat > /etc/cron.d/hive-targets << EOF
+* * * * * root curl -sf ${AUTH_HEADER} -o ${TARGETS_FILE} ${REGISTRY_LOCAL_URL}/prometheus-targets
+EOF
+chmod 0644 /etc/cron.d/hive-targets
 echo ">>> Cron installed: prometheus-targets refresh every minute"
 
 echo ""
