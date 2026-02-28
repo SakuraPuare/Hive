@@ -288,7 +288,7 @@ func handlePrometheusTargets(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		targets = append(targets, promTarget{
-			Targets: []string{tsIP + ":9100"},
+			Targets: []string{hostname + ":9100"},
 			Labels: map[string]string{
 				"hostname": hostname, // 由 prometheus.yml relabel 重命名为 instance
 				"cf_url":   cfURL,
