@@ -28,7 +28,7 @@
 | GET | /api/nodes/{mac} | Bearer | 单节点详情 |
 | PATCH | /api/nodes/{mac} | Bearer | 更新 location/note/tailscale_ip |
 | DELETE | /api/nodes/{mac} | Bearer | 删除节点 |
-| GET | /api/subscription | Bearer | VLESS+xhttp 订阅（Base64） |
+| GET | /api/subscription | Bearer | VLESS+ws 订阅（Base64） |
 | GET | /api/subscription/clash | Bearer | Clash/Mihomo YAML 订阅 |
 | GET | /api/prometheus-targets | Bearer | Prometheus file_sd JSON |
 | GET | /api/labels | Bearer | 可打印标签 HTML |
@@ -190,11 +190,11 @@ curl -sf -X POST "${NODE_REGISTRY_URL}/nodes/register" \
 
 ## GET /api/subscription
 
-返回 Base64 编码的 VLESS+xhttp 订阅内容，每行一个链接。
+返回 Base64 编码的 VLESS+ws 订阅内容，每行一个链接。
 
 **链接格式**：
 ```
-vless://{xray_uuid}@{cf_domain}:443?type=xhttp&security=tls&sni={cf_domain}&path=%2Fray#{location_or_hostname}
+vless://{xray_uuid}@{cf_domain}:443?type=ws&security=tls&sni={cf_domain}&path=%2Fray#{location_or_hostname}
 ```
 
 兼容：v2rayN、NekoBox、Hiddify、v2rayNG 等主流客户端。
@@ -205,8 +205,6 @@ vless://{xray_uuid}@{cf_domain}:443?type=xhttp&security=tls&sni={cf_domain}&path
 
 返回 Clash/Mihomo 兼容的 YAML 订阅文件。
 
-要求 **Mihomo 1.18.x+**（`network: xhttp` 支持）。
-
 **示例输出片段**：
 ```yaml
 proxies:
@@ -215,12 +213,13 @@ proxies:
     server: hive-ccddeeff.example.com
     port: 443
     uuid: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-    network: xhttp
+    network: ws
     tls: true
     servername: hive-ccddeeff.example.com
-    xhttp-opts:
+    ws-opts:
       path: /ray
-      host: hive-ccddeeff.example.com
+      headers:
+        Host: hive-ccddeeff.example.com
 
 proxy-groups:
   - name: HIVE-AUTO

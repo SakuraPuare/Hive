@@ -43,7 +43,7 @@
 
 ```
 [v2ray 用户]
-     ↓  VLESS+TLS (xhttp)
+     ↓  VLESS+TLS (ws)
 [Cloudflare Edge]
      ↓  CF Tunnel
 [cloudflared]  ← 主接入，节点无需公网 IP
