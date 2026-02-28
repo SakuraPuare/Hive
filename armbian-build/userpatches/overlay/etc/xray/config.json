@@ -18,6 +18,11 @@
                 "decryption": "none",
                 "fallbacks": [
                     {
+                        "path": "/ray",
+                        "dest": 10078,
+                        "xver": 0
+                    },
+                    {
                         "dest": 10078
                     }
                 ]
