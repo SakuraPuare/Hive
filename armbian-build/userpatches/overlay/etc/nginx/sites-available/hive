@@ -1,5 +1,5 @@
 server {
-    listen 127.0.0.1:10078;
+    listen 127.0.0.1:10077;
     server_name _;
     server_tokens off;
 
@@ -12,7 +12,18 @@ server {
         return 200 '{"status":"ok"}';
     }
 
-    # 静态页面
+    # WebSocket → Xray
+    location = /ray {
+        proxy_pass http://127.0.0.1:10079;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400s;
+    }
+
+    # 其他请求 → 静态页面
     location / {
         try_files $uri $uri/ =404;
     }
