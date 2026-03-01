@@ -194,7 +194,7 @@ time ./compile.sh build \
     RELEASE="${RELEASE:-trixie}" \
     BUILD_MINIMAL=no \
     KERNEL_CONFIGURE="${KERNEL_CONFIGURE:-linux-rk35xx-vendor-optimized}" \
-    COMPRESS_OUTPUTIMAGE=yes \
+    COMPRESS_OUTPUTIMAGE=sha,xz \
     ${MIRROR_ARGS} \
     "$@"
 
