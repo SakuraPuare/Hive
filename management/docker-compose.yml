@@ -35,6 +35,7 @@ services:
       - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-https://example.com/grafana}
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_FEATURE_TOGGLES_ENABLE=publicDashboards        # 开启公开 Dashboard 分享
+      - GF_SECURITY_ALLOW_EMBEDDING=true                 # 允许 iframe 嵌入（status page 使用）
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
