@@ -59,8 +59,9 @@ STATIC_TAIL = """\
     conditions:
       - "[STATUS] == 200"
 
-  # ── 网络概览（Prometheus API 查询）──────────────────────────────────────
-  # `or vector(0)` 保证空舰队时 result 数组不为空，避免 JSONPath 解析错误
+  # ── 网络概览（Prometheus scalar 查询）───────────────────────────────────
+  # scalar() 使响应为 {"resultType":"scalar","result":[ts,"value"]}
+  # 路径 data.result.1 直接取值，避免嵌套数组问题
 
   - name: 在线节点数
     group: 网络概览
@@ -68,11 +69,11 @@ STATIC_TAIL = """\
     method: POST
     headers:
       Content-Type: application/x-www-form-urlencoded
-    body: 'query=count(up{job="hives"} == 1) or vector(0)'
+    body: 'query=scalar(count(up{job="hives"} == 1) or vector(0))'
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result.0.value.1 >= 1"
+      - "[body].data.result.1 >= 1"
 
   - name: 离线节点数
     group: 网络概览
@@ -80,11 +81,11 @@ STATIC_TAIL = """\
     method: POST
     headers:
       Content-Type: application/x-www-form-urlencoded
-    body: 'query=count(up{job="hives"} == 0) or vector(0)'
+    body: 'query=scalar(count(up{job="hives"} == 0) or vector(0))'
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result.0.value.1 < 1"
+      - "[body].data.result.1 < 1"
 
   - name: 网络在线率
     group: 网络概览
@@ -92,13 +93,13 @@ STATIC_TAIL = """\
     method: POST
     headers:
       Content-Type: application/x-www-form-urlencoded
-    body: 'query=sum(up{job="hives"}) / count(up{job="hives"}) * 100 or vector(0)'
+    body: 'query=scalar(sum(up{job="hives"}) / count(up{job="hives"}) * 100 or vector(0))'
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result.0.value.1 >= 80"
+      - "[body].data.result.1 >= 80"
 
-  # ── 节点资源（Prometheus API 查询，阈值与 alert rules 一致）──────────────
+  # ── 节点资源（Prometheus scalar 查询，阈值与 alert rules 一致）───────────
 
   - name: CPU高负载节点
     group: 节点资源
@@ -106,11 +107,11 @@ STATIC_TAIL = """\
     method: POST
     headers:
       Content-Type: application/x-www-form-urlencoded
-    body: 'query=count(100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle",job="hives"}[5m]))*100) > 90) or vector(0)'
+    body: 'query=scalar(count(100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle",job="hives"}[5m]))*100) > 90) or vector(0))'
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result.0.value.1 < 1"
+      - "[body].data.result.1 < 1"
 
   - name: 内存不足节点
     group: 节点资源
@@ -118,11 +119,11 @@ STATIC_TAIL = """\
     method: POST
     headers:
       Content-Type: application/x-www-form-urlencoded
-    body: 'query=count(node_memory_MemAvailable_bytes{job="hives"} < 104857600) or vector(0)'
+    body: 'query=scalar(count(node_memory_MemAvailable_bytes{job="hives"} < 104857600) or vector(0))'
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result.0.value.1 < 1"
+      - "[body].data.result.1 < 1"
 
   - name: 磁盘不足节点
     group: 节点资源
@@ -130,14 +131,13 @@ STATIC_TAIL = """\
     method: POST
     headers:
       Content-Type: application/x-www-form-urlencoded
-    body: 'query=count(node_filesystem_avail_bytes{job="hives",mountpoint="/"} < 524288000) or vector(0)'
+    body: 'query=scalar(count(node_filesystem_avail_bytes{job="hives",mountpoint="/"} < 524288000) or vector(0))'
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result.0.value.1 < 1"
+      - "[body].data.result.1 < 1"
 
-  # ── 管理服务器（Prometheus API 查询，management-server job）─────────────
-  # 不加 `or vector(0)`：node_exporter 挂掉时应显示为红色
+  # ── 管理服务器（Prometheus scalar 查询，management-server job）──────────
 
   - name: CPU使用率
     group: 管理服务器
@@ -145,11 +145,11 @@ STATIC_TAIL = """\
     method: POST
     headers:
       Content-Type: application/x-www-form-urlencoded
-    body: 'query=100 - (avg(rate(node_cpu_seconds_total{mode="idle",job="management-server"}[5m]))*100)'
+    body: 'query=scalar(100 - (avg(rate(node_cpu_seconds_total{mode="idle",job="management-server"}[5m]))*100))'
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result.0.value.1 < 85"
+      - "[body].data.result.1 < 85"
 
   - name: 内存可用率
     group: 管理服务器
@@ -157,11 +157,11 @@ STATIC_TAIL = """\
     method: POST
     headers:
       Content-Type: application/x-www-form-urlencoded
-    body: 'query=node_memory_MemAvailable_bytes{job="management-server"} / node_memory_MemTotal_bytes{job="management-server"} * 100'
+    body: 'query=scalar(node_memory_MemAvailable_bytes{job="management-server"} / node_memory_MemTotal_bytes{job="management-server"} * 100)'
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result.0.value.1 >= 10"
+      - "[body].data.result.1 >= 10"
 
   - name: 磁盘可用空间
     group: 管理服务器
@@ -169,11 +169,11 @@ STATIC_TAIL = """\
     method: POST
     headers:
       Content-Type: application/x-www-form-urlencoded
-    body: 'query=node_filesystem_avail_bytes{job="management-server",mountpoint="/"}'
+    body: 'query=scalar(node_filesystem_avail_bytes{job="management-server",mountpoint="/"})'
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result.0.value.1 >= 5368709120"
+      - "[body].data.result.1 >= 5368709120"
 
   - name: 系统运行时长
     group: 管理服务器
@@ -181,11 +181,11 @@ STATIC_TAIL = """\
     method: POST
     headers:
       Content-Type: application/x-www-form-urlencoded
-    body: 'query=time() - node_boot_time_seconds{job="management-server"}'
+    body: 'query=scalar(time() - node_boot_time_seconds{job="management-server"})'
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result.0.value.1 >= 0"
+      - "[body].data.result.1 >= 0"
 """
 
 # ─── 每节点端点模板 ────────────────────────────────────────────────────────────
@@ -200,11 +200,11 @@ NODE_ENDPOINT = """\
     method: POST
     headers:
       Content-Type: application/x-www-form-urlencoded
-    body: 'query=up{{job="hives",instance="{hostname}"}}'
+    body: 'query=scalar(sum(up{{job="hives",instance="{hostname}"}}) or vector(0))'
     interval: 60s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result.0.value.1 == 1"
+      - "[body].data.result.1 == 1"
 """
 
 
