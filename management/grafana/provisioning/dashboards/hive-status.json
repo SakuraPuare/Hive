@@ -454,7 +454,7 @@
         },
         "overrides": [
           {
-            "matcher": { "id": "byNamePattern", "options": "TX.*" },
+            "matcher": { "id": "byRegexp", "options": "TX.*" },
             "properties": [
               { "id": "custom.transform", "value": "negative-Y" }
             ]
