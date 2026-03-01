@@ -304,9 +304,6 @@ func handlePrometheusTargets(w http.ResponseWriter, r *http.Request) {
 
 // GET /health
 func handleHealth(w http.ResponseWriter, r *http.Request) {
-	if !requireAuth(w, r) {
-		return
-	}
 	if err := db.Ping(); err != nil {
 		jsonErr(w, http.StatusServiceUnavailable, "db unavailable: "+err.Error())
 		return
