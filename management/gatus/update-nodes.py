@@ -31,7 +31,11 @@ storage:
   path: /data/gatus.db
 
 endpoints:
+"""
 
+# ─── 节点之后的静态端点 ────────────────────────────────────────────────────────
+
+STATIC_TAIL = """\
   # ── 管理服务（直接 HTTP 探测）────────────────────────────────────────────
 
   - name: Registry API
@@ -68,7 +72,7 @@ endpoints:
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result[0].value[1] >= 1"
+      - "[body].data.result.0.value.1 >= 1"
 
   - name: 离线节点数
     group: 网络概览
@@ -80,7 +84,7 @@ endpoints:
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result[0].value[1] < 1"
+      - "[body].data.result.0.value.1 < 1"
 
   - name: 网络在线率
     group: 网络概览
@@ -92,7 +96,7 @@ endpoints:
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result[0].value[1] >= 80"
+      - "[body].data.result.0.value.1 >= 80"
 
   # ── 节点资源（Prometheus API 查询，阈值与 alert rules 一致）──────────────
 
@@ -106,7 +110,7 @@ endpoints:
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result[0].value[1] < 1"
+      - "[body].data.result.0.value.1 < 1"
 
   - name: 内存不足节点
     group: 节点资源
@@ -118,7 +122,7 @@ endpoints:
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result[0].value[1] < 1"
+      - "[body].data.result.0.value.1 < 1"
 
   - name: 磁盘不足节点
     group: 节点资源
@@ -130,7 +134,7 @@ endpoints:
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result[0].value[1] < 1"
+      - "[body].data.result.0.value.1 < 1"
 
   # ── 管理服务器（Prometheus API 查询，management-server job）─────────────
   # 不加 `or vector(0)`：node_exporter 挂掉时应显示为红色
@@ -145,7 +149,7 @@ endpoints:
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result[0].value[1] < 85"
+      - "[body].data.result.0.value.1 < 85"
 
   - name: 内存可用率
     group: 管理服务器
@@ -157,7 +161,7 @@ endpoints:
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result[0].value[1] >= 10"
+      - "[body].data.result.0.value.1 >= 10"
 
   - name: 磁盘可用空间
     group: 管理服务器
@@ -169,7 +173,7 @@ endpoints:
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result[0].value[1] >= 5368709120"
+      - "[body].data.result.0.value.1 >= 5368709120"
 
   - name: 系统运行时长
     group: 管理服务器
@@ -181,13 +185,13 @@ endpoints:
     interval: 120s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result[0].value[1] >= 0"
+      - "[body].data.result.0.value.1 >= 0"
 """
 
 # ─── 每节点端点模板 ────────────────────────────────────────────────────────────
 # {{}} 在 .format() 中输出字面量 {}，用于 PromQL 的 label matchers
 
-NODE_HEADER = "\n  # ── 节点状态（动态，每分钟同步自 Prometheus targets）─────────────────────\n"
+NODE_HEADER = "  # ── 节点状态（动态，每分钟同步自 Prometheus targets）─────────────────────\n"
 
 NODE_ENDPOINT = """\
   - name: "{hostname}"
@@ -200,7 +204,7 @@ NODE_ENDPOINT = """\
     interval: 60s
     conditions:
       - "[STATUS] == 200"
-      - "[body].data.result[0].value[1] == 1"
+      - "[body].data.result.0.value.1 == 1"
 """
 
 
@@ -223,12 +227,14 @@ def load_nodes():
 
 
 def build_config(nodes):
-    """拼接完整 config.yaml 内容。"""
+    """拼接完整 config.yaml 内容：节点状态在前，其余组在后。"""
     parts = [STATIC_HEAD]
     if nodes:
         parts.append(NODE_HEADER)
         for hostname in nodes:
             parts.append(NODE_ENDPOINT.format(hostname=hostname))
+        parts.append("\n")
+    parts.append(STATIC_TAIL)
     return "".join(parts)
 
 
