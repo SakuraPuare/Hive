@@ -20,7 +20,7 @@ Hive Network fail2ban 管理工具
     $SCRIPT_NAME logs                显示 fail2ban 日志
     $SCRIPT_NAME test                测试配置
     $SCRIPT_NAME reload              重新加载配置
-    $SCRIPT_NAME help                显示此帮��
+    $SCRIPT_NAME help                显示此帮助
 
 示例：
     $SCRIPT_NAME status
