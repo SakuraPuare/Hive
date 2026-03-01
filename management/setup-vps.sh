@@ -205,6 +205,13 @@ EOF
 chmod 0644 /etc/cron.d/hive-targets
 echo ">>> Cron installed: prometheus-targets refresh every minute"
 
+# Gatus 节点配置同步（每分钟读取 nodes.json，动态生成 per-node 端点）
+cat > /etc/cron.d/hive-gatus << EOF
+* * * * * root python3 ${ROOT_DIR}/management/gatus/update-nodes.py
+EOF
+chmod 0644 /etc/cron.d/hive-gatus
+echo ">>> Cron installed: gatus node config refresh every minute"
+
 echo ""
 echo "=== Setup Complete ==="
 echo ""
