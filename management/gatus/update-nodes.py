@@ -1,3 +1,23 @@
+#!/usr/bin/env python3
+"""update-nodes.py - 读取 Prometheus targets，生成完整 Gatus config.yaml
+
+Gatus 通过 inotify (fsnotify) 监听文件变动，自动热重载，无需重启容器。
+cron 每分钟运行本脚本（与 hive-targets 同频），节点无变化时跳过写入。
+
+用法：python3 /path/to/management/gatus/update-nodes.py
+"""
+
+import json
+import os
+import sys
+
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+TARGETS_FILE = os.path.normpath(os.path.join(SCRIPT_DIR, "../prometheus/targets/nodes.json"))
+GATUS_CONFIG = os.path.join(SCRIPT_DIR, "config.yaml")
+
+# ─── 静态配置（每次都写入，保证与代码同步）────────────────────────────────────
+
+STATIC_HEAD = """\
 web:
   port: 4232
 
@@ -162,3 +182,73 @@ endpoints:
     conditions:
       - "[STATUS] == 200"
       - "[body].data.result[0].value[1] >= 0"
+"""
+
+# ─── 每节点端点模板 ────────────────────────────────────────────────────────────
+# {{}} 在 .format() 中输出字面量 {}，用于 PromQL 的 label matchers
+
+NODE_HEADER = "\n  # ── 节点状态（动态，每分钟同步自 Prometheus targets）─────────────────────\n"
+
+NODE_ENDPOINT = """\
+  - name: "{hostname}"
+    group: 节点状态
+    url: http://localhost:4230/api/v1/query
+    method: POST
+    headers:
+      Content-Type: application/x-www-form-urlencoded
+    body: 'query=up{{job="hives",instance="{hostname}"}}'
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - "[body].data.result[0].value[1] == 1"
+"""
+
+
+def load_nodes():
+    """读取 Prometheus targets 文件，返回按字母排序的 hostname 列表。"""
+    try:
+        with open(TARGETS_FILE) as f:
+            targets = json.load(f)
+        nodes = sorted(
+            entry["labels"]["hostname"]
+            for entry in targets
+            if entry.get("labels", {}).get("hostname")
+        )
+        return nodes
+    except FileNotFoundError:
+        return []
+    except Exception as e:
+        print(f"Warning: failed to parse {TARGETS_FILE}: {e}", file=sys.stderr)
+        return []
+
+
+def build_config(nodes):
+    """拼接完整 config.yaml 内容。"""
+    parts = [STATIC_HEAD]
+    if nodes:
+        parts.append(NODE_HEADER)
+        for hostname in nodes:
+            parts.append(NODE_ENDPOINT.format(hostname=hostname))
+    return "".join(parts)
+
+
+def main():
+    nodes = load_nodes()
+    new_config = build_config(nodes)
+
+    # 内容无变化时跳过写入，避免触发不必要的 Gatus 热重载
+    try:
+        with open(GATUS_CONFIG) as f:
+            if f.read() == new_config:
+                sys.exit(0)
+    except FileNotFoundError:
+        pass
+
+    with open(GATUS_CONFIG, "w") as f:
+        f.write(new_config)
+
+    print(f"Gatus config updated: {len(nodes)} node(s){': ' + ', '.join(nodes) if nodes else ''}")
+
+
+if __name__ == "__main__":
+    main()
