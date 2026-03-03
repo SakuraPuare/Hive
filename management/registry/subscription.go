@@ -92,6 +92,8 @@ func handleSubscriptionClash(w http.ResponseWriter, r *http.Request) {
       path: /%s
       headers:
         Host: %s
+      max-early-data: 2560
+      early-data-header-name: Sec-WebSocket-Protocol
 `, yamlStr(name), host, n.XrayUUID, host, xrayPath, host)
 	}
 
