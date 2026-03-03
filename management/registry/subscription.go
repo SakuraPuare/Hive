@@ -38,7 +38,7 @@ func handleSubscriptionVless(w http.ResponseWriter, r *http.Request) {
 		params.Set("type", "ws")
 		params.Set("security", "tls")
 		params.Set("sni", host)
-		params.Set("path", "/"+xrayPath)
+		params.Set("path", fmt.Sprintf("/%s?ed=2560", xrayPath))
 		link := fmt.Sprintf("vless://%s@%s:443?%s#%s",
 			n.XrayUUID, host, params.Encode(), url.PathEscape(name))
 		links = append(links, link)
