@@ -10,9 +10,18 @@ import (
 
 // ── VLESS + ws 订阅 ───────────────────────────────────────────────────────────
 
-// GET /api/subscription
+// GET /subscription
 // 返回 Base64 编码的订阅内容（每行一个 VLESS 链接）
 // 兼容 v2rayN / NekoBox / Hiddify 等主流客户端
+//
+// @Summary VLESS subscription (base64)
+// @Tags subscription
+// @Accept json
+// @Produce text/plain
+// @Success 200 {string} string "base64 encoded subscription"
+// @Failure 401 {object} ErrorResponse
+// @Router /subscription [get]
+// @ID SubscriptionVless
 func handleSubscriptionVless(w http.ResponseWriter, r *http.Request) {
 	if !requireAuth(w, r) {
 		return
@@ -52,9 +61,18 @@ func handleSubscriptionVless(w http.ResponseWriter, r *http.Request) {
 
 // ── Clash / Mihomo YAML 订阅 ──────────────────────────────────────────────────
 
-// GET /api/subscription/clash
+// GET /subscription/clash
 // 生成 Mihomo（Clash Meta）兼容的 YAML 订阅文件
 // network: ws + TLS，兼容标准 Clash Meta
+//
+// @Summary Clash/Mihomo subscription YAML
+// @Tags subscription
+// @Accept json
+// @Produce text/plain
+// @Success 200 {string} string "clash yaml content"
+// @Failure 401 {object} ErrorResponse
+// @Router /subscription/clash [get]
+// @ID SubscriptionClash
 func handleSubscriptionClash(w http.ResponseWriter, r *http.Request) {
 	if !requireAuth(w, r) {
 		return

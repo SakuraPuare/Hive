@@ -45,6 +45,10 @@ func main() {
 	mux.HandleFunc("PATCH /nodes/{mac}", handleUpdateNode)
 	mux.HandleFunc("DELETE /nodes/{mac}", handleDeleteNode)
 
+	// ── 管理端登录（Cookie 会话）────────────────────────────────────────────
+	mux.HandleFunc("POST /admin/login", handleAdminLogin)
+	mux.HandleFunc("POST /admin/logout", handleAdminLogout)
+
 	// ── 订阅 ──────────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /subscription", handleSubscriptionVless)
 	mux.HandleFunc("GET /subscription/clash", handleSubscriptionClash)

@@ -1,12 +1,17 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -15,9 +20,79 @@ import (
 
 var apiSecret = getenv("API_SECRET", "")
 
-// requireAuth 校验 Authorization: Bearer <token> 或 ?token= 查询参数。
-// 未配置 API_SECRET 时放行所有请求。
+const adminCookieName = "hive_admin_session"
+
+var adminUser = getenv("ADMIN_USER", "admin")
+var adminPass = getenv("ADMIN_PASS", "")
+var adminSessionSecret = getenv("ADMIN_SESSION_SECRET", "")
+
+const adminSessionTTL = 12 * time.Hour
+
+// ── Swagger schema helpers（用于生成更准确的 schema）───────────────
+type StatusResponse struct {
+	Status string `json:"status"`
+}
+
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+type NodeRegisterResponse struct {
+	Status        string `json:"status"`
+	Hostname      string `json:"hostname"`
+	RegisteredAt string `json:"registered_at"`
+}
+
+type PrometheusTarget struct {
+	Targets []string          `json:"targets"`
+	Labels  map[string]string `json:"labels"`
+}
+
+func adminSessionValid(r *http.Request) bool {
+	if adminSessionSecret == "" {
+		return false
+	}
+	c, err := r.Cookie(adminCookieName)
+	if err != nil {
+		return false
+	}
+	// 格式：{expUnix}.{base64url(hmac_sha256(expUnix))}
+	parts := strings.SplitN(c.Value, ".", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	expUnixStr := parts[0]
+	gotSig := parts[1]
+
+	expUnix, err := strconv.ParseInt(expUnixStr, 10, 64)
+	if err != nil {
+		return false
+	}
+	if time.Now().UTC().Unix() > expUnix {
+		return false
+	}
+
+	mac := hmac.New(sha256.New, []byte(adminSessionSecret))
+	_, _ = mac.Write([]byte(expUnixStr))
+	expectedSig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return subtle.ConstantTimeCompare([]byte(gotSig), []byte(expectedSig)) == 1
+}
+
+func isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	// nginx 通常会转发 X-Forwarded-Proto，便于在 upstream 侧正确设置 Secure cookie
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+// requireAuth 校验管理员会话或旧的 Authorization: Bearer <token> / ?token= 查询参数。
+// - cookie 会话：由 ADMIN_SESSION_SECRET 签名，优先校验
+// - API_SECRET：兼容旧部署（留空则开发放行）
 func requireAuth(w http.ResponseWriter, r *http.Request) bool {
+	if adminSessionValid(r) {
+		return true
+	}
 	if apiSecret == "" {
 		return true
 	}
@@ -30,6 +105,87 @@ func requireAuth(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+type AdminLoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// POST /admin/login
+//
+// @Summary Admin login
+// @Tags admin
+// @Accept json
+// @Produce application/json
+// @Param body body AdminLoginRequest true "admin login payload"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Router /admin/login [post]
+// @ID AdminLogin
+func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
+	var req AdminLoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonErr(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if req.Username == "" || req.Password == "" {
+		jsonErr(w, http.StatusBadRequest, "required: username, password")
+		return
+	}
+	if adminSessionSecret == "" {
+		jsonErr(w, http.StatusInternalServerError, "server misconfig: ADMIN_SESSION_SECRET is empty")
+		return
+	}
+	if req.Username != adminUser || req.Password != adminPass {
+		jsonErr(w, http.StatusUnauthorized, "unauthorized: invalid credentials")
+		return
+	}
+
+	expUnix := time.Now().UTC().Add(adminSessionTTL).Unix()
+	expUnixStr := strconv.FormatInt(expUnix, 10)
+
+	mac := hmac.New(sha256.New, []byte(adminSessionSecret))
+	_, _ = mac.Write([]byte(expUnixStr))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	token := expUnixStr + "." + sig
+
+	secure := isSecureRequest(r)
+	http.SetCookie(w, &http.Cookie{
+		Name:     adminCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(adminSessionTTL.Seconds()),
+	})
+
+	jsonOK(w, StatusResponse{Status: "ok"})
+}
+
+// POST /admin/logout
+//
+// @Summary Admin logout
+// @Tags admin
+// @Accept json
+// @Produce application/json
+// @Success 200 {object} StatusResponse
+// @Router /admin/logout [post]
+// @ID AdminLogout
+func handleAdminLogout(w http.ResponseWriter, r *http.Request) {
+	secure := isSecureRequest(r)
+	http.SetCookie(w, &http.Cookie{
+		Name:     adminCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+	jsonOK(w, StatusResponse{Status: "ok"})
 }
 
 // ── 请求结构体 ────────────────────────────────────────────────────────────────
@@ -54,8 +210,19 @@ type UpdateRequest struct {
 
 // ── 节点注册 ──────────────────────────────────────────────────────────────────
 
-// POST /api/nodes/register
+// POST /nodes/register
 // 幂等：重复调用只更新业务字段，保留 location / note / registered_at
+//
+// @Summary Register node (idempotent)
+// @Tags nodes
+// @Accept json
+// @Produce application/json
+// @Param body body RegisterRequest true "node register payload"
+// @Success 200 {object} NodeRegisterResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Router /nodes/register [post]
+// @ID NodeRegister
 func handleRegister(w http.ResponseWriter, r *http.Request) {
 	if !requireAuth(w, r) {
 		return
@@ -104,10 +271,10 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 	var registeredAt string
 	_ = db.QueryRow("SELECT registered_at FROM nodes WHERE mac=?", req.MAC).Scan(&registeredAt)
 
-	jsonOK(w, map[string]string{
-		"status":        "ok",
-		"hostname":      req.Hostname,
-		"registered_at": registeredAt,
+	jsonOK(w, NodeRegisterResponse{
+		Status:        "ok",
+		Hostname:      req.Hostname,
+		RegisteredAt: registeredAt,
 	})
 
 	// 异步放开 FRP 端口（非致命，不影响注册响应）
@@ -126,7 +293,16 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 
 // ── 节点查询 ──────────────────────────────────────────────────────────────────
 
-// GET /api/nodes
+// GET /nodes
+//
+// @Summary List nodes
+// @Tags nodes
+// @Accept json
+// @Produce application/json
+// @Success 200 {array} Node
+// @Failure 401 {object} ErrorResponse
+// @Router /nodes [get]
+// @ID NodesList
 func handleListNodes(w http.ResponseWriter, r *http.Request) {
 	if !requireAuth(w, r) {
 		return
@@ -150,7 +326,18 @@ func handleListNodes(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, nodes)
 }
 
-// GET /api/nodes/{mac}
+// GET /nodes/{mac}
+//
+// @Summary Get node by MAC
+// @Tags nodes
+// @Accept json
+// @Produce application/json
+// @Param mac path string true "node mac (12 hex, no colon)"
+// @Success 200 {object} Node
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /nodes/{mac} [get]
+// @ID NodeGet
 func handleGetNode(w http.ResponseWriter, r *http.Request) {
 	if !requireAuth(w, r) {
 		return
@@ -171,8 +358,21 @@ func handleGetNode(w http.ResponseWriter, r *http.Request) {
 
 // ── 节点管理 ──────────────────────────────────────────────────────────────────
 
-// PATCH /api/nodes/{mac}  (需要认证)
+// PATCH /nodes/{mac}  (需要认证)
 // 允许更新 location、note、tailscale_ip
+//
+// @Summary Update node (partial)
+// @Tags nodes
+// @Accept json
+// @Produce application/json
+// @Param mac path string true "node mac (12 hex, no colon)"
+// @Param body body UpdateRequest true "node update payload"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /nodes/{mac} [patch]
+// @ID NodeUpdate
 func handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	if !requireAuth(w, r) {
 		return
@@ -217,10 +417,21 @@ func handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusNotFound, "node not found: "+mac)
 		return
 	}
-	jsonOK(w, map[string]string{"status": "ok"})
+	jsonOK(w, StatusResponse{Status: "ok"})
 }
 
-// DELETE /api/nodes/{mac}  (需要认证)
+// DELETE /nodes/{mac}  (需要认证)
+//
+// @Summary Delete node
+// @Tags nodes
+// @Accept json
+// @Produce application/json
+// @Param mac path string true "node mac (12 hex, no colon)"
+// @Success 200 {object} StatusResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /nodes/{mac} [delete]
+// @ID NodeDelete
 func handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 	if !requireAuth(w, r) {
 		return
@@ -241,7 +452,7 @@ func handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusNotFound, "node not found: "+mac)
 		return
 	}
-	jsonOK(w, map[string]string{"status": "ok"})
+	jsonOK(w, StatusResponse{Status: "ok"})
 
 	// 异步关闭 FRP 端口
 	if frpPort > 0 {
@@ -261,6 +472,15 @@ func handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 // GET /prometheus-targets  →  Prometheus file_sd 格式
 // cron 每分钟调用（直连 Go 服务，无需经过 nginx）：
 //   curl -sf http://127.0.0.1:8080/prometheus-targets > /etc/prometheus/targets/nodes.json
+//
+// @Summary Prometheus file_sd targets
+// @Tags prometheus
+// @Accept json
+// @Produce application/json
+// @Success 200 {array} PrometheusTarget
+// @Failure 401 {object} ErrorResponse
+// @Router /prometheus-targets [get]
+// @ID PrometheusTargets
 func handlePrometheusTargets(w http.ResponseWriter, r *http.Request) {
 	if !requireAuth(w, r) {
 		return
@@ -277,17 +497,13 @@ func handlePrometheusTargets(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	type promTarget struct {
-		Targets []string          `json:"targets"`
-		Labels  map[string]string `json:"labels"`
-	}
-	targets := make([]promTarget, 0)
+	targets := make([]PrometheusTarget, 0)
 	for rows.Next() {
 		var hostname, tsIP, etIP, cfURL, location, mac6 string
 		if err := rows.Scan(&hostname, &tsIP, &etIP, &cfURL, &location, &mac6); err != nil {
 			continue
 		}
-		targets = append(targets, promTarget{
+		targets = append(targets, PrometheusTarget{
 			Targets: []string{hostname + ":9100"},
 			Labels: map[string]string{
 				"hostname": hostname, // 由 prometheus.yml relabel 重命名为 instance
@@ -303,17 +519,35 @@ func handlePrometheusTargets(w http.ResponseWriter, r *http.Request) {
 // ── 健康检查 ──────────────────────────────────────────────────────────────────
 
 // GET /health
+//
+// @Summary Health check
+// @Tags health
+// @Accept json
+// @Produce application/json
+// @Success 200 {object} StatusResponse
+// @Failure 503 {object} ErrorResponse
+// @Router /health [get]
+// @ID Health
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	if err := db.Ping(); err != nil {
 		jsonErr(w, http.StatusServiceUnavailable, "db unavailable: "+err.Error())
 		return
 	}
-	jsonOK(w, map[string]string{"status": "ok"})
+	jsonOK(w, StatusResponse{Status: "ok"})
 }
 
 // ── 标签打印页 ────────────────────────────────────────────────────────────────
 
-// GET /api/labels  →  A4 可打印 HTML，每行 4 个
+// GET /labels  →  A4 可打印 HTML，每行 4 个
+//
+// @Summary Print labels (HTML)
+// @Tags labels
+// @Accept json
+// @Produce text/html
+// @Success 200 {string} string "HTML content"
+// @Failure 401 {object} ErrorResponse
+// @Router /labels [get]
+// @ID LabelsPrint
 func handleLabels(w http.ResponseWriter, r *http.Request) {
 	if !requireAuth(w, r) {
 		return
@@ -375,6 +609,15 @@ func handleLabels(w http.ResponseWriter, r *http.Request) {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 // GET /
+//
+// @Summary Dashboard links
+// @Tags dashboard
+// @Accept json
+// @Produce text/html
+// @Success 200 {string} string "HTML content"
+// @Failure 401 {object} ErrorResponse
+// @Router / [get]
+// @ID Dashboard
 func handleIndex(w http.ResponseWriter, r *http.Request) {
 	if !requireAuth(w, r) {
 		return

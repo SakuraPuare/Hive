@@ -11,8 +11,12 @@
 
 ## 认证
 
-- **所有接口**均需携带请求头 `Authorization: Bearer <API_SECRET>`
-  - `API_SECRET` 通过环境变量注入服务，留空则关闭认证（开发/内网环境）
+- 管理端节点管理/订阅等接口支持两种鉴权方式（cookie 优先，其次兼容 Bearer）：
+  - **Cookie 会话**：先调用 `POST /api/admin/login` 登录后，浏览器自动携带 `HttpOnly` cookie（Cookie 名：`hive_admin_session`）；后续请求只要带 cookie 即可访问。
+  - **Bearer 兼容**：`Authorization: Bearer <API_SECRET>`（同时兼容 `?token=`）。用于兼容旧部署或脚本调用。
+  - `API_SECRET` 通过环境变量注入服务；留空则关闭认证（开发/内网环境保持放行）。
+
+`POST /api/admin/login`、`POST /api/admin/logout` 本身不需要额外鉴权。
 
 ---
 
@@ -22,17 +26,51 @@
 
 | 方法 | 外部路径（nginx） | 认证 | 说明 |
 |------|------|------|------|
-| POST | /api/nodes/register | Bearer | 节点注册（幂等） |
-| GET | /api/nodes | Bearer | 列出所有节点 |
-| GET | /api/nodes/{mac} | Bearer | 单节点详情 |
-| PATCH | /api/nodes/{mac} | Bearer | 更新 location/note/tailscale_ip |
-| DELETE | /api/nodes/{mac} | Bearer | 删除节点 |
-| GET | /api/subscription | Bearer | 节点订阅（Base64） |
-| GET | /api/subscription/clash | Bearer | Clash/Mihomo YAML 订阅 |
-| GET | /api/prometheus-targets | Bearer | Prometheus file_sd JSON |
-| GET | /api/labels | Bearer | 可打印标签 HTML |
-| GET | /api/health | Bearer | 健康检查 |
-| GET | /api/ | Bearer | 控制台 Dashboard |
+| POST | /api/admin/login | 无 | 管理端登录（设置 `hive_admin_session` cookie） |
+| POST | /api/admin/logout | 无 | 退出登录（清除 cookie） |
+| POST | /api/nodes/register | Cookie 或 Bearer | 节点注册（幂等） |
+| GET | /api/nodes | Cookie 或 Bearer | 列出所有节点 |
+| GET | /api/nodes/{mac} | Cookie 或 Bearer | 单节点详情 |
+| PATCH | /api/nodes/{mac} | Cookie 或 Bearer | 更新 location/note/tailscale_ip |
+| DELETE | /api/nodes/{mac} | Cookie 或 Bearer | 删除节点 |
+| GET | /api/subscription | Cookie 或 Bearer | 节点订阅（Base64） |
+| GET | /api/subscription/clash | Cookie 或 Bearer | Clash/Mihomo YAML 订阅 |
+| GET | /api/prometheus-targets | Cookie 或 Bearer | Prometheus file_sd JSON |
+| GET | /api/labels | Cookie 或 Bearer | 可打印标签 HTML |
+| GET | /api/health | Cookie 或 Bearer | 健康检查 |
+| GET | /api/ | Cookie 或 Bearer | 控制台 Dashboard |
+
+---
+
+## POST /api/admin/login
+
+管理端登录接口。登录成功后，服务端设置 `HttpOnly` cookie（Cookie 名：`hive_admin_session`），后续请求携带 cookie 即可访问管理 API。
+
+### 请求体
+
+```json
+{
+  "username": "admin",
+  "password": "..."
+}
+```
+
+### 响应
+
+```json
+{ "status": "ok" }
+```
+
+---
+## POST /api/admin/logout
+
+退出登录接口。清除 `hive_admin_session` cookie。
+
+### 响应
+
+```json
+{ "status": "ok" }
+```
 
 ---
 
@@ -153,7 +191,7 @@ curl -sf -X POST "${NODE_REGISTRY_URL}/nodes/register" \
 
 ## PATCH /api/nodes/{mac}
 
-更新管理员字段（需 Authorization 头）。
+更新管理员字段（需 Cookie 会话或 Bearer 鉴权）。
 
 ### 请求体
 
@@ -183,7 +221,7 @@ curl -sf -X POST "${NODE_REGISTRY_URL}/nodes/register" \
 
 ## DELETE /api/nodes/{mac}
 
-删除节点记录（需 Authorization 头）。节点下次重启后会重新注册。
+删除节点记录（需 Cookie 会话或 Bearer 鉴权）。节点下次重启后会重新注册。
 
 ---
 
