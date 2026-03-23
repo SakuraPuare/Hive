@@ -40,16 +40,6 @@ services:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
 
-  gatus:
-    image: twinproduction/gatus:latest
-    container_name: gatus
-    restart: unless-stopped
-    network_mode: host                                     # 与其他服务同一网络栈，访问 localhost:4230/6677/4231
-    volumes:
-      - ./gatus/config.yaml:/config/config.yaml:ro
-      - gatus_data:/data
-
 volumes:
   prometheus_data:
   grafana_data:
-  gatus_data:
