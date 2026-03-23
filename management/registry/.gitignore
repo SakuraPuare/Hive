@@ -32,3 +32,8 @@ go.work.sum
 # .vscode/
 
 hive-registry
+
+# swaggo/swag intermediate outputs (do not commit)
+openapi/swagger.yaml
+openapi/swagger.json
+openapi/docs.go
