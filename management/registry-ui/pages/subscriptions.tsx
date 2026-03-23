@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getSubscriptionClashText } from '../lib/api';
+import { apiPath, getSubscriptionClashText } from '../lib/api';
 
 export default function Subscriptions() {
   const [preview, setPreview] = useState('');
@@ -30,13 +30,13 @@ export default function Subscriptions() {
 
       <div style={{ marginBottom: 16 }}>
         <div style={{ marginBottom: 8 }}>
-          <a href="/api/subscription" style={{ marginRight: 12 }}>
+          <a href={apiPath('/subscription')} style={{ marginRight: 12 }}>
             Download VLESS
           </a>
           <span style={{ color: '#666' }}>(base64 text)</span>
         </div>
         <div>
-          <a href="/api/subscription/clash" style={{ marginRight: 12 }}>
+          <a href={apiPath('/subscription/clash')} style={{ marginRight: 12 }}>
             Download Clash YAML
           </a>
           <span style={{ color: '#666' }}>(Mihomo/Clash Meta)</span>
