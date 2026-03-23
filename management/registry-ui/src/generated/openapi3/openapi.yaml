@@ -1,0 +1,439 @@
+openapi: 3.0.0
+info:
+  contact: {}
+  description: Hive management plane API for nodes and subscriptions.
+  title: Hive Node Registry API
+  version: 0.1.0
+paths:
+  /:
+    get:
+      operationId: Dashboard
+      responses:
+        "200":
+          description: HTML content
+          content:
+            text/html:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            text/html:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Dashboard links
+      tags:
+        - dashboard
+  /admin/login:
+    post:
+      operationId: AdminLogin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.AdminLoginRequest"
+        description: admin login payload
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Admin login
+      tags:
+        - admin
+  /admin/logout:
+    post:
+      operationId: AdminLogout
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+      summary: Admin logout
+      tags:
+        - admin
+  /health:
+    get:
+      operationId: Health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Health check
+      tags:
+        - health
+  /labels:
+    get:
+      operationId: LabelsPrint
+      responses:
+        "200":
+          description: HTML content
+          content:
+            text/html:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            text/html:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Print labels (HTML)
+      tags:
+        - labels
+  /nodes:
+    get:
+      operationId: NodesList
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/main.Node"
+                type: array
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List nodes
+      tags:
+        - nodes
+  "/nodes/{mac}":
+    delete:
+      operationId: NodeDelete
+      parameters:
+        - description: node mac (12 hex, no colon)
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Delete node
+      tags:
+        - nodes
+    get:
+      operationId: NodeGet
+      parameters:
+        - description: node mac (12 hex, no colon)
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.Node"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Get node by MAC
+      tags:
+        - nodes
+    patch:
+      operationId: NodeUpdate
+      parameters:
+        - description: node mac (12 hex, no colon)
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.UpdateRequest"
+        description: node update payload
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Update node (partial)
+      tags:
+        - nodes
+  /nodes/register:
+    post:
+      operationId: NodeRegister
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.RegisterRequest"
+        description: node register payload
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.NodeRegisterResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Register node (idempotent)
+      tags:
+        - nodes
+  /prometheus-targets:
+    get:
+      operationId: PrometheusTargets
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/main.PrometheusTarget"
+                type: array
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Prometheus file_sd targets
+      tags:
+        - prometheus
+  /subscription:
+    get:
+      operationId: SubscriptionVless
+      responses:
+        "200":
+          description: base64 encoded subscription
+          content:
+            text/plain:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: VLESS subscription (base64)
+      tags:
+        - subscription
+  /subscription/clash:
+    get:
+      operationId: SubscriptionClash
+      responses:
+        "200":
+          description: clash yaml content
+          content:
+            text/plain:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Clash/Mihomo subscription YAML
+      tags:
+        - subscription
+servers:
+  - url: /
+components:
+  securitySchemes:
+    AdminSessionCookie:
+      description: '"HttpOnly session cookie for admin UI"'
+      in: cookie
+      name: hive_admin_session
+      type: apiKey
+    BearerAuth:
+      description: '"Authorization: Bearer <API_SECRET>"'
+      in: header
+      name: Authorization
+      type: apiKey
+  schemas:
+    main.AdminLoginRequest:
+      properties:
+        password:
+          type: string
+        username:
+          type: string
+      type: object
+    main.ErrorResponse:
+      properties:
+        error:
+          type: string
+      type: object
+    main.Node:
+      properties:
+        cf_url:
+          type: string
+        easytier_ip:
+          type: string
+        frp_port:
+          type: integer
+        hostname:
+          type: string
+        last_seen:
+          type: string
+        location:
+          type: string
+        mac:
+          type: string
+        mac6:
+          type: string
+        note:
+          type: string
+        registered_at:
+          type: string
+        tailscale_ip:
+          type: string
+        tunnel_id:
+          type: string
+        xray_uuid:
+          type: string
+      type: object
+    main.NodeRegisterResponse:
+      properties:
+        hostname:
+          type: string
+        registered_at:
+          type: string
+        status:
+          type: string
+      type: object
+    main.PrometheusTarget:
+      properties:
+        labels:
+          additionalProperties:
+            type: string
+          type: object
+        targets:
+          items:
+            type: string
+          type: array
+      type: object
+    main.RegisterRequest:
+      properties:
+        cf_url:
+          type: string
+        easytier_ip:
+          type: string
+        frp_port:
+          type: integer
+        hostname:
+          type: string
+        mac:
+          type: string
+        mac6:
+          type: string
+        tailscale_ip:
+          type: string
+        tunnel_id:
+          type: string
+        xray_uuid:
+          type: string
+      type: object
+    main.StatusResponse:
+      properties:
+        status:
+          type: string
+      type: object
+    main.UpdateRequest:
+      properties:
+        location:
+          type: string
+        note:
+          type: string
+        tailscale_ip:
+          type: string
+      type: object
