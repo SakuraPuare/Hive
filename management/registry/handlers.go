@@ -5,8 +5,8 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
-	"encoding/json"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -38,8 +38,8 @@ type ErrorResponse struct {
 }
 
 type NodeRegisterResponse struct {
-	Status        string `json:"status"`
-	Hostname      string `json:"hostname"`
+	Status       string `json:"status"`
+	Hostname     string `json:"hostname"`
 	RegisteredAt string `json:"registered_at"`
 }
 
@@ -158,7 +158,7 @@ func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: adminCookieSameSite,
 		MaxAge:   int(adminSessionTTL.Seconds()),
 	})
 
@@ -182,7 +182,7 @@ func handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: adminCookieSameSite,
 		MaxAge:   -1,
 	})
 	jsonOK(w, StatusResponse{Status: "ok"})
@@ -272,8 +272,8 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 	_ = db.QueryRow("SELECT registered_at FROM nodes WHERE mac=?", req.MAC).Scan(&registeredAt)
 
 	jsonOK(w, NodeRegisterResponse{
-		Status:        "ok",
-		Hostname:      req.Hostname,
+		Status:       "ok",
+		Hostname:     req.Hostname,
 		RegisteredAt: registeredAt,
 	})
 
@@ -471,7 +471,8 @@ func handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 
 // GET /prometheus-targets  →  Prometheus file_sd 格式
 // cron 每分钟调用（直连 Go 服务，无需经过 nginx）：
-//   curl -sf http://127.0.0.1:8080/prometheus-targets > /etc/prometheus/targets/nodes.json
+//
+//	curl -sf http://127.0.0.1:8080/prometheus-targets > /etc/prometheus/targets/nodes.json
 //
 // @Summary Prometheus file_sd targets
 // @Tags prometheus

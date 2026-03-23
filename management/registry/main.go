@@ -63,7 +63,7 @@ func main() {
 
 	addr := getenv("LISTEN_ADDR", ":8080")
 	log.Printf("hive-registry listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, withCORS(mux)); err != nil {
 		log.Fatal(err)
 	}
 }
