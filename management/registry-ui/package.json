@@ -1,0 +1,26 @@
+{
+  "name": "hive-registry-ui",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "gen-api": "node ./scripts/gen-api.mjs",
+    "verify": "node ./scripts/verify-local.mjs",
+    "export": "echo 'Static export is generated during `next build` (output: export).' && exit 0",
+    "typecheck": "echo \"skip typecheck\""
+  },
+  "dependencies": {
+    "next": "^16.2.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@cerios/openapi-to-zod": "^1.6.1",
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "openapi-typescript-codegen": "^0.30.0",
+    "swagger2openapi": "^7.0.8",
+    "typescript": "^5.9.3",
+    "zod": "^4.3.6"
+  }
+}
