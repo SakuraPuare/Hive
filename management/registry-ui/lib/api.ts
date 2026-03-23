@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-export const API_PREFIX = '/api';
+const rawApiBase = process.env.NEXT_PUBLIC_API_BASE?.trim();
+export const API_PREFIX = rawApiBase ? rawApiBase.replace(/\/+$/, '') : '/api';
+
+export function apiPath(path: string) {
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  return `${API_PREFIX}${normalized}`;
+}
 
 // Zod schemas generated from OpenAPI (Swagger -> OpenAPI3 -> openapi-to-zod)
 import {
@@ -27,7 +33,7 @@ function isBrowser() {
 }
 
 export function authFetch(path: string, options: RequestInit = {}) {
-  const res = fetch(API_PREFIX + path, {
+  const res = fetch(apiPath(path), {
     ...options,
     credentials: 'include',
     headers: {
