@@ -192,6 +192,35 @@ func initSchema() {
 	if err != nil {
 		log.Fatalf("initSchema: %v", err)
 	}
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS subscription_groups (
+			id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+			name       VARCHAR(64) NOT NULL COMMENT '分组名称',
+			token      CHAR(64)    NOT NULL UNIQUE COMMENT '公开订阅 token（32字节 hex）',
+			created_at DATETIME    NOT NULL,
+			updated_at DATETIME    NOT NULL,
+			INDEX idx_token (token)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+		  COMMENT='Clash 订阅分组'
+	`)
+	if err != nil {
+		log.Fatalf("initSchema subscription_groups: %v", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS subscription_group_nodes (
+			group_id INT UNSIGNED NOT NULL,
+			node_mac VARCHAR(12)  NOT NULL,
+			PRIMARY KEY (group_id, node_mac),
+			FOREIGN KEY (group_id)  REFERENCES subscription_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (node_mac)  REFERENCES nodes(mac)              ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+		  COMMENT='订阅分组-节点映射'
+	`)
+	if err != nil {
+		log.Fatalf("initSchema subscription_group_nodes: %v", err)
+	}
+
 	log.Println("Schema ready")
 
 	// 将 users.role 从 ENUM 迁移到 VARCHAR(64)（幂等，忽略已迁移的情况）

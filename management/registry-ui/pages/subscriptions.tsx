@@ -1,11 +1,38 @@
-import React, { useState } from 'react';
-import { apiPath, getSubscriptionClashText, getSubscriptionVlessText } from '@/lib/api';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  apiPath,
+  createSubscriptionGroup,
+  deleteSubscriptionGroup,
+  getGroupNodes,
+  getSubscriptionClashText,
+  getSubscriptionVlessText,
+  listNodes,
+  listSubscriptionGroups,
+  resetGroupToken,
+  setGroupNodes,
+  type SubscriptionGroup,
+} from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Download } from 'lucide-react';
 import { t } from '@/lib/i18n';
+import { useCurrentUser } from '@/lib/auth';
+import type { main_Node } from '@/src/generated/client';
 
 export default function Subscriptions() {
+  const { user } = useCurrentUser();
+  const canWrite = user?.can('subscription:write') ?? false;
+
+  // ── 全局订阅预览 ──────────────────────────────────────────────────────────
   const [preview, setPreview] = useState('');
   const [previewType, setPreviewType] = useState('');
   const [loading, setLoading] = useState(false);
@@ -38,6 +65,131 @@ export default function Subscriptions() {
       setLoading(false);
     }
   }
+
+  // ── 订阅分组 ──────────────────────────────────────────────────────────────
+  const [groups, setGroups] = useState<SubscriptionGroup[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsError, setGroupsError] = useState('');
+
+  const loadGroups = useCallback(async () => {
+    setGroupsLoading(true);
+    setGroupsError('');
+    try {
+      setGroups(await listSubscriptionGroups());
+    } catch (e: any) {
+      setGroupsError(e?.error || t.loadFailed);
+    } finally {
+      setGroupsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user?.can('subscription:read')) loadGroups();
+  }, [user, loadGroups]);
+
+  // 复制链接
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  function copyLink(group: SubscriptionGroup) {
+    const url = `${apiPath('/s/' + group.token)}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedId(group.id);
+      setTimeout(() => setCopiedId(null), 1500);
+    });
+  }
+
+  // ── 新建分组 Dialog ───────────────────────────────────────────────────────
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  async function handleCreate() {
+    if (!newName.trim()) return;
+    setCreating(true);
+    setCreateError('');
+    try {
+      await createSubscriptionGroup(newName.trim());
+      setCreateOpen(false);
+      setNewName('');
+      loadGroups();
+    } catch (e: any) {
+      setCreateError(e?.error || t.groupCreateFailed);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  // ── 删除分组 ──────────────────────────────────────────────────────────────
+  async function handleDelete(group: SubscriptionGroup) {
+    if (!confirm(t.groupDeleteConfirm(group.name))) return;
+    try {
+      await deleteSubscriptionGroup(group.id);
+      loadGroups();
+    } catch {
+      alert(t.groupDeleteFailed);
+    }
+  }
+
+  // ── 重置 token ────────────────────────────────────────────────────────────
+  async function handleResetToken(group: SubscriptionGroup) {
+    if (!confirm(t.resetTokenConfirm)) return;
+    try {
+      await resetGroupToken(group.id);
+      loadGroups();
+    } catch {
+      alert(t.resetTokenFailed);
+    }
+  }
+
+  // ── 编辑节点 Dialog ───────────────────────────────────────────────────────
+  const [editGroup, setEditGroup] = useState<SubscriptionGroup | null>(null);
+  const [allNodes, setAllNodes] = useState<main_Node[]>([]);
+  const [selectedMacs, setSelectedMacs] = useState<Set<string>>(new Set());
+  const [nodeSearch, setNodeSearch] = useState('');
+  const [savingNodes, setSavingNodes] = useState(false);
+  const [saveNodesError, setSaveNodesError] = useState('');
+
+  async function openEditNodes(group: SubscriptionGroup) {
+    setEditGroup(group);
+    setSaveNodesError('');
+    setNodeSearch('');
+    const [nodes, macs] = await Promise.all([listNodes(), getGroupNodes(group.id)]);
+    setAllNodes(nodes);
+    setSelectedMacs(new Set(macs));
+  }
+
+  function toggleMac(mac: string) {
+    setSelectedMacs((prev) => {
+      const next = new Set(prev);
+      if (next.has(mac)) next.delete(mac);
+      else next.add(mac);
+      return next;
+    });
+  }
+
+  async function handleSaveNodes() {
+    if (!editGroup) return;
+    setSavingNodes(true);
+    setSaveNodesError('');
+    try {
+      await setGroupNodes(editGroup.id, Array.from(selectedMacs));
+      setEditGroup(null);
+      loadGroups();
+    } catch (e: any) {
+      setSaveNodesError(e?.error || t.groupNodesSaveFailed);
+    } finally {
+      setSavingNodes(false);
+    }
+  }
+
+  const filteredNodes = allNodes.filter((n) => {
+    const q = nodeSearch.toLowerCase();
+    return (
+      n.hostname.toLowerCase().includes(q) ||
+      n.location?.toLowerCase().includes(q) ||
+      n.mac.toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="space-y-6">
@@ -98,6 +250,171 @@ export default function Subscriptions() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── 订阅分组 ── */}
+      {user?.can('subscription:read') && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">{t.subscriptionGroups}</h2>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={loadGroups} disabled={groupsLoading}>
+                {t.refresh}
+              </Button>
+              {canWrite && (
+                <Button size="sm" onClick={() => { setNewName(''); setCreateError(''); setCreateOpen(true); }}>
+                  {t.createGroup}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {groupsError && <p className="text-sm text-destructive">{groupsError}</p>}
+
+          {groupsLoading ? (
+            <p className="text-sm text-muted-foreground">{t.loading}</p>
+          ) : groups.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t.noData}</p>
+          ) : (
+            <div className="rounded-md border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="px-4 py-2 text-left font-medium">{t.groupName}</th>
+                    <th className="px-4 py-2 text-left font-medium">{t.colNodeCount}</th>
+                    <th className="px-4 py-2 text-left font-medium">{t.colSubLink}</th>
+                    {canWrite && <th className="px-4 py-2 text-left font-medium">{t.colActions}</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups.map((g) => (
+                    <tr key={g.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="px-4 py-2 font-medium">{g.name}</td>
+                      <td className="px-4 py-2 text-muted-foreground">{g.node_count}</td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <code className="max-w-[200px] truncate rounded bg-muted px-1 py-0.5 text-xs">
+                            {apiPath('/s/' + g.token)}
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => copyLink(g)}
+                          >
+                            {copiedId === g.id ? t.copied : t.copyLink}
+                          </Button>
+                        </div>
+                      </td>
+                      {canWrite && (
+                        <td className="px-4 py-2">
+                          <div className="flex gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => openEditNodes(g)}
+                            >
+                              {t.editGroupNodes}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => handleResetToken(g)}
+                            >
+                              {t.resetToken}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs text-destructive hover:text-destructive"
+                              onClick={() => handleDelete(g)}
+                            >
+                              {t.delete}
+                            </Button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── 新建分组 Dialog ── */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.createGroup}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>{t.groupName}</Label>
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder={t.groupNamePlaceholder}
+                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              />
+            </div>
+            {createError && <p className="text-sm text-destructive">{createError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t.cancel}</Button>
+            <Button onClick={handleCreate} disabled={creating || !newName.trim()}>
+              {creating ? t.saving : t.createGroup}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 编辑节点 Dialog ── */}
+      <Dialog open={!!editGroup} onOpenChange={(open) => { if (!open) setEditGroup(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t.editGroupNodes}{editGroup ? `：${editGroup.name}` : ''}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Input
+              value={nodeSearch}
+              onChange={(e) => setNodeSearch(e.target.value)}
+              placeholder={t.searchNodes}
+            />
+            <div className="max-h-72 overflow-y-auto space-y-1 rounded-md border p-2">
+              {filteredNodes.length === 0 ? (
+                <p className="text-sm text-muted-foreground px-2 py-1">{t.noMatchingNodes}</p>
+              ) : (
+                filteredNodes.map((n) => (
+                  <label
+                    key={n.mac}
+                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-muted/50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedMacs.has(n.mac)}
+                      onChange={() => toggleMac(n.mac)}
+                      className="h-4 w-4"
+                    />
+                    <span className="text-sm">
+                      {n.location ? `【${n.location}】` : ''}{n.hostname}
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+            {saveNodesError && <p className="text-sm text-destructive">{saveNodesError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditGroup(null)}>{t.cancel}</Button>
+            <Button onClick={handleSaveNodes} disabled={savingNodes}>
+              {savingNodes ? t.saving : t.save}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

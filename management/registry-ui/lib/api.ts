@@ -258,3 +258,58 @@ export async function listAuditLogs(limit = 50, offset = 0): Promise<AuditLog[]>
   if (!res.ok) return Promise.reject(await safeReadApiError(res));
   return res.json();
 }
+
+// ── 订阅分组 ──────────────────────────────────────────────────────────────────
+
+export type SubscriptionGroup = {
+  id: number;
+  name: string;
+  token: string;
+  node_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listSubscriptionGroups(): Promise<SubscriptionGroup[]> {
+  const res = await authFetch('/admin/subscription-groups', { method: 'GET' });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json();
+}
+
+export async function createSubscriptionGroup(name: string): Promise<SubscriptionGroup> {
+  const res = await authFetch('/admin/subscription-groups', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json();
+}
+
+export async function deleteSubscriptionGroup(id: number) {
+  const res = await authFetch(`/admin/subscription-groups/${id}`, { method: 'DELETE' });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json() as Promise<{ status: string }>;
+}
+
+export async function getGroupNodes(id: number): Promise<string[]> {
+  const res = await authFetch(`/admin/subscription-groups/${id}/nodes`, { method: 'GET' });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json();
+}
+
+export async function setGroupNodes(id: number, nodes: string[]) {
+  const res = await authFetch(`/admin/subscription-groups/${id}/nodes`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nodes }),
+  });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json() as Promise<{ status: string }>;
+}
+
+export async function resetGroupToken(id: number): Promise<{ token: string }> {
+  const res = await authFetch(`/admin/subscription-groups/${id}/reset-token`, { method: 'POST' });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json();
+}

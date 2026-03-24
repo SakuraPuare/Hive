@@ -21,6 +21,7 @@ var allPermissions = []struct{ slug, desc string }{
 	{"user:delete", "删除用户"},
 	{"audit:read", "查看审计日志"},
 	{"subscription:read", "查看 VLESS/Clash 订阅"},
+	{"subscription:write", "创建/编辑/删除订阅分组"},
 	{"label:read", "打印标签页"},
 	{"prometheus:read", "Prometheus targets"},
 	{"role:read", "查看角色及其权限"},
@@ -32,7 +33,7 @@ var defaultRolePerms = map[string][]string{
 	"superadmin": {
 		"node:read", "node:write", "node:delete",
 		"user:read", "user:write", "user:delete",
-		"audit:read", "subscription:read", "label:read", "prometheus:read",
+		"audit:read", "subscription:read", "subscription:write", "label:read", "prometheus:read",
 		"role:read", "role:write",
 	},
 	"admin": {

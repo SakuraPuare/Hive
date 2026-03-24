@@ -100,6 +100,28 @@ export const t = {
   previewLabel: (type: string) => `预览：${type}`,
   previewFailed: (type: string) => `预览 ${type} 失败`,
 
+  // 订阅分组
+  subscriptionGroups: '订阅分组',
+  createGroup: '新建分组',
+  groupName: '分组名称',
+  groupNamePlaceholder: '例如：家庭、公司',
+  groupCreated: '分组已创建。',
+  groupDeleted: '分组已删除。',
+  groupCreateFailed: '创建分组失败',
+  groupDeleteFailed: '删除分组失败',
+  groupDeleteConfirm: (name: string) => `确认删除分组「${name}」？`,
+  editGroupNodes: '编辑节点',
+  groupNodesSaved: '节点已保存。',
+  groupNodesSaveFailed: '保存节点失败',
+  resetToken: '重置链接',
+  resetTokenConfirm: '重置后旧链接立即失效，确认继续？',
+  resetTokenFailed: '重置链接失败',
+  copyLink: '复制链接',
+  copied: '已复制',
+  colNodeCount: '节点数',
+  colSubLink: '订阅链接',
+  searchNodes: '搜索节点…',
+
   // 用户管理
   userManagement: '用户管理',
   users: '用户',
