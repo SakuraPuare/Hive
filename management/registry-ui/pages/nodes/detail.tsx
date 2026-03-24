@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import ReactSelect from 'react-select';
 import { useRouter } from 'next/router';
 import { getNode, patchNode } from '@/lib/api';
 import type { main_Node } from '@/src/generated/client';
@@ -7,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LocationCombobox } from '@/components/ui/location-combobox';
 import { ArrowLeft } from 'lucide-react';
 import { t } from '@/lib/i18n';
 import { LOCATION_OPTIONS } from '@/lib/locations';
-import { reactSelectStyles, SelectOption } from '@/lib/react-select-styles';
 
 function FieldRow({ label, value, mono }: { label: string; value?: string | number | null; mono?: boolean }) {
   const display = value === null || value === undefined || value === '' ? t.noData : String(value);
@@ -85,8 +84,6 @@ export default function NodeDetail() {
     return <p className="text-destructive">{error || t.nodeNotFound}</p>;
   }
 
-  const selectedOption = LOCATION_OPTIONS.find((o) => o.value === location) ?? null;
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -98,7 +95,6 @@ export default function NodeDetail() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {/* 标识信息 */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">{t.identifiers}</CardTitle>
@@ -112,7 +108,6 @@ export default function NodeDetail() {
           </CardContent>
         </Card>
 
-        {/* 网络 */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">{t.network}</CardTitle>
@@ -124,7 +119,6 @@ export default function NodeDetail() {
           </CardContent>
         </Card>
 
-        {/* Cloudflare 隧道 */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">{t.cloudflareTunnel}</CardTitle>
@@ -135,7 +129,6 @@ export default function NodeDetail() {
           </CardContent>
         </Card>
 
-        {/* Xray */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">{t.xray}</CardTitle>
@@ -145,7 +138,6 @@ export default function NodeDetail() {
           </CardContent>
         </Card>
 
-        {/* 活动记录 */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">{t.activity}</CardTitle>
@@ -156,7 +148,6 @@ export default function NodeDetail() {
           </CardContent>
         </Card>
 
-        {/* 编辑（仅位置和备注） */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">{t.editNode}</CardTitle>
@@ -165,13 +156,11 @@ export default function NodeDetail() {
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label>{t.location}</Label>
-                <ReactSelect<SelectOption>
+                <LocationCombobox
                   options={LOCATION_OPTIONS}
-                  value={selectedOption}
-                  onChange={(opt) => setLocation(opt?.value ?? '')}
+                  value={location}
+                  onChange={setLocation}
                   placeholder={t.locationPlaceholder}
-                  isClearable
-                  styles={reactSelectStyles}
                 />
               </div>
               <div className="space-y-1.5">

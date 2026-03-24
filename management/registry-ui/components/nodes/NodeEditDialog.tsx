@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import ReactSelect from 'react-select';
 import { patchNode } from '@/lib/api';
 import type { main_Node } from '@/src/generated/client';
 import { Button } from '@/components/ui/button';
@@ -14,9 +13,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { LocationCombobox } from '@/components/ui/location-combobox';
 import { t } from '@/lib/i18n';
 import { LOCATION_OPTIONS } from '@/lib/locations';
-import { reactSelectStyles, SelectOption } from '@/lib/react-select-styles';
 
 interface NodeEditDialogProps {
   node: main_Node;
@@ -53,8 +52,6 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
     }
   }
 
-  const selectedOption = LOCATION_OPTIONS.find((o) => o.value === location) ?? null;
-
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
@@ -68,13 +65,11 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label>{t.location}</Label>
-            <ReactSelect<SelectOption>
+            <LocationCombobox
               options={LOCATION_OPTIONS}
-              value={selectedOption}
-              onChange={(opt) => setLocation(opt?.value ?? '')}
+              value={location}
+              onChange={setLocation}
               placeholder={t.locationPlaceholder}
-              isClearable
-              styles={reactSelectStyles}
             />
           </div>
           <div className="space-y-1.5">
