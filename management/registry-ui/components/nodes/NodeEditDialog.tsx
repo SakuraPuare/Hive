@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { t } from '@/lib/i18n';
 
 interface NodeEditDialogProps {
   node: main_Node;
@@ -23,7 +24,6 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
   const [open, setOpen] = useState(false);
   const [location, setLocation] = useState(node.location ?? '');
   const [note, setNote] = useState(node.note ?? '');
-  const [tailscaleIp, setTailscaleIp] = useState(node.tailscale_ip ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -31,7 +31,6 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
     if (v) {
       setLocation(node.location ?? '');
       setNote(node.note ?? '');
-      setTailscaleIp(node.tailscale_ip ?? '');
       setError('');
     }
     setOpen(v);
@@ -41,11 +40,11 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
     setSaving(true);
     setError('');
     try {
-      await patchNode(node.mac, { location, note, tailscale_ip: tailscaleIp });
+      await patchNode(node.mac, { location, note });
       setOpen(false);
       onSave();
     } catch (e: any) {
-      setError(e?.error || e?.message || 'Update failed');
+      setError(e?.error || e?.message || t.updateFailed);
     } finally {
       setSaving(false);
     }
@@ -54,52 +53,40 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          Edit
-        </Button>
+        <Button variant="outline" size="sm">{t.edit}</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit Node</DialogTitle>
+          <DialogTitle>{t.editNode}</DialogTitle>
           <DialogDescription className="font-mono text-xs">{node.mac}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label htmlFor="edit-location">Location</Label>
+            <Label htmlFor="edit-location">{t.location}</Label>
             <Input
               id="edit-location"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g. Beijing DC-1"
+              placeholder={t.locationPlaceholder}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="edit-note">Note</Label>
+            <Label htmlFor="edit-note">{t.note}</Label>
             <Input
               id="edit-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Optional note"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-tailscale">Tailscale IP</Label>
-            <Input
-              id="edit-tailscale"
-              value={tailscaleIp}
-              onChange={(e) => setTailscaleIp(e.target.value)}
-              placeholder="pending"
-              className="font-mono"
+              placeholder={t.notePlaceholder}
             />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
-            Cancel
+            {t.cancel}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? t.saving : t.save}
           </Button>
         </DialogFooter>
       </DialogContent>

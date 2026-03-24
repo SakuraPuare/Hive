@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { getHealth } from '@/lib/api';
+import { t } from '@/lib/i18n';
 
 export default function Home() {
-  const [status, setStatus] = useState('checking');
+  const [, setStatus] = useState('checking');
 
   useEffect(() => {
     (async () => {
@@ -15,8 +16,7 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <p className="text-muted-foreground">Checking auth…</p>
+      <p className="text-muted-foreground">{t.checkingAuth}</p>
     </div>
   );
 }
-

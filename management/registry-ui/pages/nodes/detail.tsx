@@ -7,15 +7,23 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft } from 'lucide-react';
+import { t } from '@/lib/i18n';
 
 function FieldRow({ label, value, mono }: { label: string; value?: string | number | null; mono?: boolean }) {
-  const display = value === null || value === undefined || value === '' ? '—' : String(value);
+  const display = value === null || value === undefined || value === '' ? t.noData : String(value);
   return (
     <div className="flex flex-col gap-0.5 py-2 border-b last:border-b-0">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className={`text-sm break-all ${mono ? 'font-mono' : ''}`}>{display}</span>
     </div>
   );
+}
+
+function formatDateTime(s: string | undefined | null) {
+  if (!s) return t.noData;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleString('zh-CN');
 }
 
 export default function NodeDetail() {
@@ -25,10 +33,8 @@ export default function NodeDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Edit state
   const [location, setLocation] = useState('');
   const [note, setNote] = useState('');
-  const [tailscaleIp, setTailscaleIp] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -41,9 +47,8 @@ export default function NodeDetail() {
         setNode(n);
         setLocation(n.location ?? '');
         setNote(n.note ?? '');
-        setTailscaleIp(n.tailscale_ip ?? '');
       })
-      .catch((e: any) => setError(e?.error || 'Failed to load node'))
+      .catch((e: any) => setError(e?.error || t.loadFailed))
       .finally(() => setLoading(false));
   }, [mac]);
 
@@ -53,23 +58,23 @@ export default function NodeDetail() {
     setSaveError('');
     setSaveSuccess(false);
     try {
-      await patchNode(mac, { location, note, tailscale_ip: tailscaleIp });
+      await patchNode(mac, { location, note });
       setSaveSuccess(true);
       const updated = await getNode(mac);
       setNode(updated);
     } catch (e: any) {
-      setSaveError(e?.error || e?.message || 'Update failed');
+      setSaveError(e?.error || e?.message || t.updateFailed);
     } finally {
       setSaving(false);
     }
   }
 
   if (loading) {
-    return <p className="text-muted-foreground">Loading…</p>;
+    return <p className="text-muted-foreground">{t.loading}</p>;
   }
 
   if (error || !node) {
-    return <p className="text-destructive">{error || 'Node not found'}</p>;
+    return <p className="text-destructive">{error || t.nodeNotFound}</p>;
   }
 
   return (
@@ -77,107 +82,99 @@ export default function NodeDetail() {
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => router.push('/nodes')}>
           <ArrowLeft className="mr-1 h-4 w-4" />
-          Back
+          {t.back}
         </Button>
         <h1 className="text-2xl font-bold tracking-tight">{node.hostname}</h1>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {/* Identifiers */}
+        {/* 标识信息 */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Identifiers</CardTitle>
+            <CardTitle className="text-base">{t.identifiers}</CardTitle>
           </CardHeader>
           <CardContent>
-            <FieldRow label="MAC (IPv4)" value={node.mac} mono />
-            <FieldRow label="MAC (IPv6)" value={node.mac6} mono />
-            <FieldRow label="Hostname" value={node.hostname} />
-            <FieldRow label="Location" value={node.location} />
-            <FieldRow label="Note" value={node.note} />
+            <FieldRow label={t.macIpv4} value={node.mac} mono />
+            <FieldRow label={t.macIpv6} value={node.mac6} mono />
+            <FieldRow label={t.hostname} value={node.hostname} />
+            <FieldRow label={t.location} value={node.location} />
+            <FieldRow label={t.note} value={node.note} />
           </CardContent>
         </Card>
 
-        {/* Network */}
+        {/* 网络 */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Network</CardTitle>
+            <CardTitle className="text-base">{t.network}</CardTitle>
           </CardHeader>
           <CardContent>
-            <FieldRow label="Tailscale IP" value={node.tailscale_ip} mono />
-            <FieldRow label="EasyTier IP" value={node.easytier_ip} mono />
-            <FieldRow label="FRP Port" value={node.frp_port} mono />
+            <FieldRow label={t.tailscaleIp} value={node.tailscale_ip} mono />
+            <FieldRow label={t.easytierIp} value={node.easytier_ip} mono />
+            <FieldRow label={t.frpPort} value={node.frp_port} mono />
           </CardContent>
         </Card>
 
-        {/* Cloudflare */}
+        {/* Cloudflare 隧道 */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Cloudflare Tunnel</CardTitle>
+            <CardTitle className="text-base">{t.cloudflareTunnel}</CardTitle>
           </CardHeader>
           <CardContent>
-            <FieldRow label="CF URL" value={node.cf_url} />
-            <FieldRow label="Tunnel ID" value={node.tunnel_id} mono />
+            <FieldRow label={t.cfUrl} value={node.cf_url} />
+            <FieldRow label={t.tunnelId} value={node.tunnel_id} mono />
           </CardContent>
         </Card>
 
         {/* Xray */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Xray</CardTitle>
+            <CardTitle className="text-base">{t.xray}</CardTitle>
           </CardHeader>
           <CardContent>
-            <FieldRow label="UUID" value={node.xray_uuid} mono />
+            <FieldRow label={t.xrayUuid} value={node.xray_uuid} mono />
           </CardContent>
         </Card>
 
-        {/* Timestamps */}
+        {/* 活动记录 */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Activity</CardTitle>
+            <CardTitle className="text-base">{t.activity}</CardTitle>
           </CardHeader>
           <CardContent>
-            <FieldRow label="Registered At" value={node.registered_at} />
-            <FieldRow label="Last Seen" value={node.last_seen} />
+            <FieldRow label={t.registeredAt} value={formatDateTime(node.registered_at)} />
+            <FieldRow label={t.lastSeen} value={formatDateTime(node.last_seen)} />
           </CardContent>
         </Card>
 
-        {/* Edit */}
+        {/* 编辑（仅位置和备注） */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Edit</CardTitle>
+            <CardTitle className="text-base">{t.editNode}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="detail-location">Location</Label>
+                <Label htmlFor="detail-location">{t.location}</Label>
                 <Input
                   id="detail-location"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
+                  placeholder={t.locationPlaceholder}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="detail-note">Note</Label>
+                <Label htmlFor="detail-note">{t.note}</Label>
                 <Input
                   id="detail-note"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="detail-tailscale">Tailscale IP</Label>
-                <Input
-                  id="detail-tailscale"
-                  value={tailscaleIp}
-                  onChange={(e) => setTailscaleIp(e.target.value)}
-                  className="font-mono"
-                  placeholder="pending"
+                  placeholder={t.notePlaceholder}
                 />
               </div>
               {saveError && <p className="text-sm text-destructive">{saveError}</p>}
-              {saveSuccess && <p className="text-sm text-green-600 dark:text-green-400">Saved.</p>}
+              {saveSuccess && <p className="text-sm text-green-600 dark:text-green-400">{t.saved}</p>}
               <Button onClick={handleSave} disabled={saving} className="w-full">
-                {saving ? 'Saving…' : 'Save Changes'}
+                {saving ? t.saving : t.saveChanges}
               </Button>
             </div>
           </CardContent>

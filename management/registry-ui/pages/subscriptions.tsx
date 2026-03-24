@@ -3,6 +3,7 @@ import { apiPath, getSubscriptionClashText, getSubscriptionVlessText } from '@/l
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Download } from 'lucide-react';
+import { t } from '@/lib/i18n';
 
 export default function Subscriptions() {
   const [preview, setPreview] = useState('');
@@ -18,7 +19,7 @@ export default function Subscriptions() {
       setPreview(txt);
       setPreviewType('Clash YAML');
     } catch (e: any) {
-      setError(e?.error || 'Failed to preview Clash YAML');
+      setError(e?.error || t.previewFailed('Clash YAML'));
     } finally {
       setLoading(false);
     }
@@ -32,7 +33,7 @@ export default function Subscriptions() {
       setPreview(txt);
       setPreviewType('VLESS');
     } catch (e: any) {
-      setError(e?.error || 'Failed to preview VLESS');
+      setError(e?.error || t.previewFailed('VLESS'));
     } finally {
       setLoading(false);
     }
@@ -40,41 +41,41 @@ export default function Subscriptions() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">Subscriptions</h1>
+      <h1 className="text-2xl font-bold tracking-tight">{t.subscriptions}</h1>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>VLESS</CardTitle>
-            <CardDescription>Base64 encoded proxy subscription</CardDescription>
+            <CardTitle>{t.vless}</CardTitle>
+            <CardDescription>{t.vlessDesc}</CardDescription>
           </CardHeader>
           <CardContent className="flex gap-2">
             <Button variant="outline" asChild>
               <a href={apiPath('/subscription')} target="_blank" rel="noopener noreferrer">
                 <Download className="mr-2 h-4 w-4" />
-                Download
+                {t.download}
               </a>
             </Button>
             <Button variant="secondary" onClick={previewVless} disabled={loading}>
-              Preview
+              {t.preview}
             </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Clash / Mihomo</CardTitle>
-            <CardDescription>Clash Meta YAML configuration</CardDescription>
+            <CardTitle>{t.clashMihomo}</CardTitle>
+            <CardDescription>{t.clashDesc}</CardDescription>
           </CardHeader>
           <CardContent className="flex gap-2">
             <Button variant="outline" asChild>
               <a href={apiPath('/subscription/clash')} target="_blank" rel="noopener noreferrer">
                 <Download className="mr-2 h-4 w-4" />
-                Download
+                {t.download}
               </a>
             </Button>
             <Button variant="secondary" onClick={previewClash} disabled={loading}>
-              Preview
+              {t.preview}
             </Button>
           </CardContent>
         </Card>
@@ -85,9 +86,9 @@ export default function Subscriptions() {
       {preview && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Preview: {previewType}</CardTitle>
+            <CardTitle className="text-base">{t.previewLabel(previewType)}</CardTitle>
             <Button variant="ghost" size="sm" onClick={() => setPreview('')}>
-              Clear
+              {t.clear}
             </Button>
           </CardHeader>
           <CardContent>
