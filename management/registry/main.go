@@ -78,6 +78,17 @@ func main() {
 	mux.HandleFunc("GET /subscription", requirePerm("subscription:read")(handleSubscriptionVless))
 	mux.HandleFunc("GET /subscription/clash", requirePerm("subscription:read")(handleSubscriptionClash))
 
+	// ── 公开订阅分组（无需认证）────────────────────────────────────────────
+	mux.HandleFunc("GET /s/{token}", handlePublicGroupClash)
+
+	// ── 订阅分组管理 ──────────────────────────────────────────────────────
+	mux.HandleFunc("GET /admin/subscription-groups", requirePerm("subscription:read")(handleListGroups))
+	mux.HandleFunc("POST /admin/subscription-groups", requirePerm("subscription:write")(handleCreateGroup))
+	mux.HandleFunc("DELETE /admin/subscription-groups/{id}", requirePerm("subscription:write")(handleDeleteGroup))
+	mux.HandleFunc("GET /admin/subscription-groups/{id}/nodes", requirePerm("subscription:read")(handleGetGroupNodes))
+	mux.HandleFunc("PUT /admin/subscription-groups/{id}/nodes", requirePerm("subscription:write")(handleSetGroupNodes))
+	mux.HandleFunc("POST /admin/subscription-groups/{id}/reset-token", requirePerm("subscription:write")(handleResetGroupToken))
+
 	// ── 运维接口 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /prometheus-targets", requirePerm("prometheus:read")(handlePrometheusTargets))
 	mux.HandleFunc("GET /labels", requirePerm("label:read")(handleLabels))
