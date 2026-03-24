@@ -5,9 +5,11 @@ import type { main_Node } from '@/src/generated/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft } from 'lucide-react';
 import { t } from '@/lib/i18n';
+import { LOCATIONS } from '@/lib/locations';
 
 function FieldRow({ label, value, mono }: { label: string; value?: string | number | null; mono?: boolean }) {
   const display = value === null || value === undefined || value === '' ? t.noData : String(value);
@@ -17,6 +19,11 @@ function FieldRow({ label, value, mono }: { label: string; value?: string | numb
       <span className={`text-sm break-all ${mono ? 'font-mono' : ''}`}>{display}</span>
     </div>
   );
+}
+
+function formatMac(mac: string | undefined | null) {
+  if (!mac || mac.length !== 12) return mac ?? '';
+  return mac.match(/.{2}/g)!.join(':');
 }
 
 function formatDateTime(s: string | undefined | null) {
@@ -94,7 +101,7 @@ export default function NodeDetail() {
             <CardTitle className="text-base">{t.identifiers}</CardTitle>
           </CardHeader>
           <CardContent>
-            <FieldRow label={t.macIpv4} value={node.mac} mono />
+            <FieldRow label={t.macIpv4} value={formatMac(node.mac)} mono />
             <FieldRow label={t.macIpv6} value={node.mac6} mono />
             <FieldRow label={t.hostname} value={node.hostname} />
             <FieldRow label={t.location} value={node.location} />
@@ -155,12 +162,15 @@ export default function NodeDetail() {
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="detail-location">{t.location}</Label>
-                <Input
+                <Select
                   id="detail-location"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  placeholder={t.locationPlaceholder}
-                />
+                >
+                  {LOCATIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="detail-note">{t.note}</Label>
