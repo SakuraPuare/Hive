@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { listNodes } from '@/lib/api';
+import { NodesService } from '@/src/generated/client';
 import type { main_Node } from '@/src/generated/client';
+import { sessionApi } from '@/lib/openapi-session';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Server, Network, Globe, CalendarPlus } from 'lucide-react';
@@ -50,7 +51,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    listNodes()
+    sessionApi(NodesService.nodesList())
       .then(setNodes)
       .finally(() => setLoading(false));
   }, []);

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { listAuditLogs, type AuditLog } from '@/lib/api';
+import { AdminService } from '@/src/generated/client';
+import type { main_AuditLog } from '@/src/generated/client';
+import { sessionApi } from '@/lib/openapi-session';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -29,7 +31,7 @@ export default function AuditLogsPage() {
   const tCommon = useTranslations('common');
   const tNav = useTranslations('nav');
   const { user: currentUser, loading: authLoading } = useCurrentUser();
-  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [logs, setLogs] = useState<main_AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(0);
@@ -45,7 +47,9 @@ export default function AuditLogsPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await listAuditLogs(PAGE_SIZE, p * PAGE_SIZE);
+      const data = await sessionApi(
+        AdminService.adminAuditLogs({ limit: PAGE_SIZE, offset: p * PAGE_SIZE }),
+      );
       setLogs(data);
       setHasMore(data.length === PAGE_SIZE);
     } catch (e: any) {

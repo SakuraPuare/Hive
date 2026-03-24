@@ -2,7 +2,7 @@ BINARY  = hive-registry
 GOOS   ?= linux
 GOARCH ?= amd64
 
-.PHONY: build tidy clean
+.PHONY: build tidy clean openapi
 
 build: tidy
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \

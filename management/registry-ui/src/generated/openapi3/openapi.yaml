@@ -225,6 +225,290 @@ paths:
       summary: Replace role permissions
       tags:
         - admin
+  /admin/subscription-groups:
+    get:
+      operationId: AdminListSubscriptionGroups
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/main.SubscriptionGroup"
+                type: array
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List subscription groups
+      tags:
+        - admin
+    post:
+      operationId: AdminCreateSubscriptionGroup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.CreateGroupRequest"
+        description: group name
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.SubscriptionGroup"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Create subscription group
+      tags:
+        - admin
+  "/admin/subscription-groups/{id}":
+    delete:
+      operationId: AdminDeleteSubscriptionGroup
+      parameters:
+        - description: group id
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Delete subscription group
+      tags:
+        - admin
+  "/admin/subscription-groups/{id}/nodes":
+    get:
+      operationId: AdminGetSubscriptionGroupNodes
+      parameters:
+        - description: group id
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  type: string
+                type: array
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List node MACs in a subscription group
+      tags:
+        - admin
+    put:
+      operationId: AdminSetSubscriptionGroupNodes
+      parameters:
+        - description: group id
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.SetGroupNodesRequest"
+        description: node MAC list
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Replace node MACs in a subscription group
+      tags:
+        - admin
+  "/admin/subscription-groups/{id}/reset-token":
+    post:
+      operationId: AdminResetSubscriptionGroupToken
+      parameters:
+        - description: group id
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ResetTokenResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Reset subscription group token
+      tags:
+        - admin
   /admin/users:
     get:
       operationId: AdminListUsers
@@ -773,6 +1057,11 @@ components:
         password:
           type: string
       type: object
+    main.CreateGroupRequest:
+      properties:
+        name:
+          type: string
+      type: object
     main.CreateUserRequest:
       properties:
         password:
@@ -857,6 +1146,11 @@ components:
         xray_uuid:
           type: string
       type: object
+    main.ResetTokenResponse:
+      properties:
+        token:
+          type: string
+      type: object
     main.Role:
       properties:
         description:
@@ -866,6 +1160,13 @@ components:
         name:
           type: string
         permissions:
+          items:
+            type: string
+          type: array
+      type: object
+    main.SetGroupNodesRequest:
+      properties:
+        nodes:
           items:
             type: string
           type: array
@@ -887,6 +1188,21 @@ components:
     main.StatusResponse:
       properties:
         status:
+          type: string
+      type: object
+    main.SubscriptionGroup:
+      properties:
+        created_at:
+          type: string
+        id:
+          type: integer
+        name:
+          type: string
+        node_count:
+          type: integer
+        token:
+          type: string
+        updated_at:
           type: string
       type: object
     main.UpdateRequest:

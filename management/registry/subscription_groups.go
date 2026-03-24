@@ -30,6 +30,11 @@ type SetGroupNodesRequest struct {
 	Nodes []string `json:"nodes"`
 }
 
+// ResetTokenResponse is the JSON body for POST /admin/subscription-groups/{id}/reset-token.
+type ResetTokenResponse struct {
+	Token string `json:"token"`
+}
+
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
 
 func generateToken() (string, error) {
@@ -135,6 +140,16 @@ func buildGroupClashYAML(groupName string, nodes []Node) string {
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 // GET /admin/subscription-groups
+//
+// @Summary List subscription groups
+// @Tags admin
+// @Produce application/json
+// @Success 200 {array} SubscriptionGroup
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /admin/subscription-groups [get]
+// @ID AdminListSubscriptionGroups
 func handleListGroups(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query(`
 		SELECT g.id, g.name, g.token, COUNT(gn.node_mac) AS node_count, g.created_at, g.updated_at
@@ -162,6 +177,19 @@ func handleListGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /admin/subscription-groups
+//
+// @Summary Create subscription group
+// @Tags admin
+// @Accept json
+// @Produce application/json
+// @Param body body CreateGroupRequest true "group name"
+// @Success 200 {object} SubscriptionGroup
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /admin/subscription-groups [post]
+// @ID AdminCreateSubscriptionGroup
 func handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 	var req CreateGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -201,6 +229,19 @@ func handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 // DELETE /admin/subscription-groups/{id}
+//
+// @Summary Delete subscription group
+// @Tags admin
+// @Produce application/json
+// @Param id path int true "group id"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /admin/subscription-groups/{id} [delete]
+// @ID AdminDeleteSubscriptionGroup
 func handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -220,6 +261,19 @@ func handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /admin/subscription-groups/{id}/nodes
+//
+// @Summary List node MACs in a subscription group
+// @Tags admin
+// @Produce application/json
+// @Param id path int true "group id"
+// @Success 200 {array} string
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /admin/subscription-groups/{id}/nodes [get]
+// @ID AdminGetSubscriptionGroupNodes
 func handleGetGroupNodes(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -248,6 +302,21 @@ func handleGetGroupNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 // PUT /admin/subscription-groups/{id}/nodes
+//
+// @Summary Replace node MACs in a subscription group
+// @Tags admin
+// @Accept json
+// @Produce application/json
+// @Param id path int true "group id"
+// @Param body body SetGroupNodesRequest true "node MAC list"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /admin/subscription-groups/{id}/nodes [put]
+// @ID AdminSetSubscriptionGroupNodes
 func handleSetGroupNodes(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -294,6 +363,19 @@ func handleSetGroupNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /admin/subscription-groups/{id}/reset-token
+//
+// @Summary Reset subscription group token
+// @Tags admin
+// @Produce application/json
+// @Param id path int true "group id"
+// @Success 200 {object} ResetTokenResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /admin/subscription-groups/{id}/reset-token [post]
+// @ID AdminResetSubscriptionGroupToken
 func handleResetGroupToken(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -316,7 +398,7 @@ func handleResetGroupToken(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
-	jsonOK(w, map[string]string{"token": token})
+	jsonOK(w, ResetTokenResponse{Token: token})
 }
 
 // GET /s/{token}  — 公开端点，无需认证

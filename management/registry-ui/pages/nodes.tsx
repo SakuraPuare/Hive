@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
-import { deleteNode, listNodes } from '@/lib/api';
+import { NodesService } from '@/src/generated/client';
 import type { main_Node } from '@/src/generated/client';
+import { sessionApi } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -96,7 +97,7 @@ export default function Nodes() {
     setLoading(true);
     setError('');
     try {
-      const list = await listNodes();
+      const list = await sessionApi(NodesService.nodesList());
       setNodes(list);
     } catch (e: any) {
       setError(e?.error || e?.message || t('loadFailed'));
@@ -132,7 +133,7 @@ export default function Nodes() {
   async function handleDelete(mac: string) {
     if (!window.confirm(t('deleteConfirm', { mac }))) return;
     try {
-      await deleteNode(mac);
+      await sessionApi(NodesService.nodeDelete({ mac }));
       await loadNodes();
     } catch (e: any) {
       setError(e?.error || e?.message || t('deleteFailed'));

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { getNode, patchNode } from '@/lib/api';
-import type { main_Node } from '@/src/generated/client';
+import { NodesService } from '@/src/generated/client';
+import type { main_Node, main_UpdateRequest } from '@/src/generated/client';
+import { sessionApi } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -54,7 +55,7 @@ export default function NodeDetail() {
   useEffect(() => {
     if (!mac) return;
     setLoading(true);
-    getNode(mac)
+    sessionApi(NodesService.nodeGet({ mac }))
       .then((n) => {
         setNode(n);
         setLocation(n.location ?? '');
@@ -70,9 +71,14 @@ export default function NodeDetail() {
     setSaveError('');
     setSaveSuccess(false);
     try {
-      await patchNode(mac, { location, note });
+      await sessionApi(
+        NodesService.nodeUpdate({
+          mac,
+          requestBody: { location, note } as main_UpdateRequest,
+        }),
+      );
       setSaveSuccess(true);
-      const updated = await getNode(mac);
+      const updated = await sessionApi(NodesService.nodeGet({ mac }));
       setNode(updated);
     } catch (e: any) {
       setSaveError(e?.error || e?.message || t('updateFailed'));

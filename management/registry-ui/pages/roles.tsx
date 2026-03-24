@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { listRoles, listPermissions, setRolePermissions, type Role, type PermissionItem } from '@/lib/api';
+import { AdminService } from '@/src/generated/client';
+import type { main_Role } from '@/src/generated/client';
+import { sessionApi } from '@/lib/openapi-session';
+import type { PermissionItem } from '@/lib/domain-types';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -13,7 +16,7 @@ export default function RolesPage() {
   const t = useTranslations('roles');
   const tCommon = useTranslations('common');
   const { user: currentUser, loading: authLoading } = useCurrentUser();
-  const [roles, setRoles] = useState<Role[]>([]);
+  const [roles, setRoles] = useState<main_Role[]>([]);
   const [allPerms, setAllPerms] = useState<PermissionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -43,12 +46,15 @@ export default function RolesPage() {
     setLoading(true);
     setError('');
     try {
-      const [roleList, permList] = await Promise.all([listRoles(), listPermissions()]);
+      const [roleList, permList] = await Promise.all([
+        sessionApi(AdminService.adminListRoles()),
+        sessionApi(AdminService.adminListPermissions()) as Promise<PermissionItem[]>,
+      ]);
       setRoles(roleList);
       setAllPerms(permList);
       const init: Record<number, Set<string>> = {};
       for (const r of roleList) {
-        init[r.id] = new Set(r.permissions);
+        init[r.id!] = new Set(r.permissions ?? []);
       }
       setEditPerms(init);
     } catch (e: any) {
@@ -74,12 +80,18 @@ export default function RolesPage() {
     });
   }
 
-  async function handleSave(role: Role) {
-    setSaving(role.id);
+  async function handleSave(role: main_Role) {
+    const id = role.id!;
+    setSaving(id);
     setError('');
     setSuccess('');
     try {
-      await setRolePermissions(role.id, Array.from(editPerms[role.id] ?? []));
+      await sessionApi(
+        AdminService.adminSetRolePermissions({
+          id,
+          requestBody: { permissions: Array.from(editPerms[id] ?? []) },
+        }),
+      );
       setSuccess(t('permsSaved'));
       await loadData();
     } catch (e: any) {
@@ -111,9 +123,10 @@ export default function RolesPage() {
       ) : (
         <div className="space-y-4">
           {roles.map((role) => {
-            const currentSet = editPerms[role.id] ?? new Set<string>();
+            const rid = role.id!;
+            const currentSet = editPerms[rid] ?? new Set<string>();
             return (
-              <Card key={role.id}>
+              <Card key={rid}>
                 <CardHeader className="pb-2 pt-4 px-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -124,10 +137,10 @@ export default function RolesPage() {
                       <Button
                         size="sm"
                         onClick={() => handleSave(role)}
-                        disabled={saving === role.id}
+                        disabled={saving === rid}
                       >
                         <Save className="mr-1 h-4 w-4" />
-                        {saving === role.id ? tCommon('saving') : tCommon('save')}
+                        {saving === rid ? tCommon('saving') : tCommon('save')}
                       </Button>
                     )}
                   </div>
@@ -147,7 +160,7 @@ export default function RolesPage() {
                               <input
                                 type="checkbox"
                                 checked={currentSet.has(p.slug)}
-                                onChange={() => canWrite && togglePerm(role.id, p.slug)}
+                                onChange={() => canWrite && togglePerm(rid, p.slug)}
                                 disabled={!canWrite}
                                 className="h-4 w-4"
                               />
