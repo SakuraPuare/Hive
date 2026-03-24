@@ -17,6 +17,11 @@ import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
 import { RefreshCw, Trash2 } from 'lucide-react';
 import { t } from '@/lib/i18n';
 
+function formatMac(mac: string | undefined | null) {
+  if (!mac || mac.length !== 12) return mac ?? '';
+  return mac.match(/.{2}/g)!.join(':');
+}
+
 function formatDate(s: string | undefined | null) {
   if (!s) return t.noData;
   const d = new Date(s);
@@ -131,7 +136,7 @@ export default function Nodes() {
                     <TableCell className="font-medium" onClick={() => goDetail(n.mac!)}>{n.hostname || t.noData}</TableCell>
                     <TableCell className="font-mono text-xs" onClick={() => goDetail(n.mac!)}>{n.tailscale_ip || t.noData}</TableCell>
                     <TableCell className="font-mono text-xs" onClick={() => goDetail(n.mac!)}>{n.easytier_ip || t.noData}</TableCell>
-                    <TableCell className="font-mono text-xs" onClick={() => goDetail(n.mac!)}>{n.mac}</TableCell>
+                    <TableCell className="font-mono text-xs" onClick={() => goDetail(n.mac!)}>{formatMac(n.mac)}</TableCell>
                     <TableCell onClick={() => goDetail(n.mac!)}>{formatDate(n.last_seen)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">

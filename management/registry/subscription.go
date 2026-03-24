@@ -38,10 +38,7 @@ func handleSubscriptionVless(w http.ResponseWriter, r *http.Request) {
 		if host == "" || n.XrayUUID == "" {
 			continue
 		}
-		name := n.Location
-		if name == "" {
-			name = n.Hostname
-		}
+		name := buildNodeName(n)
 		// vless://{uuid}@{host}:443?type=ws&security=tls&sni={host}&path=%2F{path}#{name}
 		params := url.Values{}
 		params.Set("type", "ws")
@@ -91,10 +88,7 @@ func handleSubscriptionClash(w http.ResponseWriter, r *http.Request) {
 		if host == "" || n.XrayUUID == "" {
 			continue
 		}
-		name := n.Location
-		if name == "" {
-			name = n.Hostname
-		}
+		name := buildNodeName(n)
 		proxyNames = append(proxyNames, "    - "+yamlStr(name))
 
 		// 每个代理块
@@ -151,7 +145,21 @@ func handleSubscriptionClash(w http.ResponseWriter, r *http.Request) {
 
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
 
-// queryAllNodes 查询所有节点，subscription 按 hostname 排序
+// buildNodeName 构造订阅节点名称：【国旗 地名】Note - hostname
+// 如果 location 或 note 为空则省略对应部分
+func buildNodeName(n Node) string {
+	name := ""
+	if n.Location != "" {
+		name += "【" + n.Location + "】"
+	}
+	if n.Note != "" {
+		name += n.Note + " - "
+	}
+	name += n.Hostname
+	return name
+}
+
+
 func queryAllNodes() ([]Node, error) {
 	rows, err := db.Query("SELECT " + nodeCols + " FROM nodes ORDER BY hostname")
 	if err != nil {
