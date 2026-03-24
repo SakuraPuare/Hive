@@ -2,26 +2,30 @@ import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { LayoutDashboard, Server, Download, Users, ScrollText, ShieldCheck } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
-import { t } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
-
-const baseNavItems = [
-  { href: '/dashboard', label: t.dashboard, icon: LayoutDashboard, perm: null },
-  { href: '/nodes', label: t.nodes, icon: Server, perm: null },
-  { href: '/subscriptions', label: t.subscriptions, icon: Download, perm: null },
-];
-
-const adminNavItems = [
-  { href: '/users', label: t.users, icon: Users, perm: 'user:read' },
-  { href: '/roles', label: t.roles, icon: ShieldCheck, perm: 'role:read' },
-  { href: '/audit-logs', label: t.auditLogs, icon: ScrollText, perm: 'audit:read' },
-];
+import { useLocale, type Locale } from '@/lib/locale';
 
 export function Sidebar() {
   const router = useRouter();
   const { user } = useCurrentUser();
+  const { locale, setLocale } = useLocale();
+  const tAuth = useTranslations('auth');
+  const tNav = useTranslations('nav');
+
+  const baseNavItems = [
+    { href: '/dashboard', label: tNav('dashboard'), icon: LayoutDashboard, perm: null },
+    { href: '/nodes', label: tNav('nodes'), icon: Server, perm: null },
+    { href: '/subscriptions', label: tNav('subscriptions'), icon: Download, perm: null },
+  ];
+
+  const adminNavItems = [
+    { href: '/users', label: tNav('users'), icon: Users, perm: 'user:read' },
+    { href: '/roles', label: tNav('roles'), icon: ShieldCheck, perm: 'role:read' },
+    { href: '/audit-logs', label: tNav('auditLogs'), icon: ScrollText, perm: 'audit:read' },
+  ];
 
   const navItems = [
     ...baseNavItems,
@@ -31,7 +35,7 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-56 shrink-0 flex-col border-r bg-card">
       <div className="flex h-14 items-center px-4">
-        <span className="text-base font-bold tracking-tight">{t.hiveRegistry}</span>
+        <span className="text-base font-bold tracking-tight">{tAuth('hiveRegistry')}</span>
       </div>
       <Separator />
       <nav className="flex-1 space-y-1 p-3">
@@ -55,6 +59,23 @@ export function Sidebar() {
           );
         })}
       </nav>
+      <Separator />
+      <div className="flex items-center justify-center gap-1 p-3">
+        {(['zh', 'en'] as Locale[]).map((l) => (
+          <button
+            key={l}
+            onClick={() => setLocale(l)}
+            className={cn(
+              'rounded px-2 py-1 text-xs font-medium transition-colors',
+              locale === l
+                ? 'bg-accent text-accent-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {l === 'zh' ? '中文' : 'EN'}
+          </button>
+        ))}
+      </div>
     </aside>
   );
 }

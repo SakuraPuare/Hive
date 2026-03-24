@@ -1,14 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { getHealth } from '@/lib/api';
-import { t } from '@/lib/i18n';
+import { useTranslations } from 'next-intl';
 
 export default function Home() {
-  const [, setStatus] = useState('checking');
+  const tAuth = useTranslations('auth');
 
   useEffect(() => {
     (async () => {
       const h = await getHealth();
-      setStatus(h ? 'ok' : 'unauth');
       if (h) window.location.href = '/dashboard';
       else window.location.href = '/login';
     })();
@@ -16,7 +15,7 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <p className="text-muted-foreground">{t.checkingAuth}</p>
+      <p className="text-muted-foreground">{tAuth('checkingAuth')}</p>
     </div>
   );
 }

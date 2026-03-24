@@ -24,15 +24,18 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Download } from 'lucide-react';
-import { t } from '@/lib/i18n';
+import { useTranslations } from 'next-intl';
 import { useCurrentUser } from '@/lib/auth';
 import type { main_Node } from '@/src/generated/client';
 
 export default function Subscriptions() {
+  const t = useTranslations('subscriptions');
+  const tCommon = useTranslations('common');
+  const tNav = useTranslations('nav');
+  const tNodes = useTranslations('nodes');
   const { user } = useCurrentUser();
   const canWrite = user?.can('subscription:write') ?? false;
 
-  // ── 全局订阅预览 ──────────────────────────────────────────────────────────
   const [preview, setPreview] = useState('');
   const [previewType, setPreviewType] = useState('');
   const [loading, setLoading] = useState(false);
@@ -46,7 +49,7 @@ export default function Subscriptions() {
       setPreview(txt);
       setPreviewType('Clash YAML');
     } catch (e: any) {
-      setError(e?.error || t.previewFailed('Clash YAML'));
+      setError(e?.error || t('previewFailed', { type: 'Clash YAML' }));
     } finally {
       setLoading(false);
     }
@@ -60,13 +63,12 @@ export default function Subscriptions() {
       setPreview(txt);
       setPreviewType('VLESS');
     } catch (e: any) {
-      setError(e?.error || t.previewFailed('VLESS'));
+      setError(e?.error || t('previewFailed', { type: 'VLESS' }));
     } finally {
       setLoading(false);
     }
   }
 
-  // ── 订阅分组 ──────────────────────────────────────────────────────────────
   const [groups, setGroups] = useState<SubscriptionGroup[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsError, setGroupsError] = useState('');
@@ -77,7 +79,7 @@ export default function Subscriptions() {
     try {
       setGroups(await listSubscriptionGroups());
     } catch (e: any) {
-      setGroupsError(e?.error || t.loadFailed);
+      setGroupsError(e?.error || tCommon('loading'));
     } finally {
       setGroupsLoading(false);
     }
@@ -87,7 +89,6 @@ export default function Subscriptions() {
     if (user?.can('subscription:read')) loadGroups();
   }, [user, loadGroups]);
 
-  // 复制链接
   const [copiedId, setCopiedId] = useState<number | null>(null);
   function copyLink(group: SubscriptionGroup) {
     const url = `${apiPath('/s/' + group.token)}`;
@@ -97,7 +98,6 @@ export default function Subscriptions() {
     });
   }
 
-  // ── 新建分组 Dialog ───────────────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -113,35 +113,32 @@ export default function Subscriptions() {
       setNewName('');
       loadGroups();
     } catch (e: any) {
-      setCreateError(e?.error || t.groupCreateFailed);
+      setCreateError(e?.error || t('groupCreateFailed'));
     } finally {
       setCreating(false);
     }
   }
 
-  // ── 删除分组 ──────────────────────────────────────────────────────────────
   async function handleDelete(group: SubscriptionGroup) {
-    if (!confirm(t.groupDeleteConfirm(group.name))) return;
+    if (!confirm(t('groupDeleteConfirm', { name: group.name }))) return;
     try {
       await deleteSubscriptionGroup(group.id);
       loadGroups();
     } catch {
-      alert(t.groupDeleteFailed);
+      alert(t('groupDeleteFailed'));
     }
   }
 
-  // ── 重置 token ────────────────────────────────────────────────────────────
   async function handleResetToken(group: SubscriptionGroup) {
-    if (!confirm(t.resetTokenConfirm)) return;
+    if (!confirm(t('resetTokenConfirm'))) return;
     try {
       await resetGroupToken(group.id);
       loadGroups();
     } catch {
-      alert(t.resetTokenFailed);
+      alert(t('resetTokenFailed'));
     }
   }
 
-  // ── 编辑节点 Dialog ───────────────────────────────────────────────────────
   const [editGroup, setEditGroup] = useState<SubscriptionGroup | null>(null);
   const [allNodes, setAllNodes] = useState<main_Node[]>([]);
   const [selectedMacs, setSelectedMacs] = useState<Set<string>>(new Set());
@@ -176,7 +173,7 @@ export default function Subscriptions() {
       setEditGroup(null);
       loadGroups();
     } catch (e: any) {
-      setSaveNodesError(e?.error || t.groupNodesSaveFailed);
+      setSaveNodesError(e?.error || t('groupNodesSaveFailed'));
     } finally {
       setSavingNodes(false);
     }
@@ -193,41 +190,41 @@ export default function Subscriptions() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">{t.subscriptions}</h1>
+      <h1 className="text-2xl font-bold tracking-tight">{tNav('subscriptions')}</h1>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>{t.vless}</CardTitle>
-            <CardDescription>{t.vlessDesc}</CardDescription>
+            <CardTitle>{t('vless')}</CardTitle>
+            <CardDescription>{t('vlessDesc')}</CardDescription>
           </CardHeader>
           <CardContent className="flex gap-2">
             <Button variant="outline" asChild>
               <a href={apiPath('/subscription')} target="_blank" rel="noopener noreferrer">
                 <Download className="mr-2 h-4 w-4" />
-                {t.download}
+                {tCommon('download')}
               </a>
             </Button>
             <Button variant="secondary" onClick={previewVless} disabled={loading}>
-              {t.preview}
+              {tCommon('preview')}
             </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>{t.clashMihomo}</CardTitle>
-            <CardDescription>{t.clashDesc}</CardDescription>
+            <CardTitle>{t('clashMihomo')}</CardTitle>
+            <CardDescription>{t('clashDesc')}</CardDescription>
           </CardHeader>
           <CardContent className="flex gap-2">
             <Button variant="outline" asChild>
               <a href={apiPath('/subscription/clash')} target="_blank" rel="noopener noreferrer">
                 <Download className="mr-2 h-4 w-4" />
-                {t.download}
+                {tCommon('download')}
               </a>
             </Button>
             <Button variant="secondary" onClick={previewClash} disabled={loading}>
-              {t.preview}
+              {tCommon('preview')}
             </Button>
           </CardContent>
         </Card>
@@ -238,9 +235,9 @@ export default function Subscriptions() {
       {preview && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">{t.previewLabel(previewType)}</CardTitle>
+            <CardTitle className="text-base">{t('previewLabel', { type: previewType })}</CardTitle>
             <Button variant="ghost" size="sm" onClick={() => setPreview('')}>
-              {t.clear}
+              {tCommon('clear')}
             </Button>
           </CardHeader>
           <CardContent>
@@ -251,18 +248,17 @@ export default function Subscriptions() {
         </Card>
       )}
 
-      {/* ── 订阅分组 ── */}
       {user?.can('subscription:read') && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">{t.subscriptionGroups}</h2>
+            <h2 className="text-lg font-semibold">{t('subscriptionGroups')}</h2>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={loadGroups} disabled={groupsLoading}>
-                {t.refresh}
+                {tCommon('refresh')}
               </Button>
               {canWrite && (
                 <Button size="sm" onClick={() => { setNewName(''); setCreateError(''); setCreateOpen(true); }}>
-                  {t.createGroup}
+                  {t('createGroup')}
                 </Button>
               )}
             </div>
@@ -271,18 +267,18 @@ export default function Subscriptions() {
           {groupsError && <p className="text-sm text-destructive">{groupsError}</p>}
 
           {groupsLoading ? (
-            <p className="text-sm text-muted-foreground">{t.loading}</p>
+            <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
           ) : groups.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t.noData}</p>
+            <p className="text-sm text-muted-foreground">{tCommon('noData')}</p>
           ) : (
             <div className="rounded-md border">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    <th className="px-4 py-2 text-left font-medium">{t.groupName}</th>
-                    <th className="px-4 py-2 text-left font-medium">{t.colNodeCount}</th>
-                    <th className="px-4 py-2 text-left font-medium">{t.colSubLink}</th>
-                    {canWrite && <th className="px-4 py-2 text-left font-medium">{t.colActions}</th>}
+                    <th className="px-4 py-2 text-left font-medium">{t('groupName')}</th>
+                    <th className="px-4 py-2 text-left font-medium">{t('colNodeCount')}</th>
+                    <th className="px-4 py-2 text-left font-medium">{t('colSubLink')}</th>
+                    {canWrite && <th className="px-4 py-2 text-left font-medium">{tNodes('colActions')}</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -301,7 +297,7 @@ export default function Subscriptions() {
                             className="h-6 px-2 text-xs"
                             onClick={() => copyLink(g)}
                           >
-                            {copiedId === g.id ? t.copied : t.copyLink}
+                            {copiedId === g.id ? t('copied') : t('copyLink')}
                           </Button>
                         </div>
                       </td>
@@ -314,7 +310,7 @@ export default function Subscriptions() {
                               className="h-7 text-xs"
                               onClick={() => openEditNodes(g)}
                             >
-                              {t.editGroupNodes}
+                              {t('editGroupNodes')}
                             </Button>
                             <Button
                               variant="outline"
@@ -322,7 +318,7 @@ export default function Subscriptions() {
                               className="h-7 text-xs"
                               onClick={() => handleResetToken(g)}
                             >
-                              {t.resetToken}
+                              {t('resetToken')}
                             </Button>
                             <Button
                               variant="outline"
@@ -330,7 +326,7 @@ export default function Subscriptions() {
                               className="h-7 text-xs text-destructive hover:text-destructive"
                               onClick={() => handleDelete(g)}
                             >
-                              {t.delete}
+                              {tCommon('delete')}
                             </Button>
                           </div>
                         </td>
@@ -344,48 +340,46 @@ export default function Subscriptions() {
         </div>
       )}
 
-      {/* ── 新建分组 Dialog ── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t.createGroup}</DialogTitle>
+            <DialogTitle>{t('createGroup')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1">
-              <Label>{t.groupName}</Label>
+              <Label>{t('groupName')}</Label>
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder={t.groupNamePlaceholder}
+                placeholder={t('groupNamePlaceholder')}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               />
             </div>
             {createError && <p className="text-sm text-destructive">{createError}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t.cancel}</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{tCommon('cancel')}</Button>
             <Button onClick={handleCreate} disabled={creating || !newName.trim()}>
-              {creating ? t.saving : t.createGroup}
+              {creating ? tCommon('saving') : t('createGroup')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── 编辑节点 Dialog ── */}
       <Dialog open={!!editGroup} onOpenChange={(open) => { if (!open) setEditGroup(null); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{t.editGroupNodes}{editGroup ? `：${editGroup.name}` : ''}</DialogTitle>
+            <DialogTitle>{t('editGroupNodes')}{editGroup ? `：${editGroup.name}` : ''}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <Input
               value={nodeSearch}
               onChange={(e) => setNodeSearch(e.target.value)}
-              placeholder={t.searchNodes}
+              placeholder={t('searchNodes')}
             />
             <div className="max-h-72 overflow-y-auto space-y-1 rounded-md border p-2">
               {filteredNodes.length === 0 ? (
-                <p className="text-sm text-muted-foreground px-2 py-1">{t.noMatchingNodes}</p>
+                <p className="text-sm text-muted-foreground px-2 py-1">{tNodes('noMatchingNodes')}</p>
               ) : (
                 filteredNodes.map((n) => (
                   <label
@@ -408,9 +402,9 @@ export default function Subscriptions() {
             {saveNodesError && <p className="text-sm text-destructive">{saveNodesError}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditGroup(null)}>{t.cancel}</Button>
+            <Button variant="outline" onClick={() => setEditGroup(null)}>{tCommon('cancel')}</Button>
             <Button onClick={handleSaveNodes} disabled={savingNodes}>
-              {savingNodes ? t.saving : t.save}
+              {savingNodes ? tCommon('saving') : tCommon('save')}
             </Button>
           </DialogFooter>
         </DialogContent>
