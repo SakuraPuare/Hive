@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
+import ReactSelect from 'react-select';
 import { patchNode } from '@/lib/api';
 import type { main_Node } from '@/src/generated/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { t } from '@/lib/i18n';
-import { LOCATIONS } from '@/lib/locations';
+import { LOCATION_OPTIONS } from '@/lib/locations';
+import { reactSelectStyles, SelectOption } from '@/lib/react-select-styles';
 
 interface NodeEditDialogProps {
   node: main_Node;
@@ -52,6 +53,8 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
     }
   }
 
+  const selectedOption = LOCATION_OPTIONS.find((o) => o.value === location) ?? null;
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
@@ -64,16 +67,15 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label htmlFor="edit-location">{t.location}</Label>
-            <Select
-              id="edit-location"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-            >
-              {LOCATIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </Select>
+            <Label>{t.location}</Label>
+            <ReactSelect<SelectOption>
+              options={LOCATION_OPTIONS}
+              value={selectedOption}
+              onChange={(opt) => setLocation(opt?.value ?? '')}
+              placeholder={t.locationPlaceholder}
+              isClearable
+              styles={reactSelectStyles}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="edit-note">{t.note}</Label>
