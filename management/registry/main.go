@@ -74,9 +74,9 @@ func main() {
 	// ── 审计日志 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /admin/audit-logs", requirePerm("audit:read")(handleListAuditLogs))
 
-	// ── 订阅 ──────────────────────────────────────────────────────────────
-	mux.HandleFunc("GET /subscription", requirePerm("subscription:read")(handleSubscriptionVless))
-	mux.HandleFunc("GET /subscription/clash", requirePerm("subscription:read")(handleSubscriptionClash))
+	// ── 订阅（requireAuth：session cookie 或 ?token=API_SECRET）────────────
+	mux.HandleFunc("GET /subscription", handleSubscriptionVless)
+	mux.HandleFunc("GET /subscription/clash", handleSubscriptionClash)
 
 	// ── 公开订阅分组（无需认证）────────────────────────────────────────────
 	mux.HandleFunc("GET /s/{token}", handlePublicGroupClash)
