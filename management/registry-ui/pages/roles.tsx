@@ -6,21 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, Save } from 'lucide-react';
-import { t } from '@/lib/i18n';
-
-// 权限按资源分组
-const PERM_GROUPS: { key: string; label: string; prefix: string }[] = [
-  { key: 'node', label: t.permGroup_node, prefix: 'node:' },
-  { key: 'user', label: t.permGroup_user, prefix: 'user:' },
-  { key: 'audit', label: t.permGroup_audit, prefix: 'audit:' },
-  { key: 'subscription', label: t.permGroup_subscription, prefix: 'subscription:' },
-  { key: 'label', label: t.permGroup_label, prefix: 'label:' },
-  { key: 'prometheus', label: t.permGroup_prometheus, prefix: 'prometheus:' },
-  { key: 'role', label: t.permGroup_role, prefix: 'role:' },
-];
+import { useTranslations } from 'next-intl';
 
 export default function RolesPage() {
   const router = useRouter();
+  const t = useTranslations('roles');
+  const tCommon = useTranslations('common');
   const { user: currentUser, loading: authLoading } = useCurrentUser();
   const [roles, setRoles] = useState<Role[]>([]);
   const [allPerms, setAllPerms] = useState<PermissionItem[]>([]);
@@ -28,11 +19,20 @@ export default function RolesPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // 每个角色的编辑状态：roleId → Set<slug>
   const [editPerms, setEditPerms] = useState<Record<number, Set<string>>>({});
   const [saving, setSaving] = useState<number | null>(null);
 
-  // 权限保护
+  // 权限按资源分组（在组件内，使用翻译）
+  const PERM_GROUPS = [
+    { key: 'node', label: t('permGroup_node'), prefix: 'node:' },
+    { key: 'user', label: t('permGroup_user'), prefix: 'user:' },
+    { key: 'audit', label: t('permGroup_audit'), prefix: 'audit:' },
+    { key: 'subscription', label: t('permGroup_subscription'), prefix: 'subscription:' },
+    { key: 'label', label: t('permGroup_label'), prefix: 'label:' },
+    { key: 'prometheus', label: t('permGroup_prometheus'), prefix: 'prometheus:' },
+    { key: 'role', label: t('permGroup_role'), prefix: 'role:' },
+  ];
+
   useEffect(() => {
     if (!authLoading && currentUser && !currentUser.can('role:read')) {
       router.replace('/dashboard');
@@ -46,14 +46,13 @@ export default function RolesPage() {
       const [roleList, permList] = await Promise.all([listRoles(), listPermissions()]);
       setRoles(roleList);
       setAllPerms(permList);
-      // 初始化编辑状态
       const init: Record<number, Set<string>> = {};
       for (const r of roleList) {
         init[r.id] = new Set(r.permissions);
       }
       setEditPerms(init);
     } catch (e: any) {
-      setError(e?.error || e?.message || '加载失败');
+      setError(e?.error || e?.message || tCommon('loading'));
     } finally {
       setLoading(false);
     }
@@ -81,10 +80,10 @@ export default function RolesPage() {
     setSuccess('');
     try {
       await setRolePermissions(role.id, Array.from(editPerms[role.id] ?? []));
-      setSuccess(t.permsSaved);
+      setSuccess(t('permsSaved'));
       await loadData();
     } catch (e: any) {
-      setError(e?.error || e?.message || t.permsSaveFailed);
+      setError(e?.error || e?.message || t('permsSaveFailed'));
     } finally {
       setSaving(null);
     }
@@ -97,10 +96,10 @@ export default function RolesPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t.roleManagement}</h1>
+        <h1 className="text-xl font-semibold">{t('roleManagement')}</h1>
         <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
           <RefreshCw className="mr-1 h-4 w-4" />
-          {t.refresh}
+          {tCommon('refresh')}
         </Button>
       </div>
 
@@ -108,7 +107,7 @@ export default function RolesPage() {
       {success && <p className="text-sm text-green-600 dark:text-green-400">{success}</p>}
 
       {loading ? (
-        <p className="text-muted-foreground">{t.loading}</p>
+        <p className="text-muted-foreground">{tCommon('loading')}</p>
       ) : (
         <div className="space-y-4">
           {roles.map((role) => {
@@ -119,7 +118,7 @@ export default function RolesPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">{role.name}</span>
-                      <Badge variant="outline">{currentSet.size} 个权限</Badge>
+                      <Badge variant="outline">{currentSet.size}</Badge>
                     </div>
                     {canWrite && (
                       <Button
@@ -128,7 +127,7 @@ export default function RolesPage() {
                         disabled={saving === role.id}
                       >
                         <Save className="mr-1 h-4 w-4" />
-                        {saving === role.id ? t.saving : t.save}
+                        {saving === role.id ? tCommon('saving') : tCommon('save')}
                       </Button>
                     )}
                   </div>

@@ -4,7 +4,8 @@ import type { main_Node } from '@/src/generated/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Server, Network, Globe, CalendarPlus } from 'lucide-react';
-import { t } from '@/lib/i18n';
+import { useTranslations } from 'next-intl';
+import { useLocale } from '@/lib/locale';
 
 function StatsCard({
   title,
@@ -28,14 +29,23 @@ function StatsCard({
   );
 }
 
-function formatDate(s: string | undefined | null) {
-  if (!s) return t.noData;
+function formatDate(s: string | undefined | null, locale: string, noData: string) {
+  if (!s) return noData;
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
-  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 export default function Dashboard() {
+  const t = useTranslations('dashboard');
+  const tCommon = useTranslations('common');
+  const tNav = useTranslations('nav');
+  const tNodes = useTranslations('nodes');
+  const { locale } = useLocale();
   const [nodes, setNodes] = useState<main_Node[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -72,44 +82,44 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">{t.dashboard}</h1>
+      <h1 className="text-2xl font-bold tracking-tight">{tNav('dashboard')}</h1>
 
       {loading ? (
-        <p className="text-muted-foreground">{t.loading}</p>
+        <p className="text-muted-foreground">{tCommon('loading')}</p>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatsCard title={t.totalNodes} value={nodes.length} icon={Server} />
-            <StatsCard title={t.tailscaleConnected} value={tailscaleCount} icon={Network} />
-            <StatsCard title={t.cfTunnelActive} value={cfCount} icon={Globe} />
-            <StatsCard title={t.newThisWeek} value={recentNodes.length} icon={CalendarPlus} />
+            <StatsCard title={t('totalNodes')} value={nodes.length} icon={Server} />
+            <StatsCard title={t('tailscaleConnected')} value={tailscaleCount} icon={Network} />
+            <StatsCard title={t('cfTunnelActive')} value={cfCount} icon={Globe} />
+            <StatsCard title={t('newThisWeek')} value={recentNodes.length} icon={CalendarPlus} />
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>{t.recentlyRegistered}</CardTitle>
+              <CardTitle>{t('recentlyRegistered')}</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               {recentNodes.length === 0 ? (
-                <p className="p-6 text-sm text-muted-foreground">{t.noNodesThisWeek}</p>
+                <p className="p-6 text-sm text-muted-foreground">{t('noNodesThisWeek')}</p>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{t.colHostname}</TableHead>
-                      <TableHead>{t.colLocation}</TableHead>
-                      <TableHead>{t.colTailscaleIp}</TableHead>
-                      <TableHead>{t.colRegisteredAt}</TableHead>
-                      <TableHead>{t.colMac}</TableHead>
+                      <TableHead>{tNodes('colHostname')}</TableHead>
+                      <TableHead>{tNodes('colLocation')}</TableHead>
+                      <TableHead>{tNodes('colTailscaleIp')}</TableHead>
+                      <TableHead>{tNodes('colRegisteredAt')}</TableHead>
+                      <TableHead>{tNodes('colMac')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {recentNodes.map((n) => (
                       <TableRow key={n.mac}>
-                        <TableCell className="font-medium">{n.hostname || t.noData}</TableCell>
-                        <TableCell>{n.location || t.noData}</TableCell>
-                        <TableCell className="font-mono text-xs">{n.tailscale_ip || t.noData}</TableCell>
-                        <TableCell>{formatDate(n.registered_at)}</TableCell>
+                        <TableCell className="font-medium">{n.hostname || tCommon('noData')}</TableCell>
+                        <TableCell>{n.location || tCommon('noData')}</TableCell>
+                        <TableCell className="font-mono text-xs">{n.tailscale_ip || tCommon('noData')}</TableCell>
+                        <TableCell>{formatDate(n.registered_at, locale, tCommon('noData'))}</TableCell>
                         <TableCell className="font-mono text-xs">{n.mac}</TableCell>
                       </TableRow>
                     ))}

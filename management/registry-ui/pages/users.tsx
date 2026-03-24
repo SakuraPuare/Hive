@@ -39,7 +39,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { RefreshCw, Plus, Trash2, KeyRound, UserCog } from 'lucide-react';
-import { t } from '@/lib/i18n';
+import { useTranslations } from 'next-intl';
 
 function formatDate(s: string) {
   const d = new Date(s);
@@ -49,6 +49,10 @@ function formatDate(s: string) {
 
 export default function UsersPage() {
   const router = useRouter();
+  const t = useTranslations('users');
+  const tCommon = useTranslations('common');
+  const tNodes = useTranslations('nodes');
+  const tAuth = useTranslations('auth');
   const { user: currentUser, loading: authLoading } = useCurrentUser();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
@@ -56,26 +60,22 @@ export default function UsersPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // 创建用户弹窗
   const [createOpen, setCreateOpen] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('viewer');
   const [creating, setCreating] = useState(false);
 
-  // 改密码弹窗
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pwdTarget, setPwdTarget] = useState<AdminUser | null>(null);
   const [newPwd, setNewPwd] = useState('');
   const [savingPwd, setSavingPwd] = useState(false);
 
-  // 编辑角色弹窗
   const [rolesOpen, setRolesOpen] = useState(false);
   const [rolesTarget, setRolesTarget] = useState<AdminUser | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [savingRoles, setSavingRoles] = useState(false);
 
-  // 权限保护
   useEffect(() => {
     if (!authLoading && currentUser && !currentUser.can('user:read')) {
       router.replace('/dashboard');
@@ -90,7 +90,7 @@ export default function UsersPage() {
       setUsers(userList);
       setAllRoles(roleList);
     } catch (e: any) {
-      setError(e?.error || e?.message || '加载失败');
+      setError(e?.error || e?.message || tCommon('loading'));
     } finally {
       setLoading(false);
     }
@@ -109,29 +109,29 @@ export default function UsersPage() {
     setSuccess('');
     try {
       await createUser(newUsername, newPassword, newRole);
-      setSuccess(t.userCreated);
+      setSuccess(t('userCreated'));
       setCreateOpen(false);
       setNewUsername('');
       setNewPassword('');
       setNewRole('viewer');
       await loadData();
     } catch (e: any) {
-      setError(e?.error || e?.message || t.userCreateFailed);
+      setError(e?.error || e?.message || t('userCreateFailed'));
     } finally {
       setCreating(false);
     }
   }
 
   async function handleDelete(u: AdminUser) {
-    if (!window.confirm(t.userDeleteConfirm(u.username))) return;
+    if (!window.confirm(t('userDeleteConfirm', { username: u.username }))) return;
     setError('');
     setSuccess('');
     try {
       await deleteUser(u.id);
-      setSuccess(t.userDeleted);
+      setSuccess(t('userDeleted'));
       await loadData();
     } catch (e: any) {
-      setError(e?.error || e?.message || t.userDeleteFailed);
+      setError(e?.error || e?.message || t('userDeleteFailed'));
     }
   }
 
@@ -148,10 +148,10 @@ export default function UsersPage() {
     setSuccess('');
     try {
       await changePassword(pwdTarget.id, newPwd);
-      setSuccess(t.passwordChanged);
+      setSuccess(t('passwordChanged'));
       setPwdOpen(false);
     } catch (e: any) {
-      setError(e?.error || e?.message || t.passwordChangeFailed);
+      setError(e?.error || e?.message || t('passwordChangeFailed'));
     } finally {
       setSavingPwd(false);
     }
@@ -176,11 +176,11 @@ export default function UsersPage() {
     setSuccess('');
     try {
       await setUserRoles(rolesTarget.id, selectedRoles);
-      setSuccess(t.rolesSaved);
+      setSuccess(t('rolesSaved'));
       setRolesOpen(false);
       await loadData();
     } catch (e: any) {
-      setError(e?.error || e?.message || t.rolesSaveFailed);
+      setError(e?.error || e?.message || t('rolesSaveFailed'));
     } finally {
       setSavingRoles(false);
     }
@@ -194,16 +194,16 @@ export default function UsersPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t.userManagement}</h1>
+        <h1 className="text-xl font-semibold">{t('userManagement')}</h1>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
             <RefreshCw className="mr-1 h-4 w-4" />
-            {t.refresh}
+            {tCommon('refresh')}
           </Button>
           {canWrite && (
             <Button size="sm" onClick={() => { setCreateOpen(true); setError(''); setSuccess(''); }}>
               <Plus className="mr-1 h-4 w-4" />
-              {t.createUser}
+              {t('createUser')}
             </Button>
           )}
         </div>
@@ -218,23 +218,23 @@ export default function UsersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-12">ID</TableHead>
-                <TableHead>{t.username}</TableHead>
-                <TableHead>{t.role}</TableHead>
-                <TableHead>{t.colRegisteredAt}</TableHead>
-                <TableHead className="text-right">{t.colActions}</TableHead>
+                <TableHead>{tAuth('username')}</TableHead>
+                <TableHead>{t('role')}</TableHead>
+                <TableHead>{tNodes('colRegisteredAt')}</TableHead>
+                <TableHead className="text-right">{tNodes('colActions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    {t.loading}
+                    {tCommon('loading')}
                   </TableCell>
                 </TableRow>
               ) : users.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    {t.noData}
+                    {tCommon('noData')}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -256,10 +256,10 @@ export default function UsersPage() {
                       <div className="flex justify-end gap-1">
                         {canWrite && (
                           <>
-                            <Button variant="ghost" size="sm" onClick={() => openRoles(u)} title={t.editRoles}>
+                            <Button variant="ghost" size="sm" onClick={() => openRoles(u)} title={t('editRoles')}>
                               <UserCog className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => openPwd(u)} title={t.changePassword}>
+                            <Button variant="ghost" size="sm" onClick={() => openPwd(u)} title={t('changePassword')}>
                               <KeyRound className="h-4 w-4" />
                             </Button>
                           </>
@@ -288,19 +288,19 @@ export default function UsersPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t.createUser}</DialogTitle>
+            <DialogTitle>{t('createUser')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1">
-              <Label>{t.username}</Label>
+              <Label>{tAuth('username')}</Label>
               <Input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="username" />
             </div>
             <div className="space-y-1">
-              <Label>{t.password}</Label>
+              <Label>{tAuth('password')}</Label>
               <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" />
             </div>
             <div className="space-y-1">
-              <Label>{t.role}</Label>
+              <Label>{t('role')}</Label>
               <Select value={newRole} onValueChange={setNewRole}>
                 <SelectTrigger>
                   <SelectValue />
@@ -314,9 +314,9 @@ export default function UsersPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t.cancel}</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{tCommon('cancel')}</Button>
             <Button onClick={handleCreate} disabled={creating || !newUsername || !newPassword}>
-              {creating ? t.saving : t.save}
+              {creating ? tCommon('saving') : tCommon('save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -326,18 +326,18 @@ export default function UsersPage() {
       <Dialog open={pwdOpen} onOpenChange={setPwdOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t.changePassword}{pwdTarget ? `：${pwdTarget.username}` : ''}</DialogTitle>
+            <DialogTitle>{t('changePassword')}{pwdTarget ? `：${pwdTarget.username}` : ''}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1">
-              <Label>{t.newPassword}</Label>
+              <Label>{t('newPassword')}</Label>
               <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="••••••••" />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPwdOpen(false)}>{t.cancel}</Button>
+            <Button variant="outline" onClick={() => setPwdOpen(false)}>{tCommon('cancel')}</Button>
             <Button onClick={handleChangePassword} disabled={savingPwd || !newPwd}>
-              {savingPwd ? t.saving : t.save}
+              {savingPwd ? tCommon('saving') : tCommon('save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -347,7 +347,7 @@ export default function UsersPage() {
       <Dialog open={rolesOpen} onOpenChange={setRolesOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t.editRoles}{rolesTarget ? `：${rolesTarget.username}` : ''}</DialogTitle>
+            <DialogTitle>{t('editRoles')}{rolesTarget ? `：${rolesTarget.username}` : ''}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2 py-2">
             {allRoles.map((r) => (
@@ -364,9 +364,9 @@ export default function UsersPage() {
             ))}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRolesOpen(false)}>{t.cancel}</Button>
+            <Button variant="outline" onClick={() => setRolesOpen(false)}>{tCommon('cancel')}</Button>
             <Button onClick={handleSaveRoles} disabled={savingRoles || selectedRoles.length === 0}>
-              {savingRoles ? t.saving : t.save}
+              {savingRoles ? tCommon('saving') : tCommon('save')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { t } from '@/lib/i18n';
+import { useTranslations } from 'next-intl';
 
 export default function Login() {
+  const t = useTranslations('auth');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -16,8 +17,8 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl">{t.hiveRegistry}</CardTitle>
-          <CardDescription>{t.adminLogin}</CardDescription>
+          <CardTitle className="text-2xl">{t('hiveRegistry')}</CardTitle>
+          <CardDescription>{t('adminLogin')}</CardDescription>
         </CardHeader>
         <CardContent>
           <form
@@ -29,7 +30,7 @@ export default function Login() {
                 await adminLogin(username, password);
                 window.location.href = '/dashboard';
               } catch (e: any) {
-                setError(e?.error || t.loginFailed);
+                setError(e?.error || t('loginFailed'));
               } finally {
                 setLoading(false);
               }
@@ -37,7 +38,7 @@ export default function Login() {
           >
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="username">{t.username}</Label>
+                <Label htmlFor="username">{t('username')}</Label>
                 <Input
                   id="username"
                   value={username}
@@ -47,7 +48,7 @@ export default function Login() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="password">{t.password}</Label>
+                <Label htmlFor="password">{t('password')}</Label>
                 <Input
                   id="password"
                   type="password"
@@ -59,7 +60,7 @@ export default function Login() {
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? t.signingIn : t.login}
+                {loading ? t('signingIn') : t('login')}
               </Button>
             </div>
           </form>

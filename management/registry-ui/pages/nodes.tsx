@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/table';
 import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
 import { RefreshCw, Trash2, Settings2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { t } from '@/lib/i18n';
+import { useTranslations } from 'next-intl';
 import {
   useReactTable,
   getCoreRowModel,
@@ -33,8 +33,8 @@ function formatMac(mac: string | undefined | null) {
   return mac.match(/.{2}/g)!.join(':');
 }
 
-function formatDate(s: string | undefined | null) {
-  if (!s) return t.noData;
+function formatDate(s: string | undefined | null, noData: string) {
+  if (!s) return noData;
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
@@ -46,12 +46,6 @@ function getNodeStatus(n: main_Node): 'online' | 'offline' | 'pending' {
   const diff = Date.now() - new Date(n.last_seen).getTime();
   return diff < 15 * 60 * 1000 ? 'online' : 'offline';
 }
-
-const statusLabel: Record<string, string> = {
-  online: t.statusOnline,
-  offline: t.statusOffline,
-  pending: t.statusPending,
-};
 
 const statusClass: Record<string, string> = {
   online: 'text-green-600 dark:text-green-400',
@@ -79,13 +73,24 @@ function loadVisibility(): VisibilityState {
 
 export default function Nodes() {
   const router = useRouter();
+  const t = useTranslations('nodes');
+  const tCommon = useTranslations('common');
+  const tNav = useTranslations('nav');
+
   const [nodes, setNodes] = useState<main_Node[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sorting, setSorting] = useState<SortingState>([{ id: 'last_seen', desc: true }]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(loadVisibility);
+  // 初始用默认值保证 SSR 与首次客户端渲染一致，mount 后再从 localStorage 同步
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY);
   const [showColMenu, setShowColMenu] = useState(false);
+
+  const statusLabel: Record<string, string> = {
+    online: t('statusOnline'),
+    offline: t('statusOffline'),
+    pending: t('statusPending'),
+  };
 
   async function loadNodes() {
     setLoading(true);
@@ -94,13 +99,18 @@ export default function Nodes() {
       const list = await listNodes();
       setNodes(list);
     } catch (e: any) {
-      setError(e?.error || e?.message || t.loadFailed);
+      setError(e?.error || e?.message || t('loadFailed'));
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => { loadNodes(); }, []);
+
+  // mount 后从 localStorage 恢复列可见性（避免 SSR hydration 不一致）
+  useEffect(() => {
+    setColumnVisibility(loadVisibility());
+  }, []);
 
   useEffect(() => {
     try { localStorage.setItem(VISIBILITY_KEY, JSON.stringify(columnVisibility)); } catch {}
@@ -120,12 +130,12 @@ export default function Nodes() {
   }, [nodes, searchQuery]);
 
   async function handleDelete(mac: string) {
-    if (!window.confirm(t.deleteConfirm(mac))) return;
+    if (!window.confirm(t('deleteConfirm', { mac }))) return;
     try {
       await deleteNode(mac);
       await loadNodes();
     } catch (e: any) {
-      setError(e?.error || e?.message || t.deleteFailed);
+      setError(e?.error || e?.message || t('deleteFailed'));
     }
   }
 
@@ -133,93 +143,94 @@ export default function Nodes() {
     router.push('/nodes/detail?mac=' + encodeURIComponent(mac));
   }
 
+  const noData = tCommon('noData');
+
   const columns = useMemo(() => [
     columnHelper.accessor('location', {
-      header: t.colLocation,
-      cell: (info) => info.getValue() || t.noData,
+      header: t('colLocation'),
+      cell: (info) => info.getValue() || noData,
     }),
     columnHelper.accessor('hostname', {
-      header: t.colHostname,
-      cell: (info) => <span className="font-medium">{info.getValue() || t.noData}</span>,
+      header: t('colHostname'),
+      cell: (info) => <span className="font-medium">{info.getValue() || noData}</span>,
     }),
     columnHelper.accessor('tailscale_ip', {
-      header: t.colTailscaleIp,
-      cell: (info) => <span className="font-mono text-xs">{info.getValue() || t.noData}</span>,
+      header: t('colTailscaleIp'),
+      cell: (info) => <span className="font-mono text-xs">{info.getValue() || noData}</span>,
     }),
     columnHelper.accessor('easytier_ip', {
-      header: t.colEasytierIp,
-      cell: (info) => <span className="font-mono text-xs">{info.getValue() || t.noData}</span>,
+      header: t('colEasytierIp'),
+      cell: (info) => <span className="font-mono text-xs">{info.getValue() || noData}</span>,
     }),
     columnHelper.accessor('frp_port', {
       id: 'frp_port',
-      header: t.colFrpPort,
-      cell: (info) => info.getValue() || t.noData,
+      header: t('colFrpPort'),
+      cell: (info) => info.getValue() || noData,
       enableSorting: false,
     }),
     columnHelper.accessor('mac', {
-      header: t.colMac,
+      header: t('colMac'),
       cell: (info) => <span className="font-mono text-xs">{formatMac(info.getValue())}</span>,
       enableSorting: false,
     }),
     columnHelper.accessor('registered_at', {
-      header: t.colRegisteredAt,
-      cell: (info) => formatDate(info.getValue()),
+      header: t('colRegisteredAt'),
+      cell: (info) => formatDate(info.getValue(), noData),
       sortingFn: 'datetime',
     }),
     columnHelper.accessor('last_seen', {
-      header: t.colLastSeen,
-      cell: (info) => formatDate(info.getValue()),
+      header: t('colLastSeen'),
+      cell: (info) => formatDate(info.getValue(), noData),
       sortingFn: 'datetime',
     }),
     columnHelper.display({
       id: 'status',
-      header: t.colStatus,
+      header: t('colStatus'),
       cell: ({ row }) => {
         const s = getNodeStatus(row.original);
         return <span className={`text-xs font-medium ${statusClass[s]}`}>{statusLabel[s]}</span>;
       },
       enableSorting: false,
     }),
-    // 扩展列（默认隐藏）
     columnHelper.accessor('cf_url', {
       id: 'cf_url',
-      header: t.colCfUrl,
+      header: t('colCfUrl'),
       cell: (info) => {
         const v = info.getValue();
-        if (!v) return t.noData;
+        if (!v) return noData;
         return <span className="max-w-[120px] truncate block" title={v}>{v}</span>;
       },
       enableSorting: false,
     }),
     columnHelper.accessor('tunnel_id', {
       id: 'tunnel_id',
-      header: t.colTunnelId,
+      header: t('colTunnelId'),
       cell: (info) => {
         const v = info.getValue();
-        if (!v) return t.noData;
+        if (!v) return noData;
         return <span className="max-w-[80px] truncate block font-mono text-xs" title={v}>{v}</span>;
       },
       enableSorting: false,
     }),
     columnHelper.accessor('mac6', {
       id: 'mac6',
-      header: t.colMac6,
-      cell: (info) => <span className="font-mono text-xs">{formatMac(info.getValue()) || t.noData}</span>,
+      header: t('colMac6'),
+      cell: (info) => <span className="font-mono text-xs">{formatMac(info.getValue()) || noData}</span>,
       enableSorting: false,
     }),
     columnHelper.accessor('note', {
       id: 'note',
-      header: t.colNote,
+      header: t('colNote'),
       cell: (info) => {
         const v = info.getValue();
-        if (!v) return t.noData;
+        if (!v) return noData;
         return <span className="max-w-[100px] truncate block" title={v}>{v}</span>;
       },
       enableSorting: false,
     }),
     columnHelper.display({
       id: 'actions',
-      header: () => <span className="sr-only">{t.colActions}</span>,
+      header: () => <span className="sr-only">{t('colActions')}</span>,
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
           <NodeEditDialog node={row.original} onSave={loadNodes} />
@@ -235,7 +246,8 @@ export default function Nodes() {
       ),
       enableSorting: false,
     }),
-  ], []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [noData, statusLabel]);
 
   const table = useReactTable({
     data: filteredNodes,
@@ -248,22 +260,22 @@ export default function Nodes() {
   });
 
   const toggleCols = [
-    { id: 'frp_port', label: t.colFrpPort },
-    { id: 'cf_url', label: t.colCfUrl },
-    { id: 'tunnel_id', label: t.colTunnelId },
-    { id: 'mac6', label: t.colMac6 },
-    { id: 'note', label: t.colNote },
+    { id: 'frp_port', label: t('colFrpPort') },
+    { id: 'cf_url', label: t('colCfUrl') },
+    { id: 'tunnel_id', label: t('colTunnelId') },
+    { id: 'mac6', label: t('colMac6') },
+    { id: 'note', label: t('colNote') },
   ];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{t.nodes}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{tNav('nodes')}</h1>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Button variant="outline" size="sm" onClick={() => setShowColMenu((v) => !v)}>
               <Settings2 className="mr-2 h-4 w-4" />
-              {t.colSettings}
+              {t('colSettings')}
             </Button>
             {showColMenu && (
               <div className="absolute right-0 mt-1 z-50 bg-popover border rounded-md shadow-md p-3 min-w-[140px] space-y-2">
@@ -284,13 +296,13 @@ export default function Nodes() {
           </div>
           <Button variant="outline" onClick={loadNodes} disabled={loading} size="sm">
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            {t.refresh}
+            {tCommon('refresh')}
           </Button>
         </div>
       </div>
 
       <Input
-        placeholder={t.searchPlaceholder}
+        placeholder={t('searchPlaceholder')}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         className="max-w-sm"
@@ -333,13 +345,13 @@ export default function Nodes() {
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={table.getVisibleLeafColumns().length} className="text-center text-muted-foreground py-8">
-                    {t.loading}
+                    {tCommon('loading')}
                   </TableCell>
                 </TableRow>
               ) : table.getRowModel().rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={table.getVisibleLeafColumns().length} className="text-center text-muted-foreground py-8">
-                    {searchQuery ? t.noMatchingNodes : t.noNodesYet}
+                    {searchQuery ? t('noMatchingNodes') : t('noNodesYet')}
                   </TableCell>
                 </TableRow>
               ) : (
