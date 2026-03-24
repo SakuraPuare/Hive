@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // ── 认证 ─────────────────────────────────────────────────────────────────────
@@ -22,6 +24,7 @@ var apiSecret = getenv("API_SECRET", "")
 
 const adminCookieName = "hive_admin_session"
 
+// adminUser/adminPass 仅用于 bootstrapSuperadmin，登录验证走数据库
 var adminUser = getenv("ADMIN_USER", "admin")
 var adminPass = getenv("ADMIN_PASS", "")
 var adminSessionSecret = getenv("ADMIN_SESSION_SECRET", "")
@@ -48,49 +51,87 @@ type PrometheusTarget struct {
 	Labels  map[string]string `json:"labels"`
 }
 
-func adminSessionValid(r *http.Request) bool {
+// makeSessionValue 生成签名 cookie 值：{expUnix}.{username}.{role}.{sig}
+// sig = base64url(HMAC-SHA256("{expUnix}.{username}.{role}"))
+func makeSessionValue(exp int64, username, role string) string {
+	expStr := strconv.FormatInt(exp, 10)
+	payload := expStr + "." + username + "." + role
+	mac := hmac.New(sha256.New, []byte(adminSessionSecret))
+	_, _ = mac.Write([]byte(payload))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return payload + "." + sig
+}
+
+// parseSession 解析并校验 session cookie，返回 (username, role, valid)。
+// 格式：{expUnix}.{username}.{role}.{sig}
+func parseSession(r *http.Request) (username, role string, valid bool) {
 	if adminSessionSecret == "" {
-		return false
+		return "", "", false
 	}
 	c, err := r.Cookie(adminCookieName)
 	if err != nil {
-		return false
+		return "", "", false
 	}
-	// 格式：{expUnix}.{base64url(hmac_sha256(expUnix))}
-	parts := strings.SplitN(c.Value, ".", 2)
-	if len(parts) != 2 {
-		return false
+	// 从右侧分割出 sig（最后一段），前三段合为 payload
+	lastDot := strings.LastIndex(c.Value, ".")
+	if lastDot < 0 {
+		return "", "", false
 	}
-	expUnixStr := parts[0]
-	gotSig := parts[1]
+	payload := c.Value[:lastDot]
+	gotSig := c.Value[lastDot+1:]
+
+	parts := strings.SplitN(payload, ".", 3)
+	if len(parts) != 3 {
+		return "", "", false
+	}
+	expUnixStr, uname, urole := parts[0], parts[1], parts[2]
 
 	expUnix, err := strconv.ParseInt(expUnixStr, 10, 64)
-	if err != nil {
-		return false
-	}
-	if time.Now().UTC().Unix() > expUnix {
-		return false
+	if err != nil || time.Now().UTC().Unix() > expUnix {
+		return "", "", false
 	}
 
 	mac := hmac.New(sha256.New, []byte(adminSessionSecret))
-	_, _ = mac.Write([]byte(expUnixStr))
+	_, _ = mac.Write([]byte(payload))
 	expectedSig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	return subtle.ConstantTimeCompare([]byte(gotSig), []byte(expectedSig)) == 1
+	if subtle.ConstantTimeCompare([]byte(gotSig), []byte(expectedSig)) != 1 {
+		return "", "", false
+	}
+	return uname, urole, true
 }
 
 func isSecureRequest(r *http.Request) bool {
 	if r.TLS != nil {
 		return true
 	}
-	// nginx 通常会转发 X-Forwarded-Proto，便于在 upstream 侧正确设置 Secure cookie
 	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
-// requireAuth 校验管理员会话或旧的 Authorization: Bearer <token> / ?token= 查询参数。
-// - cookie 会话：由 ADMIN_SESSION_SECRET 签名，优先校验
-// - API_SECRET：兼容旧部署（留空则开发放行）
+// requireRole 返回中间件，要求请求方持有有效 session 且角色在允许列表内。
+func requireRole(roles ...string) func(http.HandlerFunc) http.HandlerFunc {
+	allowed := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		allowed[r] = true
+	}
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			_, role, ok := parseSession(r)
+			if !ok {
+				jsonErr(w, http.StatusUnauthorized, "unauthorized: invalid or missing session")
+				return
+			}
+			if !allowed[role] {
+				jsonErr(w, http.StatusForbidden, "forbidden: insufficient role")
+				return
+			}
+			next(w, r)
+		}
+	}
+}
+
+// requireAuth 保留用于节点注册（Bearer token 兼容），同时也接受有效 session。
 func requireAuth(w http.ResponseWriter, r *http.Request) bool {
-	if adminSessionValid(r) {
+	if _, _, ok := parseSession(r); ok {
 		return true
 	}
 	if apiSecret == "" {
@@ -138,18 +179,32 @@ func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusInternalServerError, "server misconfig: ADMIN_SESSION_SECRET is empty")
 		return
 	}
-	if req.Username != adminUser || req.Password != adminPass {
+
+	ip := getClientIP(r)
+
+	// 从数据库验证用户
+	var id uint
+	var passwordHash, role string
+	err := db.QueryRow(
+		"SELECT id, password_hash, role FROM users WHERE username=?", req.Username,
+	).Scan(&id, &passwordHash, &role)
+	if err == sql.ErrNoRows {
+		writeAuditLog(req.Username, "login_fail", "user not found", ip)
+		jsonErr(w, http.StatusUnauthorized, "unauthorized: invalid credentials")
+		return
+	}
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)) != nil {
+		writeAuditLog(req.Username, "login_fail", "wrong password", ip)
 		jsonErr(w, http.StatusUnauthorized, "unauthorized: invalid credentials")
 		return
 	}
 
 	expUnix := time.Now().UTC().Add(adminSessionTTL).Unix()
-	expUnixStr := strconv.FormatInt(expUnix, 10)
-
-	mac := hmac.New(sha256.New, []byte(adminSessionSecret))
-	_, _ = mac.Write([]byte(expUnixStr))
-	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	token := expUnixStr + "." + sig
+	token := makeSessionValue(expUnix, req.Username, role)
 
 	secure := isSecureRequest(r)
 	http.SetCookie(w, &http.Cookie{
@@ -162,6 +217,7 @@ func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   int(adminSessionTTL.Seconds()),
 	})
 
+	writeAuditLog(req.Username, "login_success", "role: "+role, ip)
 	jsonOK(w, StatusResponse{Status: "ok"})
 }
 
@@ -175,6 +231,9 @@ func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 // @Router /admin/logout [post]
 // @ID AdminLogout
 func handleAdminLogout(w http.ResponseWriter, r *http.Request) {
+	if username, _, ok := parseSession(r); ok {
+		writeAuditLog(username, "logout", "", getClientIP(r))
+	}
 	secure := isSecureRequest(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     adminCookieName,
@@ -242,9 +301,6 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 
-	// INSERT ... ON DUPLICATE KEY UPDATE（MySQL 8.0.20+ / MySQL 9 row-alias 语法）：
-	//   - location, note, registered_at 不覆盖（保留管理员标注和首次注册时间）
-	//   - 其余字段随节点上报更新
 	_, err := db.Exec(`
 		INSERT INTO nodes
 			(mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip,
@@ -304,9 +360,6 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 // @Router /nodes [get]
 // @ID NodesList
 func handleListNodes(w http.ResponseWriter, r *http.Request) {
-	if !requireAuth(w, r) {
-		return
-	}
 	rows, err := db.Query("SELECT " + nodeCols + " FROM nodes ORDER BY registered_at")
 	if err != nil {
 		jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
@@ -339,9 +392,6 @@ func handleListNodes(w http.ResponseWriter, r *http.Request) {
 // @Router /nodes/{mac} [get]
 // @ID NodeGet
 func handleGetNode(w http.ResponseWriter, r *http.Request) {
-	if !requireAuth(w, r) {
-		return
-	}
 	mac := r.PathValue("mac")
 	row := db.QueryRow("SELECT "+nodeCols+" FROM nodes WHERE mac=?", mac)
 	n, err := scanNodeRow(row)
@@ -358,7 +408,7 @@ func handleGetNode(w http.ResponseWriter, r *http.Request) {
 
 // ── 节点管理 ──────────────────────────────────────────────────────────────────
 
-// PATCH /nodes/{mac}  (需要认证)
+// PATCH /nodes/{mac}
 // 允许更新 location、note、tailscale_ip
 //
 // @Summary Update node (partial)
@@ -374,9 +424,6 @@ func handleGetNode(w http.ResponseWriter, r *http.Request) {
 // @Router /nodes/{mac} [patch]
 // @ID NodeUpdate
 func handleUpdateNode(w http.ResponseWriter, r *http.Request) {
-	if !requireAuth(w, r) {
-		return
-	}
 	mac := r.PathValue("mac")
 
 	var req UpdateRequest
@@ -420,7 +467,7 @@ func handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, StatusResponse{Status: "ok"})
 }
 
-// DELETE /nodes/{mac}  (需要认证)
+// DELETE /nodes/{mac}
 //
 // @Summary Delete node
 // @Tags nodes
@@ -433,9 +480,6 @@ func handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 // @Router /nodes/{mac} [delete]
 // @ID NodeDelete
 func handleDeleteNode(w http.ResponseWriter, r *http.Request) {
-	if !requireAuth(w, r) {
-		return
-	}
 	mac := r.PathValue("mac")
 
 	// 删除前先查端口，用于后续关闭防火墙规则
@@ -470,9 +514,6 @@ func handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 // ── Prometheus ────────────────────────────────────────────────────────────────
 
 // GET /prometheus-targets  →  Prometheus file_sd 格式
-// cron 每分钟调用（直连 Go 服务，无需经过 nginx）：
-//
-//	curl -sf http://127.0.0.1:8080/prometheus-targets > /etc/prometheus/targets/nodes.json
 //
 // @Summary Prometheus file_sd targets
 // @Tags prometheus
@@ -483,9 +524,6 @@ func handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 // @Router /prometheus-targets [get]
 // @ID PrometheusTargets
 func handlePrometheusTargets(w http.ResponseWriter, r *http.Request) {
-	if !requireAuth(w, r) {
-		return
-	}
 	rows, err := db.Query(`
 		SELECT hostname, tailscale_ip, easytier_ip, cf_url, location, mac6
 		FROM nodes
@@ -507,7 +545,7 @@ func handlePrometheusTargets(w http.ResponseWriter, r *http.Request) {
 		targets = append(targets, PrometheusTarget{
 			Targets: []string{hostname + ":9100"},
 			Labels: map[string]string{
-				"hostname": hostname, // 由 prometheus.yml relabel 重命名为 instance
+				"hostname": hostname,
 				"cf_url":   cfURL,
 				"location": location,
 				"mac6":     mac6,
@@ -550,9 +588,6 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 // @Router /labels [get]
 // @ID LabelsPrint
 func handleLabels(w http.ResponseWriter, r *http.Request) {
-	if !requireAuth(w, r) {
-		return
-	}
 	rows, err := db.Query(
 		"SELECT mac6, cf_url, location, registered_at FROM nodes ORDER BY registered_at",
 	)
@@ -620,8 +655,10 @@ func handleLabels(w http.ResponseWriter, r *http.Request) {
 // @Router / [get]
 // @ID Dashboard
 func handleIndex(w http.ResponseWriter, r *http.Request) {
-	if !requireAuth(w, r) {
-		return
+	if _, _, ok := parseSession(r); !ok {
+		if !requireAuth(w, r) {
+			return
+		}
 	}
 	var total, online int
 	db.QueryRow("SELECT COUNT(*) FROM nodes").Scan(&total)
