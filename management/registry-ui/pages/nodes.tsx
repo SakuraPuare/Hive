@@ -15,12 +15,13 @@ import {
 } from '@/components/ui/table';
 import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
 import { RefreshCw, Trash2 } from 'lucide-react';
+import { t } from '@/lib/i18n';
 
 function formatDate(s: string | undefined | null) {
-  if (!s) return '—';
+  if (!s) return t.noData;
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
 export default function Nodes() {
@@ -37,7 +38,7 @@ export default function Nodes() {
       const list = await listNodes();
       setNodes(list);
     } catch (e: any) {
-      setError(e?.error || e?.message || 'Failed to load nodes');
+      setError(e?.error || e?.message || t.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -62,27 +63,31 @@ export default function Nodes() {
   }, [nodes, searchQuery]);
 
   async function handleDelete(mac: string) {
-    if (!window.confirm(`Delete node ${mac}?`)) return;
+    if (!window.confirm(t.deleteConfirm(mac))) return;
     try {
       await deleteNode(mac);
       await loadNodes();
     } catch (e: any) {
-      setError(e?.error || e?.message || 'Delete failed');
+      setError(e?.error || e?.message || t.deleteFailed);
     }
+  }
+
+  function goDetail(mac: string) {
+    router.push('/nodes/detail?mac=' + encodeURIComponent(mac));
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Nodes</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t.nodes}</h1>
         <Button variant="outline" onClick={loadNodes} disabled={loading} size="sm">
           <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
+          {t.refresh}
         </Button>
       </div>
 
       <Input
-        placeholder="Search by hostname, location, IP, or MAC…"
+        placeholder={t.searchPlaceholder}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         className="max-w-sm"
@@ -97,75 +102,44 @@ export default function Nodes() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Location</TableHead>
-                <TableHead>Hostname</TableHead>
-                <TableHead>Tailscale IP</TableHead>
-                <TableHead>MAC</TableHead>
-                <TableHead>Last Seen</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t.colLocation}</TableHead>
+                <TableHead>{t.colHostname}</TableHead>
+                <TableHead>{t.colTailscaleIp}</TableHead>
+                <TableHead>{t.colEasytierIp}</TableHead>
+                <TableHead>{t.colMac}</TableHead>
+                <TableHead>{t.colLastSeen}</TableHead>
+                <TableHead className="text-right">{t.colActions}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    Loading…
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    {t.loading}
                   </TableCell>
                 </TableRow>
               ) : filteredNodes.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    {searchQuery ? 'No matching nodes.' : 'No nodes registered yet.'}
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    {searchQuery ? t.noMatchingNodes : t.noNodesYet}
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredNodes.map((n) => (
                   <TableRow key={n.mac} className="cursor-pointer">
-                    <TableCell
-                      onClick={() =>
-                        router.push('/nodes/detail?mac=' + encodeURIComponent(n.mac))
-                      }
-                    >
-                      {n.location || '—'}
-                    </TableCell>
-                    <TableCell
-                      className="font-medium"
-                      onClick={() =>
-                        router.push('/nodes/detail?mac=' + encodeURIComponent(n.mac))
-                      }
-                    >
-                      {n.hostname}
-                    </TableCell>
-                    <TableCell
-                      className="font-mono text-xs"
-                      onClick={() =>
-                        router.push('/nodes/detail?mac=' + encodeURIComponent(n.mac))
-                      }
-                    >
-                      {n.tailscale_ip || '—'}
-                    </TableCell>
-                    <TableCell
-                      className="font-mono text-xs"
-                      onClick={() =>
-                        router.push('/nodes/detail?mac=' + encodeURIComponent(n.mac))
-                      }
-                    >
-                      {n.mac}
-                    </TableCell>
-                    <TableCell
-                      onClick={() =>
-                        router.push('/nodes/detail?mac=' + encodeURIComponent(n.mac))
-                      }
-                    >
-                      {formatDate(n.last_seen)}
-                    </TableCell>
+                    <TableCell onClick={() => goDetail(n.mac!)}>{n.location || t.noData}</TableCell>
+                    <TableCell className="font-medium" onClick={() => goDetail(n.mac!)}>{n.hostname || t.noData}</TableCell>
+                    <TableCell className="font-mono text-xs" onClick={() => goDetail(n.mac!)}>{n.tailscale_ip || t.noData}</TableCell>
+                    <TableCell className="font-mono text-xs" onClick={() => goDetail(n.mac!)}>{n.easytier_ip || t.noData}</TableCell>
+                    <TableCell className="font-mono text-xs" onClick={() => goDetail(n.mac!)}>{n.mac}</TableCell>
+                    <TableCell onClick={() => goDetail(n.mac!)}>{formatDate(n.last_seen)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <NodeEditDialog node={n} onSave={loadNodes} />
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDelete(n.mac)}
+                          onClick={() => handleDelete(n.mac!)}
                           className="text-destructive hover:text-destructive"
                         >
                           <Trash2 className="h-4 w-4" />

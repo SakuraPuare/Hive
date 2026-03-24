@@ -1,0 +1,92 @@
+export const t = {
+  // 通用
+  loading: '加载中…',
+  saving: '保存中…',
+  save: '保存',
+  cancel: '取消',
+  back: '返回',
+  refresh: '刷新',
+  delete: '删除',
+  edit: '编辑',
+  download: '下载',
+  preview: '预览',
+  clear: '清除',
+  logout: '退出登录',
+  noData: '—',
+
+  // 认证
+  checkingAuth: '正在验证身份…',
+  login: '登录',
+  signingIn: '登录中…',
+  loginFailed: '登录失败',
+  username: '用户名',
+  password: '密码',
+  adminLogin: '管理员登录',
+  hiveRegistry: 'Hive Registry',
+
+  // 导航
+  dashboard: '概览',
+  nodes: '节点',
+  subscriptions: '订阅',
+
+  // 概览页
+  totalNodes: '节点总数',
+  tailscaleConnected: 'Tailscale 已连接',
+  cfTunnelActive: 'CF 隧道活跃',
+  newThisWeek: '本周新增',
+  recentlyRegistered: '最近注册',
+  noNodesThisWeek: '本周暂无新节点。',
+
+  // 节点列表
+  searchPlaceholder: '搜索主机名、位置、IP 或 MAC…',
+  noMatchingNodes: '未找到匹配节点。',
+  noNodesYet: '暂无已注册节点。',
+  deleteConfirm: (mac: string) => `确认删除节点 ${mac}？`,
+  deleteFailed: '删除失败',
+  loadFailed: '加载节点失败',
+
+  // 节点表头
+  colLocation: '位置',
+  colHostname: '主机名',
+  colTailscaleIp: 'Tailscale IP',
+  colEasytierIp: 'EasyTier IP',
+  colMac: 'MAC 地址',
+  colLastSeen: '最后在线',
+  colRegisteredAt: '注册时间',
+  colActions: '操作',
+
+  // 节点详情
+  nodeNotFound: '节点未找到',
+  identifiers: '标识信息',
+  macIpv4: 'MAC (IPv4)',
+  macIpv6: 'MAC (IPv6)',
+  hostname: '主机名',
+  location: '位置',
+  note: '备注',
+  network: '网络',
+  tailscaleIp: 'Tailscale IP',
+  easytierIp: 'EasyTier IP',
+  frpPort: 'FRP 端口',
+  cloudflareTunnel: 'Cloudflare 隧道',
+  cfUrl: 'CF 地址',
+  tunnelId: '隧道 ID',
+  xray: 'Xray',
+  xrayUuid: 'UUID',
+  activity: '活动记录',
+  registeredAt: '注册时间',
+  lastSeen: '最后在线',
+  editNode: '编辑节点',
+  saveChanges: '保存更改',
+  saved: '已保存。',
+  updateFailed: '更新失败',
+  locationPlaceholder: '例如：北京机房-1',
+  notePlaceholder: '可选备注',
+
+  // 订阅
+  vless: 'VLESS',
+  vlessDesc: 'Base64 编码的代理订阅',
+  clashMihomo: 'Clash / Mihomo',
+  clashDesc: 'Clash Meta YAML 配置',
+  previewLabel: (type: string) => `预览：${type}`,
+  previewFailed: (type: string) => `预览 ${type} 失败`,
+} as const;
