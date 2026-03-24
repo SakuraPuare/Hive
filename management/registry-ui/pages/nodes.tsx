@@ -1,44 +1,46 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { adminLogout, deleteNode, getHealth, listNodes, patchNode } from '../lib/api';
-import type { main_Node, main_UpdateRequest } from '../src/generated/client';
+import { useRouter } from 'next/router';
+import { deleteNode, listNodes } from '@/lib/api';
+import type { main_Node } from '@/src/generated/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
+import { RefreshCw, Trash2 } from 'lucide-react';
 
-function safeStr(v: unknown) {
-  return v === null || v === undefined ? '' : String(v);
+function formatDate(s: string | undefined | null) {
+  if (!s) return '—';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-type Draft = {
-  location: string;
-  note: string;
-  tailscale_ip: string;
-};
-
 export default function Nodes() {
+  const router = useRouter();
   const [nodes, setNodes] = useState<main_Node[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  const [editingMac, setEditingMac] = useState('');
-  const [draft, setDraft] = useState<Draft>({ location: '', note: '', tailscale_ip: '' });
-  const [saving, setSaving] = useState(false);
-
-  const editingNode = useMemo(() => {
-    if (!editingMac) return null;
-    return nodes.find((n) => n.mac === editingMac) || null;
-  }, [editingMac, nodes]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   async function loadNodes() {
     setLoading(true);
     setError('');
-
-    const h = await getHealth();
-    if (!h) {
+    try {
+      const list = await listNodes();
+      setNodes(list);
+    } catch (e: any) {
+      setError(e?.error || e?.message || 'Failed to load nodes');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const list = await listNodes();
-    setNodes(list);
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -46,207 +48,137 @@ export default function Nodes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const filteredNodes = useMemo(() => {
+    if (!searchQuery.trim()) return nodes;
+    const q = searchQuery.toLowerCase();
+    return nodes.filter(
+      (n) =>
+        (n.hostname ?? '').toLowerCase().includes(q) ||
+        (n.location ?? '').toLowerCase().includes(q) ||
+        (n.tailscale_ip ?? '').toLowerCase().includes(q) ||
+        (n.easytier_ip ?? '').toLowerCase().includes(q) ||
+        (n.mac ?? '').toLowerCase().includes(q)
+    );
+  }, [nodes, searchQuery]);
+
+  async function handleDelete(mac: string) {
+    if (!window.confirm(`Delete node ${mac}?`)) return;
+    try {
+      await deleteNode(mac);
+      await loadNodes();
+    } catch (e: any) {
+      setError(e?.error || e?.message || 'Delete failed');
+    }
+  }
+
   return (
-    <div style={{ fontFamily: 'monospace', padding: 24 }}>
-      <h2>Nodes</h2>
-      <div style={{ marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
-        <a href="/subscriptions" style={{ marginRight: 12 }}>
-          Subscriptions
-        </a>
-        <button onClick={() => loadNodes()} disabled={loading} style={{ padding: '6px 10px' }}>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">Nodes</h1>
+        <Button variant="outline" onClick={loadNodes} disabled={loading} size="sm">
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
-        </button>
-        <button
-          onClick={async () => {
-            try {
-              await adminLogout();
-            } finally {
-              window.location.href = '/login';
-            }
-          }}
-          style={{ padding: '6px 10px' }}
-        >
-          Logout
-        </button>
+        </Button>
       </div>
 
-      {loading ? <div>Loading...</div> : null}
-      {error ? <div style={{ color: 'crimson', whiteSpace: 'pre-wrap' }}>{error}</div> : null}
+      <Input
+        placeholder="Search by hostname, location, IP, or MAC…"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className="max-w-sm"
+      />
 
-      {!loading && !error ? (
-        <div style={{ overflowX: 'auto' }}>
-          <table
-            style={{
-              borderCollapse: 'collapse',
-              width: '100%',
-              minWidth: 920,
-              fontSize: 12,
-            }}
-          >
-            <thead>
-              <tr style={{ textAlign: 'left' }}>
-                <th style={{ borderBottom: '1px solid #ddd', padding: '8px 6px' }}>Name</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: '8px 6px' }}>Hostname</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: '8px 6px' }}>Tailscale</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: '8px 6px' }}>Note</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: '8px 6px' }}>MAC</th>
-                <th style={{ borderBottom: '1px solid #ddd', padding: '8px 6px' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {nodes.map((n) => {
-                const isEditing = n.mac === editingMac;
-                return (
-                  <React.Fragment key={n.mac}>
-                    <tr>
-                      <td style={{ borderBottom: '1px solid #eee', padding: '8px 6px' }}>
-                        {safeStr(n.location) || '—'}
-                      </td>
-                      <td style={{ borderBottom: '1px solid #eee', padding: '8px 6px' }}>
-                        {safeStr(n.hostname)}
-                      </td>
-                      <td style={{ borderBottom: '1px solid #eee', padding: '8px 6px' }}>
-                        {safeStr(n.tailscale_ip)}
-                      </td>
-                      <td
-                        style={{
-                          borderBottom: '1px solid #eee',
-                          padding: '8px 6px',
-                          maxWidth: 280,
-                        }}
-                      >
-                        {safeStr(n.note) || '—'}
-                      </td>
-                      <td style={{ borderBottom: '1px solid #eee', padding: '8px 6px' }}>
-                        <code>{safeStr(n.mac)}</code>
-                      </td>
-                      <td style={{ borderBottom: '1px solid #eee', padding: '8px 6px' }}>
-                        {!isEditing ? (
-                          <button
-                            onClick={() => {
-                              setEditingMac(n.mac);
-                              setDraft({
-                                location: safeStr(n.location),
-                                note: safeStr(n.note),
-                                tailscale_ip: safeStr(n.tailscale_ip),
-                              });
-                            }}
-                            style={{ padding: '6px 10px' }}
-                          >
-                            Edit
-                          </button>
-                        ) : (
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <button
-                              disabled={saving}
-                              onClick={async () => {
-                                setSaving(true);
-                                try {
-                                  const patch: Partial<main_UpdateRequest> = {
-                                    location: draft.location,
-                                    note: draft.note,
-                                    tailscale_ip: draft.tailscale_ip,
-                                  };
-                                  await patchNode(editingMac, patch);
-                                  setEditingMac('');
-                                  await loadNodes();
-                                } catch (e: any) {
-                                  setError(e?.error || e?.message || 'Update failed');
-                                } finally {
-                                  setSaving(false);
-                                }
-                              }}
-                              style={{ padding: '6px 10px' }}
-                            >
-                              {saving ? 'Saving...' : 'Save'}
-                            </button>
-                            <button
-                              disabled={saving}
-                              onClick={() => {
-                                setEditingMac('');
-                                setDraft({ location: '', note: '', tailscale_ip: '' });
-                                setError('');
-                              }}
-                              style={{ padding: '6px 10px' }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        )}
+      {error && (
+        <p className="text-sm text-destructive whitespace-pre-wrap">{error}</p>
+      )}
 
-                        <div style={{ marginTop: 6 }}>
-                          <button
-                            disabled={isEditing || saving}
-                            onClick={async () => {
-                              const ok = window.confirm(`Delete node ${n.mac}?`);
-                              if (!ok) return;
-                              try {
-                                await deleteNode(n.mac);
-                                await loadNodes();
-                              } catch (e: any) {
-                                setError(e?.error || e?.message || 'Delete failed');
-                              }
-                            }}
-                            style={{ padding: '6px 10px' }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-
-                    {isEditing ? (
-                      <tr>
-                        <td colSpan={6} style={{ borderBottom: '1px solid #eee', padding: 12 }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 10 }}>
-                            <label>
-                              Location
-                              <input
-                                style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-                                value={draft.location}
-                                onChange={(e) => setDraft((d) => ({ ...d, location: e.target.value }))}
-                              />
-                            </label>
-                            <label>
-                              Note
-                              <input
-                                style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-                                value={draft.note}
-                                onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
-                              />
-                            </label>
-                            <label>
-                              Tailscale IP
-                              <input
-                                style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-                                value={draft.tailscale_ip}
-                                onChange={(e) =>
-                                  setDraft((d) => ({ ...d, tailscale_ip: e.target.value }))
-                                }
-                                placeholder="pending"
-                              />
-                            </label>
-                            <div style={{ color: '#666', fontSize: 12 }}>
-                              {editingNode ? (
-                                <div>
-                                  Registered: {safeStr(editingNode.registered_at)}
-                                  <br />
-                                  LastSeen: {safeStr(editingNode.last_seen)}
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Location</TableHead>
+                <TableHead>Hostname</TableHead>
+                <TableHead>Tailscale IP</TableHead>
+                <TableHead>MAC</TableHead>
+                <TableHead>Last Seen</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    Loading…
+                  </TableCell>
+                </TableRow>
+              ) : filteredNodes.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    {searchQuery ? 'No matching nodes.' : 'No nodes registered yet.'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredNodes.map((n) => (
+                  <TableRow key={n.mac} className="cursor-pointer">
+                    <TableCell
+                      onClick={() =>
+                        router.push('/nodes/detail?mac=' + encodeURIComponent(n.mac))
+                      }
+                    >
+                      {n.location || '—'}
+                    </TableCell>
+                    <TableCell
+                      className="font-medium"
+                      onClick={() =>
+                        router.push('/nodes/detail?mac=' + encodeURIComponent(n.mac))
+                      }
+                    >
+                      {n.hostname}
+                    </TableCell>
+                    <TableCell
+                      className="font-mono text-xs"
+                      onClick={() =>
+                        router.push('/nodes/detail?mac=' + encodeURIComponent(n.mac))
+                      }
+                    >
+                      {n.tailscale_ip || '—'}
+                    </TableCell>
+                    <TableCell
+                      className="font-mono text-xs"
+                      onClick={() =>
+                        router.push('/nodes/detail?mac=' + encodeURIComponent(n.mac))
+                      }
+                    >
+                      {n.mac}
+                    </TableCell>
+                    <TableCell
+                      onClick={() =>
+                        router.push('/nodes/detail?mac=' + encodeURIComponent(n.mac))
+                      }
+                    >
+                      {formatDate(n.last_seen)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <NodeEditDialog node={n} onSave={loadNodes} />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(n.mac)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }
-
