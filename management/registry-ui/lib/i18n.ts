@@ -53,7 +53,17 @@ export const t = {
   colMac: 'MAC 地址',
   colLastSeen: '最后在线',
   colRegisteredAt: '注册时间',
+  colStatus: '状态',
+  colFrpPort: 'FRP 端口',
+  colCfUrl: 'CF 地址',
+  colTunnelId: '隧道 ID',
+  colMac6: 'MAC (IPv6)',
+  colNote: '备注',
   colActions: '操作',
+  colSettings: '列设置',
+  statusOnline: '在线',
+  statusOffline: '离线',
+  statusPending: '待接入',
 
   // 节点详情
   nodeNotFound: '节点未找到',
