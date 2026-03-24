@@ -24,6 +24,44 @@ paths:
       summary: Dashboard links
       tags:
         - dashboard
+  /admin/audit-logs:
+    get:
+      operationId: AdminAuditLogs
+      parameters:
+        - description: limit (default 50)
+          in: query
+          name: limit
+          schema:
+            type: integer
+        - description: offset (default 0)
+          in: query
+          name: offset
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/main.AuditLog"
+                type: array
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List audit logs
+      tags:
+        - admin
   /admin/login:
     post:
       operationId: AdminLogin
@@ -67,6 +105,373 @@ paths:
               schema:
                 $ref: "#/components/schemas/main.StatusResponse"
       summary: Admin logout
+      tags:
+        - admin
+  /admin/me:
+    get:
+      operationId: AdminMe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Get current logged-in user info
+      tags:
+        - admin
+  /admin/permissions:
+    get:
+      operationId: AdminListPermissions
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  type: object
+                type: array
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List all available permissions
+      tags:
+        - admin
+  /admin/roles:
+    get:
+      operationId: AdminListRoles
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/main.Role"
+                type: array
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List all roles with their permissions
+      tags:
+        - admin
+  "/admin/roles/{id}/permissions":
+    put:
+      operationId: AdminSetRolePermissions
+      parameters:
+        - description: role id
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.SetPermissionsRequest"
+        description: permissions list
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Replace role permissions
+      tags:
+        - admin
+  /admin/users:
+    get:
+      operationId: AdminListUsers
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/main.User"
+                type: array
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List all users
+      tags:
+        - admin
+    post:
+      operationId: AdminCreateUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.CreateUserRequest"
+        description: create user payload
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Create a new user
+      tags:
+        - admin
+  "/admin/users/{id}":
+    delete:
+      operationId: AdminDeleteUser
+      parameters:
+        - description: user id
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Delete a user
+      tags:
+        - admin
+  "/admin/users/{id}/password":
+    post:
+      operationId: AdminChangePassword
+      parameters:
+        - description: user id
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.ChangePasswordRequest"
+        description: new password
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Change user password (superadmin for others, any user for self)
+      tags:
+        - admin
+  "/admin/users/{id}/roles":
+    get:
+      operationId: AdminGetUserRoles
+      parameters:
+        - description: user id
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  type: string
+                type: array
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Get user roles
+      tags:
+        - admin
+    put:
+      operationId: AdminSetUserRoles
+      parameters:
+        - description: user id
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.SetRolesRequest"
+        description: roles list
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Replace user roles
       tags:
         - admin
   /health:
@@ -348,6 +753,35 @@ components:
         username:
           type: string
       type: object
+    main.AuditLog:
+      properties:
+        action:
+          type: string
+        created_at:
+          type: string
+        detail:
+          type: string
+        id:
+          type: integer
+        ip:
+          type: string
+        username:
+          type: string
+      type: object
+    main.ChangePasswordRequest:
+      properties:
+        password:
+          type: string
+      type: object
+    main.CreateUserRequest:
+      properties:
+        password:
+          type: string
+        role:
+          type: string
+        username:
+          type: string
+      type: object
     main.ErrorResponse:
       properties:
         error:
@@ -423,6 +857,33 @@ components:
         xray_uuid:
           type: string
       type: object
+    main.Role:
+      properties:
+        description:
+          type: string
+        id:
+          type: integer
+        name:
+          type: string
+        permissions:
+          items:
+            type: string
+          type: array
+      type: object
+    main.SetPermissionsRequest:
+      properties:
+        permissions:
+          items:
+            type: string
+          type: array
+      type: object
+    main.SetRolesRequest:
+      properties:
+        roles:
+          items:
+            type: string
+          type: array
+      type: object
     main.StatusResponse:
       properties:
         status:
@@ -435,5 +896,18 @@ components:
         note:
           type: string
         tailscale_ip:
+          type: string
+      type: object
+    main.User:
+      properties:
+        created_at:
+          type: string
+        id:
+          type: integer
+        role:
+          type: string
+        updated_at:
+          type: string
+        username:
           type: string
       type: object
