@@ -145,3 +145,116 @@ export async function getLabelsHtmlText(): Promise<string> {
   return res.text();
 }
 
+// ── 用户管理 ──────────────────────────────────────────────────────────────────
+
+export type AdminUser = {
+  id: number;
+  username: string;
+  roles: string[];
+  permissions: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type AuditLog = {
+  id: number;
+  username: string;
+  action: string;
+  detail: string;
+  ip: string;
+  created_at: string;
+};
+
+export type Role = {
+  id: number;
+  name: string;
+  description: string;
+  permissions: string[];
+};
+
+export type PermissionItem = {
+  slug: string;
+  description: string;
+};
+
+export async function getMe(): Promise<AdminUser> {
+  const res = await authFetch('/admin/me', { method: 'GET' });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json();
+}
+
+export async function listUsers(): Promise<AdminUser[]> {
+  const res = await authFetch('/admin/users', { method: 'GET' });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json();
+}
+
+export async function createUser(username: string, password: string, role: string) {
+  const res = await authFetch('/admin/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, role }),
+  });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json() as Promise<{ status: string }>;
+}
+
+export async function deleteUser(id: number) {
+  const res = await authFetch(`/admin/users/${id}`, { method: 'DELETE' });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json() as Promise<{ status: string }>;
+}
+
+export async function changePassword(id: number, password: string) {
+  const res = await authFetch(`/admin/users/${id}/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json() as Promise<{ status: string }>;
+}
+
+export async function getUserRoles(id: number): Promise<string[]> {
+  const res = await authFetch(`/admin/users/${id}/roles`, { method: 'GET' });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json();
+}
+
+export async function setUserRoles(id: number, roles: string[]) {
+  const res = await authFetch(`/admin/users/${id}/roles`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roles }),
+  });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json() as Promise<{ status: string }>;
+}
+
+export async function listRoles(): Promise<Role[]> {
+  const res = await authFetch('/admin/roles', { method: 'GET' });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json();
+}
+
+export async function setRolePermissions(id: number, permissions: string[]) {
+  const res = await authFetch(`/admin/roles/${id}/permissions`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ permissions }),
+  });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json() as Promise<{ status: string }>;
+}
+
+export async function listPermissions(): Promise<PermissionItem[]> {
+  const res = await authFetch('/admin/permissions', { method: 'GET' });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json();
+}
+
+export async function listAuditLogs(limit = 50, offset = 0): Promise<AuditLog[]> {
+  const res = await authFetch(`/admin/audit-logs?limit=${limit}&offset=${offset}`, { method: 'GET' });
+  if (!res.ok) return Promise.reject(await safeReadApiError(res));
+  return res.json();
+}

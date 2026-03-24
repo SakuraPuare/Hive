@@ -34,28 +34,53 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// ── 节点注册（设备端调用）────────────────────────────────────────────
+	// ── 节点注册（设备端调用，Bearer token 认证）──────────────────────────
 	mux.HandleFunc("POST /nodes/register", handleRegister)
 
 	// ── 节点查询 ──────────────────────────────────────────────────────────
-	mux.HandleFunc("GET /nodes", handleListNodes)
-	mux.HandleFunc("GET /nodes/{mac}", handleGetNode)
+	mux.HandleFunc("GET /nodes", requirePerm("node:read")(handleListNodes))
+	mux.HandleFunc("GET /nodes/{mac}", requirePerm("node:read")(handleGetNode))
 
-	// ── 节点管理（需要 Authorization: Bearer <API_SECRET>）──────────────
-	mux.HandleFunc("PATCH /nodes/{mac}", handleUpdateNode)
-	mux.HandleFunc("DELETE /nodes/{mac}", handleDeleteNode)
+	// ── 节点管理 ──────────────────────────────────────────────────────────
+	mux.HandleFunc("PATCH /nodes/{mac}", requirePerm("node:write")(handleUpdateNode))
+	mux.HandleFunc("DELETE /nodes/{mac}", requirePerm("node:delete")(handleDeleteNode))
 
 	// ── 管理端登录（Cookie 会话）────────────────────────────────────────────
 	mux.HandleFunc("POST /admin/login", handleAdminLogin)
 	mux.HandleFunc("POST /admin/logout", handleAdminLogout)
 
+	// ── 当前用户信息（任意已登录用户）──────────────────────────────────────
+	mux.HandleFunc("GET /admin/me", handleAdminMe)
+
+	// ── 用户管理 ──────────────────────────────────────────────────────────
+	mux.HandleFunc("GET /admin/users", requirePerm("user:read")(handleListUsers))
+	mux.HandleFunc("POST /admin/users", requirePerm("user:write")(handleCreateUser))
+	mux.HandleFunc("DELETE /admin/users/{id}", requirePerm("user:delete")(handleDeleteUser))
+
+	// ── 密码修改（user:write 或本人，handler 内部鉴权）──────────────────────
+	mux.HandleFunc("POST /admin/users/{id}/password", handleChangePasswordRoute)
+
+	// ── 用户角色管理 ──────────────────────────────────────────────────────
+	mux.HandleFunc("GET /admin/users/{id}/roles", requirePerm("user:read")(handleGetUserRoles))
+	mux.HandleFunc("PUT /admin/users/{id}/roles", requirePerm("user:write")(handleSetUserRoles))
+
+	// ── 角色管理 ──────────────────────────────────────────────────────────
+	mux.HandleFunc("GET /admin/roles", requirePerm("role:read")(handleListRoles))
+	mux.HandleFunc("PUT /admin/roles/{id}/permissions", requirePerm("role:write")(handleSetRolePermissions))
+
+	// ── 权限列表（任意已登录用户）──────────────────────────────────────────
+	mux.HandleFunc("GET /admin/permissions", handleListPermissionsRoute)
+
+	// ── 审计日志 ──────────────────────────────────────────────────────────
+	mux.HandleFunc("GET /admin/audit-logs", requirePerm("audit:read")(handleListAuditLogs))
+
 	// ── 订阅 ──────────────────────────────────────────────────────────────
-	mux.HandleFunc("GET /subscription", handleSubscriptionVless)
-	mux.HandleFunc("GET /subscription/clash", handleSubscriptionClash)
+	mux.HandleFunc("GET /subscription", requirePerm("subscription:read")(handleSubscriptionVless))
+	mux.HandleFunc("GET /subscription/clash", requirePerm("subscription:read")(handleSubscriptionClash))
 
 	// ── 运维接口 ──────────────────────────────────────────────────────────
-	mux.HandleFunc("GET /prometheus-targets", handlePrometheusTargets)
-	mux.HandleFunc("GET /labels", handleLabels)
+	mux.HandleFunc("GET /prometheus-targets", requirePerm("prometheus:read")(handlePrometheusTargets))
+	mux.HandleFunc("GET /labels", requirePerm("label:read")(handleLabels))
 	mux.HandleFunc("GET /health", handleHealth)
 
 	// ── 控制台 Dashboard ─────────────────────────────────────────────────
@@ -66,6 +91,26 @@ func main() {
 	if err := http.ListenAndServe(addr, withCORS(mux)); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// handleChangePasswordRoute 允许本人或拥有 user:write 权限的用户修改密码。
+func handleChangePasswordRoute(w http.ResponseWriter, r *http.Request) {
+	username, _, ok := parseSession(r)
+	if !ok {
+		jsonErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	_ = username
+	handleChangePassword(w, r)
+}
+
+// handleListPermissionsRoute 要求已登录（任意角色）。
+func handleListPermissionsRoute(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := parseSession(r); !ok {
+		jsonErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	handleListPermissions(w, r)
 }
 
 // getenv 返回环境变量值，未设置时返回默认值
