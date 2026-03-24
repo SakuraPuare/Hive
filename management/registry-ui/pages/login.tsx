@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { adminLogin } from '@/lib/api';
+import { mainAdminLoginRequestSchema } from '@/src/generated/zod/schemas';
+import { AdminService } from '@/src/generated/client';
+import type { main_AdminLoginRequest } from '@/src/generated/client';
+import { sessionApi } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,7 +30,9 @@ export default function Login() {
               setLoading(true);
               setError('');
               try {
-                await adminLogin(username, password);
+                const body = { username, password } as main_AdminLoginRequest;
+                mainAdminLoginRequestSchema.parse(body);
+                await sessionApi(AdminService.adminLogin({ requestBody: body }));
                 window.location.href = '/dashboard';
               } catch (e: any) {
                 setError(e?.error || t('loginFailed'));

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { patchNode } from '@/lib/api';
-import type { main_Node } from '@/src/generated/client';
+import { NodesService } from '@/src/generated/client';
+import type { main_Node, main_UpdateRequest } from '@/src/generated/client';
+import { sessionApi } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -44,7 +45,12 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
     setSaving(true);
     setError('');
     try {
-      await patchNode(node.mac, { location, note });
+      await sessionApi(
+        NodesService.nodeUpdate({
+          mac: node.mac!,
+          requestBody: { location, note } as main_UpdateRequest,
+        }),
+      );
       setOpen(false);
       onSave();
     } catch (e: any) {

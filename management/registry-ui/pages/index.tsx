@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { getHealth } from '@/lib/api';
+import { getHealth } from '@/lib/openapi-session';
 import { useTranslations } from 'next-intl';
 
 export default function Home() {

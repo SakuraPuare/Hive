@@ -27,6 +27,11 @@ definitions:
       password:
         type: string
     type: object
+  main.CreateGroupRequest:
+    properties:
+      name:
+        type: string
+    type: object
   main.CreateUserRequest:
     properties:
       password:
@@ -111,6 +116,11 @@ definitions:
       xray_uuid:
         type: string
     type: object
+  main.ResetTokenResponse:
+    properties:
+      token:
+        type: string
+    type: object
   main.Role:
     properties:
       description:
@@ -120,6 +130,13 @@ definitions:
       name:
         type: string
       permissions:
+        items:
+          type: string
+        type: array
+    type: object
+  main.SetGroupNodesRequest:
+    properties:
+      nodes:
         items:
           type: string
         type: array
@@ -141,6 +158,21 @@ definitions:
   main.StatusResponse:
     properties:
       status:
+        type: string
+    type: object
+  main.SubscriptionGroup:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      node_count:
+        type: integer
+      token:
+        type: string
+      updated_at:
         type: string
     type: object
   main.UpdateRequest:
@@ -367,6 +399,235 @@ paths:
           schema:
             $ref: '#/definitions/main.ErrorResponse'
       summary: Replace role permissions
+      tags:
+      - admin
+  /admin/subscription-groups:
+    get:
+      operationId: AdminListSubscriptionGroups
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/main.SubscriptionGroup'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: List subscription groups
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      operationId: AdminCreateSubscriptionGroup
+      parameters:
+      - description: group name
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.CreateGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.SubscriptionGroup'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Create subscription group
+      tags:
+      - admin
+  /admin/subscription-groups/{id}:
+    delete:
+      operationId: AdminDeleteSubscriptionGroup
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Delete subscription group
+      tags:
+      - admin
+  /admin/subscription-groups/{id}/nodes:
+    get:
+      operationId: AdminGetSubscriptionGroupNodes
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: List node MACs in a subscription group
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      operationId: AdminSetSubscriptionGroupNodes
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: node MAC list
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/main.SetGroupNodesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Replace node MACs in a subscription group
+      tags:
+      - admin
+  /admin/subscription-groups/{id}/reset-token:
+    post:
+      operationId: AdminResetSubscriptionGroupToken
+      parameters:
+      - description: group id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.ResetTokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Reset subscription group token
       tags:
       - admin
   /admin/users:

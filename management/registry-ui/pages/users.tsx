@@ -1,15 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import {
-  listUsers,
-  createUser,
-  deleteUser,
-  changePassword,
-  setUserRoles,
-  listRoles,
-  type AdminUser,
-  type Role,
-} from '@/lib/api';
+import { AdminService } from '@/src/generated/client';
+import type { main_Role } from '@/src/generated/client';
+import { sessionApi } from '@/lib/openapi-session';
+import type { AdminUser } from '@/lib/domain-types';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,7 +49,7 @@ export default function UsersPage() {
   const tAuth = useTranslations('auth');
   const { user: currentUser, loading: authLoading } = useCurrentUser();
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [allRoles, setAllRoles] = useState<main_Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -86,7 +80,10 @@ export default function UsersPage() {
     setLoading(true);
     setError('');
     try {
-      const [userList, roleList] = await Promise.all([listUsers(), listRoles()]);
+      const [userList, roleList] = await Promise.all([
+        sessionApi(AdminService.adminListUsers()) as Promise<AdminUser[]>,
+        sessionApi(AdminService.adminListRoles()),
+      ]);
       setUsers(userList);
       setAllRoles(roleList);
     } catch (e: any) {
@@ -108,7 +105,11 @@ export default function UsersPage() {
     setError('');
     setSuccess('');
     try {
-      await createUser(newUsername, newPassword, newRole);
+      await sessionApi(
+        AdminService.adminCreateUser({
+          requestBody: { username: newUsername, password: newPassword, role: newRole },
+        }),
+      );
       setSuccess(t('userCreated'));
       setCreateOpen(false);
       setNewUsername('');
@@ -127,7 +128,7 @@ export default function UsersPage() {
     setError('');
     setSuccess('');
     try {
-      await deleteUser(u.id);
+      await sessionApi(AdminService.adminDeleteUser({ id: u.id }));
       setSuccess(t('userDeleted'));
       await loadData();
     } catch (e: any) {
@@ -147,7 +148,12 @@ export default function UsersPage() {
     setError('');
     setSuccess('');
     try {
-      await changePassword(pwdTarget.id, newPwd);
+      await sessionApi(
+        AdminService.adminChangePassword({
+          id: pwdTarget.id,
+          requestBody: { password: newPwd },
+        }),
+      );
       setSuccess(t('passwordChanged'));
       setPwdOpen(false);
     } catch (e: any) {
@@ -175,7 +181,12 @@ export default function UsersPage() {
     setError('');
     setSuccess('');
     try {
-      await setUserRoles(rolesTarget.id, selectedRoles);
+      await sessionApi(
+        AdminService.adminSetUserRoles({
+          id: rolesTarget.id,
+          requestBody: { roles: selectedRoles },
+        }),
+      );
       setSuccess(t('rolesSaved'));
       setRolesOpen(false);
       await loadData();

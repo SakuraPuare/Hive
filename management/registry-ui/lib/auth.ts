@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import { getMe, type AdminUser } from './api';
+import { useState, useEffect } from 'react';
+import { AdminService } from '@/src/generated/client';
+import { sessionApi } from './openapi-session';
+import type { AdminUser } from './domain-types';
 
 export type CurrentUser = AdminUser & {
   can: (perm: string) => boolean;
@@ -10,11 +12,12 @@ export function useCurrentUser(): { user: CurrentUser | null; loading: boolean }
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getMe()
+    sessionApi(AdminService.adminMe())
       .then((me) => {
-        const permSet = new Set(me.permissions);
+        const u = me as AdminUser;
+        const permSet = new Set(u.permissions ?? []);
         const can = (perm: string) => permSet.has(perm);
-        setUser({ ...me, can });
+        setUser({ ...u, can });
       })
       .catch(() => setUser(null))
       .finally(() => setLoading(false));

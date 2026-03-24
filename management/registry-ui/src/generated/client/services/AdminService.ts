@@ -5,11 +5,15 @@
 import type { main_AdminLoginRequest } from '../models/main_AdminLoginRequest';
 import type { main_AuditLog } from '../models/main_AuditLog';
 import type { main_ChangePasswordRequest } from '../models/main_ChangePasswordRequest';
+import type { main_CreateGroupRequest } from '../models/main_CreateGroupRequest';
 import type { main_CreateUserRequest } from '../models/main_CreateUserRequest';
+import type { main_ResetTokenResponse } from '../models/main_ResetTokenResponse';
 import type { main_Role } from '../models/main_Role';
+import type { main_SetGroupNodesRequest } from '../models/main_SetGroupNodesRequest';
 import type { main_SetPermissionsRequest } from '../models/main_SetPermissionsRequest';
 import type { main_SetRolesRequest } from '../models/main_SetRolesRequest';
 import type { main_StatusResponse } from '../models/main_StatusResponse';
+import type { main_SubscriptionGroup } from '../models/main_SubscriptionGroup';
 import type { main_User } from '../models/main_User';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
@@ -155,6 +159,167 @@ export class AdminService {
                 401: `Unauthorized`,
                 403: `Forbidden`,
                 404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * List subscription groups
+     * @returns main_SubscriptionGroup OK
+     * @throws ApiError
+     */
+    public static adminListSubscriptionGroups(): CancelablePromise<Array<main_SubscriptionGroup>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/subscription-groups',
+            errors: {
+                401: `Unauthorized`,
+                403: `Forbidden`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * Create subscription group
+     * @returns main_SubscriptionGroup OK
+     * @throws ApiError
+     */
+    public static adminCreateSubscriptionGroup({
+        requestBody,
+    }: {
+        /**
+         * group name
+         */
+        requestBody: main_CreateGroupRequest,
+    }): CancelablePromise<main_SubscriptionGroup> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/subscription-groups',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                403: `Forbidden`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * Delete subscription group
+     * @returns main_StatusResponse OK
+     * @throws ApiError
+     */
+    public static adminDeleteSubscriptionGroup({
+        id,
+    }: {
+        /**
+         * group id
+         */
+        id: number,
+    }): CancelablePromise<main_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/admin/subscription-groups/{id}',
+            path: {
+                'id': id,
+            },
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                403: `Forbidden`,
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * List node MACs in a subscription group
+     * @returns string OK
+     * @throws ApiError
+     */
+    public static adminGetSubscriptionGroupNodes({
+        id,
+    }: {
+        /**
+         * group id
+         */
+        id: number,
+    }): CancelablePromise<Array<string>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/subscription-groups/{id}/nodes',
+            path: {
+                'id': id,
+            },
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                403: `Forbidden`,
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * Replace node MACs in a subscription group
+     * @returns main_StatusResponse OK
+     * @throws ApiError
+     */
+    public static adminSetSubscriptionGroupNodes({
+        id,
+        requestBody,
+    }: {
+        /**
+         * group id
+         */
+        id: number,
+        /**
+         * node MAC list
+         */
+        requestBody: main_SetGroupNodesRequest,
+    }): CancelablePromise<main_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/admin/subscription-groups/{id}/nodes',
+            path: {
+                'id': id,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                403: `Forbidden`,
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * Reset subscription group token
+     * @returns main_ResetTokenResponse OK
+     * @throws ApiError
+     */
+    public static adminResetSubscriptionGroupToken({
+        id,
+    }: {
+        /**
+         * group id
+         */
+        id: number,
+    }): CancelablePromise<main_ResetTokenResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/subscription-groups/{id}/reset-token',
+            path: {
+                'id': id,
+            },
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                403: `Forbidden`,
+                404: `Not Found`,
+                500: `Internal Server Error`,
             },
         });
     }

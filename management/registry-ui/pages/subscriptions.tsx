@@ -1,17 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  apiPath,
-  createSubscriptionGroup,
-  deleteSubscriptionGroup,
-  getGroupNodes,
-  getSubscriptionClashText,
-  getSubscriptionVlessText,
-  listNodes,
-  listSubscriptionGroups,
-  resetGroupToken,
-  setGroupNodes,
-  type SubscriptionGroup,
-} from '@/lib/api';
+  AdminService,
+  NodesService,
+  SubscriptionService,
+} from '@/src/generated/client';
+import type { main_Node, main_SubscriptionGroup } from '@/src/generated/client';
+import { apiPath, sessionApi } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -26,7 +20,6 @@ import { Label } from '@/components/ui/label';
 import { Download } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useCurrentUser } from '@/lib/auth';
-import type { main_Node } from '@/src/generated/client';
 
 export default function Subscriptions() {
   const t = useTranslations('subscriptions');
@@ -45,7 +38,7 @@ export default function Subscriptions() {
     setLoading(true);
     setError('');
     try {
-      const txt = await getSubscriptionClashText();
+      const txt = await sessionApi(SubscriptionService.subscriptionClash());
       setPreview(txt);
       setPreviewType('Clash YAML');
     } catch (e: any) {
@@ -59,7 +52,7 @@ export default function Subscriptions() {
     setLoading(true);
     setError('');
     try {
-      const txt = await getSubscriptionVlessText();
+      const txt = await sessionApi(SubscriptionService.subscriptionVless());
       setPreview(txt);
       setPreviewType('VLESS');
     } catch (e: any) {
@@ -69,7 +62,7 @@ export default function Subscriptions() {
     }
   }
 
-  const [groups, setGroups] = useState<SubscriptionGroup[]>([]);
+  const [groups, setGroups] = useState<main_SubscriptionGroup[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsError, setGroupsError] = useState('');
 
@@ -77,7 +70,7 @@ export default function Subscriptions() {
     setGroupsLoading(true);
     setGroupsError('');
     try {
-      setGroups(await listSubscriptionGroups());
+      setGroups(await sessionApi(AdminService.adminListSubscriptionGroups()));
     } catch (e: any) {
       setGroupsError(e?.error || tCommon('loading'));
     } finally {
@@ -90,8 +83,8 @@ export default function Subscriptions() {
   }, [user, loadGroups]);
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
-  function copyLink(group: SubscriptionGroup) {
-    const url = `${apiPath('/s/' + group.token)}`;
+  function copyLink(group: main_SubscriptionGroup) {
+    const url = `${apiPath('/s/' + group.token!)}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedId(group.id);
       setTimeout(() => setCopiedId(null), 1500);
@@ -108,7 +101,9 @@ export default function Subscriptions() {
     setCreating(true);
     setCreateError('');
     try {
-      await createSubscriptionGroup(newName.trim());
+      await sessionApi(
+        AdminService.adminCreateSubscriptionGroup({ requestBody: { name: newName.trim() } }),
+      );
       setCreateOpen(false);
       setNewName('');
       loadGroups();
@@ -119,38 +114,41 @@ export default function Subscriptions() {
     }
   }
 
-  async function handleDelete(group: SubscriptionGroup) {
-    if (!confirm(t('groupDeleteConfirm', { name: group.name }))) return;
+  async function handleDelete(group: main_SubscriptionGroup) {
+    if (!confirm(t('groupDeleteConfirm', { name: group.name ?? '' }))) return;
     try {
-      await deleteSubscriptionGroup(group.id);
+      await sessionApi(AdminService.adminDeleteSubscriptionGroup({ id: group.id! }));
       loadGroups();
     } catch {
       alert(t('groupDeleteFailed'));
     }
   }
 
-  async function handleResetToken(group: SubscriptionGroup) {
+  async function handleResetToken(group: main_SubscriptionGroup) {
     if (!confirm(t('resetTokenConfirm'))) return;
     try {
-      await resetGroupToken(group.id);
+      await sessionApi(AdminService.adminResetSubscriptionGroupToken({ id: group.id! }));
       loadGroups();
     } catch {
       alert(t('resetTokenFailed'));
     }
   }
 
-  const [editGroup, setEditGroup] = useState<SubscriptionGroup | null>(null);
+  const [editGroup, setEditGroup] = useState<main_SubscriptionGroup | null>(null);
   const [allNodes, setAllNodes] = useState<main_Node[]>([]);
   const [selectedMacs, setSelectedMacs] = useState<Set<string>>(new Set());
   const [nodeSearch, setNodeSearch] = useState('');
   const [savingNodes, setSavingNodes] = useState(false);
   const [saveNodesError, setSaveNodesError] = useState('');
 
-  async function openEditNodes(group: SubscriptionGroup) {
+  async function openEditNodes(group: main_SubscriptionGroup) {
     setEditGroup(group);
     setSaveNodesError('');
     setNodeSearch('');
-    const [nodes, macs] = await Promise.all([listNodes(), getGroupNodes(group.id)]);
+    const [nodes, macs] = await Promise.all([
+      sessionApi(NodesService.nodesList()),
+      sessionApi(AdminService.adminGetSubscriptionGroupNodes({ id: group.id! })),
+    ]);
     setAllNodes(nodes);
     setSelectedMacs(new Set(macs));
   }
@@ -169,7 +167,12 @@ export default function Subscriptions() {
     setSavingNodes(true);
     setSaveNodesError('');
     try {
-      await setGroupNodes(editGroup.id, Array.from(selectedMacs));
+      await sessionApi(
+        AdminService.adminSetSubscriptionGroupNodes({
+          id: editGroup.id!,
+          requestBody: { nodes: Array.from(selectedMacs) },
+        }),
+      );
       setEditGroup(null);
       loadGroups();
     } catch (e: any) {
@@ -184,7 +187,7 @@ export default function Subscriptions() {
     return (
       n.hostname.toLowerCase().includes(q) ||
       n.location?.toLowerCase().includes(q) ||
-      n.mac.toLowerCase().includes(q)
+      (n.mac ?? '').toLowerCase().includes(q)
     );
   });
 

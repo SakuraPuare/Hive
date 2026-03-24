@@ -3,7 +3,8 @@ import { LogOut } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { ThemeToggle } from './ThemeToggle';
 import { Button } from '@/components/ui/button';
-import { adminLogout } from '@/lib/api';
+import { AdminService } from '@/src/generated/client';
+import { sessionApi } from '@/lib/openapi-session';
 import { useTranslations } from 'next-intl';
 
 interface AppLayoutProps {
@@ -15,7 +16,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   async function handleLogout() {
     try {
-      await adminLogout();
+      await sessionApi(AdminService.adminLogout());
     } finally {
       window.location.href = '/login';
     }
