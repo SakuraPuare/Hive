@@ -33,4 +33,4 @@ openapi:
 	cp "$(OPENAPI_DIR)/swagger.yaml" "$(OPENAPI_DIR)/openapi.yaml"
 
 clean:
-	rm -f $(BINARY) $(BINARY)-arm64
+	rm -f $(BINARY) $(BINARY)-arm64 $(OPENAPI_DIR) -r
