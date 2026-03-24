@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from 'react';
+import ReactSelect from 'react-select';
 import { useRouter } from 'next/router';
 import { getNode, patchNode } from '@/lib/api';
 import type { main_Node } from '@/src/generated/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft } from 'lucide-react';
 import { t } from '@/lib/i18n';
-import { LOCATIONS } from '@/lib/locations';
+import { LOCATION_OPTIONS } from '@/lib/locations';
+import { reactSelectStyles, SelectOption } from '@/lib/react-select-styles';
 
 function FieldRow({ label, value, mono }: { label: string; value?: string | number | null; mono?: boolean }) {
   const display = value === null || value === undefined || value === '' ? t.noData : String(value);
@@ -83,6 +84,8 @@ export default function NodeDetail() {
   if (error || !node) {
     return <p className="text-destructive">{error || t.nodeNotFound}</p>;
   }
+
+  const selectedOption = LOCATION_OPTIONS.find((o) => o.value === location) ?? null;
 
   return (
     <div className="space-y-6">
@@ -161,16 +164,15 @@ export default function NodeDetail() {
           <CardContent>
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="detail-location">{t.location}</Label>
-                <Select
-                  id="detail-location"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                >
-                  {LOCATIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </Select>
+                <Label>{t.location}</Label>
+                <ReactSelect<SelectOption>
+                  options={LOCATION_OPTIONS}
+                  value={selectedOption}
+                  onChange={(opt) => setLocation(opt?.value ?? '')}
+                  placeholder={t.locationPlaceholder}
+                  isClearable
+                  styles={reactSelectStyles}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="detail-note">{t.note}</Label>
