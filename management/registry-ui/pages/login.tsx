@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
-import { adminLogin } from '../lib/api';
+import { adminLogin } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -8,61 +12,58 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   return (
-    <div style={{ fontFamily: 'monospace', padding: 24, maxWidth: 480 }}>
-      <h2>Hive Registry Admin Login</h2>
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setLoading(true);
-          setError('');
-          try {
-            await adminLogin(username, password);
-            window.location.href = '/nodes';
-          } catch (e: any) {
-            setError(e?.error || 'Login failed');
-          } finally {
-            setLoading(false);
-          }
-        }}
-      >
-        <div style={{ marginBottom: 12 }}>
-          <label>
-            Username
-            <input
-              style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-            />
-          </label>
-        </div>
-
-        <div style={{ marginBottom: 12 }}>
-          <label>
-            Password
-            <input
-              style={{ display: 'block', width: '100%', padding: 8, marginTop: 6 }}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              autoComplete="current-password"
-            />
-          </label>
-        </div>
-
-        {error && (
-          <div style={{ color: 'crimson', marginBottom: 12, whiteSpace: 'pre-wrap' }}>{error}</div>
-        )}
-
-        <button
-          disabled={loading}
-          style={{ padding: '10px 14px', cursor: loading ? 'not-allowed' : 'pointer' }}
-          type="submit"
-        >
-          {loading ? 'Logging in...' : 'Login'}
-        </button>
-      </form>
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl">Hive Registry</CardTitle>
+          <CardDescription>Admin Login</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setLoading(true);
+              setError('');
+              try {
+                await adminLogin(username, password);
+                window.location.href = '/dashboard';
+              } catch (e: any) {
+                setError(e?.error || 'Login failed');
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="username">Username</Label>
+                <Input
+                  id="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? 'Signing in…' : 'Sign in'}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
-

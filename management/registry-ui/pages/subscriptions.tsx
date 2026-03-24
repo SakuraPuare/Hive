@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
-import { apiPath, getSubscriptionClashText } from '../lib/api';
+import { apiPath, getSubscriptionClashText, getSubscriptionVlessText } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Download } from 'lucide-react';
 
 export default function Subscriptions() {
   const [preview, setPreview] = useState('');
+  const [previewType, setPreviewType] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -12,6 +16,7 @@ export default function Subscriptions() {
     try {
       const txt = await getSubscriptionClashText();
       setPreview(txt);
+      setPreviewType('Clash YAML');
     } catch (e: any) {
       setError(e?.error || 'Failed to preview Clash YAML');
     } finally {
@@ -19,43 +24,79 @@ export default function Subscriptions() {
     }
   }
 
+  async function previewVless() {
+    setLoading(true);
+    setError('');
+    try {
+      const txt = await getSubscriptionVlessText();
+      setPreview(txt);
+      setPreviewType('VLESS');
+    } catch (e: any) {
+      setError(e?.error || 'Failed to preview VLESS');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div style={{ fontFamily: 'monospace', padding: 24 }}>
-      <h2>Subscriptions</h2>
-      <div style={{ marginBottom: 12 }}>
-        <a href="/nodes" style={{ marginRight: 12 }}>
-          Back to Nodes
-        </a>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold tracking-tight">Subscriptions</h1>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>VLESS</CardTitle>
+            <CardDescription>Base64 encoded proxy subscription</CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-2">
+            <Button variant="outline" asChild>
+              <a href={apiPath('/subscription')} target="_blank" rel="noopener noreferrer">
+                <Download className="mr-2 h-4 w-4" />
+                Download
+              </a>
+            </Button>
+            <Button variant="secondary" onClick={previewVless} disabled={loading}>
+              Preview
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Clash / Mihomo</CardTitle>
+            <CardDescription>Clash Meta YAML configuration</CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-2">
+            <Button variant="outline" asChild>
+              <a href={apiPath('/subscription/clash')} target="_blank" rel="noopener noreferrer">
+                <Download className="mr-2 h-4 w-4" />
+                Download
+              </a>
+            </Button>
+            <Button variant="secondary" onClick={previewClash} disabled={loading}>
+              Preview
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ marginBottom: 8 }}>
-          <a href={apiPath('/subscription')} style={{ marginRight: 12 }}>
-            Download VLESS
-          </a>
-          <span style={{ color: '#666' }}>(base64 text)</span>
-        </div>
-        <div>
-          <a href={apiPath('/subscription/clash')} style={{ marginRight: 12 }}>
-            Download Clash YAML
-          </a>
-          <span style={{ color: '#666' }}>(Mihomo/Clash Meta)</span>
-        </div>
-      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <div style={{ marginBottom: 12 }}>
-        <button disabled={loading} onClick={previewClash} type="button">
-          {loading ? 'Loading...' : 'Preview Clash YAML'}
-        </button>
-      </div>
-
-      {error && <div style={{ color: 'crimson', whiteSpace: 'pre-wrap' }}>{error}</div>}
       {preview && (
-        <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {preview}
-        </pre>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Preview: {previewType}</CardTitle>
+            <Button variant="ghost" size="sm" onClick={() => setPreview('')}>
+              Clear
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <pre className="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs whitespace-pre-wrap break-all">
+              {preview}
+            </pre>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
 }
-
