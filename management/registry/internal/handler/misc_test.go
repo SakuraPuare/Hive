@@ -131,8 +131,8 @@ func TestNodeStatus_WithProbeData(t *testing.T) {
 	if arr[0]["status"] != "online" {
 		t.Fatalf("expected status online, got %v", arr[0]["status"])
 	}
-	if arr[0]["hostname"] != "test-aabbccddee22" {
-		t.Fatalf("expected hostname test-aabbccddee22, got %v", arr[0]["hostname"])
+	if arr[0]["hostname"] != "host-aabbccddee22" {
+		t.Fatalf("expected hostname host-aabbccddee22, got %v", arr[0]["hostname"])
 	}
 }
 
