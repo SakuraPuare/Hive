@@ -217,13 +217,29 @@ func checkSubscriptionValid(status string, trafficUsed, trafficLimit int64, expi
 
 // ── admin endpoints ──────────────────────────────────────────────────────────
 
-// HandleTrafficSummary handles GET /admin/traffic/summary
+// ── swagger types ────────────────────────────────────────────────────────────
+
+// TrafficSummaryResponse is the response body for GET /admin/traffic/summary.
+type TrafficSummaryResponse struct {
+	TotalUsed      int64 `json:"total_used" example:"1073741824"`
+	ActiveCount    int64 `json:"active_count" example:"42"`
+	OverLimitCount int64 `json:"over_limit_count" example:"3"`
+}
+
+// ── admin handlers ──────────────────────────────────────────────────────────
+
+// HandleTrafficSummary 获取流量汇总
+// @Summary      获取流量汇总
+// @ID           AdminTrafficSummary
+// @Description  返回活跃订阅的流量使用总量、活跃数和超限数
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Success      200 {object} TrafficSummaryResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/traffic/summary [get]
 func (h *Handler) HandleTrafficSummary(w http.ResponseWriter, r *http.Request) {
-	var result struct {
-		TotalUsed       int64 `json:"total_used"`
-		ActiveCount     int64 `json:"active_count"`
-		OverLimitCount  int64 `json:"over_limit_count"`
-	}
+	var result TrafficSummaryResponse
 
 	h.DB.Raw("SELECT COALESCE(SUM(traffic_used), 0) FROM customer_subscriptions WHERE status = 'active'").Scan(&result.TotalUsed)
 	h.DB.Raw("SELECT COUNT(*) FROM customer_subscriptions WHERE status = 'active'").Scan(&result.ActiveCount)
@@ -232,7 +248,18 @@ func (h *Handler) HandleTrafficSummary(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, result)
 }
 
-// HandleResetSubscriptionTraffic handles POST /admin/subscriptions/{id}/reset-traffic
+// HandleResetSubscriptionTraffic 重置订阅流量
+// @Summary      重置订阅流量
+// @ID           AdminResetSubscriptionTraffic
+// @Description  将指定订阅的 traffic_used 重置为 0
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        id path int true "订阅 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscriptions/{id}/reset-traffic [post]
 func (h *Handler) HandleResetSubscriptionTraffic(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 

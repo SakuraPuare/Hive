@@ -27,7 +27,18 @@ type AnnouncementRequest struct {
 
 // ── admin handlers ────────────────────────────────────────────────────────────
 
-// GET /admin/announcements
+// HandleListAnnouncements 获取公告列表
+// @Summary      获取公告列表
+// @ID           AdminListAnnouncements
+// @Description  分页获取所有公告，按置顶和创建时间排序
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        page  query int false "页码（默认 1）"
+// @Param        limit query int false "每页数量（默认 20，最大 100）"
+// @Success      200 {object} AnnouncementListResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/announcements [get]
 func (h *Handler) HandleListAnnouncements(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))
@@ -57,7 +68,19 @@ func (h *Handler) HandleListAnnouncements(w http.ResponseWriter, r *http.Request
 	h.jsonOK(w, AnnouncementListResponse{Total: total, Items: items})
 }
 
-// POST /admin/announcements
+// HandleCreateAnnouncement 创建公告
+// @Summary      创建公告
+// @ID           AdminCreateAnnouncement
+// @Description  创建新公告，level 可选 info/warning/critical
+// @Tags         admin
+// @Security     AdminSession
+// @Accept       json
+// @Produce      json
+// @Param        body body AnnouncementRequest true "公告信息"
+// @Success      200 {object} model.Announcement
+// @Failure      400 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/announcements [post]
 func (h *Handler) HandleCreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 	var req AnnouncementRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -101,7 +124,21 @@ func (h *Handler) HandleCreateAnnouncement(w http.ResponseWriter, r *http.Reques
 	h.jsonOK(w, ann)
 }
 
-// PATCH /admin/announcements/{id}
+// HandleUpdateAnnouncement 更新公告
+// @Summary      更新公告
+// @ID           AdminUpdateAnnouncement
+// @Description  根据 ID 更新公告字段（部分更新）
+// @Tags         admin
+// @Security     AdminSession
+// @Accept       json
+// @Produce      json
+// @Param        id   path int              true "公告 ID"
+// @Param        body body AnnouncementRequest true "更新字段"
+// @Success      200 {object} model.Announcement
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/announcements/{id} [patch]
 func (h *Handler) HandleUpdateAnnouncement(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -152,7 +189,18 @@ func (h *Handler) HandleUpdateAnnouncement(w http.ResponseWriter, r *http.Reques
 	h.jsonOK(w, ann)
 }
 
-// DELETE /admin/announcements/{id}
+// HandleDeleteAnnouncement 删除公告
+// @Summary      删除公告
+// @ID           AdminDeleteAnnouncement
+// @Description  根据 ID 删除公告
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        id path int true "公告 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/announcements/{id} [delete]
 func (h *Handler) HandleDeleteAnnouncement(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -173,7 +221,14 @@ func (h *Handler) HandleDeleteAnnouncement(w http.ResponseWriter, r *http.Reques
 
 // ── portal handler ────────────────────────────────────────────────────────────
 
-// GET /portal/announcements
+// HandlePortalAnnouncements godoc
+// @Summary      获取公开公告列表
+// @ID           PortalAnnouncements
+// @Tags         portal-public
+// @Produce      json
+// @Success      200 {array} model.Announcement
+// @Failure      500 {object} ErrorResponse
+// @Router       /portal/announcements [get]
 func (h *Handler) HandlePortalAnnouncements(w http.ResponseWriter, r *http.Request) {
 	items := make([]model.Announcement, 0)
 	if err := h.DB.Where("published = ?", true).
