@@ -1,133 +1,74 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
-	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"hive/registry/internal/config"
+	"hive/registry/internal/handler"
+	"hive/registry/internal/middleware"
+	"hive/registry/internal/store"
 )
 
-// Node 是所有接口通用的节点数据结构。
-// 与数据库列一一对应，JSON tag 为接口规范。
-type Node struct {
-	MAC          string `json:"mac"`
-	MAC6         string `json:"mac6"`
-	Hostname     string `json:"hostname"`
-	CFURL        string `json:"cf_url"`
-	TunnelID     string `json:"tunnel_id"`
-	TailscaleIP  string `json:"tailscale_ip"`
-	EasytierIP   string `json:"easytier_ip"`
-	FRPPort      int    `json:"frp_port"`
-	XrayUUID     string `json:"xray_uuid"`
-	Location     string `json:"location"`
-	Note         string `json:"note"`
-	RegisteredAt string `json:"registered_at"`
-	LastSeen     string `json:"last_seen"`
-}
+// @title Hive Node Registry API
+// @version 0.1.0
+// @description Hive management plane API for nodes and subscriptions.
+// @BasePath /
+// @schemes https http
 
-// SELECT 列顺序，与 scanNode / scanNodeRow 的 Scan 参数严格对应
-const nodeCols = "mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, location, note, registered_at, last_seen"
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description "Authorization: Bearer <API_SECRET>"
 
-var xrayPath = getenv("XRAY_PATH", "ray") // xray path，默认 /ray
+// @securityDefinitions.apikey AdminSessionCookie
+// @in cookie
+// @name hive_admin_session
+// @description "HttpOnly session cookie for admin UI"
 
 func main() {
-	initDB()
+	cfg := config.Load()
 
-	mux := http.NewServeMux()
+	db := store.Init(cfg)
+	store.RunMigrations(db)
+	store.BootstrapSuperadmin(db, cfg.AdminUser, cfg.AdminPass)
+	store.BootstrapRBAC(db)
 
-	// ── 节点注册（设备端调用，Bearer token 认证）──────────────────────────
-	mux.HandleFunc("POST /nodes/register", handleRegister)
+	auth := &middleware.Auth{Config: cfg, DB: db}
+	h := &handler.Handler{DB: db, Config: cfg, Auth: auth}
 
-	// ── 节点查询 ──────────────────────────────────────────────────────────
-	mux.HandleFunc("GET /nodes", requirePerm("node:read")(handleListNodes))
-	mux.HandleFunc("GET /nodes/{mac}", requirePerm("node:read")(handleGetNode))
+	go h.StartProbeLoop()
 
-	// ── 节点管理 ──────────────────────────────────────────────────────────
-	mux.HandleFunc("PATCH /nodes/{mac}", requirePerm("node:write")(handleUpdateNode))
-	mux.HandleFunc("DELETE /nodes/{mac}", requirePerm("node:delete")(handleDeleteNode))
+	mux := h.RegisterRoutes()
 
-	// ── 管理端登录（Cookie 会话）────────────────────────────────────────────
-	mux.HandleFunc("POST /admin/login", handleAdminLogin)
-	mux.HandleFunc("POST /admin/logout", handleAdminLogout)
+	middleware.RefreshNodeGauge(db)
 
-	// ── 当前用户信息（任意已登录用户）──────────────────────────────────────
-	mux.HandleFunc("GET /admin/me", handleAdminMe)
+	wrapped := middleware.WithMetrics(middleware.WithCORS(mux, cfg))
 
-	// ── 用户管理 ──────────────────────────────────────────────────────────
-	mux.HandleFunc("GET /admin/users", requirePerm("user:read")(handleListUsers))
-	mux.HandleFunc("POST /admin/users", requirePerm("user:write")(handleCreateUser))
-	mux.HandleFunc("DELETE /admin/users/{id}", requirePerm("user:delete")(handleDeleteUser))
+	addr := ":" + cfg.Port
+	srv := &http.Server{Addr: addr, Handler: wrapped}
 
-	// ── 密码修改（user:write 或本人，handler 内部鉴权）──────────────────────
-	mux.HandleFunc("POST /admin/users/{id}/password", handleChangePasswordRoute)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	// ── 用户角色管理 ──────────────────────────────────────────────────────
-	mux.HandleFunc("GET /admin/users/{id}/roles", requirePerm("user:read")(handleGetUserRoles))
-	mux.HandleFunc("PUT /admin/users/{id}/roles", requirePerm("user:write")(handleSetUserRoles))
+	go func() {
+		log.Printf("listening on %s", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %v", err)
+		}
+	}()
 
-	// ── 角色管理 ──────────────────────────────────────────────────────────
-	mux.HandleFunc("GET /admin/roles", requirePerm("role:read")(handleListRoles))
-	mux.HandleFunc("PUT /admin/roles/{id}/permissions", requirePerm("role:write")(handleSetRolePermissions))
+	<-ctx.Done()
+	log.Println("shutting down...")
 
-	// ── 权限列表（任意已登录用户）──────────────────────────────────────────
-	mux.HandleFunc("GET /admin/permissions", handleListPermissionsRoute)
-
-	// ── 审计日志 ──────────────────────────────────────────────────────────
-	mux.HandleFunc("GET /admin/audit-logs", requirePerm("audit:read")(handleListAuditLogs))
-
-	// ── 订阅（requireAuth：session cookie 或 ?token=API_SECRET）────────────
-	mux.HandleFunc("GET /subscription", handleSubscriptionVless)
-	mux.HandleFunc("GET /subscription/clash", handleSubscriptionClash)
-
-	// ── 公开订阅分组（无需认证）────────────────────────────────────────────
-	mux.HandleFunc("GET /s/{token}", handlePublicGroupClash)
-
-	// ── 订阅分组管理 ──────────────────────────────────────────────────────
-	mux.HandleFunc("GET /admin/subscription-groups", requirePerm("subscription:read")(handleListGroups))
-	mux.HandleFunc("POST /admin/subscription-groups", requirePerm("subscription:write")(handleCreateGroup))
-	mux.HandleFunc("DELETE /admin/subscription-groups/{id}", requirePerm("subscription:write")(handleDeleteGroup))
-	mux.HandleFunc("GET /admin/subscription-groups/{id}/nodes", requirePerm("subscription:read")(handleGetGroupNodes))
-	mux.HandleFunc("PUT /admin/subscription-groups/{id}/nodes", requirePerm("subscription:write")(handleSetGroupNodes))
-	mux.HandleFunc("POST /admin/subscription-groups/{id}/reset-token", requirePerm("subscription:write")(handleResetGroupToken))
-
-	// ── 运维接口 ──────────────────────────────────────────────────────────
-	mux.HandleFunc("GET /prometheus-targets", requirePerm("prometheus:read")(handlePrometheusTargets))
-	mux.HandleFunc("GET /labels", requirePerm("label:read")(handleLabels))
-	mux.HandleFunc("GET /health", handleHealth)
-
-	// ── 控制台 Dashboard ─────────────────────────────────────────────────
-	mux.HandleFunc("GET /", handleIndex)
-
-	addr := getenv("LISTEN_ADDR", ":8080")
-	log.Printf("hive-registry listening on %s", addr)
-	if err := http.ListenAndServe(addr, withCORS(mux)); err != nil {
-		log.Fatal(err)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown error: %v", err)
 	}
-}
-
-// handleChangePasswordRoute 允许本人或拥有 user:write 权限的用户修改密码。
-func handleChangePasswordRoute(w http.ResponseWriter, r *http.Request) {
-	username, _, ok := parseSession(r)
-	if !ok {
-		jsonErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	_ = username
-	handleChangePassword(w, r)
-}
-
-// handleListPermissionsRoute 要求已登录（任意角色）。
-func handleListPermissionsRoute(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := parseSession(r); !ok {
-		jsonErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	handleListPermissions(w, r)
-}
-
-// getenv 返回环境变量值，未设置时返回默认值
-func getenv(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
+	log.Println("stopped")
 }
