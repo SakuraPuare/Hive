@@ -27,6 +27,17 @@ type ResetPasswordRequest struct {
 
 // ── POST /portal/forgot-password ─────────────────────────────────────────────
 
+// HandleForgotPassword godoc
+// @Summary      发送密码重置验证码
+// @ID           PortalForgotPassword
+// @Description  向指定邮箱发送 6 位验证码，15 分钟有效
+// @Tags         portal-auth
+// @Accept       json
+// @Produce      json
+// @Param        body body ForgotPasswordRequest true "邮箱"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Router       /portal/forgot-password [post]
 func (h *Handler) HandleForgotPassword(w http.ResponseWriter, r *http.Request) {
 	var req ForgotPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -69,6 +80,18 @@ func (h *Handler) HandleForgotPassword(w http.ResponseWriter, r *http.Request) {
 
 // ── POST /portal/reset-password ──────────────────────────────────────────────
 
+// HandleResetPassword godoc
+// @Summary      重置密码
+// @ID           PortalResetPassword
+// @Description  使用验证码重置客户密码
+// @Tags         portal-auth
+// @Accept       json
+// @Produce      json
+// @Param        body body ResetPasswordRequest true "邮箱、验证码、新密码"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /portal/reset-password [post]
 func (h *Handler) HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 	var req ResetPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

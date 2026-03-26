@@ -170,6 +170,16 @@ func (h *Handler) promQueryInstant(query string) map[string]float64 {
 	return result
 }
 
+// HandleNodeStatus godoc
+// @Summary      获取节点状态列表
+// @ID           AdminNodeStatus
+// @Description  返回所有节点的最新探测状态（CPU、内存、磁盘、延迟等）
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Success      200 {array}  model.NodeStatusCheck
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/node-status [get]
 func (h *Handler) HandleNodeStatus(w http.ResponseWriter, r *http.Request) {
 	var checks []model.NodeStatusCheck
 	err := h.DB.Raw(`
