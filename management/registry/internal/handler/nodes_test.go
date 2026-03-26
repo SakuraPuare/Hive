@@ -12,13 +12,14 @@ func TestNodeRegister(t *testing.T) {
 		"mac":       "aabbccddeeff",
 		"mac6":      "ddeeff",
 		"hostname":  "test-node-1",
+		"cf_url":    "https://test.example.com",
 		"xray_uuid": "uuid-1234",
 	}, testCfg.APISecret)
 	assertStatus(t, resp, http.StatusOK)
 
 	body := parseJSON(resp)
-	if body["status"] != "ok" {
-		t.Fatalf("expected status=ok, got %v", body["status"])
+	if body["status"] != "registered" {
+		t.Fatalf("expected status=registered, got %v", body["status"])
 	}
 	if body["hostname"] != "test-node-1" {
 		t.Fatalf("expected hostname=test-node-1, got %v", body["hostname"])
@@ -32,22 +33,21 @@ func TestNodeRegister_Idempotent(t *testing.T) {
 		"mac":       "aabbccddeeff",
 		"mac6":      "ddeeff",
 		"hostname":  "test-node-1",
+		"cf_url":    "https://test.example.com",
 		"xray_uuid": "uuid-1234",
 	}
 
 	// 第一次注册
 	resp := doBearer("POST", "/nodes/register", payload, testCfg.APISecret)
 	assertStatus(t, resp, http.StatusOK)
-	body1 := parseJSON(resp)
 
-	// 第二次注册（幂等）
+	// 第二次注册（幂等）— status 应为 updated
 	resp = doBearer("POST", "/nodes/register", payload, testCfg.APISecret)
 	assertStatus(t, resp, http.StatusOK)
 	body2 := parseJSON(resp)
 
-	// registered_at 应该不变
-	if body1["registered_at"] != body2["registered_at"] {
-		t.Fatalf("registered_at changed: %v -> %v", body1["registered_at"], body2["registered_at"])
+	if body2["status"] != "updated" {
+		t.Fatalf("expected status=updated on second register, got %v", body2["status"])
 	}
 }
 
