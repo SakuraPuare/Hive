@@ -2,6 +2,11 @@ global:
   scrape_interval:     30s
   evaluation_interval: 30s
 
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']
+
 rule_files:
   - /etc/prometheus/rules/*.yml
 
@@ -24,3 +29,11 @@ scrape_configs:
       - targets: ['localhost:9100']
         labels:
           instance: 'management'
+
+  # hive-registry 服务指标
+  - job_name: 'hive-registry'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:8080']
+        labels:
+          instance: 'registry'

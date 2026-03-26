@@ -1,0 +1,83 @@
+groups:
+  - name: hive-management
+    interval: 30s
+    rules:
+
+      # Registry 服务不可达
+      - alert: RegistryDown
+        expr: up{job="hive-registry"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Registry 服务不可达"
+          description: "hive-registry 已离线超过 1 分钟，管理 API 和订阅导出均不可用"
+
+      # Registry P99 请求延迟过高
+      - alert: RegistryHighLatency
+        expr: |
+          histogram_quantile(0.99, sum(rate(hive_http_request_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Registry 请求延迟过高"
+          description: "P99 请求延迟 {{ $value | printf \"%.2f\" }}s，持续超过 5 分钟"
+
+      # Registry 5xx 错误率过高
+      - alert: RegistryHighErrorRate
+        expr: |
+          sum(rate(hive_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(hive_http_requests_total[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Registry 5xx 错误率过高"
+          description: "5xx 错误率 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟"
+
+      # MySQL 不可达（通过 /health 端点判断）
+      - alert: MySQLDown
+        expr: |
+          hive_http_requests_total{path="/health", status="503"} > 0
+          and
+          increase(hive_http_requests_total{path="/health", status="503"}[2m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MySQL 数据库不可达"
+          description: "Registry /health 返回 503，数据库连接异常"
+
+      # 节点大面积离线
+      - alert: NodeMassOffline
+        expr: |
+          count(up{job="hives"} == 0) / count(up{job="hives"}) > 0.3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "节点大面积离线"
+          description: "超过 30% 的节点离线，当前离线 {{ $value | printf \"%.0f\" }}%"
+
+      # Prometheus target 不可达
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus target 不可达: {{ $labels.job }}/{{ $labels.instance }}"
+          description: "{{ $labels.instance }} (job={{ $labels.job }}) 已不可达超过 5 分钟"
+
+      # Registry goroutine 泄漏
+      - alert: RegistryHighGoroutines
+        expr: go_goroutines{job="hive-registry"} > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Registry goroutine 数量异常"
+          description: "当前 goroutine 数量 {{ $value }}，可能存在泄漏"
