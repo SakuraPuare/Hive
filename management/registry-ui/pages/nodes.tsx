@@ -15,7 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
-import { RefreshCw, Trash2, Settings2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { RefreshCw, Trash2, Settings2, ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
   useReactTable,
@@ -41,17 +41,17 @@ function formatDate(s: string | undefined | null, noData: string) {
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
-function getNodeStatus(n: main_Node): 'online' | 'offline' | 'pending' {
-  if (!n.tailscale_ip) return 'pending';
-  if (!n.last_seen) return 'offline';
-  const diff = Date.now() - new Date(n.last_seen).getTime();
-  return diff < 15 * 60 * 1000 ? 'online' : 'offline';
+function getNodeStatus(n: main_Node): 'online' | 'offline' | 'unknown' {
+  const ps = (n as any).probe_status;
+  if (ps === 'online') return 'online';
+  if (ps === 'offline') return 'offline';
+  return 'unknown';
 }
 
 const statusClass: Record<string, string> = {
   online: 'text-green-600 dark:text-green-400',
-  offline: 'text-muted-foreground',
-  pending: 'text-yellow-600 dark:text-yellow-400',
+  offline: 'text-red-600 dark:text-red-400',
+  unknown: 'text-muted-foreground',
 };
 
 const columnHelper = createColumnHelper<main_Node>();
@@ -62,6 +62,9 @@ const DEFAULT_VISIBILITY: VisibilityState = {
   tunnel_id: false,
   mac6: false,
   note: false,
+  enabled: false,
+  weight: false,
+  tags: false,
 };
 
 function loadVisibility(): VisibilityState {
@@ -86,11 +89,13 @@ export default function Nodes() {
   // 初始用默认值保证 SSR 与首次客户端渲染一致，mount 后再从 localStorage 同步
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY);
   const [showColMenu, setShowColMenu] = useState(false);
+  const [selectedMacs, setSelectedMacs] = useState<Set<string>>(new Set());
+  const [selectedTag, setSelectedTag] = useState('');
 
   const statusLabel: Record<string, string> = {
     online: t('statusOnline'),
     offline: t('statusOffline'),
-    pending: t('statusPending'),
+    unknown: t('statusUnknown'),
   };
 
   async function loadNodes() {
@@ -118,17 +123,32 @@ export default function Nodes() {
   }, [columnVisibility]);
 
   const filteredNodes = useMemo(() => {
-    if (!searchQuery.trim()) return nodes;
-    const q = searchQuery.toLowerCase();
-    return nodes.filter(
-      (n) =>
-        (n.hostname ?? '').toLowerCase().includes(q) ||
-        (n.location ?? '').toLowerCase().includes(q) ||
-        (n.tailscale_ip ?? '').toLowerCase().includes(q) ||
-        (n.easytier_ip ?? '').toLowerCase().includes(q) ||
-        (n.mac ?? '').toLowerCase().includes(q)
-    );
-  }, [nodes, searchQuery]);
+    let filtered = nodes;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (n) =>
+          (n.hostname ?? '').toLowerCase().includes(q) ||
+          (n.location ?? '').toLowerCase().includes(q) ||
+          (n.tailscale_ip ?? '').toLowerCase().includes(q) ||
+          (n.easytier_ip ?? '').toLowerCase().includes(q) ||
+          (n.mac ?? '').toLowerCase().includes(q) ||
+          (n.tags ?? '').toLowerCase().includes(q)
+      );
+    }
+    if (selectedTag) {
+      filtered = filtered.filter(n => n.tags && n.tags.split(',').map(t => t.trim()).includes(selectedTag));
+    }
+    return filtered;
+  }, [nodes, searchQuery, selectedTag]);
+
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    nodes.forEach(n => {
+      if (n.tags) n.tags.split(',').forEach(tag => tags.add(tag.trim()));
+    });
+    return Array.from(tags).sort();
+  }, [nodes]);
 
   async function handleDelete(mac: string) {
     if (!window.confirm(t('deleteConfirm', { mac }))) return;
@@ -140,6 +160,44 @@ export default function Nodes() {
     }
   }
 
+  async function handleBatchDelete() {
+    if (!confirm(t('batchDeleteConfirm', { count: selectedMacs.size }))) return;
+    for (const mac of selectedMacs) {
+      await sessionApi(NodesService.nodeDelete({ mac })).catch(() => {});
+    }
+    setSelectedMacs(new Set());
+    loadNodes();
+  }
+
+  async function handleBatchEnable() {
+    for (const mac of selectedMacs) {
+      await sessionApi(NodesService.nodeUpdate({ mac, requestBody: { enabled: true } })).catch(() => {});
+    }
+    setSelectedMacs(new Set());
+    loadNodes();
+  }
+
+  async function handleBatchDisable() {
+    for (const mac of selectedMacs) {
+      await sessionApi(NodesService.nodeUpdate({ mac, requestBody: { enabled: false } })).catch(() => {});
+    }
+    setSelectedMacs(new Set());
+    loadNodes();
+  }
+
+  function handleExportCSV() {
+    const headers = ['hostname', 'location', 'mac', 'tailscale_ip', 'easytier_ip', 'status', 'enabled', 'tags', 'registered_at'];
+    const rows = filteredNodes.map(n => headers.map(h => String((n as any)[h] ?? '')));
+    const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `nodes-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function goDetail(mac: string) {
     router.push('/nodes/detail?mac=' + encodeURIComponent(mac));
   }
@@ -147,6 +205,36 @@ export default function Nodes() {
   const noData = tCommon('noData');
 
   const columns = useMemo(() => [
+    columnHelper.display({
+      id: 'select',
+      header: ({ table }) => (
+        <input
+          type="checkbox"
+          checked={table.getRowModel().rows.length > 0 && selectedMacs.size === table.getRowModel().rows.length}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setSelectedMacs(new Set(table.getRowModel().rows.map(r => r.original.mac!)));
+            } else {
+              setSelectedMacs(new Set());
+            }
+          }}
+          className="h-4 w-4"
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          type="checkbox"
+          checked={selectedMacs.has(row.original.mac!)}
+          onChange={() => {
+            const next = new Set(selectedMacs);
+            if (next.has(row.original.mac!)) next.delete(row.original.mac!);
+            else next.add(row.original.mac!);
+            setSelectedMacs(next);
+          }}
+          className="h-4 w-4"
+        />
+      ),
+    }),
     columnHelper.accessor('location', {
       header: t('colLocation'),
       cell: (info) => info.getValue() || noData,
@@ -189,7 +277,13 @@ export default function Nodes() {
       header: t('colStatus'),
       cell: ({ row }) => {
         const s = getNodeStatus(row.original);
-        return <span className={`text-xs font-medium ${statusClass[s]}`}>{statusLabel[s]}</span>;
+        const dotClass = s === 'online' ? 'bg-green-500' : s === 'offline' ? 'bg-red-500' : 'bg-gray-400';
+        return (
+          <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${statusClass[s]}`}>
+            <span className={`inline-block h-2 w-2 rounded-full ${dotClass}`} />
+            {statusLabel[s]}
+          </span>
+        );
       },
       enableSorting: false,
     }),
@@ -226,6 +320,28 @@ export default function Nodes() {
         const v = info.getValue();
         if (!v) return noData;
         return <span className="max-w-[100px] truncate block" title={v}>{v}</span>;
+      },
+      enableSorting: false,
+    }),
+    columnHelper.accessor('enabled', {
+      id: 'enabled',
+      header: t('colEnabled'),
+      cell: (info) => info.getValue() ? '✓' : '✗',
+      enableSorting: false,
+    }),
+    columnHelper.accessor('weight', {
+      id: 'weight',
+      header: t('colWeight'),
+      cell: (info) => info.getValue() ?? noData,
+      enableSorting: true,
+    }),
+    columnHelper.accessor('tags', {
+      id: 'tags',
+      header: t('colTags'),
+      cell: (info) => {
+        const v = info.getValue();
+        if (!v) return noData;
+        return <span className="max-w-[120px] truncate block text-xs" title={v}>{v}</span>;
       },
       enableSorting: false,
     }),
@@ -266,6 +382,9 @@ export default function Nodes() {
     { id: 'tunnel_id', label: t('colTunnelId') },
     { id: 'mac6', label: t('colMac6') },
     { id: 'note', label: t('colNote') },
+    { id: 'enabled', label: t('colEnabled') },
+    { id: 'weight', label: t('colWeight') },
+    { id: 'tags', label: t('colTags') },
   ];
 
   return (
@@ -299,15 +418,42 @@ export default function Nodes() {
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             {tCommon('refresh')}
           </Button>
+          <Button variant="outline" size="sm" onClick={handleExportCSV}>
+            <Download className="mr-1 h-4 w-4" />
+            {t('exportCsv')}
+          </Button>
         </div>
       </div>
 
-      <Input
-        placeholder={t('searchPlaceholder')}
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        className="max-w-sm"
-      />
+      <div className="flex items-center gap-2 flex-wrap">
+        <Input
+          placeholder={t('searchPlaceholder')}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="max-w-sm"
+        />
+        {allTags.length > 0 && (
+          <select
+            value={selectedTag}
+            onChange={(e) => setSelectedTag(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">{t('allTags')}</option>
+            {allTags.map(tag => (
+              <option key={tag} value={tag}>{tag}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {selectedMacs.size > 0 && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">{t('selectedCount', { count: selectedMacs.size })}</span>
+          <Button size="sm" variant="outline" onClick={handleBatchEnable}>{t('batchEnable')}</Button>
+          <Button size="sm" variant="outline" onClick={handleBatchDisable}>{t('batchDisable')}</Button>
+          <Button size="sm" variant="destructive" onClick={handleBatchDelete}>{t('batchDelete')}</Button>
+        </div>
+      )}
 
       {error && (
         <p className="text-sm text-destructive whitespace-pre-wrap">{error}</p>
@@ -361,7 +507,7 @@ export default function Nodes() {
                     {row.getVisibleCells().map((cell) => (
                       <TableCell
                         key={cell.id}
-                        onClick={cell.column.id === 'actions' ? undefined : () => goDetail(row.original.mac!)}
+                        onClick={cell.column.id === 'actions' || cell.column.id === 'select' ? undefined : () => goDetail(row.original.mac!)}
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </TableCell>
