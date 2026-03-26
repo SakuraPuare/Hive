@@ -40,3 +40,4 @@ openapi/docs.go
 
 cors
 registry
+main
