@@ -26,7 +26,7 @@ openapi:
 	go run github.com/swaggo/swag/cmd/swag@latest init \
 		--generalInfo main.go \
 		--parseDependency \
-		--dir . \
+		--dir .,./internal/handler,./internal/model \
 		-o "$(OPENAPI_DIR)" \
 		--parseDepth 100
 	# Normalize output filename for downstream tools.
