@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { mainAdminLoginRequestSchema } from '@/src/generated/zod/schemas';
+import { handlerAdminLoginRequestSchema } from '@/src/generated/zod/schemas';
 import { AdminService } from '@/src/generated/client';
-import type { main_AdminLoginRequest } from '@/src/generated/client';
+import type { handler_AdminLoginRequest } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,8 +30,8 @@ export default function Login() {
               setLoading(true);
               setError('');
               try {
-                const body = { username, password } as main_AdminLoginRequest;
-                mainAdminLoginRequestSchema.parse(body);
+                const body = { username, password } as handler_AdminLoginRequest;
+                handlerAdminLoginRequestSchema.parse(body);
                 await sessionApi(AdminService.adminLogin({ requestBody: body }));
                 window.location.href = '/dashboard';
               } catch (e: any) {
