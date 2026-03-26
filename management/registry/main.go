@@ -10,6 +10,7 @@ import (
 
 	"hive/registry/internal/config"
 	"hive/registry/internal/handler"
+	"hive/registry/internal/mailer"
 	"hive/registry/internal/middleware"
 	"hive/registry/internal/store"
 )
@@ -39,9 +40,13 @@ func main() {
 	store.BootstrapRBAC(db)
 
 	auth := &middleware.Auth{Config: cfg, DB: db}
-	h := &handler.Handler{DB: db, Config: cfg, Auth: auth}
+	ml := &mailer.Mailer{Config: cfg, DB: db}
+	h := &handler.Handler{DB: db, Config: cfg, Auth: auth, Mailer: ml}
 
 	go h.StartProbeLoop()
+	go h.StartLifecycleLoop()
+	go h.StartTrafficLoop()
+	go ml.StartExpiryNotifier()
 
 	mux := h.RegisterRoutes()
 
