@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
-import type { main_Customer, main_CustomerSubscription, main_Plan } from '@/src/generated/client';
+import type { model_Customer, model_CustomerSubscription, model_Plan } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -35,7 +35,7 @@ import { ArrowLeft, Plus, Trash2, KeyRound, Copy, RefreshCw } from 'lucide-react
 import { useTranslations } from 'next-intl';
 
 // Backend returns plan_name via JOIN; extend the generated type locally
-type Subscription = main_CustomerSubscription & { plan_name?: string };
+type Subscription = model_CustomerSubscription & { plan_name?: string };
 
 function formatDate(s: string | null | undefined) {
   if (!s) return '—';
@@ -65,9 +65,9 @@ export default function CustomerDetail() {
   const tCommon = useTranslations('common');
   const { user, loading: authLoading } = useCurrentUser();
 
-  const [customer, setCustomer] = useState<main_Customer | null>(null);
+  const [customer, setCustomer] = useState<model_Customer | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [plans, setPlans] = useState<main_Plan[]>([]);
+  const [plans, setPlans] = useState<model_Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 

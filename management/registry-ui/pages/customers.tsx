@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
-import type { main_Customer } from '@/src/generated/client';
+import type { model_Customer } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -51,7 +51,7 @@ export default function CustomersPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useCurrentUser();
 
-  const [customers, setCustomers] = useState<main_Customer[]>([]);
+  const [customers, setCustomers] = useState<model_Customer[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -67,7 +67,7 @@ export default function CustomersPage() {
   const [newNickname, setNewNickname] = useState('');
   const [creating, setCreating] = useState(false);
 
-  const [deleteTarget, setDeleteTarget] = useState<main_Customer | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<model_Customer | null>(null);
 
   useEffect(() => {
     if (!authLoading && user && !user.can('customer:read')) {

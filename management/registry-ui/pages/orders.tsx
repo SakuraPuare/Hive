@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
-import type { main_Order } from '@/src/generated/client';
+import type { model_Order } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,7 @@ import {
 import { RefreshCw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-interface Order extends main_Order {
+interface Order extends model_Order {
   customer_email?: string;
   plan_name?: string;
   promo_code?: string;

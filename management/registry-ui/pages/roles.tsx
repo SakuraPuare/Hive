@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
-import type { main_Role } from '@/src/generated/client';
+import type { handler_RoleDetail } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import type { PermissionItem } from '@/lib/domain-types';
 import { useCurrentUser } from '@/lib/auth';
@@ -16,7 +16,7 @@ export default function RolesPage() {
   const t = useTranslations('roles');
   const tCommon = useTranslations('common');
   const { user: currentUser, loading: authLoading } = useCurrentUser();
-  const [roles, setRoles] = useState<main_Role[]>([]);
+  const [roles, setRoles] = useState<handler_RoleDetail[]>([]);
   const [allPerms, setAllPerms] = useState<PermissionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -80,7 +80,7 @@ export default function RolesPage() {
     });
   }
 
-  async function handleSave(role: main_Role) {
+  async function handleSave(role: handler_RoleDetail) {
     const id = role.id!;
     setSaving(id);
     setError('');

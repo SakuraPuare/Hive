@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
-import type { main_Ticket } from '@/src/generated/client';
+import type { model_Ticket } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,7 @@ export default function TicketsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useCurrentUser();
 
-  const [tickets, setTickets] = useState<main_Ticket[]>([]);
+  const [tickets, setTickets] = useState<model_Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');

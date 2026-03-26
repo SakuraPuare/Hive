@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
-import type { main_PromoCode } from '@/src/generated/client';
+import type { model_PromoCode } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -57,7 +57,7 @@ export default function PromoCodesPage() {
   const { user, loading: authLoading } = useCurrentUser();
   const canWrite = user?.can('order:write') ?? false;
 
-  const [codes, setCodes] = useState<main_PromoCode[]>([]);
+  const [codes, setCodes] = useState<model_PromoCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -95,12 +95,12 @@ export default function PromoCodesPage() {
     finally { setCreating(false); }
   }
 
-  const [editTarget, setEditTarget] = useState<main_PromoCode | null>(null);
+  const [editTarget, setEditTarget] = useState<model_PromoCode | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [editing, setEditing] = useState(false);
   const [editError, setEditError] = useState('');
 
-  function openEdit(pc: main_PromoCode) {
+  function openEdit(pc: model_PromoCode) {
     setEditTarget(pc);
     setEditForm({ code: pc.code ?? '', discount_pct: String(pc.discount_pct ?? 0), discount_amt: String(pc.discount_amt ?? 0),
       max_uses: String(pc.max_uses ?? 0), valid_from: pc.valid_from?.slice(0,16) ?? '', valid_to: pc.valid_to?.slice(0,16) ?? '', enabled: pc.enabled ?? false });
@@ -125,7 +125,7 @@ export default function PromoCodesPage() {
     finally { setEditing(false); }
   }
 
-  const [deleteTarget, setDeleteTarget] = useState<main_PromoCode | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<model_PromoCode | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   async function handleDelete() {

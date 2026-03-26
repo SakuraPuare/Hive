@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
-import type { main_TicketDetailResponse, main_TicketReply } from '@/src/generated/client';
+import type { handler_TicketDetailResponse, model_TicketReply } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,7 @@ export default function TicketDetailPage() {
   const { id } = router.query;
   const { user, loading: authLoading } = useCurrentUser();
 
-  const [ticket, setTicket] = useState<main_TicketDetailResponse | null>(null);
+  const [ticket, setTicket] = useState<handler_TicketDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
