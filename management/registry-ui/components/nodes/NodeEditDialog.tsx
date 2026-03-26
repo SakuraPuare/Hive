@@ -14,6 +14,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { LocationCombobox } from '@/components/ui/location-combobox';
 import { useTranslations } from 'next-intl';
 import { LOCATION_OPTIONS } from '@/lib/locations';
@@ -29,6 +36,9 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
   const [open, setOpen] = useState(false);
   const [location, setLocation] = useState(node.location ?? '');
   const [note, setNote] = useState(node.note ?? '');
+  const [enabled, setEnabled] = useState(node.enabled ?? true);
+  const [status, setStatus] = useState(node.status ?? 'active');
+  const [tags, setTags] = useState(node.tags ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -36,6 +46,9 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
     if (v) {
       setLocation(node.location ?? '');
       setNote(node.note ?? '');
+      setEnabled(node.enabled ?? true);
+      setStatus(node.status ?? 'active');
+      setTags(node.tags ?? '');
       setError('');
     }
     setOpen(v);
@@ -48,7 +61,7 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
       await sessionApi(
         NodesService.nodeUpdate({
           mac: node.mac!,
-          requestBody: { location, note } as main_UpdateRequest,
+          requestBody: { location, note, enabled, status, tags } as main_UpdateRequest,
         }),
       );
       setOpen(false);
@@ -87,6 +100,38 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder={t('notePlaceholder')}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>{t('enabled')}</Label>
+              <Select value={enabled ? '1' : '0'} onValueChange={(v) => setEnabled(v === '1')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">✓</SelectItem>
+                  <SelectItem value="0">✗</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t('nodeStatus')}</Label>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">{t('statusActive')}</SelectItem>
+                  <SelectItem value="maintenance">{t('statusMaintenance')}</SelectItem>
+                  <SelectItem value="retired">{t('statusRetired')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-tags">{t('tags')}</Label>
+            <Input
+              id="edit-tags"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder={t('tagsPlaceholder')}
             />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
