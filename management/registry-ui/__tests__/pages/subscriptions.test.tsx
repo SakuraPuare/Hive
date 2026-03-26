@@ -19,8 +19,6 @@ vi.mock('@/src/generated/client', () => ({
     adminSetSubscriptionGroupNodes: vi.fn(),
     adminGetSubscriptionGroupNodes: vi.fn(),
     adminResetSubscriptionGroupToken: vi.fn(),
-  },
-  NodesService: {
     nodesList: () => mockNodesList(),
   },
 }));

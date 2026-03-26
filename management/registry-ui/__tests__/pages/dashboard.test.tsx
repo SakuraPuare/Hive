@@ -4,7 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 const mockNodesList = vi.fn();
 
 vi.mock('@/src/generated/client', () => ({
-  NodesService: { nodesList: () => mockNodesList() },
+  AdminService: { nodesList: () => mockNodesList() },
 }));
 
 vi.mock('@/lib/openapi-session', () => ({

@@ -6,7 +6,7 @@ const mockNodesList = vi.fn();
 const mockNodeDelete = vi.fn();
 
 vi.mock('@/src/generated/client', () => ({
-  NodesService: {
+  AdminService: {
     nodesList: () => mockNodesList(),
     nodeDelete: (...args: any[]) => mockNodeDelete(...args),
     nodeUpdate: vi.fn(),
