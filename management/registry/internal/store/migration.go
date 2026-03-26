@@ -334,6 +334,70 @@ CREATE TABLE IF NOT EXISTS plan_lines (
 COMMENT='套餐-线路映射';
 `,
 	},
+	{
+		version: 9,
+		desc:    "customer_subscriptions: add traffic_reset_at",
+		up:      `ALTER TABLE customer_subscriptions ADD COLUMN traffic_reset_at DATETIME DEFAULT NULL COMMENT '流量重置时间' AFTER traffic_limit`,
+	},
+	{
+		version: 10,
+		desc:    "password_reset_codes table + expiry_notified_at column",
+		up: `
+CREATE TABLE IF NOT EXISTS password_reset_codes (
+    id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    email      VARCHAR(255) NOT NULL,
+    code       VARCHAR(6) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    used       TINYINT(1) NOT NULL DEFAULT 0,
+    INDEX idx_email (email),
+    INDEX idx_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='密码重置验证码';
+
+ALTER TABLE customer_subscriptions ADD COLUMN expiry_notified_at DATETIME DEFAULT NULL COMMENT '到期提醒发送时间' AFTER status;
+`,
+	},
+	{
+		version: 11,
+		desc:    "referral system: add referral fields to customers, create referrals table",
+		up: `
+ALTER TABLE customers ADD COLUMN referral_code VARCHAR(16) DEFAULT NULL UNIQUE COMMENT '邀请码（8位大写字母+数字）' AFTER status;
+ALTER TABLE customers ADD COLUMN referred_by INT UNSIGNED DEFAULT NULL COMMENT '邀请人 customer ID' AFTER referral_code;
+ALTER TABLE customers ADD COLUMN balance INT NOT NULL DEFAULT 0 COMMENT '余额（分），可用于抵扣订单' AFTER referred_by;
+
+CREATE TABLE IF NOT EXISTS referrals (
+    id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    referrer_id INT UNSIGNED NOT NULL COMMENT '邀请人',
+    referee_id  INT UNSIGNED NOT NULL COMMENT '被邀请人',
+    order_id    INT UNSIGNED DEFAULT NULL COMMENT '触发返利的订单',
+    commission  INT NOT NULL DEFAULT 0 COMMENT '返利金额（分）',
+    status      ENUM('pending','paid','cancelled') NOT NULL DEFAULT 'pending',
+    created_at  DATETIME NOT NULL,
+    INDEX idx_referrer (referrer_id),
+    INDEX idx_referee (referee_id),
+    INDEX idx_order (order_id),
+    INDEX idx_status (status),
+    FOREIGN KEY (referrer_id) REFERENCES customers(id) ON DELETE CASCADE,
+    FOREIGN KEY (referee_id) REFERENCES customers(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邀请返利记录';
+`,
+	},
+	{
+		version: 12,
+		desc:    "announcements table",
+		up: `
+CREATE TABLE IF NOT EXISTS announcements (
+    id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    title      VARCHAR(256) NOT NULL DEFAULT '' COMMENT '公告标题',
+    content    TEXT         NOT NULL COMMENT '公告内容（Markdown）',
+    level      VARCHAR(16)  NOT NULL DEFAULT 'info' COMMENT 'info / warning / critical',
+    pinned     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否置顶',
+    published  TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否发布',
+    created_at DATETIME     NOT NULL,
+    updated_at DATETIME     NOT NULL,
+    INDEX idx_ann_published (published, pinned, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公告表';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.
