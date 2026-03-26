@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { LayoutDashboard, Server, Download, Users, ScrollText, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Server, Download, Route, Package, Users, ScrollText, ShieldCheck, Activity, UserCheck, ShoppingCart, Tag, MessageSquare } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -18,17 +18,24 @@ export function Sidebar() {
   const baseNavItems = [
     { href: '/dashboard', label: tNav('dashboard'), icon: LayoutDashboard, perm: null },
     { href: '/nodes', label: tNav('nodes'), icon: Server, perm: null },
+    { href: '/node-status', label: tNav('nodeStatus'), icon: Activity, perm: null },
     { href: '/subscriptions', label: tNav('subscriptions'), icon: Download, perm: null },
+    { href: '/lines', label: tNav('lines'), icon: Route, perm: 'line:read' },
+    { href: '/plans', label: tNav('plans'), icon: Package, perm: 'subscription:read' },
+    { href: '/customers', label: tNav('customers'), icon: UserCheck, perm: 'customer:read' },
   ];
 
   const adminNavItems = [
+    { href: '/orders', label: tNav('orders'), icon: ShoppingCart, perm: 'order:read' },
+    { href: '/promo-codes', label: tNav('promoCodes'), icon: Tag, perm: 'order:write' },
+    { href: '/tickets', label: tNav('tickets'), icon: MessageSquare, perm: 'ticket:read' },
     { href: '/users', label: tNav('users'), icon: Users, perm: 'user:read' },
     { href: '/roles', label: tNav('roles'), icon: ShieldCheck, perm: 'role:read' },
     { href: '/audit-logs', label: tNav('auditLogs'), icon: ScrollText, perm: 'audit:read' },
   ];
 
   const navItems = [
-    ...baseNavItems,
+    ...baseNavItems.filter(({ perm }) => !perm || user?.can(perm)),
     ...adminNavItems.filter(({ perm }) => perm && user?.can(perm)),
   ];
 
