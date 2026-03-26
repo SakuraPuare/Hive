@@ -94,6 +94,9 @@ export ADMIN_SESSION_SECRET=dev-session-secret
 export API_SECRET=dev-api-secret
 export CORS_ALLOW_ORIGINS=http://127.0.0.1:3000
 export ADMIN_COOKIE_SAMESITE=lax
+
+# 节点探测（可选，不配置则探测循环会静默失败）
+# export PROMETHEUS_URL=http://127.0.0.1:4230
 ```
 
 直接启动：
@@ -136,6 +139,7 @@ MYSQL_USER=root MYSQL_PASSWORD=123456 make seed-local-demo
 
 - 4 个演示节点
 - 2 个演示订阅分组
+- 2 条演示线路（日本家宽、亚洲优化）
 
 数据文件在：
 
@@ -170,6 +174,12 @@ cd /home/kent/rk3528-hive/management/registry-ui
 NEXT_PUBLIC_API_BASE=http://127.0.0.1:8080 \
   npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
+
+注意：
+
+- `NEXT_PUBLIC_API_BASE` 必须在启动 `npm run dev` 之前就带上
+- 如果你改了这个变量，必须重启前端开发服务器
+- 如果没带这个变量，前端会默认请求 `/api`，也就是打到 `127.0.0.1:3000` 自己身上，而不是 Go 后端
 
 打开：
 
@@ -254,7 +264,54 @@ make seed-local-demo
 
 ---
 
-## 九、适用范围
+## 九、常见问题
+
+### 1. `405 Method Not Allowed`
+
+如果你在登录或加载页面时看到：
+
+```text
+Generic Error: status: 405; status text: Method Not Allowed
+```
+
+最常见原因是：
+
+- 前端请求没有打到 `127.0.0.1:8080`
+- 而是打到了 `127.0.0.1:3000/api/...`
+
+排查方法：
+
+1. 打开浏览器开发者工具，看失败请求的 URL
+2. 如果 URL 是 `http://127.0.0.1:3000/api/...`，说明 `NEXT_PUBLIC_API_BASE` 没生效
+3. 停掉前端，重新执行：
+
+```bash
+cd /home/kent/rk3528-hive/management/registry-ui
+NEXT_PUBLIC_API_BASE=http://127.0.0.1:8080 \
+  npm run dev -- --hostname 127.0.0.1 --port 3000
+```
+
+再单独确认后端是通的：
+
+```bash
+curl http://127.0.0.1:8080/health
+```
+
+### 2. 登录后立刻跳回 `/login`
+
+通常是下面两个问题之一：
+
+- 前后端 host 不一致，比如一边用 `localhost`，一边用 `127.0.0.1`
+- `CORS_ALLOW_ORIGINS` 没包含 `http://127.0.0.1:3000`
+
+建议统一使用：
+
+- 前端：`http://127.0.0.1:3000`
+- 后端：`http://127.0.0.1:8080`
+
+---
+
+## 十、适用范围
 
 这套本地模式只用于：
 
