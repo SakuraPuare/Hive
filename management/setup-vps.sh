@@ -1,6 +1,6 @@
 #!/bin/bash
 # VPS 管理端一键安装脚本（Ubuntu 22.04 / 24.04 / Debian trixie）
-# 安装：hive-registry、Docker、Ansible、部署 Prometheus+Grafana
+# 安装：hive-registry、Docker、Ansible、nginx、Node.js、部署 Prometheus+Grafana+registry-ui
 # 幂等：可重复执行，已安装的组件只会更新配置或重启服务
 #
 # 在 VPS 上执行：
@@ -24,7 +24,30 @@ fi
 echo "=== Hive Management Setup ==="
 
 # ─────────────────────────────────────────────
-# 1. 安装 Docker
+# 1. 安装基础依赖工具
+# ─────────────────────────────────────────────
+apt-get install -y --no-install-recommends jq curl make rsync prometheus-node-exporter
+systemctl enable --now prometheus-node-exporter
+
+# ─────────────────────────────────────────────
+# 2. 安装 nginx
+# ─────────────────────────────────────────────
+if ! command -v nginx &>/dev/null; then
+    echo ">>> Installing nginx..."
+    apt-get install -y nginx
+else
+    echo ">>> nginx already installed: $(nginx -v 2>&1)"
+fi
+
+# 部署 nginx 配置（每次执行都刷新）
+cp "${ROOT_DIR}/management/nginx/nginx.conf" /etc/nginx/nginx.conf
+nginx -t
+systemctl enable nginx
+systemctl reload nginx || systemctl start nginx
+echo ">>> nginx configured"
+
+# ─────────────────────────────────────────────
+# 3. 安装 Docker
 # ─────────────────────────────────────────────
 if ! command -v docker &>/dev/null; then
     echo ">>> Installing Docker..."
@@ -35,7 +58,7 @@ else
 fi
 
 # ─────────────────────────────────────────────
-# 2. 安装 Ansible + community.general
+# 4. 安装 Ansible + community.general
 # ─────────────────────────────────────────────
 if ! command -v ansible &>/dev/null; then
     echo ">>> Installing Ansible..."
@@ -58,13 +81,7 @@ if ! ansible-galaxy collection list community.general &>/dev/null; then
 fi
 
 # ─────────────────────────────────────────────
-# 3. 安装依赖工具
-# ─────────────────────────────────────────────
-apt-get install -y --no-install-recommends jq curl make prometheus-node-exporter
-systemctl enable --now prometheus-node-exporter
-
-# ─────────────────────────────────────────────
-# 4. 安装 Go（若缺失或版本过旧）
+# 5. 安装 Go（若缺失或版本过旧）
 # ─────────────────────────────────────────────
 # 先把 /usr/local/go/bin 加入 PATH，避免检测时找不到已安装的 go
 export PATH=$PATH:/usr/local/go/bin
@@ -107,7 +124,30 @@ chmod 644 /etc/profile.d/golang.sh
 # PATH 已在检测阶段 export，此处无需重复
 
 # ─────────────────────────────────────────────
-# 5. 编译并安装 hive-registry
+# 6. 初始化 MySQL 数据库和用户
+# ─────────────────────────────────────────────
+MYSQL_DB="${REGISTRY_MYSQL_DB:-hive_registry}"
+MYSQL_USER="${REGISTRY_MYSQL_USER:-hive}"
+MYSQL_PASS="${REGISTRY_MYSQL_PASSWORD}"
+
+if [ -z "${MYSQL_PASS}" ]; then
+    echo "!!! REGISTRY_MYSQL_PASSWORD is not set in .env"
+    exit 1
+fi
+
+echo ">>> Initializing MySQL database..."
+mysql -u root << SQL
+CREATE DATABASE IF NOT EXISTS \`${MYSQL_DB}\`
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'127.0.0.1' IDENTIFIED BY '${MYSQL_PASS}';
+ALTER USER '${MYSQL_USER}'@'127.0.0.1' IDENTIFIED BY '${MYSQL_PASS}';
+GRANT ALL PRIVILEGES ON \`${MYSQL_DB}\`.* TO '${MYSQL_USER}'@'127.0.0.1';
+FLUSH PRIVILEGES;
+SQL
+echo ">>> MySQL: database '${MYSQL_DB}' and user '${MYSQL_USER}' ready"
+
+# ─────────────────────────────────────────────
+# 7. 编译并安装 hive-registry
 # ─────────────────────────────────────────────
 echo ">>> Building hive-registry..."
 
@@ -177,23 +217,62 @@ systemctl restart hive-registry
 echo ">>> hive-registry: $(systemctl is-active hive-registry)"
 
 # ─────────────────────────────────────────────
-# 6. 创建运行时目录
+# 8. 安装 Node.js（构建 registry-ui 需要）
+# ─────────────────────────────────────────────
+NODE_MIN=20
+if ! command -v node &>/dev/null || [ "$(node -e 'process.stdout.write(process.version.slice(1).split(".")[0])')" -lt "${NODE_MIN}" ]; then
+    echo ">>> Installing Node.js ${NODE_MIN}+..."
+    curl -fsSL https://deb.nodesource.com/setup_${NODE_MIN}.x | bash -
+    apt-get install -y nodejs
+else
+    echo ">>> Node.js already installed: $(node --version)"
+fi
+
+# ─────────────────────────────────────────────
+# 9. 构建并部署 registry-ui
+# ─────────────────────────────────────────────
+UI_DIR="${ROOT_DIR}/management/registry-ui"
+UI_OUT="${UI_DIR}/out"
+UI_DEPLOY="/var/www/hive-ui"
+
+echo ">>> Building registry-ui..."
+cd "${UI_DIR}"
+npm ci --prefer-offline
+npm run build
+cd "${ROOT_DIR}"
+
+echo ">>> Deploying registry-ui to ${UI_DEPLOY}..."
+mkdir -p "${UI_DEPLOY}"
+# rsync 原子替换：先同步到临时目录，再 rename（避免 nginx 服务中断）
+rsync -a --delete "${UI_OUT}/" "${UI_DEPLOY}.new/"
+# 原子切换
+if [ -d "${UI_DEPLOY}" ]; then
+    mv "${UI_DEPLOY}" "${UI_DEPLOY}.old"
+fi
+mv "${UI_DEPLOY}.new" "${UI_DEPLOY}"
+rm -rf "${UI_DEPLOY}.old"
+echo ">>> registry-ui deployed"
+
+# 重新加载 nginx 以确保配置生效
+systemctl reload nginx
+
+# ─────────────────────────────────────────────
+# 10. 创建运行时目录
 # ─────────────────────────────────────────────
 mkdir -p "${ROOT_DIR}/management/prometheus/targets"
-# 只在文件不存在时初始化，避免覆盖已有数据
 [ -f "${ROOT_DIR}/management/prometheus/targets/nodes.json" ] || \
     echo "[]" > "${ROOT_DIR}/management/prometheus/targets/nodes.json"
 
 # ─────────────────────────────────────────────
-# 7. 启动 Prometheus + Grafana
+# 11. 启动 Prometheus + Grafana
 # ─────────────────────────────────────────────
-echo ">>> Starting Prometheus + Grafana..."
+echo ">>> Starting Prometheus + Grafana + Alertmanager..."
 cd "${ROOT_DIR}/management"
 docker compose up -d --remove-orphans
 cd "${ROOT_DIR}"
 
 # ─────────────────────────────────────────────
-# 8. cron：每分钟从 hive-registry 刷新 Prometheus 节点列表
+# 12. cron：每分钟从 hive-registry 刷新 Prometheus 节点列表
 # ─────────────────────────────────────────────
 REGISTRY_LOCAL_URL="http://${REGISTRY_LISTEN_ADDR:-127.0.0.1:8080}"
 TARGETS_FILE="${ROOT_DIR}/management/prometheus/targets/nodes.json"
@@ -213,23 +292,20 @@ echo ">>> Cron installed: prometheus-targets refresh every minute"
 echo ""
 echo "=== Setup Complete ==="
 echo ""
+echo "  Registry UI    : http://localhost/"
 echo "  hive-registry  : ${REGISTRY_LOCAL_URL}  (local only)"
-echo "  Prometheus     : ${PROMETHEUS_EXTERNAL_URL:-http://localhost:4230/prometheus/}"
-echo "  Grafana        : ${GRAFANA_ROOT_URL:-http://localhost:4231/grafana}"
+echo "  Prometheus     : ${PROMETHEUS_EXTERNAL_URL:-http://localhost/prometheus/}"
+echo "  Grafana        : ${GRAFANA_ROOT_URL:-http://localhost/grafana}"
 echo "  Grafana PW     : ${GRAFANA_PASSWORD:-changeme}"
+echo "  Alertmanager   : ${ALERTMANAGER_EXTERNAL_URL:-http://localhost/alertmanager/}"
 echo ""
-echo "  Verify registry (direct=无前缀 / nginx=有 /api 前缀):"
+echo "  Verify:"
 if [ -n "${REGISTRY_API_SECRET}" ]; then
-    echo "    curl -H 'Authorization: Bearer ${REGISTRY_API_SECRET}' ${REGISTRY_LOCAL_URL}/health"
     echo "    curl -H 'Authorization: Bearer ${REGISTRY_API_SECRET}' http://localhost/api/health"
 else
-    echo "    curl ${REGISTRY_LOCAL_URL}/health"
     echo "    curl http://localhost/api/health"
 fi
-echo ""
-echo "  If no nginx reverse proxy, SSH tunnel to access locally:"
-echo "    ssh -L 4230:localhost:4230 -L 4231:localhost:4231 root@<VPS-IP>"
-echo "    Then open: http://localhost:4231"
+echo "    curl http://localhost/"
 echo ""
 echo "  Grafana setup:"
 echo "    1. Login admin / (password above)"
