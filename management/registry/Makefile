@@ -2,7 +2,7 @@ BINARY  = hive-registry
 GOOS   ?= linux
 GOARCH ?= amd64
 
-.PHONY: build tidy clean openapi seed-local-demo
+.PHONY: build tidy clean openapi seed-local-demo test test-short
 
 build: tidy
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
@@ -37,3 +37,9 @@ seed-local-demo:
 
 clean:
 	rm -f $(BINARY) $(BINARY)-arm64 $(OPENAPI_DIR) -r
+
+test:
+	TEST_MYSQL_DB=hive_registry_test TEST_MYSQL_USER=root TEST_MYSQL_PASSWORD=123456 go test ./... -v -count=1
+
+test-short:
+	TEST_MYSQL_DB=hive_registry_test TEST_MYSQL_USER=root TEST_MYSQL_PASSWORD=123456 go test ./... -count=1
