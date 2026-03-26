@@ -42,7 +42,20 @@ type SetPlanLinesRequest struct {
 	Lines []int `json:"lines"`
 }
 
+// CreatePlanResponse is the response body for POST /admin/plans.
+type CreatePlanResponse struct {
+	ID uint `json:"id" example:"1"`
+}
+
 // HandleListPlans handles GET /admin/plans
+// @Summary      获取套餐列表
+// @ID           AdminListPlans
+// @Description  返回所有套餐
+// @Tags         admin
+// @Produce      json
+// @Success      200 {array} model.Plan
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/plans [get]
 func (h *Handler) HandleListPlans(w http.ResponseWriter, r *http.Request) {
 	var plans []model.Plan
 	if err := h.DB.Order("sort_order, id").Find(&plans).Error; err != nil {
@@ -53,6 +66,18 @@ func (h *Handler) HandleListPlans(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleCreatePlan handles POST /admin/plans
+// @Summary      创建套餐
+// @ID           AdminCreatePlan
+// @Description  创建新的套餐
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Param        body body CreatePlanRequest true "套餐信息"
+// @Success      200 {object} CreatePlanResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/plans [post]
 func (h *Handler) HandleCreatePlan(w http.ResponseWriter, r *http.Request) {
 	username, _, ok := h.Auth.ParseSession(r)
 	if !ok {
@@ -109,6 +134,20 @@ func (h *Handler) HandleCreatePlan(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleUpdatePlan handles PATCH /admin/plans/{id}
+// @Summary      更新套餐
+// @ID           AdminUpdatePlan
+// @Description  根据 ID 更新套餐信息
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Param        id path int true "套餐 ID"
+// @Param        body body UpdatePlanRequest true "更新字段"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/plans/{id} [patch]
 func (h *Handler) HandleUpdatePlan(w http.ResponseWriter, r *http.Request) {
 	username, _, ok := h.Auth.ParseSession(r)
 	if !ok {
@@ -178,6 +217,17 @@ func (h *Handler) HandleUpdatePlan(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleDeletePlan handles DELETE /admin/plans/{id}
+// @Summary      删除套餐
+// @ID           AdminDeletePlan
+// @Description  根据 ID 删除套餐
+// @Tags         admin
+// @Produce      json
+// @Param        id path int true "套餐 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/plans/{id} [delete]
 func (h *Handler) HandleDeletePlan(w http.ResponseWriter, r *http.Request) {
 	username, _, ok := h.Auth.ParseSession(r)
 	if !ok {
@@ -202,6 +252,15 @@ func (h *Handler) HandleDeletePlan(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleGetPlanLines handles GET /admin/plans/{id}/lines
+// @Summary      获取套餐线路
+// @ID           AdminGetPlanLines
+// @Description  返回套餐关联的线路 ID 列表
+// @Tags         admin
+// @Produce      json
+// @Param        id path int true "套餐 ID"
+// @Success      200 {array} int
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/plans/{id}/lines [get]
 func (h *Handler) HandleGetPlanLines(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var lineIDs []int
@@ -210,6 +269,19 @@ func (h *Handler) HandleGetPlanLines(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleSetPlanLines handles PUT /admin/plans/{id}/lines
+// @Summary      设置套餐线路
+// @ID           AdminSetPlanLines
+// @Description  替换套餐关联的线路列表
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Param        id path int true "套餐 ID"
+// @Param        body body SetPlanLinesRequest true "线路 ID 列表"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/plans/{id}/lines [put]
 func (h *Handler) HandleSetPlanLines(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -295,6 +367,15 @@ func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.N
 }
 
 // HandleCustomerSubscriptionClash handles GET /c/{token}
+// @Summary      获取客户 Clash 订阅
+// @ID           CustomerSubscriptionClash
+// @Description  根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)
+// @Tags         subscription
+// @Produce      plain
+// @Param        token path string true "订阅 token"
+// @Success      200 {string} string "Clash subscription"
+// @Failure      404 {string} string "Not Found"
+// @Router       /c/{token} [get]
 func (h *Handler) HandleCustomerSubscriptionClash(w http.ResponseWriter, r *http.Request) {
 	middleware.SubscriptionRequestsTotal.WithLabelValues("customer_clash").Inc()
 
@@ -323,6 +404,15 @@ func (h *Handler) HandleCustomerSubscriptionClash(w http.ResponseWriter, r *http
 }
 
 // HandleCustomerSubscriptionVless handles GET /c/{token}/vless
+// @Summary      获取客户 VLESS 订阅
+// @ID           CustomerSubscriptionVless
+// @Description  根据订阅 token 返回 base64 编码的 VLESS 订阅链接 (text/plain)
+// @Tags         subscription
+// @Produce      plain
+// @Param        token path string true "订阅 token"
+// @Success      200 {string} string "VLESS subscription"
+// @Failure      404 {string} string "Not Found"
+// @Router       /c/{token}/vless [get]
 func (h *Handler) HandleCustomerSubscriptionVless(w http.ResponseWriter, r *http.Request) {
 	middleware.SubscriptionRequestsTotal.WithLabelValues("customer_vless").Inc()
 
