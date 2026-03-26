@@ -37,3 +37,6 @@ hive-registry
 openapi/swagger.yaml
 openapi/swagger.json
 openapi/docs.go
+
+cors
+registry
