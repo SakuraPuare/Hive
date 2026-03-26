@@ -146,7 +146,18 @@ func (h *Handler) resetMonthlyTraffic(now time.Time, nowStr string) {
 
 // ── admin manual operations ──────────────────────────────────────────────────
 
-// HandleActivateSubscription manually activates a subscription.
+// HandleActivateSubscription 手动激活订阅
+// @Summary      激活订阅
+// @ID           AdminActivateSubscription
+// @Description  手动将订阅状态设为 active
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        id path int true "订阅 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscriptions/{id}/activate [post]
 func (h *Handler) HandleActivateSubscription(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
@@ -170,7 +181,18 @@ func (h *Handler) HandleActivateSubscription(w http.ResponseWriter, r *http.Requ
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// HandleSuspendSubscription manually suspends a subscription.
+// HandleSuspendSubscription 手动暂停订阅
+// @Summary      暂停订阅
+// @ID           AdminSuspendSubscription
+// @Description  手动将订阅状态设为 suspended
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        id path int true "订阅 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscriptions/{id}/suspend [post]
 func (h *Handler) HandleSuspendSubscription(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
@@ -194,7 +216,18 @@ func (h *Handler) HandleSuspendSubscription(w http.ResponseWriter, r *http.Reque
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// HandleExpireSubscription manually expires a subscription.
+// HandleExpireSubscription 手动过期订阅
+// @Summary      过期订阅
+// @ID           AdminExpireSubscription
+// @Description  手动将订阅状态设为 expired
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        id path int true "订阅 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscriptions/{id}/expire [post]
 func (h *Handler) HandleExpireSubscription(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
@@ -218,7 +251,17 @@ func (h *Handler) HandleExpireSubscription(w http.ResponseWriter, r *http.Reques
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// HandleBanCustomer bans a customer and suspends all their subscriptions.
+// HandleBanCustomer godoc
+// @Summary      封禁客户
+// @ID           AdminBanCustomer
+// @Description  封禁客户并暂停其所有活跃订阅
+// @Tags         admin
+// @Security     CookieAuth
+// @Produce      json
+// @Param        id path int true "客户 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/customers/{id}/ban [post]
 func (h *Handler) HandleBanCustomer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
@@ -253,7 +296,18 @@ func (h *Handler) HandleBanCustomer(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// HandleUnbanCustomer unbans a customer (sets status back to active).
+// HandleUnbanCustomer godoc
+// @Summary      解封客户
+// @ID           AdminUnbanCustomer
+// @Description  将已封禁的客户状态恢复为活跃
+// @Tags         admin
+// @Security     CookieAuth
+// @Produce      json
+// @Param        id path int true "客户 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/customers/{id}/unban [post]
 func (h *Handler) HandleUnbanCustomer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
