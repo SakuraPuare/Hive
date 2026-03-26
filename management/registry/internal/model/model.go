@@ -115,18 +115,19 @@ type Customer struct {
 }
 
 type CustomerSubscription struct {
-	ID           uint   `json:"id"`
-	CustomerID   uint   `json:"customer_id"`
-	PlanID       uint   `json:"plan_id"`
-	Token        string `json:"token"`
-	TrafficUsed  int64  `json:"traffic_used"`
-	TrafficLimit int64  `json:"traffic_limit"`
-	DeviceLimit  int    `json:"device_limit"`
-	StartedAt    string `json:"started_at"`
-	ExpiresAt    string `json:"expires_at"`
-	Status       string `json:"status"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	ID             uint    `json:"id"`
+	CustomerID     uint    `json:"customer_id"`
+	PlanID         uint    `json:"plan_id"`
+	Token          string  `json:"token"`
+	TrafficUsed    int64   `json:"traffic_used"`
+	TrafficLimit   int64   `json:"traffic_limit"`
+	TrafficResetAt *string `json:"traffic_reset_at"`
+	DeviceLimit    int     `json:"device_limit"`
+	StartedAt      string  `json:"started_at"`
+	ExpiresAt      string  `json:"expires_at"`
+	Status         string  `json:"status"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
 }
 
 // ── Order & PromoCode ────────────────────────────────────────────────────────
@@ -178,6 +179,16 @@ type TicketReply struct {
 	IsAdmin   bool   `json:"is_admin"`
 	Content   string `json:"content"`
 	CreatedAt string `json:"created_at"`
+}
+
+// ── Password Reset ──────────────────────────────────────────────────────────
+
+type PasswordResetCode struct {
+	ID        uint   `json:"id" gorm:"primaryKey;autoIncrement"`
+	Email     string `json:"email"`
+	Code      string `json:"code"`
+	ExpiresAt string `json:"expires_at"`
+	Used      bool   `json:"used"`
 }
 
 // ── Risk ─────────────────────────────────────────────────────────────────────
@@ -257,6 +268,33 @@ type SchemaVersion struct {
 }
 
 func (SchemaVersion) TableName() string { return "schema_migrations" }
+
+// ── Referral ─────────────────────────────────────────────────────────────────
+
+type Referral struct {
+	ID         uint   `json:"id" gorm:"primaryKey;autoIncrement"`
+	ReferrerID uint   `json:"referrer_id"`
+	RefereeID  uint   `json:"referee_id"`
+	OrderID    *uint  `json:"order_id"`
+	Commission int    `json:"commission"`
+	Status     string `json:"status"`
+	CreatedAt  string `json:"created_at"`
+}
+
+// ── Announcement ─────────────────────────────────────────────────────────────
+
+type Announcement struct {
+	ID        uint   `json:"id" gorm:"primaryKey;autoIncrement"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	Level     string `json:"level"`
+	Pinned    bool   `json:"pinned"`
+	Published bool   `json:"published"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+func (Announcement) TableName() string { return "announcements" }
 
 // ── Heartbeat ────────────────────────────────────────────────────────────────
 
