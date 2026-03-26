@@ -125,6 +125,13 @@ cd /home/kent/rk3528-hive/management/registry
 make seed-local-demo
 ```
 
+如果你本地数据库账号密码不是文档里的示例值，先显式传入：
+
+```bash
+cd /home/kent/rk3528-hive/management/registry
+MYSQL_USER=root MYSQL_PASSWORD=123456 make seed-local-demo
+```
+
 默认会插入：
 
 - 4 个演示节点
