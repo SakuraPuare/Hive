@@ -12,7 +12,19 @@ import (
 	"hive/registry/internal/store"
 )
 
-// HandleRegister handles POST /nodes/register
+// HandleRegister godoc
+// @Summary Register a node
+// @ID      NodeRegister
+// @Description Register a new node or update an existing one by MAC address
+// @Tags nodes
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param body body NodeRegisterRequest true "node info"
+// @Success 200 {object} NodeRegisterResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Router /nodes/register [post]
 func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	if !h.Auth.RequireDeviceAuth(w, r) {
 		return
@@ -68,7 +80,22 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleListNodes handles GET /nodes
+// HandleListNodes godoc
+// @Summary List nodes
+// @ID      NodesList
+// @Description List all nodes with optional filters
+// @Tags admin
+// @Security AdminSession
+// @Produce json
+// @Param status query string false "filter by status"
+// @Param enabled query string false "filter by enabled (0 or 1)"
+// @Param country query string false "filter by country"
+// @Param region query string false "filter by region"
+// @Param search query string false "search hostname, location, note, or mac"
+// @Param tags query string false "filter by tags (comma-separated)"
+// @Success 200 {array} model.Node
+// @Failure 500 {object} ErrorResponse
+// @Router /nodes [get]
 func (h *Handler) HandleListNodes(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	query := "SELECT " + model.NodeCols + " FROM nodes n LEFT JOIN node_status_checks nsc ON n.mac = nsc.mac"
@@ -122,7 +149,18 @@ func (h *Handler) HandleListNodes(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, nodes)
 }
 
-// HandleGetNode handles GET /nodes/{mac}
+// HandleGetNode godoc
+// @Summary Get a node
+// @ID      NodeGet
+// @Description Get a single node by MAC address
+// @Tags admin
+// @Security AdminSession
+// @Produce json
+// @Param mac path string true "node MAC address"
+// @Success 200 {object} model.Node
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /nodes/{mac} [get]
 func (h *Handler) HandleGetNode(w http.ResponseWriter, r *http.Request) {
 	mac := r.PathValue("mac")
 	var node model.Node
@@ -137,7 +175,21 @@ func (h *Handler) HandleGetNode(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, node)
 }
 
-// HandleUpdateNode handles PATCH /nodes/{mac}
+// HandleUpdateNode godoc
+// @Summary Update a node
+// @ID      NodeUpdate
+// @Description Update allowed fields of a node by MAC address
+// @Tags admin
+// @Security AdminSession
+// @Accept json
+// @Produce json
+// @Param mac path string true "node MAC address"
+// @Param body body NodeUpdateRequest true "fields to update"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /nodes/{mac} [patch]
 func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	mac := r.PathValue("mac")
 
@@ -180,7 +232,17 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// HandleDeleteNode handles DELETE /nodes/{mac}
+// HandleDeleteNode godoc
+// @Summary Delete a node
+// @ID      NodeDelete
+// @Description Delete a node by MAC address
+// @Tags admin
+// @Security AdminSession
+// @Produce json
+// @Param mac path string true "node MAC address"
+// @Success 200 {object} StatusResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /nodes/{mac} [delete]
 func (h *Handler) HandleDeleteNode(w http.ResponseWriter, r *http.Request) {
 	mac := r.PathValue("mac")
 	result := h.DB.Where("mac = ?", mac).Delete(&model.Node{})
