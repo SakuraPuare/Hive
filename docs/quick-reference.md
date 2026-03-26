@@ -38,6 +38,7 @@
 | [management/04-tailscale-key.md](./management/04-tailscale-key.md) | 配置 Tailscale OAuth Client |
 | [management/05-airport-roadmap.md](./management/05-airport-roadmap.md) | 自有节点平台管理系统规划 |
 | [management/06-v1-compatible-infra-roadmap.md](./management/06-v1-compatible-infra-roadmap.md) | `v1.0.0` 节点兼容基础设施 Roadmap |
+| [management/07-local-dev.md](./management/07-local-dev.md) | 本地开发与调试 |
 
 ---
 

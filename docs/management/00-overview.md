@@ -44,6 +44,7 @@ Step 5  填写 .env  → 编译镜像 → 烧录 SD 卡 → 上电
 | [04-tailscale-key.md](./04-tailscale-key.md)         | 创建 Tailscale Auth Key |
 | [05-airport-roadmap.md](./05-airport-roadmap.md)     | 自有节点平台管理系统规划 |
 | [06-v1-compatible-infra-roadmap.md](./06-v1-compatible-infra-roadmap.md) | `v1.0.0` 节点兼容基础设施 Roadmap |
+| [07-local-dev.md](./07-local-dev.md) | 本地开发与调试 |
 
 ---
 
