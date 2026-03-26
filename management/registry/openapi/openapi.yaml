@@ -1,33 +1,75 @@
 basePath: /
 definitions:
-  main.AdminLoginRequest:
+  handler.AdminLoginRequest:
     properties:
       password:
+        example: secret
         type: string
       username:
+        example: admin
         type: string
     type: object
-  main.AuditLog:
+  handler.AdminReferralItem:
     properties:
-      action:
-        type: string
+      commission:
+        type: integer
       created_at:
-        type: string
-      detail:
         type: string
       id:
         type: integer
-      ip:
+      order_id:
+        type: integer
+      order_no:
         type: string
-      username:
+      referee_email:
+        type: string
+      referee_id:
+        type: integer
+      referrer_email:
+        type: string
+      referrer_id:
+        type: integer
+      status:
         type: string
     type: object
-  main.ChangePasswordRequest:
+  handler.AdminReferralListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/handler.AdminReferralItem'
+        type: array
+      total:
+        type: integer
+    type: object
+  handler.AnnouncementListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/model.Announcement'
+        type: array
+      total:
+        type: integer
+    type: object
+  handler.AnnouncementRequest:
+    properties:
+      content:
+        type: string
+      level:
+        type: string
+      pinned:
+        type: boolean
+      published:
+        type: boolean
+      title:
+        type: string
+    type: object
+  handler.ChangePasswordRequest:
     properties:
       password:
+        example: newpassword
         type: string
     type: object
-  main.CreateCustomerRequest:
+  handler.CreateCustomerRequest:
     properties:
       email:
         type: string
@@ -36,12 +78,18 @@ definitions:
       password:
         type: string
     type: object
-  main.CreateGroupRequest:
+  handler.CreateGroupRequest:
     properties:
       name:
         type: string
     type: object
-  main.CreateLineRequest:
+  handler.CreateIDResponse:
+    properties:
+      id:
+        example: 1
+        type: integer
+    type: object
+  handler.CreateLineRequest:
     properties:
       display_order:
         type: integer
@@ -52,7 +100,14 @@ definitions:
       region:
         type: string
     type: object
-  main.CreatePlanRequest:
+  handler.CreateLineResponse:
+    properties:
+      id:
+        type: integer
+      token:
+        type: string
+    type: object
+  handler.CreatePlanRequest:
     properties:
       device_limit:
         type: integer
@@ -71,7 +126,13 @@ definitions:
       traffic_limit:
         type: integer
     type: object
-  main.CreatePromoCodeRequest:
+  handler.CreatePlanResponse:
+    properties:
+      id:
+        example: 1
+        type: integer
+    type: object
+  handler.CreatePromoCodeRequest:
     properties:
       code:
         type: string
@@ -88,45 +149,334 @@ definitions:
       valid_to:
         type: string
     type: object
-  main.CreateSubscriptionRequest:
+  handler.CreateSubscriptionRequest:
     properties:
       plan_id:
         type: integer
     type: object
-  main.CreateUserRequest:
+  handler.CreateSubscriptionResponse:
     properties:
-      password:
-        type: string
-      role:
-        type: string
-      username:
+      id:
+        example: 1
+        type: integer
+      token:
+        example: abc123
         type: string
     type: object
-  main.Customer:
+  handler.CreateUserRequest:
+    properties:
+      password:
+        example: secret
+        type: string
+      role:
+        example: viewer
+        type: string
+      username:
+        example: newuser
+        type: string
+    type: object
+  handler.CustomerDetail:
+    properties:
+      customer:
+        $ref: '#/definitions/model.Customer'
+      subscriptions:
+        items:
+          $ref: '#/definitions/model.CustomerSubscription'
+        type: array
+    type: object
+  handler.CustomerListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/model.Customer'
+        type: array
+      limit:
+        example: 20
+        type: integer
+      page:
+        example: 1
+        type: integer
+      total:
+        example: 42
+        type: integer
+    type: object
+  handler.CustomerTrafficResponse:
+    properties:
+      subscriptions:
+        items:
+          $ref: '#/definitions/handler.SubTraffic'
+        type: array
+      total_download:
+        type: integer
+      total_upload:
+        type: integer
+    type: object
+  handler.ErrorResponse:
+    properties:
+      error:
+        example: error message
+        type: string
+    type: object
+  handler.ForgotPasswordRequest:
+    properties:
+      email:
+        type: string
+    type: object
+  handler.MeResponse:
+    properties:
+      id:
+        example: 1
+        type: integer
+      permissions:
+        items:
+          type: string
+        type: array
+      roles:
+        items:
+          type: string
+        type: array
+      username:
+        example: admin
+        type: string
+    type: object
+  handler.NodeRegisterRequest:
+    properties:
+      cf_url:
+        example: https://tunnel.example.com
+        type: string
+      hostname:
+        example: node-01
+        type: string
+      mac:
+        example: AA:BB:CC:DD:EE:FF
+        type: string
+      mac6:
+        example: AABBCC
+        type: string
+      tunnel_id:
+        example: abc123
+        type: string
+      xray_uuid:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+    type: object
+  handler.NodeRegisterResponse:
+    properties:
+      hostname:
+        example: node-01
+        type: string
+      registered_at:
+        example: "2025-01-01 00:00:00"
+        type: string
+      status:
+        example: registered
+        type: string
+    type: object
+  handler.NodeUpdateRequest:
+    properties:
+      city:
+        example: Tokyo
+        type: string
+      country:
+        example: JP
+        type: string
+      easytier_ip:
+        example: 10.0.0.1
+        type: string
+      enabled:
+        example: true
+        type: boolean
+      frp_port:
+        example: 7000
+        type: integer
+      location:
+        example: Tokyo
+        type: string
+      note:
+        example: primary node
+        type: string
+      offline_reason:
+        example: maintenance
+        type: string
+      region:
+        example: asia
+        type: string
+      status:
+        example: online
+        type: string
+      tags:
+        example: fast,premium
+        type: string
+      tailscale_ip:
+        example: 100.64.0.1
+        type: string
+      weight:
+        example: 10
+        type: integer
+    type: object
+  handler.OrderListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/model.Order'
+        type: array
+      total:
+        type: integer
+    type: object
+  handler.PermissionItem:
+    properties:
+      description:
+        example: 查看节点
+        type: string
+      slug:
+        example: node:read
+        type: string
+    type: object
+  handler.PortalCreateOrderRequest:
+    properties:
+      plan_id:
+        example: 1
+        type: integer
+      promo_code:
+        example: SAVE10
+        type: string
+      use_balance:
+        example: false
+        type: boolean
+    type: object
+  handler.PortalCreateOrderResponse:
+    properties:
+      amount:
+        example: 100
+        type: integer
+      balance_deducted:
+        example: 0
+        type: integer
+      order_no:
+        example: ORD20250101000000ABC
+        type: string
+      original_amount:
+        example: 120
+        type: integer
+    type: object
+  handler.PortalCreateTicketRequest:
+    properties:
+      content:
+        example: 无法连接到节点
+        type: string
+      subject:
+        example: 连接问题
+        type: string
+    type: object
+  handler.PortalCreateTicketResponse:
+    properties:
+      id:
+        example: 1
+        type: integer
+    type: object
+  handler.PortalLoginRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      password:
+        example: secret123
+        type: string
+    type: object
+  handler.PortalMeResponse:
     properties:
       created_at:
+        example: "2025-01-01 00:00:00"
         type: string
       email:
+        example: user@example.com
+        type: string
+      id:
+        example: 1
+        type: integer
+      nickname:
+        example: alice
+        type: string
+      status:
+        example: active
+        type: string
+      subscriptions:
+        items:
+          $ref: '#/definitions/model.CustomerSubscription'
+        type: array
+    type: object
+  handler.PortalOrderListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/model.Order'
+        type: array
+      total:
+        example: 10
+        type: integer
+    type: object
+  handler.PortalReferralRecord:
+    properties:
+      commission:
+        type: integer
+      created_at:
         type: string
       id:
         type: integer
-      nickname:
+      referee_nickname:
         type: string
       status:
         type: string
-      updated_at:
+    type: object
+  handler.PortalReferralRecordsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/handler.PortalReferralRecord'
+        type: array
+      total:
+        type: integer
+    type: object
+  handler.PortalReferralResponse:
+    properties:
+      balance:
+        example: 500
+        type: integer
+      referral_code:
+        example: ABCD1234
+        type: string
+      referral_link:
+        example: ?ref=ABCD1234
+        type: string
+      total_commission:
+        example: 1000
+        type: integer
+      total_invites:
+        example: 5
+        type: integer
+    type: object
+  handler.PortalRegisterRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      nickname:
+        example: alice
+        type: string
+      password:
+        example: secret123
+        type: string
+      referral_code:
+        example: REF001
         type: string
     type: object
-  main.CustomerDetail:
+  handler.PortalReplyTicketRequest:
     properties:
-      customer:
-        $ref: '#/definitions/main.Customer'
-      subscriptions:
-        items:
-          $ref: '#/definitions/main.CustomerSubscription'
-        type: array
+      content:
+        example: 问题仍然存在
+        type: string
     type: object
-  main.CustomerSubscription:
+  handler.PortalSubscription:
     properties:
       created_at:
         type: string
@@ -148,28 +498,362 @@ definitions:
         type: string
       traffic_limit:
         type: integer
+      traffic_reset_at:
+        type: string
       traffic_used:
         type: integer
       updated_at:
         type: string
     type: object
-  main.CustomerTrafficResponse:
+  handler.PortalTicketDetail:
     properties:
-      subscriptions:
+      replies:
         items:
-          $ref: '#/definitions/main.SubTraffic'
+          $ref: '#/definitions/model.TicketReply'
         type: array
-      total_download:
-        type: integer
-      total_upload:
+      ticket:
+        $ref: '#/definitions/model.Ticket'
+    type: object
+  handler.PortalTicketListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/model.Ticket'
+        type: array
+      total:
+        example: 5
         type: integer
     type: object
-  main.ErrorResponse:
+  handler.PrometheusTarget:
     properties:
-      error:
+      labels:
+        additionalProperties:
+          type: string
+        type: object
+      targets:
+        items:
+          type: string
+        type: array
+    type: object
+  handler.ResetCustomerPasswordRequest:
+    properties:
+      password:
         type: string
     type: object
-  main.HeartbeatRequest:
+  handler.ResetPasswordRequest:
+    properties:
+      code:
+        type: string
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  handler.ResetSubscriptionTokenResponse:
+    properties:
+      token:
+        example: abc123
+        type: string
+    type: object
+  handler.ResetTokenResponse:
+    properties:
+      token:
+        type: string
+    type: object
+  handler.RiskEventListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/model.RiskEvent'
+        type: array
+      total:
+        type: integer
+    type: object
+  handler.RoleDetail:
+    properties:
+      description:
+        example: 管理员
+        type: string
+      id:
+        example: 1
+        type: integer
+      name:
+        example: admin
+        type: string
+      permissions:
+        items:
+          type: string
+        type: array
+    type: object
+  handler.SetGroupNodesRequest:
+    properties:
+      nodes:
+        items:
+          type: string
+        type: array
+    type: object
+  handler.SetLineNodesRequest:
+    properties:
+      nodes:
+        items:
+          type: string
+        type: array
+    type: object
+  handler.SetPermissionsRequest:
+    properties:
+      permissions:
+        items:
+          type: string
+        type: array
+    type: object
+  handler.SetPlanLinesRequest:
+    properties:
+      lines:
+        items:
+          type: integer
+        type: array
+    type: object
+  handler.SetRolesRequest:
+    properties:
+      roles:
+        items:
+          type: string
+        type: array
+    type: object
+  handler.StatusResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+  handler.SubTraffic:
+    properties:
+      download_bytes:
+        type: integer
+      expires_at:
+        type: string
+      status:
+        type: string
+      subscription_id:
+        type: integer
+      token:
+        type: string
+      traffic_limit:
+        type: integer
+      traffic_used:
+        type: integer
+      upload_bytes:
+        type: integer
+    type: object
+  handler.TicketDetailResponse:
+    properties:
+      replies:
+        items:
+          $ref: '#/definitions/model.TicketReply'
+        type: array
+      ticket:
+        $ref: '#/definitions/model.Ticket'
+    type: object
+  handler.TicketListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/model.Ticket'
+        type: array
+      total:
+        type: integer
+    type: object
+  handler.TicketReplyRequest:
+    properties:
+      content:
+        type: string
+    type: object
+  handler.TrafficSummaryResponse:
+    properties:
+      active_count:
+        example: 42
+        type: integer
+      over_limit_count:
+        example: 3
+        type: integer
+      total_used:
+        example: 1073741824
+        type: integer
+    type: object
+  handler.UpdateCustomerRequest:
+    properties:
+      nickname:
+        type: string
+      status:
+        type: string
+    type: object
+  handler.UpdateLineRequest:
+    properties:
+      display_order:
+        type: integer
+      enabled:
+        type: boolean
+      name:
+        type: string
+      note:
+        type: string
+      region:
+        type: string
+    type: object
+  handler.UpdateOrderStatusRequest:
+    properties:
+      status:
+        type: string
+    type: object
+  handler.UpdatePlanRequest:
+    properties:
+      device_limit:
+        type: integer
+      duration_days:
+        type: integer
+      enabled:
+        type: boolean
+      name:
+        type: string
+      price:
+        type: integer
+      sort_order:
+        type: integer
+      speed_limit:
+        type: integer
+      traffic_limit:
+        type: integer
+    type: object
+  handler.UpdatePromoCodeRequest:
+    properties:
+      code:
+        type: string
+      discount_amt:
+        type: integer
+      discount_pct:
+        type: integer
+      enabled:
+        type: boolean
+      max_uses:
+        type: integer
+      valid_from:
+        type: string
+      valid_to:
+        type: string
+    type: object
+  handler.UpdateReferralRequest:
+    properties:
+      status:
+        example: paid
+        type: string
+    type: object
+  handler.UpdateSubscriptionRequest:
+    properties:
+      expires_at:
+        type: string
+      status:
+        type: string
+      traffic_limit:
+        type: integer
+    type: object
+  handler.UserWithRoles:
+    properties:
+      created_at:
+        example: "2024-01-01 00:00:00"
+        type: string
+      id:
+        example: 1
+        type: integer
+      roles:
+        items:
+          type: string
+        type: array
+      updated_at:
+        example: "2024-01-01 00:00:00"
+        type: string
+      username:
+        example: admin
+        type: string
+    type: object
+  model.Announcement:
+    properties:
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      level:
+        type: string
+      pinned:
+        type: boolean
+      published:
+        type: boolean
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.AuditLog:
+    properties:
+      action:
+        type: string
+      created_at:
+        type: string
+      detail:
+        type: string
+      id:
+        type: integer
+      ip:
+        type: string
+      username:
+        type: string
+    type: object
+  model.Customer:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      nickname:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.CustomerSubscription:
+    properties:
+      created_at:
+        type: string
+      customer_id:
+        type: integer
+      device_limit:
+        type: integer
+      expires_at:
+        type: string
+      id:
+        type: integer
+      plan_id:
+        type: integer
+      started_at:
+        type: string
+      status:
+        type: string
+      token:
+        type: string
+      traffic_limit:
+        type: integer
+      traffic_reset_at:
+        type: string
+      traffic_used:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  model.HeartbeatRequest:
     properties:
       cpu_pct:
         type: number
@@ -182,7 +866,7 @@ definitions:
       uptime_sec:
         type: integer
     type: object
-  main.Line:
+  model.Line:
     properties:
       created_at:
         type: string
@@ -205,7 +889,7 @@ definitions:
       updated_at:
         type: string
     type: object
-  main.Node:
+  model.Node:
     properties:
       cf_url:
         type: string
@@ -234,7 +918,6 @@ definitions:
       offline_reason:
         type: string
       probe_status:
-        description: 来自 node_status_checks（LEFT JOIN），探测状态
         type: string
       region:
         type: string
@@ -253,16 +936,7 @@ definitions:
       xray_uuid:
         type: string
     type: object
-  main.NodeRegisterResponse:
-    properties:
-      hostname:
-        type: string
-      registered_at:
-        type: string
-      status:
-        type: string
-    type: object
-  main.NodeStatusCheck:
+  model.NodeStatusCheck:
     properties:
       checked_at:
         type: string
@@ -285,7 +959,7 @@ definitions:
       uptime_sec:
         type: integer
     type: object
-  main.Order:
+  model.Order:
     properties:
       amount:
         type: integer
@@ -310,16 +984,7 @@ definitions:
       updated_at:
         type: string
     type: object
-  main.OrderListResponse:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/main.Order'
-        type: array
-      total:
-        type: integer
-    type: object
-  main.Plan:
+  model.Plan:
     properties:
       created_at:
         type: string
@@ -344,18 +1009,7 @@ definitions:
       updated_at:
         type: string
     type: object
-  main.PrometheusTarget:
-    properties:
-      labels:
-        additionalProperties:
-          type: string
-        type: object
-      targets:
-        items:
-          type: string
-        type: array
-    type: object
-  main.PromoCode:
+  model.PromoCode:
     properties:
       code:
         type: string
@@ -380,38 +1034,7 @@ definitions:
       valid_to:
         type: string
     type: object
-  main.RegisterRequest:
-    properties:
-      cf_url:
-        type: string
-      easytier_ip:
-        type: string
-      frp_port:
-        type: integer
-      hostname:
-        type: string
-      mac:
-        type: string
-      mac6:
-        type: string
-      tailscale_ip:
-        type: string
-      tunnel_id:
-        type: string
-      xray_uuid:
-        type: string
-    type: object
-  main.ResetCustomerPasswordRequest:
-    properties:
-      password:
-        type: string
-    type: object
-  main.ResetTokenResponse:
-    properties:
-      token:
-        type: string
-    type: object
-  main.RiskEvent:
+  model.RiskEvent:
     properties:
       created_at:
         type: string
@@ -426,88 +1049,7 @@ definitions:
       ip:
         type: string
     type: object
-  main.RiskEventListResponse:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/main.RiskEvent'
-        type: array
-      total:
-        type: integer
-    type: object
-  main.Role:
-    properties:
-      description:
-        type: string
-      id:
-        type: integer
-      name:
-        type: string
-      permissions:
-        items:
-          type: string
-        type: array
-    type: object
-  main.SetGroupNodesRequest:
-    properties:
-      nodes:
-        items:
-          type: string
-        type: array
-    type: object
-  main.SetLineNodesRequest:
-    properties:
-      nodes:
-        items:
-          type: string
-        type: array
-    type: object
-  main.SetPermissionsRequest:
-    properties:
-      permissions:
-        items:
-          type: string
-        type: array
-    type: object
-  main.SetPlanLinesRequest:
-    properties:
-      lines:
-        items:
-          type: integer
-        type: array
-    type: object
-  main.SetRolesRequest:
-    properties:
-      roles:
-        items:
-          type: string
-        type: array
-    type: object
-  main.StatusResponse:
-    properties:
-      status:
-        type: string
-    type: object
-  main.SubTraffic:
-    properties:
-      download_bytes:
-        type: integer
-      expires_at:
-        type: string
-      status:
-        type: string
-      subscription_id:
-        type: integer
-      token:
-        type: string
-      traffic_limit:
-        type: integer
-      traffic_used:
-        type: integer
-      upload_bytes:
-        type: integer
-    type: object
-  main.SubscriptionGroup:
+  model.SubscriptionGroup:
     properties:
       created_at:
         type: string
@@ -522,7 +1064,7 @@ definitions:
       updated_at:
         type: string
     type: object
-  main.Ticket:
+  model.Ticket:
     properties:
       created_at:
         type: string
@@ -539,25 +1081,7 @@ definitions:
       updated_at:
         type: string
     type: object
-  main.TicketDetailResponse:
-    properties:
-      replies:
-        items:
-          $ref: '#/definitions/main.TicketReply'
-        type: array
-      ticket:
-        $ref: '#/definitions/main.Ticket'
-    type: object
-  main.TicketListResponse:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/main.Ticket'
-        type: array
-      total:
-        type: integer
-    type: object
-  main.TicketReply:
+  model.TicketReply:
     properties:
       author:
         type: string
@@ -572,105 +1096,6 @@ definitions:
       ticket_id:
         type: integer
     type: object
-  main.TicketReplyRequest:
-    properties:
-      content:
-        type: string
-    type: object
-  main.UpdateCustomerRequest:
-    properties:
-      nickname:
-        type: string
-      status:
-        type: string
-    type: object
-  main.UpdateLineRequest:
-    properties:
-      display_order:
-        type: integer
-      enabled:
-        type: boolean
-      name:
-        type: string
-      note:
-        type: string
-      region:
-        type: string
-    type: object
-  main.UpdateOrderStatusRequest:
-    properties:
-      status:
-        type: string
-    type: object
-  main.UpdatePlanRequest:
-    properties:
-      device_limit:
-        type: integer
-      duration_days:
-        type: integer
-      enabled:
-        type: boolean
-      name:
-        type: string
-      price:
-        type: integer
-      sort_order:
-        type: integer
-      speed_limit:
-        type: integer
-      traffic_limit:
-        type: integer
-    type: object
-  main.UpdatePromoCodeRequest:
-    properties:
-      code:
-        type: string
-      discount_amt:
-        type: integer
-      discount_pct:
-        type: integer
-      enabled:
-        type: boolean
-      max_uses:
-        type: integer
-      valid_from:
-        type: string
-      valid_to:
-        type: string
-    type: object
-  main.UpdateRequest:
-    properties:
-      enabled:
-        type: boolean
-      location:
-        type: string
-      note:
-        type: string
-      tailscale_ip:
-        type: string
-    type: object
-  main.UpdateSubscriptionRequest:
-    properties:
-      expires_at:
-        type: string
-      status:
-        type: string
-      traffic_limit:
-        type: integer
-    type: object
-  main.User:
-    properties:
-      created_at:
-        type: string
-      id:
-        type: integer
-      role:
-        type: string
-      updated_at:
-        type: string
-      username:
-        type: string
-    type: object
 info:
   contact: {}
   description: Hive management plane API for nodes and subscriptions.
@@ -679,48 +1104,176 @@ info:
 paths:
   /:
     get:
-      consumes:
-      - application/json
+      description: 返回 Hive Registry 首页 HTML
       operationId: Dashboard
       produces:
       - text/html
       responses:
         "200":
-          description: HTML content
+          description: HTML page
           schema:
             type: string
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Dashboard links
+      summary: 首页
       tags:
       - dashboard
-  /admin/audit-logs:
+  /admin/announcements:
     get:
-      operationId: AdminAuditLogs
+      description: 分页获取所有公告，按置顶和创建时间排序
+      operationId: AdminListAnnouncements
       parameters:
-      - description: limit (default 50)
+      - description: 页码（默认 1）
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量（默认 20，最大 100）
         in: query
         name: limit
         type: integer
-      - description: offset (default 0)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.AnnouncementListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 获取公告列表
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: 创建新公告，level 可选 info/warning/critical
+      operationId: AdminCreateAnnouncement
+      parameters:
+      - description: 公告信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.AnnouncementRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Announcement'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 创建公告
+      tags:
+      - admin
+  /admin/announcements/{id}:
+    delete:
+      description: 根据 ID 删除公告
+      operationId: AdminDeleteAnnouncement
+      parameters:
+      - description: 公告 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 删除公告
+      tags:
+      - admin
+    patch:
+      consumes:
+      - application/json
+      description: 根据 ID 更新公告字段（部分更新）
+      operationId: AdminUpdateAnnouncement
+      parameters:
+      - description: 公告 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新字段
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.AnnouncementRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Announcement'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 更新公告
+      tags:
+      - admin
+  /admin/audit-logs:
+    get:
+      description: 分页查询审计日志，支持按操作类型、用户名、时间范围筛选
+      operationId: AdminAuditLogs
+      parameters:
+      - description: 每页条数（默认 50，最大 500）
+        in: query
+        name: limit
+        type: integer
+      - description: 偏移量
         in: query
         name: offset
         type: integer
-      - description: filter by action
+      - description: 操作类型
         in: query
         name: action
         type: string
-      - description: filter by username
+      - description: 用户名
         in: query
         name: username
         type: string
-      - description: filter from date (ISO 8601)
+      - description: 起始时间（含）
         in: query
         name: from
         type: string
-      - description: filter to date (ISO 8601)
+      - description: 结束时间（含）
         in: query
         name: to
         type: string
@@ -731,45 +1284,39 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/main.AuditLog'
+              $ref: '#/definitions/model.AuditLog'
             type: array
-        "401":
-          description: Unauthorized
+        "500":
+          description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: List audit logs
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 获取审计日志
       tags:
       - admin
   /admin/customers:
     get:
-      consumes:
-      - application/json
-      description: Paginated list of customers with optional status/email/search filters
+      description: 分页查询客户，支持按状态、邮箱、关键词筛选
       operationId: AdminListCustomers
       parameters:
-      - description: Filter by status
+      - description: 按状态筛选
         in: query
         name: status
         type: string
-      - description: Filter by email (partial match)
+      - description: 按邮箱模糊搜索
         in: query
         name: email
         type: string
-      - description: Search email or nickname
+      - description: 按邮箱或昵称模糊搜索
         in: query
         name: search
         type: string
-      - default: 1
-        description: Page number
+      - description: 页码（默认 1）
         in: query
         name: page
         type: integer
-      - default: 20
-        description: Items per page
+      - description: 每页条数（默认 20，最大 100）
         in: query
         name: limit
         type: integer
@@ -779,62 +1326,58 @@ paths:
         "200":
           description: OK
           schema:
-            properties:
-              items:
-                items:
-                  $ref: '#/definitions/main.Customer'
-                type: array
-              limit:
-                type: integer
-              page:
-                type: integer
-              total:
-                format: int64
-                type: integer
-            type: object
+            $ref: '#/definitions/handler.CustomerListResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: List customers
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 获取客户列表
       tags:
       - admin
     post:
       consumes:
       - application/json
-      description: Create a new customer with email, password, and optional nickname
+      description: 创建新客户账号
       operationId: AdminCreateCustomer
       parameters:
-      - description: Customer info
+      - description: 客户信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.CreateCustomerRequest'
+          $ref: '#/definitions/handler.CreateCustomerRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.Customer'
+            $ref: '#/definitions/handler.CreateIDResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Create customer
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 创建客户
       tags:
       - admin
   /admin/customers/{id}:
     delete:
-      description: Permanently delete a customer account
+      description: 删除指定客户
       operationId: AdminDeleteCustomer
       parameters:
-      - description: Customer ID
+      - description: 客户 ID
         in: path
         name: id
         required: true
@@ -845,23 +1388,21 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Delete customer
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 删除客户
       tags:
       - admin
     get:
-      description: Get customer details including all subscriptions
+      description: 返回客户信息及其所有订阅
       operationId: AdminGetCustomer
       parameters:
-      - description: Customer ID
+      - description: 客户 ID
         in: path
         name: id
         required: true
@@ -872,99 +1413,127 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.CustomerDetail'
+            $ref: '#/definitions/handler.CustomerDetail'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Get customer
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 获取客户详情
       tags:
       - admin
     patch:
       consumes:
       - application/json
-      description: Update customer nickname and/or status
+      description: 更新客户昵称或状态
       operationId: AdminUpdateCustomer
       parameters:
-      - description: Customer ID
+      - description: 客户 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Fields to update
+      - description: 更新字段
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.UpdateCustomerRequest'
+          $ref: '#/definitions/handler.UpdateCustomerRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Update customer
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 更新客户
+      tags:
+      - admin
+  /admin/customers/{id}/ban:
+    post:
+      description: 封禁客户并暂停其所有活跃订阅
+      operationId: AdminBanCustomer
+      parameters:
+      - description: 客户 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 封禁客户
       tags:
       - admin
   /admin/customers/{id}/password:
     post:
       consumes:
       - application/json
-      description: Set a new password for the customer
+      description: 管理员重置客户登录密码
       operationId: AdminResetCustomerPassword
       parameters:
-      - description: Customer ID
+      - description: 客户 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: New password
+      - description: 新密码
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.ResetCustomerPasswordRequest'
+          $ref: '#/definitions/handler.ResetCustomerPasswordRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Reset customer password
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 重置客户密码
       tags:
       - admin
   /admin/customers/{id}/subscriptions:
     get:
-      description: Get all subscriptions belonging to a customer
+      description: 返回指定客户的所有订阅
       operationId: AdminListSubscriptions
       parameters:
-      - description: Customer ID
+      - description: 客户 ID
         in: path
         name: id
         required: true
@@ -976,60 +1545,60 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/main.CustomerSubscription'
+              $ref: '#/definitions/model.CustomerSubscription'
             type: array
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: List subscriptions
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 获取客户订阅列表
       tags:
       - admin
     post:
       consumes:
       - application/json
-      description: Create a new subscription for a customer based on a plan
+      description: 为客户创建新订阅，根据套餐自动设置流量和有效期
       operationId: AdminCreateSubscription
       parameters:
-      - description: Customer ID
+      - description: 客户 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Subscription info
+      - description: 订阅信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.CreateSubscriptionRequest'
+          $ref: '#/definitions/handler.CreateSubscriptionRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.CustomerSubscription'
+            $ref: '#/definitions/handler.CreateSubscriptionResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Create subscription
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 创建订阅
       tags:
       - admin
   /admin/customers/{id}/traffic:
     get:
-      description: Per-subscription traffic summary with upload/download totals
+      description: 返回客户所有订阅的流量使用情况
       operationId: AdminGetCustomerTraffic
       parameters:
-      - description: Customer ID
+      - description: 客户 ID
         in: path
         name: id
         required: true
@@ -1040,20 +1609,53 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.CustomerTrafficResponse'
+            $ref: '#/definitions/handler.CustomerTrafficResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Get customer traffic
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 获取客户流量统计
+      tags:
+      - admin
+  /admin/customers/{id}/unban:
+    post:
+      description: 将已封禁的客户状态恢复为活跃
+      operationId: AdminUnbanCustomer
+      parameters:
+      - description: 客户 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 解封客户
       tags:
       - admin
   /admin/lines:
     get:
+      description: 返回所有线路（含节点数量）
       operationId: AdminListLines
       produces:
       - application/json
@@ -1062,54 +1664,51 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/main.Line'
+              $ref: '#/definitions/model.Line'
             type: array
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: List all lines
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 获取线路列表
       tags:
       - admin
     post:
       consumes:
       - application/json
+      description: 创建新线路并生成订阅 token
       operationId: AdminCreateLine
       parameters:
-      - description: Line to create
+      - description: 线路信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.CreateLineRequest'
+          $ref: '#/definitions/handler.CreateLineRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            properties:
-              id:
-                type: integer
-              token:
-                type: string
-            type: object
+            $ref: '#/definitions/handler.CreateLineResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Create a new line
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 创建线路
       tags:
       - admin
   /admin/lines/{id}:
     delete:
+      description: 删除指定线路
       operationId: AdminDeleteLine
       parameters:
-      - description: Line ID
+      - description: 线路 ID
         in: path
         name: id
         required: true
@@ -1120,65 +1719,67 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Delete a line
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 删除线路
       tags:
       - admin
     patch:
       consumes:
       - application/json
+      description: 更新指定线路的属性
       operationId: AdminUpdateLine
       parameters:
-      - description: Line ID
+      - description: 线路 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Fields to update
+      - description: 更新字段
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.UpdateLineRequest'
+          $ref: '#/definitions/handler.UpdateLineRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Update a line
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 更新线路
       tags:
       - admin
   /admin/lines/{id}/nodes:
     get:
+      description: 返回指定线路关联的节点 MAC 列表
       operationId: AdminGetLineNodes
       parameters:
-      - description: Line ID
+      - description: 线路 ID
         in: path
         name: id
         required: true
@@ -1195,53 +1796,55 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Get MAC addresses of nodes assigned to a line
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 获取线路节点
       tags:
       - admin
     put:
       consumes:
       - application/json
+      description: 替换指定线路的节点列表
       operationId: AdminSetLineNodes
       parameters:
-      - description: Line ID
+      - description: 线路 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Node MAC addresses
+      - description: 节点 MAC 列表
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.SetLineNodesRequest'
+          $ref: '#/definitions/handler.SetLineNodesRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Set nodes assigned to a line
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 设置线路节点
       tags:
       - admin
   /admin/lines/{id}/reset-token:
     post:
+      description: 为指定线路生成新的订阅 token
       operationId: AdminResetLineToken
       parameters:
-      - description: Line ID
+      - description: 线路 ID
         in: path
         name: id
         required: true
@@ -1252,20 +1855,20 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.ResetTokenResponse'
+            $ref: '#/definitions/handler.ResetTokenResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Reset the subscription token for a line
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 重置线路 token
       tags:
       - admin
   /admin/login:
@@ -1274,34 +1877,36 @@ paths:
       - application/json
       operationId: AdminLogin
       parameters:
-      - description: admin login payload
+      - description: credentials
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.AdminLoginRequest'
+          $ref: '#/definitions/handler.AdminLoginRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
       summary: Admin login
       tags:
       - admin
   /admin/logout:
     post:
-      consumes:
-      - application/json
       operationId: AdminLogout
       produces:
       - application/json
@@ -1309,7 +1914,9 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
+      security:
+      - AdminSessionCookie: []
       summary: Admin logout
       tags:
       - admin
@@ -1322,16 +1929,19 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.User'
+            $ref: '#/definitions/handler.MeResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Get current logged-in user info
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: Get current admin user info
       tags:
       - admin
   /admin/node-status:
     get:
+      description: 返回所有节点的最新探测状态（CPU、内存、磁盘、延迟等）
       operationId: AdminNodeStatus
       produces:
       - application/json
@@ -1340,34 +1950,35 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/main.NodeStatusCheck'
+              $ref: '#/definitions/model.NodeStatusCheck'
             type: array
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: List node status checks
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 获取节点状态列表
       tags:
       - admin
   /admin/orders:
     get:
-      consumes:
-      - application/json
+      description: 分页获取订单列表，支持按客户和状态筛选
       operationId: AdminListOrders
       parameters:
-      - description: filter by customer ID
+      - description: 按客户 ID 筛选
         in: query
         name: customer_id
-        type: integer
-      - description: filter by order status
+        type: string
+      - description: 按状态筛选
         in: query
         name: status
         type: string
-      - description: page number (default 1)
+      - description: 页码（默认 1）
         in: query
         name: page
         type: integer
-      - description: page size (default 20, max 100)
+      - description: 每页数量（默认 20，最大 100）
         in: query
         name: limit
         type: integer
@@ -1377,17 +1988,22 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.OrderListResponse'
-      summary: List orders
+            $ref: '#/definitions/handler.OrderListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 获取订单列表
       tags:
       - admin
   /admin/orders/{id}:
     get:
-      consumes:
-      - application/json
+      description: 根据 ID 获取单个订单
       operationId: AdminGetOrder
       parameters:
-      - description: order ID
+      - description: 订单 ID
         in: path
         name: id
         required: true
@@ -1398,59 +2014,65 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.Order'
+            $ref: '#/definitions/model.Order'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Get order by ID
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 获取订单详情
       tags:
       - admin
   /admin/orders/{id}/status:
     patch:
       consumes:
       - application/json
+      description: 更新指定订单的状态，若改为 paid 则自动创建订阅
       operationId: AdminUpdateOrderStatus
       parameters:
-      - description: order ID
+      - description: 订单 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: new status
+      - description: 新状态
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.UpdateOrderStatusRequest'
+          $ref: '#/definitions/handler.UpdateOrderStatusRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Update order status
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 更新订单状态
       tags:
       - admin
   /admin/permissions:
     get:
+      description: 返回所有可分配的权限列表（仅需有效会话）
       operationId: AdminListPermissions
       produces:
       - application/json
@@ -1459,17 +2081,24 @@ paths:
           description: OK
           schema:
             items:
-              type: object
+              $ref: '#/definitions/handler.PermissionItem'
             type: array
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: List all available permissions
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 获取所有权限
       tags:
       - admin
   /admin/plans:
     get:
+      description: 返回所有套餐
       operationId: AdminListPlans
       produces:
       - application/json
@@ -1478,48 +2107,55 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/main.Plan'
+              $ref: '#/definitions/model.Plan'
             type: array
-      summary: List all plans
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 获取套餐列表
       tags:
       - admin
     post:
       consumes:
       - application/json
+      description: 创建新的套餐
       operationId: AdminCreatePlan
       parameters:
-      - description: Plan to create
+      - description: 套餐信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.CreatePlanRequest'
+          $ref: '#/definitions/handler.CreatePlanRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            properties:
-              id:
-                type: integer
-            type: object
+            $ref: '#/definitions/handler.CreatePlanResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Create a plan
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 创建套餐
       tags:
       - admin
   /admin/plans/{id}:
     delete:
+      description: 根据 ID 删除套餐
       operationId: AdminDeletePlan
       parameters:
-      - description: Plan ID
+      - description: 套餐 ID
         in: path
         name: id
         required: true
@@ -1530,61 +2166,71 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Delete a plan
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 删除套餐
       tags:
       - admin
     patch:
       consumes:
       - application/json
+      description: 根据 ID 更新套餐信息
       operationId: AdminUpdatePlan
       parameters:
-      - description: Plan ID
+      - description: 套餐 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Fields to update
+      - description: 更新字段
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.UpdatePlanRequest'
+          $ref: '#/definitions/handler.UpdatePlanRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Update a plan
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 更新套餐
       tags:
       - admin
   /admin/plans/{id}/lines:
     get:
+      description: 返回套餐关联的线路 ID 列表
       operationId: AdminGetPlanLines
       parameters:
-      - description: Plan ID
+      - description: 套餐 ID
         in: path
         name: id
         required: true
@@ -1598,51 +2244,55 @@ paths:
             items:
               type: integer
             type: array
-      summary: Get line IDs for a plan
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 获取套餐线路
       tags:
       - admin
     put:
       consumes:
       - application/json
+      description: 替换套餐关联的线路列表
       operationId: AdminSetPlanLines
       parameters:
-      - description: Plan ID
+      - description: 套餐 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Line IDs to associate
+      - description: 线路 ID 列表
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.SetPlanLinesRequest'
+          $ref: '#/definitions/handler.SetPlanLinesRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Set line IDs for a plan
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 设置套餐线路
       tags:
       - admin
   /admin/promo-codes:
     get:
-      consumes:
-      - application/json
+      description: 获取所有优惠码，按 ID 倒序排列
       operationId: AdminListPromoCodes
       produces:
       - application/json
@@ -1651,47 +2301,55 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/main.PromoCode'
+              $ref: '#/definitions/model.PromoCode'
             type: array
-      summary: List promo codes
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 获取优惠码列表
       tags:
       - admin
     post:
       consumes:
       - application/json
+      description: 创建新的优惠码
       operationId: AdminCreatePromoCode
       parameters:
-      - description: promo code payload
+      - description: 优惠码信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.CreatePromoCodeRequest'
+          $ref: '#/definitions/handler.CreatePromoCodeRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.PromoCode'
+            $ref: '#/definitions/handler.CreateIDResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Create promo code
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 创建优惠码
       tags:
       - admin
   /admin/promo-codes/{id}:
     delete:
-      consumes:
-      - application/json
+      description: 按 ID 删除优惠码
       operationId: AdminDeletePromoCode
       parameters:
-      - description: promo code ID
+      - description: 优惠码 ID
         in: path
         name: id
         required: true
@@ -1702,63 +2360,146 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Delete promo code
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 删除优惠码
       tags:
       - admin
     patch:
       consumes:
       - application/json
+      description: 按 ID 更新优惠码字段
       operationId: AdminUpdatePromoCode
       parameters:
-      - description: promo code ID
+      - description: 优惠码 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: fields to update
+      - description: 要更新的字段
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.UpdatePromoCodeRequest'
+          $ref: '#/definitions/handler.UpdatePromoCodeRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Update promo code
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 更新优惠码
+      tags:
+      - admin
+  /admin/referrals:
+    get:
+      description: 分页获取全局邀请记录，支持按状态筛选
+      operationId: AdminListReferrals
+      parameters:
+      - description: 页码（默认 1）
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量（默认 20，最大 100）
+        in: query
+        name: limit
+        type: integer
+      - description: 按状态筛选
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.AdminReferralListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 获取邀请记录列表
+      tags:
+      - admin
+  /admin/referrals/{id}:
+    patch:
+      consumes:
+      - application/json
+      description: 修改指定邀请记录的状态（pending/paid/cancelled），自动调整余额
+      operationId: AdminUpdateReferral
+      parameters:
+      - description: 邀请记录 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 新状态
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateReferralRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 更新邀请记录状态
       tags:
       - admin
   /admin/risk-events:
     get:
-      consumes:
-      - application/json
+      description: 分页查询风控事件，支持按客户 ID 和事件类型筛选
       operationId: AdminListRiskEvents
       parameters:
-      - description: filter by customer ID
+      - description: 按客户 ID 筛选
         in: query
         name: customer_id
-        type: integer
-      - description: filter by event type
+        type: string
+      - description: 按事件类型筛选
         in: query
         name: event_type
         type: string
-      - description: page number (default 1)
+      - description: 页码（默认 1）
         in: query
         name: page
         type: integer
-      - description: page size (default 20, max 100)
+      - description: 每页数量（默认 20，最大 100）
         in: query
         name: limit
         type: integer
@@ -1768,16 +2509,19 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.RiskEventListResponse'
+            $ref: '#/definitions/handler.RiskEventListResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: List risk events
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 获取风控事件列表
       tags:
       - admin
   /admin/roles:
     get:
+      description: 返回所有角色及其权限列表
       operationId: AdminListRoles
       produces:
       - application/json
@@ -1786,64 +2530,70 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/main.Role'
+              $ref: '#/definitions/handler.RoleDetail'
             type: array
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: List all roles with their permissions
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 获取所有角色
       tags:
       - admin
   /admin/roles/{id}/permissions:
     put:
       consumes:
       - application/json
+      description: 替换指定角色的全部权限
       operationId: AdminSetRolePermissions
       parameters:
-      - description: role id
+      - description: 角色 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: permissions list
+      - description: 权限列表
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.SetPermissionsRequest'
+          $ref: '#/definitions/handler.SetPermissionsRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Replace role permissions
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 更新角色权限
       tags:
       - admin
   /admin/subscription-groups:
     get:
+      description: 返回所有订阅组
       operationId: AdminListSubscriptionGroups
       produces:
       - application/json
@@ -1852,65 +2602,51 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/main.SubscriptionGroup'
+              $ref: '#/definitions/model.SubscriptionGroup'
             type: array
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: List subscription groups
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 获取订阅组列表
       tags:
       - admin
     post:
       consumes:
       - application/json
+      description: 创建新的订阅组
       operationId: AdminCreateSubscriptionGroup
       parameters:
-      - description: group name
+      - description: 订阅组信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.CreateGroupRequest'
+          $ref: '#/definitions/handler.CreateGroupRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.SubscriptionGroup'
+            $ref: '#/definitions/model.SubscriptionGroup'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Create subscription group
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 创建订阅组
       tags:
       - admin
   /admin/subscription-groups/{id}:
     delete:
+      description: 根据 ID 删除订阅组
       operationId: AdminDeleteSubscriptionGroup
       parameters:
-      - description: group id
+      - description: 订阅组 ID
         in: path
         name: id
         required: true
@@ -1921,35 +2657,28 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Delete subscription group
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 删除订阅组
       tags:
       - admin
   /admin/subscription-groups/{id}/nodes:
     get:
+      description: 返回指定订阅组的节点 MAC 列表
       operationId: AdminGetSubscriptionGroupNodes
       parameters:
-      - description: group id
+      - description: 订阅组 ID
         in: path
         name: id
         required: true
@@ -1966,77 +2695,63 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: List node MACs in a subscription group
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 获取订阅组节点列表
       tags:
       - admin
     put:
       consumes:
       - application/json
+      description: 替换指定订阅组的节点列表
       operationId: AdminSetSubscriptionGroupNodes
       parameters:
-      - description: group id
+      - description: 订阅组 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: node MAC list
+      - description: 节点列表
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.SetGroupNodesRequest'
+          $ref: '#/definitions/handler.SetGroupNodesRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Replace node MACs in a subscription group
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 设置订阅组节点
       tags:
       - admin
   /admin/subscription-groups/{id}/reset-token:
     post:
+      description: 为指定订阅组生成新的访问 Token
       operationId: AdminResetSubscriptionGroupToken
       parameters:
-      - description: group id
+      - description: 订阅组 ID
         in: path
         name: id
         required: true
@@ -2047,36 +2762,28 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.ResetTokenResponse'
+            $ref: '#/definitions/handler.ResetTokenResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Reset subscription group token
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 重置订阅组 Token
       tags:
       - admin
   /admin/subscriptions/{id}:
     delete:
-      description: Permanently delete a customer subscription
+      description: 删除指定订阅
       operationId: AdminDeleteSubscription
       parameters:
-      - description: Subscription ID
+      - description: 订阅 ID
         in: path
         name: id
         required: true
@@ -2087,63 +2794,59 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Delete subscription
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 删除订阅
       tags:
       - admin
     patch:
       consumes:
       - application/json
-      description: Update subscription status, traffic limit, or expiry
+      description: 更新订阅状态、流量限制或到期时间
       operationId: AdminUpdateSubscription
       parameters:
-      - description: Subscription ID
+      - description: 订阅 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Fields to update
+      - description: 更新字段
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.UpdateSubscriptionRequest'
+          $ref: '#/definitions/handler.UpdateSubscriptionRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Update subscription
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 更新订阅
       tags:
       - admin
-  /admin/subscriptions/{id}/reset-token:
+  /admin/subscriptions/{id}/activate:
     post:
-      description: Generate a new random token for the subscription
-      operationId: AdminResetSubscriptionToken
+      description: 手动将订阅状态设为 active
+      operationId: AdminActivateSubscription
       parameters:
-      - description: Subscription ID
+      - description: 订阅 ID
         in: path
         name: id
         required: true
@@ -2154,37 +2857,154 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Reset subscription token
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 激活订阅
+      tags:
+      - admin
+  /admin/subscriptions/{id}/expire:
+    post:
+      description: 手动将订阅状态设为 expired
+      operationId: AdminExpireSubscription
+      parameters:
+      - description: 订阅 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 过期订阅
+      tags:
+      - admin
+  /admin/subscriptions/{id}/reset-token:
+    post:
+      description: 为订阅生成新的 Token
+      operationId: AdminResetSubscriptionToken
+      parameters:
+      - description: 订阅 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.ResetSubscriptionTokenResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: 重置订阅 Token
+      tags:
+      - admin
+  /admin/subscriptions/{id}/reset-traffic:
+    post:
+      description: 将指定订阅的 traffic_used 重置为 0
+      operationId: AdminResetSubscriptionTraffic
+      parameters:
+      - description: 订阅 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 重置订阅流量
+      tags:
+      - admin
+  /admin/subscriptions/{id}/suspend:
+    post:
+      description: 手动将订阅状态设为 suspended
+      operationId: AdminSuspendSubscription
+      parameters:
+      - description: 订阅 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 暂停订阅
       tags:
       - admin
   /admin/tickets:
     get:
-      consumes:
-      - application/json
+      description: 分页获取工单列表，支持按状态和客户筛选
       operationId: AdminListTickets
       parameters:
-      - description: filter by ticket status
+      - description: 按状态筛选
         in: query
         name: status
         type: string
-      - description: filter by customer ID
+      - description: 按客户 ID 筛选
         in: query
         name: customer_id
-        type: integer
-      - description: page number (default 1)
+        type: string
+      - description: 页码（默认 1）
         in: query
         name: page
         type: integer
-      - description: page size (default 20, max 100)
+      - description: 每页数量（默认 20，最大 100）
         in: query
         name: limit
         type: integer
@@ -2194,17 +3014,22 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.TicketListResponse'
-      summary: List tickets
+            $ref: '#/definitions/handler.TicketListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 获取工单列表
       tags:
       - admin
   /admin/tickets/{id}:
     delete:
-      consumes:
-      - application/json
+      description: 删除指定工单及其所有回复
       operationId: AdminDeleteTicket
       parameters:
-      - description: ticket ID
+      - description: 工单 ID
         in: path
         name: id
         required: true
@@ -2215,24 +3040,25 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Delete a ticket
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 删除工单
       tags:
       - admin
     get:
-      consumes:
-      - application/json
+      description: 根据 ID 获取工单及其所有回复
       operationId: AdminGetTicket
       parameters:
-      - description: ticket ID
+      - description: 工单 ID
         in: path
         name: id
         required: true
@@ -2243,25 +3069,26 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.TicketDetailResponse'
+            $ref: '#/definitions/handler.TicketDetailResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Get ticket by ID
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 获取工单详情
       tags:
       - admin
   /admin/tickets/{id}/close:
     post:
-      consumes:
-      - application/json
+      description: 将指定工单状态设为 closed
       operationId: AdminCloseTicket
       parameters:
-      - description: ticket ID
+      - description: 工单 ID
         in: path
         name: id
         required: true
@@ -2272,59 +3099,89 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Close a ticket
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 关闭工单
       tags:
       - admin
   /admin/tickets/{id}/replies:
     post:
       consumes:
       - application/json
+      description: 为指定工单添加管理员回复，工单状态自动变为 replied
       operationId: AdminReplyTicket
       parameters:
-      - description: ticket ID
+      - description: 工单 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: reply content
+      - description: 回复内容
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.TicketReplyRequest'
+          $ref: '#/definitions/handler.TicketReplyRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Reply to a ticket
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 管理员回复工单
+      tags:
+      - admin
+  /admin/traffic/summary:
+    get:
+      description: 返回活跃订阅的流量使用总量、活跃数和超限数
+      operationId: AdminTrafficSummary
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TrafficSummaryResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 获取流量汇总
       tags:
       - admin
   /admin/users:
     get:
+      description: 返回所有用户及其角色
       operationId: AdminListUsers
       produces:
       - application/json
@@ -2333,57 +3190,59 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/main.User'
+              $ref: '#/definitions/handler.UserWithRoles'
             type: array
-        "401":
-          description: Unauthorized
+        "500":
+          description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: List all users
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 获取用户列表
       tags:
       - admin
     post:
       consumes:
       - application/json
+      description: 创建新的管理后台用户
       operationId: AdminCreateUser
       parameters:
-      - description: create user payload
+      - description: 用户信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.CreateUserRequest'
+          $ref: '#/definitions/handler.CreateUserRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "401":
-          description: Unauthorized
+            $ref: '#/definitions/handler.ErrorResponse'
+        "409":
+          description: Conflict
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Create a new user
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 创建用户
       tags:
       - admin
   /admin/users/{id}:
     delete:
+      description: 根据 ID 删除管理后台用户
       operationId: AdminDeleteUser
       parameters:
-      - description: user id
+      - description: 用户 ID
         in: path
         name: id
         required: true
@@ -2394,74 +3253,80 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Delete a user
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 删除用户
       tags:
       - admin
   /admin/users/{id}/password:
     post:
       consumes:
       - application/json
+      description: 修改指定用户的密码（可改自己或需要 user:write 权限）
       operationId: AdminChangePassword
       parameters:
-      - description: user id
+      - description: 用户 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: new password
+      - description: 新密码
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.ChangePasswordRequest'
+          $ref: '#/definitions/handler.ChangePasswordRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Change user password (superadmin for others, any user for self)
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 修改用户密码
       tags:
       - admin
   /admin/users/{id}/roles:
     get:
+      description: 返回指定用户的角色名称列表
       operationId: AdminGetUserRoles
       parameters:
-      - description: user id
+      - description: 用户 ID
         in: path
         name: id
         required: true
@@ -2475,67 +3340,115 @@ paths:
             items:
               type: string
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Get user roles
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 获取用户角色
       tags:
       - admin
     put:
       consumes:
       - application/json
+      description: 替换指定用户的所有角色
       operationId: AdminSetUserRoles
       parameters:
-      - description: user id
+      - description: 用户 ID
         in: path
         name: id
         required: true
         type: integer
-      - description: roles list
+      - description: 角色列表
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.SetRolesRequest'
+          $ref: '#/definitions/handler.SetRolesRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Replace user roles
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 设置用户角色
       tags:
       - admin
+  /c/{token}:
+    get:
+      description: 根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)
+      operationId: CustomerSubscriptionClash
+      parameters:
+      - description: 订阅 token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Clash subscription
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: 获取客户 Clash 订阅
+      tags:
+      - subscription
+  /c/{token}/vless:
+    get:
+      description: 根据订阅 token 返回 base64 编码的 VLESS 订阅链接 (text/plain)
+      operationId: CustomerSubscriptionVless
+      parameters:
+      - description: 订阅 token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: VLESS subscription
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: 获取客户 VLESS 订阅
+      tags:
+      - subscription
   /health:
     get:
-      consumes:
-      - application/json
+      description: 检查服务和数据库连接是否正常
       operationId: Health
       produces:
       - application/json
@@ -2543,19 +3456,20 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "503":
           description: Service Unavailable
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Health check
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 健康检查
       tags:
-      - health
+      - system
   /l/{token}:
     get:
+      description: 返回 base64 编码的 VLESS 订阅链接
       operationId: PublicLineVless
       parameters:
-      - description: Line subscription token
+      - description: 线路 token
         in: path
         name: token
         required: true
@@ -2564,21 +3478,22 @@ paths:
       - text/plain
       responses:
         "200":
-          description: OK
+          description: VLESS subscription
           schema:
             type: string
         "404":
           description: Not Found
           schema:
             type: string
-      summary: Get VLESS subscription content for a line
+      summary: 获取线路 VLESS 订阅
       tags:
       - subscription
   /l/{token}/clash:
     get:
+      description: 返回 Clash/Mihomo YAML 格式订阅配置
       operationId: PublicLineClash
       parameters:
-      - description: Line subscription token
+      - description: 线路 token
         in: path
         name: token
         required: true
@@ -2587,40 +3502,65 @@ paths:
       - text/plain
       responses:
         "200":
-          description: OK
+          description: Clash subscription
           schema:
             type: string
         "404":
           description: Not Found
           schema:
             type: string
-      summary: Get Clash subscription content for a line
+      summary: 获取线路 Clash 订阅
       tags:
       - subscription
   /labels:
     get:
-      consumes:
-      - application/json
+      description: 返回可打印的节点标签 HTML 页面
       operationId: LabelsPrint
       produces:
       - text/html
       responses:
         "200":
-          description: HTML content
+          description: HTML page
           schema:
             type: string
-        "401":
-          description: Unauthorized
+        "500":
+          description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Print labels (HTML)
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 打印节点标签页面
       tags:
-      - labels
+      - admin
   /nodes:
     get:
-      consumes:
-      - application/json
+      description: List all nodes with optional filters
       operationId: NodesList
+      parameters:
+      - description: filter by status
+        in: query
+        name: status
+        type: string
+      - description: filter by enabled (0 or 1)
+        in: query
+        name: enabled
+        type: string
+      - description: filter by country
+        in: query
+        name: country
+        type: string
+      - description: filter by region
+        in: query
+        name: region
+        type: string
+      - description: search hostname, location, note, or mac
+        in: query
+        name: search
+        type: string
+      - description: filter by tags (comma-separated)
+        in: query
+        name: tags
+        type: string
       produces:
       - application/json
       responses:
@@ -2628,22 +3568,23 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/main.Node'
+              $ref: '#/definitions/model.Node'
             type: array
-        "401":
-          description: Unauthorized
+        "500":
+          description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
       summary: List nodes
       tags:
-      - nodes
+      - admin
   /nodes/{mac}:
     delete:
-      consumes:
-      - application/json
+      description: Delete a node by MAC address
       operationId: NodeDelete
       parameters:
-      - description: node mac (12 hex, no colon)
+      - description: node MAC address
         in: path
         name: mac
         required: true
@@ -2654,24 +3595,21 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Delete node
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: Delete a node
       tags:
-      - nodes
+      - admin
     get:
-      consumes:
-      - application/json
+      description: Get a single node by MAC address
       operationId: NodeGet
       parameters:
-      - description: node mac (12 hex, no colon)
+      - description: node MAC address
         in: path
         name: mac
         required: true
@@ -2682,83 +3620,94 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.Node'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/model.Node'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Get node by MAC
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: Get a node
       tags:
-      - nodes
+      - admin
     patch:
       consumes:
       - application/json
+      description: Update allowed fields of a node by MAC address
       operationId: NodeUpdate
       parameters:
-      - description: node mac (12 hex, no colon)
+      - description: node MAC address
         in: path
         name: mac
         required: true
         type: string
-      - description: node update payload
+      - description: fields to update
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.UpdateRequest'
+          $ref: '#/definitions/handler.NodeUpdateRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Update node (partial)
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: Update a node
       tags:
-      - nodes
+      - admin
   /nodes/heartbeat:
     post:
       consumes:
       - application/json
       operationId: NodeHeartbeat
       parameters:
-      - description: heartbeat payload
+      - description: heartbeat data
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.HeartbeatRequest'
+          $ref: '#/definitions/model.HeartbeatRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.StatusResponse'
+            $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Node heartbeat
       tags:
       - nodes
@@ -2766,36 +3715,532 @@ paths:
     post:
       consumes:
       - application/json
+      description: Register a new node or update an existing one by MAC address
       operationId: NodeRegister
       parameters:
-      - description: node register payload
+      - description: node info
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/main.RegisterRequest'
+          $ref: '#/definitions/handler.NodeRegisterRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/main.NodeRegisterResponse'
+            $ref: '#/definitions/handler.NodeRegisterResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Register node (idempotent)
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Register a node
       tags:
       - nodes
-  /prometheus-targets:
+  /portal/announcements:
     get:
+      operationId: PortalAnnouncements
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Announcement'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 获取公开公告列表
+      tags:
+      - portal-public
+  /portal/forgot-password:
+    post:
       consumes:
       - application/json
+      description: 向指定邮箱发送 6 位验证码，15 分钟有效
+      operationId: PortalForgotPassword
+      parameters:
+      - description: 邮箱
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ForgotPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 发送密码重置验证码
+      tags:
+      - portal-auth
+  /portal/login:
+    post:
+      consumes:
+      - application/json
+      operationId: PortalLogin
+      parameters:
+      - description: 登录凭证
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.PortalLoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 客户登录
+      tags:
+      - portal-auth
+  /portal/logout:
+    post:
+      operationId: PortalLogout
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+      summary: 客户登出
+      tags:
+      - portal-auth
+  /portal/me:
+    get:
+      operationId: PortalMe
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PortalMeResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 获取当前客户信息
+      tags:
+      - portal
+  /portal/orders:
+    get:
+      operationId: PortalOrders
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PortalOrderListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 获取当前客户的订单列表
+      tags:
+      - portal
+    post:
+      consumes:
+      - application/json
+      operationId: PortalCreateOrder
+      parameters:
+      - description: 下单信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.PortalCreateOrderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PortalCreateOrderResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 客户下单
+      tags:
+      - portal
+  /portal/plans:
+    get:
+      operationId: PortalPlans
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Plan'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 获取公开套餐列表
+      tags:
+      - portal-public
+  /portal/referral:
+    get:
+      description: 返回当前客户的邀请码、邀请链接、邀请人数、累计返利和余额
+      operationId: PortalReferral
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PortalReferralResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 获取我的邀请信息
+      tags:
+      - portal
+  /portal/referral/records:
+    get:
+      description: 分页返回当前客户的邀请记录列表
+      operationId: PortalReferralRecords
+      parameters:
+      - description: 页码（默认 1）
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量（默认 20，最大 100）
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PortalReferralRecordsResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 获取我的邀请记录
+      tags:
+      - portal
+  /portal/register:
+    post:
+      consumes:
+      - application/json
+      operationId: PortalRegister
+      parameters:
+      - description: 注册信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.PortalRegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 客户自助注册
+      tags:
+      - portal-auth
+  /portal/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: 使用验证码重置客户密码
+      operationId: PortalResetPassword
+      parameters:
+      - description: 邮箱、验证码、新密码
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 重置密码
+      tags:
+      - portal-auth
+  /portal/subscriptions:
+    get:
+      operationId: PortalSubscriptions
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.PortalSubscription'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 获取当前客户的所有订阅
+      tags:
+      - portal
+  /portal/tickets:
+    get:
+      operationId: PortalTickets
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PortalTicketListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 获取当前客户的工单列表
+      tags:
+      - portal
+    post:
+      consumes:
+      - application/json
+      operationId: PortalCreateTicket
+      parameters:
+      - description: 工单内容
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.PortalCreateTicketRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PortalCreateTicketResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 提交工单
+      tags:
+      - portal
+  /portal/tickets/{id}:
+    get:
+      operationId: PortalGetTicket
+      parameters:
+      - description: 工单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PortalTicketDetail'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 获取工单详情及回复
+      tags:
+      - portal
+  /portal/tickets/{id}/reply:
+    post:
+      consumes:
+      - application/json
+      operationId: PortalReplyTicket
+      parameters:
+      - description: 工单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 回复内容
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.PortalReplyTicketRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 客户回复工单
+      tags:
+      - portal
+  /prometheus-targets:
+    get:
+      description: 返回 file_sd 格式的节点列表，供 Prometheus 服务发现使用
       operationId: PrometheusTargets
       produces:
       - application/json
@@ -2804,51 +4249,79 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/main.PrometheusTarget'
+              $ref: '#/definitions/handler.PrometheusTarget'
             type: array
-        "401":
-          description: Unauthorized
+        "500":
+          description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Prometheus file_sd targets
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSession: []
+      summary: 获取 Prometheus 抓取目标
       tags:
-      - prometheus
+      - admin
+  /s/{token}:
+    get:
+      description: 通过 Token 获取订阅组的 Clash YAML 配置（无需认证）
+      operationId: PublicGroupClash
+      parameters:
+      - description: 订阅组 Token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Clash subscription
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: 公开订阅组 Clash 配置
+      tags:
+      - subscription
   /subscription:
     get:
-      consumes:
-      - application/json
+      description: 返回 base64 编码的 VLESS 订阅链接
       operationId: SubscriptionVless
       produces:
       - text/plain
       responses:
         "200":
-          description: base64 encoded subscription
+          description: VLESS subscription
           schema:
             type: string
-        "401":
-          description: Unauthorized
+        "500":
+          description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: VLESS subscription (base64)
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 获取 VLESS 订阅
       tags:
       - subscription
   /subscription/clash:
     get:
-      consumes:
-      - application/json
+      description: 返回 Clash/Mihomo YAML 格式订阅配置
       operationId: SubscriptionClash
       produces:
       - text/plain
       responses:
         "200":
-          description: clash yaml content
+          description: Clash subscription
           schema:
             type: string
-        "401":
-          description: Unauthorized
+        "500":
+          description: Internal Server Error
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
-      summary: Clash/Mihomo subscription YAML
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 获取 Clash 订阅
       tags:
       - subscription
 schemes:
@@ -2864,5 +4337,10 @@ securityDefinitions:
     description: '"Authorization: Bearer <API_SECRET>"'
     in: header
     name: Authorization
+    type: apiKey
+  CustomerSessionCookie:
+    description: '"HttpOnly session cookie for customer portal"'
+    in: cookie
+    name: hive_customer_session
     type: apiKey
 swagger: "2.0"
