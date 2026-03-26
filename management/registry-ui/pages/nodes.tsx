@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
-import { NodesService } from '@/src/generated/client';
-import type { main_Node } from '@/src/generated/client';
+import { AdminService } from '@/src/generated/client';
+import type { model_Node } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,7 +41,7 @@ function formatDate(s: string | undefined | null, noData: string) {
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
-function getNodeStatus(n: main_Node): 'online' | 'offline' | 'unknown' {
+function getNodeStatus(n: model_Node): 'online' | 'offline' | 'unknown' {
   const ps = (n as any).probe_status;
   if (ps === 'online') return 'online';
   if (ps === 'offline') return 'offline';
@@ -54,7 +54,7 @@ const statusClass: Record<string, string> = {
   unknown: 'text-muted-foreground',
 };
 
-const columnHelper = createColumnHelper<main_Node>();
+const columnHelper = createColumnHelper<model_Node>();
 
 const DEFAULT_VISIBILITY: VisibilityState = {
   frp_port: true,
@@ -81,7 +81,7 @@ export default function Nodes() {
   const tCommon = useTranslations('common');
   const tNav = useTranslations('nav');
 
-  const [nodes, setNodes] = useState<main_Node[]>([]);
+  const [nodes, setNodes] = useState<model_Node[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -102,7 +102,7 @@ export default function Nodes() {
     setLoading(true);
     setError('');
     try {
-      const list = await sessionApi(NodesService.nodesList());
+      const list = await sessionApi(AdminService.nodesList({}));
       setNodes(list);
     } catch (e: any) {
       setError(e?.error || e?.message || t('loadFailed'));
@@ -153,7 +153,7 @@ export default function Nodes() {
   async function handleDelete(mac: string) {
     if (!window.confirm(t('deleteConfirm', { mac }))) return;
     try {
-      await sessionApi(NodesService.nodeDelete({ mac }));
+      await sessionApi(AdminService.nodeDelete({ mac }));
       await loadNodes();
     } catch (e: any) {
       setError(e?.error || e?.message || t('deleteFailed'));
@@ -163,7 +163,7 @@ export default function Nodes() {
   async function handleBatchDelete() {
     if (!confirm(t('batchDeleteConfirm', { count: selectedMacs.size }))) return;
     for (const mac of selectedMacs) {
-      await sessionApi(NodesService.nodeDelete({ mac })).catch(() => {});
+      await sessionApi(AdminService.nodeDelete({ mac })).catch(() => {});
     }
     setSelectedMacs(new Set());
     loadNodes();
@@ -171,7 +171,7 @@ export default function Nodes() {
 
   async function handleBatchEnable() {
     for (const mac of selectedMacs) {
-      await sessionApi(NodesService.nodeUpdate({ mac, requestBody: { enabled: true } })).catch(() => {});
+      await sessionApi(AdminService.nodeUpdate({ mac, requestBody: { enabled: true } })).catch(() => {});
     }
     setSelectedMacs(new Set());
     loadNodes();
@@ -179,7 +179,7 @@ export default function Nodes() {
 
   async function handleBatchDisable() {
     for (const mac of selectedMacs) {
-      await sessionApi(NodesService.nodeUpdate({ mac, requestBody: { enabled: false } })).catch(() => {});
+      await sessionApi(AdminService.nodeUpdate({ mac, requestBody: { enabled: false } })).catch(() => {});
     }
     setSelectedMacs(new Set());
     loadNodes();

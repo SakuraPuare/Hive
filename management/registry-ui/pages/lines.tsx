@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AdminService, NodesService } from '@/src/generated/client';
-import type { main_Node, main_Line } from '@/src/generated/client';
+import { AdminService } from '@/src/generated/client';
+import type { model_Node, model_Line } from '@/src/generated/client';
 import { sessionApi, apiPath } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,7 +35,7 @@ export default function LinesPage() {
   const canWrite = user?.can('line:write') ?? false;
 
   // ── Lines list ──────────────────────────────────────────────────────
-  const [lines, setLines] = useState<main_Line[]>([]);
+  const [lines, setLines] = useState<model_Line[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -94,7 +94,7 @@ export default function LinesPage() {
   }
 
   // ── Edit dialog ─────────────────────────────────────────────────────
-  const [editLine, setEditLine] = useState<main_Line | null>(null);
+  const [editLine, setEditLine] = useState<model_Line | null>(null);
   const [editName, setEditName] = useState('');
   const [editRegion, setEditRegion] = useState('');
   const [editOrder, setEditOrder] = useState('0');
@@ -103,7 +103,7 @@ export default function LinesPage() {
   const [editing, setEditing] = useState(false);
   const [editError, setEditError] = useState('');
 
-  function openEdit(line: main_Line) {
+  function openEdit(line: model_Line) {
     setEditLine(line);
     setEditName(line.name ?? '');
     setEditRegion(line.region ?? '');
@@ -138,7 +138,7 @@ export default function LinesPage() {
   }
 
   // ── Delete ──────────────────────────────────────────────────────────
-  async function handleDelete(line: main_Line) {
+  async function handleDelete(line: model_Line) {
     if (!confirm(t('lineDeleteConfirm', { name: line.name }))) return;
     try {
       await sessionApi(AdminService.adminDeleteLine({ id: line.id! }));
@@ -149,20 +149,20 @@ export default function LinesPage() {
   }
 
   // ── Node editing dialog ─────────────────────────────────────────────
-  const [nodeEditLine, setNodeEditLine] = useState<main_Line | null>(null);
-  const [allNodes, setAllNodes] = useState<main_Node[]>([]);
+  const [nodeEditLine, setNodeEditLine] = useState<model_Line | null>(null);
+  const [allNodes, setAllNodes] = useState<model_Node[]>([]);
   const [selectedMacs, setSelectedMacs] = useState<Set<string>>(new Set());
   const [nodeSearch, setNodeSearch] = useState('');
   const [savingNodes, setSavingNodes] = useState(false);
   const [saveNodesError, setSaveNodesError] = useState('');
 
-  async function openNodeEdit(line: main_Line) {
+  async function openNodeEdit(line: model_Line) {
     setNodeEditLine(line);
     setNodeSearch('');
     setSaveNodesError('');
     try {
       const [nodes, macs] = await Promise.all([
-        sessionApi(NodesService.nodesList()),
+        sessionApi(AdminService.nodesList({})),
         sessionApi(AdminService.adminGetLineNodes({ id: line.id! })),
       ]);
       setAllNodes(nodes);
@@ -212,7 +212,7 @@ export default function LinesPage() {
   }
 
   // ── Reset token ─────────────────────────────────────────────────────
-  async function handleResetToken(line: main_Line) {
+  async function handleResetToken(line: model_Line) {
     if (!confirm(t('resetTokenConfirm'))) return;
     try {
       await sessionApi(AdminService.adminResetLineToken({ id: line.id! }));
@@ -224,7 +224,7 @@ export default function LinesPage() {
 
   // ── Copy link ───────────────────────────────────────────────────────
   const [copiedId, setCopiedId] = useState<number | null>(null);
-  function copyLink(line: main_Line) {
+  function copyLink(line: model_Line) {
     const url = `${window.location.origin}${apiPath(`/l/${line.token}`)}`;
     navigator.clipboard.writeText(url);
     setCopiedId(line.id!);

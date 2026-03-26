@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   AdminService,
-  NodesService,
   SubscriptionService,
 } from '@/src/generated/client';
-import type { main_Node, main_SubscriptionGroup } from '@/src/generated/client';
+import type { model_Node, model_SubscriptionGroup } from '@/src/generated/client';
 import { apiPath, sessionApi } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,7 +61,7 @@ export default function Subscriptions() {
     }
   }
 
-  const [groups, setGroups] = useState<main_SubscriptionGroup[]>([]);
+  const [groups, setGroups] = useState<model_SubscriptionGroup[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsError, setGroupsError] = useState('');
 
@@ -83,7 +82,7 @@ export default function Subscriptions() {
   }, [user, loadGroups]);
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
-  function copyLink(group: main_SubscriptionGroup) {
+  function copyLink(group: model_SubscriptionGroup) {
     const url = `${apiPath('/s/' + group.token!)}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedId(group.id);
@@ -114,7 +113,7 @@ export default function Subscriptions() {
     }
   }
 
-  async function handleDelete(group: main_SubscriptionGroup) {
+  async function handleDelete(group: model_SubscriptionGroup) {
     if (!confirm(t('groupDeleteConfirm', { name: group.name ?? '' }))) return;
     try {
       await sessionApi(AdminService.adminDeleteSubscriptionGroup({ id: group.id! }));
@@ -124,7 +123,7 @@ export default function Subscriptions() {
     }
   }
 
-  async function handleResetToken(group: main_SubscriptionGroup) {
+  async function handleResetToken(group: model_SubscriptionGroup) {
     if (!confirm(t('resetTokenConfirm'))) return;
     try {
       await sessionApi(AdminService.adminResetSubscriptionGroupToken({ id: group.id! }));
@@ -134,19 +133,19 @@ export default function Subscriptions() {
     }
   }
 
-  const [editGroup, setEditGroup] = useState<main_SubscriptionGroup | null>(null);
-  const [allNodes, setAllNodes] = useState<main_Node[]>([]);
+  const [editGroup, setEditGroup] = useState<model_SubscriptionGroup | null>(null);
+  const [allNodes, setAllNodes] = useState<model_Node[]>([]);
   const [selectedMacs, setSelectedMacs] = useState<Set<string>>(new Set());
   const [nodeSearch, setNodeSearch] = useState('');
   const [savingNodes, setSavingNodes] = useState(false);
   const [saveNodesError, setSaveNodesError] = useState('');
 
-  async function openEditNodes(group: main_SubscriptionGroup) {
+  async function openEditNodes(group: model_SubscriptionGroup) {
     setEditGroup(group);
     setSaveNodesError('');
     setNodeSearch('');
     const [nodes, macs] = await Promise.all([
-      sessionApi(NodesService.nodesList()),
+      sessionApi(AdminService.nodesList({})),
       sessionApi(AdminService.adminGetSubscriptionGroupNodes({ id: group.id! })),
     ]);
     setAllNodes(nodes);
