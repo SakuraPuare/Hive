@@ -92,6 +92,22 @@ func (h *Handler) HandleListOrders(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, OrderListResponse{Total: total, Items: orders})
 }
 
+func (h *Handler) HandleGetOrder(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var o model.Order
+	if err := h.DB.Raw(
+		"SELECT id, order_no, customer_id, plan_id, amount, original_amount, promo_code_id, status, paid_at, created_at, updated_at FROM orders WHERE id = ?", id).
+		Scan(&o).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	if o.ID == 0 {
+		h.jsonErr(w, http.StatusNotFound, "order not found")
+		return
+	}
+	h.jsonOK(w, o)
+}
+
 func (h *Handler) HandleUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var req UpdateOrderStatusRequest
@@ -150,6 +166,9 @@ func (h *Handler) HandleUpdateOrderStatus(w http.ResponseWriter, r *http.Request
 			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) VALUES (?,?,?,0,?,?,?,?,'active',?,?)",
 			o.CustomerID, o.PlanID, token, plan.TrafficLimit, plan.DeviceLimit, startedAt, expiresAt, now, now,
 		)
+
+		// 邀请返利
+		h.CreateReferralCommission(o)
 	}
 
 	actor, _, _ := h.Auth.ParseSession(r)
