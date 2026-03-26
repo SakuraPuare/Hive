@@ -40,6 +40,24 @@ services:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
 
+  alertmanager:
+    env_file:
+      - ../.env
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--web.listen-address=127.0.0.1:9093'
+      - '--web.external-url=${ALERTMANAGER_EXTERNAL_URL:-/alertmanager/}'
+      - '--web.route-prefix=/'
+      - '--storage.path=/alertmanager'
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+
 volumes:
   prometheus_data:
   grafana_data:
+  alertmanager_data:
