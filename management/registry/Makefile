@@ -24,7 +24,7 @@ openapi:
 	# Use swaggo/swag via go run to avoid committing a separate binary.
 	# It will generate swagger.yaml/json under $(OPENAPI_DIR) by default.
 	go run github.com/swaggo/swag/cmd/swag@latest init \
-		--generalInfo swagger.go \
+		--generalInfo main.go \
 		--parseDependency \
 		--dir . \
 		-o "$(OPENAPI_DIR)" \
