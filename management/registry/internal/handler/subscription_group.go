@@ -89,6 +89,14 @@ func (h *Handler) buildGroupClashYAML(groupName string, nodes []model.Node) stri
 }
 
 // HandleListGroups handles GET /admin/subscription-groups
+// @Summary      获取订阅组列表
+// @ID           AdminListSubscriptionGroups
+// @Description  返回所有订阅组
+// @Tags         admin
+// @Produce      json
+// @Success      200 {array} model.SubscriptionGroup
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscription-groups [get]
 func (h *Handler) HandleListGroups(w http.ResponseWriter, r *http.Request) {
 	groups := make([]model.SubscriptionGroup, 0)
 	if err := h.DB.Raw("SELECT g.id, g.name, g.token, COUNT(gn.node_mac) AS node_count, g.created_at, g.updated_at FROM subscription_groups g LEFT JOIN subscription_group_nodes gn ON gn.group_id = g.id GROUP BY g.id ORDER BY g.id").Scan(&groups).Error; err != nil {
@@ -99,6 +107,17 @@ func (h *Handler) HandleListGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleCreateGroup handles POST /admin/subscription-groups
+// @Summary      创建订阅组
+// @ID           AdminCreateSubscriptionGroup
+// @Description  创建新的订阅组
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Param        body body CreateGroupRequest true "订阅组信息"
+// @Success      200 {object} model.SubscriptionGroup
+// @Failure      400 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscription-groups [post]
 func (h *Handler) HandleCreateGroup(w http.ResponseWriter, r *http.Request) {
 	var req CreateGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -138,6 +157,17 @@ func (h *Handler) HandleCreateGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleDeleteGroup handles DELETE /admin/subscription-groups/{id}
+// @Summary      删除订阅组
+// @ID           AdminDeleteSubscriptionGroup
+// @Description  根据 ID 删除订阅组
+// @Tags         admin
+// @Produce      json
+// @Param        id path int true "订阅组 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscription-groups/{id} [delete]
 func (h *Handler) HandleDeleteGroup(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -157,6 +187,17 @@ func (h *Handler) HandleDeleteGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleGetGroupNodes handles GET /admin/subscription-groups/{id}/nodes
+// @Summary      获取订阅组节点列表
+// @ID           AdminGetSubscriptionGroupNodes
+// @Description  返回指定订阅组的节点 MAC 列表
+// @Tags         admin
+// @Produce      json
+// @Param        id path int true "订阅组 ID"
+// @Success      200 {array} string
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscription-groups/{id}/nodes [get]
 func (h *Handler) HandleGetGroupNodes(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -180,6 +221,19 @@ func (h *Handler) HandleGetGroupNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleSetGroupNodes handles PUT /admin/subscription-groups/{id}/nodes
+// @Summary      设置订阅组节点
+// @ID           AdminSetSubscriptionGroupNodes
+// @Description  替换指定订阅组的节点列表
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Param        id path int true "订阅组 ID"
+// @Param        body body SetGroupNodesRequest true "节点列表"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscription-groups/{id}/nodes [put]
 func (h *Handler) HandleSetGroupNodes(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -219,6 +273,17 @@ func (h *Handler) HandleSetGroupNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleResetGroupToken handles POST /admin/subscription-groups/{id}/reset-token
+// @Summary      重置订阅组 Token
+// @ID           AdminResetSubscriptionGroupToken
+// @Description  为指定订阅组生成新的访问 Token
+// @Tags         admin
+// @Produce      json
+// @Param        id path int true "订阅组 ID"
+// @Success      200 {object} ResetTokenResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscription-groups/{id}/reset-token [post]
 func (h *Handler) HandleResetGroupToken(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -245,6 +310,16 @@ func (h *Handler) HandleResetGroupToken(w http.ResponseWriter, r *http.Request) 
 }
 
 // HandlePublicGroupClash handles GET /s/{token}
+// @Summary      公开订阅组 Clash 配置
+// @ID           PublicGroupClash
+// @Description  通过 Token 获取订阅组的 Clash YAML 配置（无需认证）
+// @Tags         subscription
+// @Produce      plain
+// @Param        token path string true "订阅组 Token"
+// @Success      200 {string} string "Clash subscription"
+// @Failure      404 {string} string "Not Found"
+// @Failure      500 {string} string "Internal Server Error"
+// @Router       /s/{token} [get]
 func (h *Handler) HandlePublicGroupClash(w http.ResponseWriter, r *http.Request) {
 	middleware.SubscriptionRequestsTotal.WithLabelValues("public_group_clash").Inc()
 
