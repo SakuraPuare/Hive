@@ -189,7 +189,11 @@ func TestCustomerSubscription_ExpiredSubscription(t *testing.T) {
 	testDB.Exec("UPDATE customer_subscriptions SET expires_at = '2020-01-01 00:00:00' WHERE token = ?", token)
 
 	resp := doJSON("GET", "/c/"+token, nil, nil)
-	assertStatus(t, resp, http.StatusNotFound)
+	assertStatus(t, resp, http.StatusOK)
+	body := readBody(resp)
+	if !strings.Contains(body, "订阅已过期") {
+		t.Fatalf("expected expired message, got: %s", body)
+	}
 }
 
 func TestCustomerSubscription_InactiveSubscription(t *testing.T) {
@@ -199,7 +203,11 @@ func TestCustomerSubscription_InactiveSubscription(t *testing.T) {
 	testDB.Exec("UPDATE customer_subscriptions SET status = 'suspended' WHERE token = ?", token)
 
 	resp := doJSON("GET", "/c/"+token, nil, nil)
-	assertStatus(t, resp, http.StatusNotFound)
+	assertStatus(t, resp, http.StatusOK)
+	body := readBody(resp)
+	if !strings.Contains(body, "订阅已停用") {
+		t.Fatalf("expected suspended message, got: %s", body)
+	}
 }
 
 func TestCustomerSubscription_InactiveCustomer(t *testing.T) {
