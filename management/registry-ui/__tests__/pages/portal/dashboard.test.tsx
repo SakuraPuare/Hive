@@ -16,13 +16,16 @@ const mockSub = {
 };
 
 const mockUseCustomer = vi.fn();
+const mockPortalAnnouncements = vi.fn();
 
 vi.mock('@/lib/portal-auth', () => ({
   useCustomer: () => mockUseCustomer(),
 }));
 
-vi.mock('@/lib/openapi-session', () => ({
-  API_PREFIX: '/api',
+vi.mock('@/src/generated/client', () => ({
+  PortalPublicService: {
+    portalAnnouncements: (...args: any[]) => mockPortalAnnouncements(...args),
+  },
 }));
 
 // Helper: render and wait for announcement fetch to settle
@@ -34,9 +37,10 @@ async function renderAndSettle(ui: React.ReactElement) {
 
 describe('PortalDashboardPage', () => {
   beforeEach(() => {
+    mockPortalAnnouncements.mockReset();
     vi.clearAllMocks();
     mockRouter.replace.mockClear();
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
+    mockPortalAnnouncements.mockResolvedValue([]);
     Object.defineProperty(window, 'location', { writable: true, value: { href: '', origin: 'http://localhost' } });
   });
 
@@ -154,14 +158,14 @@ describe('PortalDashboardPage', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
     await renderAndSettle(<PortalDashboardPage />);
 
-    expect(global.fetch).toHaveBeenCalledWith('/api/portal/announcements');
+    expect(mockPortalAnnouncements).toHaveBeenCalled();
   });
 
   it('renders announcement banners', async () => {
     const announcements = [
       { id: 1, title: 'Maintenance Notice', content: 'Server will be down', level: 'warning', pinned: true },
     ];
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(announcements) });
+    mockPortalAnnouncements.mockResolvedValue(announcements);
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
 
     render(<PortalDashboardPage />);

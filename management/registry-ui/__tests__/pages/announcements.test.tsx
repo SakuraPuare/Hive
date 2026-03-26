@@ -1,8 +1,24 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const mockFetch = vi.fn();
+const mockAdminListAnnouncements = vi.fn();
+const mockAdminCreateAnnouncement = vi.fn();
+const mockAdminUpdateAnnouncement = vi.fn();
+const mockAdminDeleteAnnouncement = vi.fn();
+
+vi.mock('@/src/generated/client', () => ({
+  AdminService: {
+    adminListAnnouncements: (...args: any[]) => mockAdminListAnnouncements(...args),
+    adminCreateAnnouncement: (...args: any[]) => mockAdminCreateAnnouncement(...args),
+    adminUpdateAnnouncement: (...args: any[]) => mockAdminUpdateAnnouncement(...args),
+    adminDeleteAnnouncement: (...args: any[]) => mockAdminDeleteAnnouncement(...args),
+  },
+}));
+
+vi.mock('@/lib/openapi-session', () => ({
+  sessionApi: <T,>(p: Promise<T>) => p,
+}));
 
 vi.mock('@/lib/auth', () => ({
   useCurrentUser: () => ({
@@ -17,10 +33,6 @@ vi.mock('@/lib/auth', () => ({
   }),
 }));
 
-vi.mock('@/lib/openapi-session', () => ({
-  apiPath: (path: string) => `/api${path.startsWith('/') ? path : `/${path}`}`,
-}));
-
 import AnnouncementsPage from '@/pages/announcements';
 
 const mockAnnouncements = [
@@ -28,29 +40,16 @@ const mockAnnouncements = [
   { id: 2, title: '紧急通知', content: '服务中断', level: 'critical', pinned: true, published: true, created_at: '2024-06-02T00:00:00Z', updated_at: '2024-06-02T00:00:00Z' },
 ];
 
-function okResponse(data: any) {
-  return () => Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
-}
-
-function errResponse(error: string) {
-  return () => Promise.resolve({ ok: false, status: 500, statusText: 'Error', json: () => Promise.resolve({ error }) });
-}
-
 describe('AnnouncementsPage', () => {
-  const originalFetch = global.fetch;
-
   beforeEach(() => {
-    vi.restoreAllMocks();
-    mockFetch.mockReset();
-    global.fetch = mockFetch as any;
-  });
-
-  afterEach(() => {
-    global.fetch = originalFetch;
+    mockAdminListAnnouncements.mockReset();
+    mockAdminCreateAnnouncement.mockReset();
+    mockAdminUpdateAnnouncement.mockReset();
+    mockAdminDeleteAnnouncement.mockReset();
   });
 
   it('renders announcements table after loading', async () => {
-    mockFetch.mockImplementation(okResponse({ total: 2, items: mockAnnouncements }));
+    mockAdminListAnnouncements.mockResolvedValueOnce({ total: 2, items: mockAnnouncements });
     render(<AnnouncementsPage />);
 
     await waitFor(() => {
@@ -60,7 +59,7 @@ describe('AnnouncementsPage', () => {
   });
 
   it('shows level badges with translated keys', async () => {
-    mockFetch.mockImplementation(okResponse({ total: 2, items: mockAnnouncements }));
+    mockAdminListAnnouncements.mockResolvedValueOnce({ total: 2, items: mockAnnouncements });
     render(<AnnouncementsPage />);
 
     await waitFor(() => {
@@ -72,16 +71,16 @@ describe('AnnouncementsPage', () => {
   });
 
   it('shows error on load failure', async () => {
-    mockFetch.mockImplementation(errResponse('DB error'));
+    mockAdminListAnnouncements.mockRejectedValueOnce(new Error('DB error'));
     render(<AnnouncementsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('DB error')).toBeInTheDocument();
+      expect(screen.getByText('announcements.loadFailed')).toBeInTheDocument();
     });
   });
 
   it('opens create dialog', async () => {
-    mockFetch.mockImplementation(okResponse({ total: 0, items: [] }));
+    mockAdminListAnnouncements.mockResolvedValueOnce({ total: 0, items: [] });
     const user = userEvent.setup();
     render(<AnnouncementsPage />);
 
@@ -97,23 +96,16 @@ describe('AnnouncementsPage', () => {
   });
 
   it('creates announcement via dialog', async () => {
-    let callCount = 0;
-    mockFetch.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ total: 0, items: [] }) });
-      if (callCount === 2) return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 3 }) });
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ total: 1, items: [{ id: 3, title: '新公告', content: '公告内容', level: 'info', pinned: false, published: false, created_at: '2024-06-03T00:00:00Z', updated_at: '2024-06-03T00:00:00Z' }] }) });
+    mockAdminListAnnouncements.mockResolvedValueOnce({ total: 0, items: [] });
+    mockAdminCreateAnnouncement.mockResolvedValueOnce({ id: 3 });
+    mockAdminListAnnouncements.mockResolvedValueOnce({
+      total: 1,
+      items: [{ id: 3, title: '新公告', content: '公告内容', level: 'info', pinned: false, published: false, created_at: '2024-06-03T00:00:00Z', updated_at: '2024-06-03T00:00:00Z' }],
     });
 
     const user = userEvent.setup();
     render(<AnnouncementsPage />);
 
-    // Wait for initial load to complete
-    await waitFor(() => {
-      expect(callCount).toBeGreaterThanOrEqual(1);
-    });
-
-    // Wait for the create button to be clickable (not in loading state)
     const createBtn = await screen.findByText('announcements.create');
     await user.click(createBtn);
 
@@ -123,12 +115,12 @@ describe('AnnouncementsPage', () => {
     await user.click(screen.getByText('common.save'));
 
     await waitFor(() => {
-      expect(callCount).toBeGreaterThanOrEqual(3);
+      expect(mockAdminCreateAnnouncement).toHaveBeenCalled();
     });
   });
 
   it('shows checkmarks for pinned and published announcements', async () => {
-    mockFetch.mockImplementation(okResponse({ total: 2, items: mockAnnouncements }));
+    mockAdminListAnnouncements.mockResolvedValueOnce({ total: 2, items: mockAnnouncements });
     render(<AnnouncementsPage />);
 
     await waitFor(() => {
