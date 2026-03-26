@@ -11,12 +11,22 @@ import (
 	"hive/registry/internal/store"
 )
 
+// HandleAdminLogin godoc
+// @Summary Admin login
+// @ID      AdminLogin
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param body body AdminLoginRequest true "credentials"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /admin/login [post]
+//
 // HandleAdminLogin handles POST /admin/login
 func (h *Handler) HandleAdminLogin(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
+	var req AdminLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
@@ -71,6 +81,15 @@ func (h *Handler) HandleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandleAdminLogout godoc
+// @Summary Admin logout
+// @ID      AdminLogout
+// @Tags admin
+// @Produce json
+// @Success 200 {object} StatusResponse
+// @Security AdminSessionCookie
+// @Router /admin/logout [post]
+//
 // HandleAdminLogout handles POST /admin/logout
 func (h *Handler) HandleAdminLogout(w http.ResponseWriter, r *http.Request) {
 	if username, _, ok := h.Auth.ParseSession(r); ok {
@@ -89,6 +108,16 @@ func (h *Handler) HandleAdminLogout(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandleAdminMe godoc
+// @Summary Get current admin user info
+// @ID      AdminMe
+// @Tags admin
+// @Produce json
+// @Success 200 {object} MeResponse
+// @Failure 401 {object} ErrorResponse
+// @Security AdminSessionCookie
+// @Router /admin/me [get]
+//
 // HandleAdminMe handles GET /admin/me
 func (h *Handler) HandleAdminMe(w http.ResponseWriter, r *http.Request) {
 	username, _, ok := h.Auth.ParseSession(r)
@@ -112,12 +141,6 @@ func (h *Handler) HandleAdminMe(w http.ResponseWriter, r *http.Request) {
 		permList = []string{}
 	}
 
-	type MeResponse struct {
-		ID          uint     `json:"id"`
-		Username    string   `json:"username"`
-		Roles       []string `json:"roles"`
-		Permissions []string `json:"permissions"`
-	}
 	h.jsonOK(w, MeResponse{
 		ID:          uid,
 		Username:    username,
