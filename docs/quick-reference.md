@@ -36,6 +36,8 @@
 | [management/02-china-vps.md](./management/02-china-vps.md) | 中国 VPS：Node Registry + Prometheus + Grafana |
 | [management/03-cloudflare-tokens.md](./management/03-cloudflare-tokens.md) | 获取 Cloudflare 凭证 |
 | [management/04-tailscale-key.md](./management/04-tailscale-key.md) | 配置 Tailscale OAuth Client |
+| [management/05-airport-roadmap.md](./management/05-airport-roadmap.md) | 自有节点平台管理系统规划 |
+| [management/06-v1-compatible-infra-roadmap.md](./management/06-v1-compatible-infra-roadmap.md) | `v1.0.0` 节点兼容基础设施 Roadmap |
 
 ---
 
