@@ -54,6 +54,20 @@ func generateOrderNo() string {
 
 // ── handlers ──────────────────────────────────────────────────────────────────
 
+// HandleListOrders godoc
+// @Summary      获取订单列表
+// @ID           AdminListOrders
+// @Description  分页获取订单列表，支持按客户和状态筛选
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        customer_id query string false "按客户 ID 筛选"
+// @Param        status      query string false "按状态筛选"
+// @Param        page        query int    false "页码（默认 1）"
+// @Param        limit       query int    false "每页数量（默认 20，最大 100）"
+// @Success      200 {object} OrderListResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/orders [get]
 func (h *Handler) HandleListOrders(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	customerID := q.Get("customer_id")
@@ -92,6 +106,18 @@ func (h *Handler) HandleListOrders(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, OrderListResponse{Total: total, Items: orders})
 }
 
+// HandleGetOrder godoc
+// @Summary      获取订单详情
+// @ID           AdminGetOrder
+// @Description  根据 ID 获取单个订单
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        id path int true "订单 ID"
+// @Success      200 {object} model.Order
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/orders/{id} [get]
 func (h *Handler) HandleGetOrder(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var o model.Order
@@ -108,6 +134,21 @@ func (h *Handler) HandleGetOrder(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, o)
 }
 
+// HandleUpdateOrderStatus godoc
+// @Summary      更新订单状态
+// @ID           AdminUpdateOrderStatus
+// @Description  更新指定订单的状态，若改为 paid 则自动创建订阅
+// @Tags         admin
+// @Security     AdminSession
+// @Accept       json
+// @Produce      json
+// @Param        id   path int                    true "订单 ID"
+// @Param        body body UpdateOrderStatusRequest true "新状态"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/orders/{id}/status [patch]
 func (h *Handler) HandleUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var req UpdateOrderStatusRequest
@@ -179,6 +220,16 @@ func (h *Handler) HandleUpdateOrderStatus(w http.ResponseWriter, r *http.Request
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandleListPromoCodes godoc
+// @Summary      获取优惠码列表
+// @ID           AdminListPromoCodes
+// @Description  获取所有优惠码，按 ID 倒序排列
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Produce      json
+// @Success      200 {array}  model.PromoCode
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/promo-codes [get]
 func (h *Handler) HandleListPromoCodes(w http.ResponseWriter, r *http.Request) {
 	items := make([]model.PromoCode, 0)
 	if err := h.DB.Raw(
@@ -190,6 +241,19 @@ func (h *Handler) HandleListPromoCodes(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, items)
 }
 
+// HandleCreatePromoCode godoc
+// @Summary      创建优惠码
+// @ID           AdminCreatePromoCode
+// @Description  创建新的优惠码
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Accept       json
+// @Produce      json
+// @Param        body body CreatePromoCodeRequest true "优惠码信息"
+// @Success      200 {object} CreateIDResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/promo-codes [post]
 func (h *Handler) HandleCreatePromoCode(w http.ResponseWriter, r *http.Request) {
 	var req CreatePromoCodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -232,6 +296,20 @@ func (h *Handler) HandleCreatePromoCode(w http.ResponseWriter, r *http.Request) 
 	h.jsonOK(w, map[string]any{"id": newID})
 }
 
+// HandleUpdatePromoCode godoc
+// @Summary      更新优惠码
+// @ID           AdminUpdatePromoCode
+// @Description  按 ID 更新优惠码字段
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Accept       json
+// @Produce      json
+// @Param        id   path int                   true "优惠码 ID"
+// @Param        body body UpdatePromoCodeRequest true "要更新的字段"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/promo-codes/{id} [patch]
 func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var req UpdatePromoCodeRequest
@@ -275,6 +353,17 @@ func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) 
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandleDeletePromoCode godoc
+// @Summary      删除优惠码
+// @ID           AdminDeletePromoCode
+// @Description  按 ID 删除优惠码
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Produce      json
+// @Param        id path int true "优惠码 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/promo-codes/{id} [delete]
 func (h *Handler) HandleDeletePromoCode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.DB.Exec("DELETE FROM promo_codes WHERE id=?", id).Error; err != nil {
