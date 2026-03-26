@@ -8,7 +8,19 @@ import (
 	"hive/registry/internal/model"
 )
 
-// HandleHeartbeat handles POST /nodes/heartbeat
+// HandleHeartbeat godoc
+// @Summary Node heartbeat
+// @ID      NodeHeartbeat
+// @Tags nodes
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param body body model.HeartbeatRequest true "heartbeat data"
+// @Success 200 {object} StatusResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /nodes/heartbeat [post]
 func (h *Handler) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	if !h.Auth.RequireDeviceAuth(w, r) {
 		return
