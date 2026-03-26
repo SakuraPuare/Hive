@@ -46,7 +46,16 @@ func (h *Handler) hasPermission(userID uint, perm string) bool {
 	return false
 }
 
-// GET /admin/users
+// HandleListUsers godoc
+// @Summary      获取用户列表
+// @ID           AdminListUsers
+// @Description  返回所有用户及其角色
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Produce      json
+// @Success      200 {array}  UserWithRoles
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/users [get]
 func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 	type UserRow struct {
 		ID        uint   `json:"id"`
@@ -59,13 +68,6 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 	if err := h.DB.Raw("SELECT id, username, role, created_at, updated_at FROM users ORDER BY id").Scan(&rows).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
-	}
-	type UserWithRoles struct {
-		ID        uint     `json:"id"`
-		Username  string   `json:"username"`
-		Roles     []string `json:"roles"`
-		CreatedAt string   `json:"created_at"`
-		UpdatedAt string   `json:"updated_at"`
 	}
 	users := make([]UserWithRoles, 0, len(rows))
 	for _, row := range rows {
@@ -84,13 +86,21 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, users)
 }
 
-// POST /admin/users
+// HandleCreateUser godoc
+// @Summary      创建用户
+// @ID           AdminCreateUser
+// @Description  创建新的管理后台用户
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Accept       json
+// @Produce      json
+// @Param        body body CreateUserRequest true "用户信息"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      409 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/users [post]
 func (h *Handler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
-	type CreateUserRequest struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
-	}
 	var req CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -138,7 +148,19 @@ func (h *Handler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// DELETE /admin/users/{id}
+// HandleDeleteUser godoc
+// @Summary      删除用户
+// @ID           AdminDeleteUser
+// @Description  根据 ID 删除管理后台用户
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Produce      json
+// @Param        id path int true "用户 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/users/{id} [delete]
 func (h *Handler) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	actor, _, _ := h.Auth.ParseSession(r)
 	idStr := r.PathValue("id")
@@ -169,7 +191,6 @@ func (h *Handler) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// POST /admin/users/{id}/password
 func (h *Handler) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
 	actor, _, ok := h.Auth.ParseSession(r)
 	if !ok {
@@ -194,9 +215,6 @@ func (h *Handler) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
 			h.jsonErr(w, http.StatusForbidden, "forbidden: can only change your own password")
 			return
 		}
-	}
-	type ChangePasswordRequest struct {
-		Password string `json:"password"`
 	}
 	var req ChangePasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -226,7 +244,23 @@ func (h *Handler) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// HandleChangePasswordRoute is a wrapper used when the route doesn't require perm middleware.
+// HandleChangePasswordRoute godoc
+// @Summary      修改用户密码
+// @ID           AdminChangePassword
+// @Description  修改指定用户的密码（可改自己或需要 user:write 权限）
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Accept       json
+// @Produce      json
+// @Param        id   path int                true "用户 ID"
+// @Param        body body ChangePasswordRequest true "新密码"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      403 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/users/{id}/password [post]
 func (h *Handler) HandleChangePasswordRoute(w http.ResponseWriter, r *http.Request) {
 	username, _, ok := h.Auth.ParseSession(r)
 	if !ok {
@@ -237,7 +271,21 @@ func (h *Handler) HandleChangePasswordRoute(w http.ResponseWriter, r *http.Reque
 	h.HandleChangePassword(w, r)
 }
 
-// HandleSetUserRoles handles PUT /admin/users/{id}/roles.
+// HandleSetUserRoles godoc
+// @Summary      设置用户角色
+// @ID           AdminSetUserRoles
+// @Description  替换指定用户的所有角色
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Accept       json
+// @Produce      json
+// @Param        id   path int             true "用户 ID"
+// @Param        body body SetRolesRequest  true "角色列表"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/users/{id}/roles [put]
 func (h *Handler) HandleSetUserRoles(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	uid, err := strconv.ParseUint(idStr, 10, 64)
@@ -249,9 +297,6 @@ func (h *Handler) HandleSetUserRoles(w http.ResponseWriter, r *http.Request) {
 	if err := h.DB.Raw("SELECT username FROM users WHERE id=?", uid).Scan(&targetUsername).Error; err != nil || targetUsername == "" {
 		h.jsonErr(w, http.StatusNotFound, "user not found")
 		return
-	}
-	type SetRolesRequest struct {
-		Roles []string `json:"roles"`
 	}
 	var req SetRolesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -296,7 +341,22 @@ func (h *Handler) HandleSetUserRoles(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// GET /admin/audit-logs
+// HandleListAuditLogs godoc
+// @Summary      获取审计日志
+// @ID           AdminAuditLogs
+// @Description  分页查询审计日志，支持按操作类型、用户名、时间范围筛选
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Produce      json
+// @Param        limit    query int    false "每页条数（默认 50，最大 500）"
+// @Param        offset   query int    false "偏移量"
+// @Param        action   query string false "操作类型"
+// @Param        username query string false "用户名"
+// @Param        from     query string false "起始时间（含）"
+// @Param        to       query string false "结束时间（含）"
+// @Success      200 {array}  model.AuditLog
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/audit-logs [get]
 func (h *Handler) HandleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit := 50
