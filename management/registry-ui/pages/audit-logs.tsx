@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import type { main_AuditLog } from '@/src/generated/client';
+import type { model_AuditLog } from '@/src/generated/client';
 import { AdminService } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { useCurrentUser } from '@/lib/auth';
@@ -41,7 +41,7 @@ export default function AuditLogsPage() {
   const tCommon = useTranslations('common');
   const tNav = useTranslations('nav');
   const { user: currentUser, loading: authLoading } = useCurrentUser();
-  const [logs, setLogs] = useState<main_AuditLog[]>([]);
+  const [logs, setLogs] = useState<model_AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(0);

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
-import type { main_Role } from '@/src/generated/client';
+import type { handler_RoleDetail } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import type { AdminUser } from '@/lib/domain-types';
 import { useCurrentUser } from '@/lib/auth';
@@ -49,7 +49,7 @@ export default function UsersPage() {
   const tAuth = useTranslations('auth');
   const { user: currentUser, loading: authLoading } = useCurrentUser();
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [allRoles, setAllRoles] = useState<main_Role[]>([]);
+  const [allRoles, setAllRoles] = useState<handler_RoleDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');

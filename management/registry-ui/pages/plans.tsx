@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AdminService } from '@/src/generated/client';
-import type { main_Plan, main_Line } from '@/src/generated/client';
+import type { model_Plan, model_Line } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,7 +44,7 @@ export default function PlansPage() {
   const canWrite = user?.can('subscription:write') ?? false;
 
   // ── Plans list ──────────────────────────────────────────────────────
-  const [plans, setPlans] = useState<main_Plan[]>([]);
+  const [plans, setPlans] = useState<model_Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -67,7 +67,7 @@ export default function PlansPage() {
   }, [authLoading, user, router, loadPlans]);
 
   // ── Create / Edit dialog ──────────────────────────────────────────
-  const [editPlan, setEditPlan] = useState<main_Plan | null>(null);
+  const [editPlan, setEditPlan] = useState<model_Plan | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [formName, setFormName] = useState('');
   const [formTraffic, setFormTraffic] = useState('0');
@@ -87,7 +87,7 @@ export default function PlansPage() {
     setShowCreate(true);
   }
 
-  function openEdit(p: main_Plan) {
+  function openEdit(p: model_Plan) {
     setFormName(p.name ?? '');
     setFormTraffic(String((p.traffic_limit ?? 0) / (1024 ** 3)));
     setFormSpeed(String(p.speed_limit ?? 0));
@@ -129,7 +129,7 @@ export default function PlansPage() {
   }
 
   // ── Delete ────────────────────────────────────────────────────────
-  const [deletePlan, setDeletePlan] = useState<main_Plan | null>(null);
+  const [deletePlan, setDeletePlan] = useState<model_Plan | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   async function handleDelete() {
@@ -146,14 +146,14 @@ export default function PlansPage() {
   }
 
   // ── Lines dialog ──────────────────────────────────────────────────
-  const [lineEditPlan, setLineEditPlan] = useState<main_Plan | null>(null);
-  const [allLines, setAllLines] = useState<main_Line[]>([]);
+  const [lineEditPlan, setLineEditPlan] = useState<model_Plan | null>(null);
+  const [allLines, setAllLines] = useState<model_Line[]>([]);
   const [selectedLineIds, setSelectedLineIds] = useState<Set<number>>(new Set());
   const [savingLines, setSavingLines] = useState(false);
   const [saveLinesError, setSaveLinesError] = useState('');
   const [lineSearch, setLineSearch] = useState('');
 
-  async function openLineEdit(p: main_Plan) {
+  async function openLineEdit(p: model_Plan) {
     setLineEditPlan(p);
     setSaveLinesError('');
     setLineSearch('');

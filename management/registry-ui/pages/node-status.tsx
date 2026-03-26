@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { AdminService } from '@/src/generated/client';
-import type { main_NodeStatusCheck } from '@/src/generated/client';
+import type { model_NodeStatusCheck } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,7 @@ function pctColor(v: number | null | undefined): string {
 export default function NodeStatusPage() {
   const t = useTranslations('nodeStatus');
   const tCommon = useTranslations('common');
-  const [data, setData] = useState<main_NodeStatusCheck[]>([]);
+  const [data, setData] = useState<model_NodeStatusCheck[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<'all' | 'online' | 'offline'>('all');
