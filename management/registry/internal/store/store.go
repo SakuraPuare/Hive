@@ -39,6 +39,8 @@ var AllPermissions = []struct{ Slug, Desc string }{
 	{"order:write", "管理订单状态和优惠码"},
 	{"ticket:read", "查看工单列表"},
 	{"ticket:write", "回复/关闭/删除工单"},
+	{"announcement:read", "查看公告列表"},
+	{"announcement:write", "创建/编辑/删除公告"},
 }
 
 // DefaultRolePerms defines the default permission sets for the three built-in roles.
@@ -53,6 +55,7 @@ var DefaultRolePerms = map[string][]string{
 		"customer:read", "customer:write", "customer:delete",
 		"order:read", "order:write",
 		"ticket:read", "ticket:write",
+		"announcement:read", "announcement:write",
 	},
 	"admin": {
 		"node:read", "node:write",
