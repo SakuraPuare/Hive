@@ -30,12 +30,24 @@ type Config struct {
 	MySQLDB       string
 	DBMaxOpen     int
 	DBMaxIdle     int
+
+	// SMTP
+	SMTPHost    string
+	SMTPPort    string
+	SMTPUser    string
+	SMTPPass    string
+	SMTPFrom    string
+	MailEnabled bool
+
+	// Referral
+	ReferralRate int // 返利比例百分比，默认 10 表示 10%
 }
 
 // Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
 	maxOpen, _ := strconv.Atoi(Getenv("DB_MAX_OPEN", "10"))
 	maxIdle, _ := strconv.Atoi(Getenv("DB_MAX_IDLE", "3"))
+	referralRate, _ := strconv.Atoi(Getenv("REFERRAL_RATE", "10"))
 
 	return &Config{
 		Port:                Getenv("PORT", "8080"),
@@ -57,6 +69,15 @@ func Load() *Config {
 		MySQLDB:       Getenv("MYSQL_DB", "hive_registry"),
 		DBMaxOpen:     maxOpen,
 		DBMaxIdle:     maxIdle,
+
+		SMTPHost:    Getenv("SMTP_HOST", ""),
+		SMTPPort:    Getenv("SMTP_PORT", "587"),
+		SMTPUser:    Getenv("SMTP_USER", ""),
+		SMTPPass:    Getenv("SMTP_PASS", ""),
+		SMTPFrom:    Getenv("SMTP_FROM", ""),
+		MailEnabled: Getenv("MAIL_ENABLED", "false") == "true",
+
+		ReferralRate: referralRate,
 	}
 }
 
