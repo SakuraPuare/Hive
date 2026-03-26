@@ -2,7 +2,7 @@ BINARY  = hive-registry
 GOOS   ?= linux
 GOARCH ?= amd64
 
-.PHONY: build tidy clean openapi
+.PHONY: build tidy clean openapi seed-local-demo
 
 build: tidy
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
@@ -31,6 +31,9 @@ openapi:
 		--parseDepth 100
 	# Normalize output filename for downstream tools.
 	cp "$(OPENAPI_DIR)/swagger.yaml" "$(OPENAPI_DIR)/openapi.yaml"
+
+seed-local-demo:
+	bash ./dev/seed-local-demo.sh
 
 clean:
 	rm -f $(BINARY) $(BINARY)-arm64 $(OPENAPI_DIR) -r

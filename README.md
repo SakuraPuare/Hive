@@ -164,6 +164,7 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 | 4 | [02-china-vps.md](docs/management/02-china-vps.md) | 管理 VPS：Node Registry + Prometheus + Grafana |
 | 4.5 | [05-airport-roadmap.md](docs/management/05-airport-roadmap.md) | 自有节点平台管理系统规划 |
 | 4.6 | [06-v1-compatible-infra-roadmap.md](docs/management/06-v1-compatible-infra-roadmap.md) | `v1.0.0` 节点兼容基础设施 Roadmap |
+| 4.7 | [07-local-dev.md](docs/management/07-local-dev.md) | 本地开发与调试 |
 | 5 | — | 填 `.env`，构建镜像，批量烧录 |
 
 ---
@@ -193,6 +194,7 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 常见故障排查 |
 | [docs/management/05-airport-roadmap.md](docs/management/05-airport-roadmap.md) | 自有节点平台管理系统规划 |
 | [docs/management/06-v1-compatible-infra-roadmap.md](docs/management/06-v1-compatible-infra-roadmap.md) | `v1.0.0` 节点兼容基础设施 Roadmap |
+| [docs/management/07-local-dev.md](docs/management/07-local-dev.md) | 本地开发与调试 |
 | [docs/FIREWALL.md](docs/FIREWALL.md) | 防火墙配置 |
 | [docs/FAIL2BAN.md](docs/FAIL2BAN.md) | 入侵防护配置 |
 
