@@ -2,10 +2,11 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type main_UpdateRequest = {
+export type main_UpdateLineRequest = {
+    display_order?: number;
     enabled?: boolean;
-    location?: string;
+    name?: string;
     note?: string;
-    tailscale_ip?: string;
+    region?: string;
 };
 

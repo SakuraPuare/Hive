@@ -38,6 +38,26 @@ paths:
           name: offset
           schema:
             type: integer
+        - description: filter by action
+          in: query
+          name: action
+          schema:
+            type: string
+        - description: filter by username
+          in: query
+          name: username
+          schema:
+            type: string
+        - description: filter from date (ISO 8601)
+          in: query
+          name: from
+          schema:
+            type: string
+        - description: filter to date (ISO 8601)
+          in: query
+          name: to
+          schema:
+            type: string
       responses:
         "200":
           description: OK
@@ -60,6 +80,604 @@ paths:
               schema:
                 $ref: "#/components/schemas/main.ErrorResponse"
       summary: List audit logs
+      tags:
+        - admin
+  /admin/customers:
+    get:
+      description: Paginated list of customers with optional status/email/search filters
+      operationId: AdminListCustomers
+      parameters:
+        - description: Filter by status
+          in: query
+          name: status
+          schema:
+            type: string
+        - description: Filter by email (partial match)
+          in: query
+          name: email
+          schema:
+            type: string
+        - description: Search email or nickname
+          in: query
+          name: search
+          schema:
+            type: string
+        - description: Page number
+          in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - description: Items per page
+          in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                properties:
+                  items:
+                    items:
+                      $ref: "#/components/schemas/main.Customer"
+                    type: array
+                  limit:
+                    type: integer
+                  page:
+                    type: integer
+                  total:
+                    format: int64
+                    type: integer
+                type: object
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List customers
+      tags:
+        - admin
+    post:
+      description: Create a new customer with email, password, and optional nickname
+      operationId: AdminCreateCustomer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.CreateCustomerRequest"
+        description: Customer info
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.Customer"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Create customer
+      tags:
+        - admin
+  "/admin/customers/{id}":
+    delete:
+      description: Permanently delete a customer account
+      operationId: AdminDeleteCustomer
+      parameters:
+        - description: Customer ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Delete customer
+      tags:
+        - admin
+    get:
+      description: Get customer details including all subscriptions
+      operationId: AdminGetCustomer
+      parameters:
+        - description: Customer ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.CustomerDetail"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Get customer
+      tags:
+        - admin
+    patch:
+      description: Update customer nickname and/or status
+      operationId: AdminUpdateCustomer
+      parameters:
+        - description: Customer ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.UpdateCustomerRequest"
+        description: Fields to update
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Update customer
+      tags:
+        - admin
+  "/admin/customers/{id}/password":
+    post:
+      description: Set a new password for the customer
+      operationId: AdminResetCustomerPassword
+      parameters:
+        - description: Customer ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.ResetCustomerPasswordRequest"
+        description: New password
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Reset customer password
+      tags:
+        - admin
+  "/admin/customers/{id}/subscriptions":
+    get:
+      description: Get all subscriptions belonging to a customer
+      operationId: AdminListSubscriptions
+      parameters:
+        - description: Customer ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/main.CustomerSubscription"
+                type: array
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List subscriptions
+      tags:
+        - admin
+    post:
+      description: Create a new subscription for a customer based on a plan
+      operationId: AdminCreateSubscription
+      parameters:
+        - description: Customer ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.CreateSubscriptionRequest"
+        description: Subscription info
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.CustomerSubscription"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Create subscription
+      tags:
+        - admin
+  "/admin/customers/{id}/traffic":
+    get:
+      description: Per-subscription traffic summary with upload/download totals
+      operationId: AdminGetCustomerTraffic
+      parameters:
+        - description: Customer ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.CustomerTrafficResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Get customer traffic
+      tags:
+        - admin
+  /admin/lines:
+    get:
+      operationId: AdminListLines
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/main.Line"
+                type: array
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List all lines
+      tags:
+        - admin
+    post:
+      operationId: AdminCreateLine
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.CreateLineRequest"
+        description: Line to create
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                properties:
+                  id:
+                    type: integer
+                  token:
+                    type: string
+                type: object
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Create a new line
+      tags:
+        - admin
+  "/admin/lines/{id}":
+    delete:
+      operationId: AdminDeleteLine
+      parameters:
+        - description: Line ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Delete a line
+      tags:
+        - admin
+    patch:
+      operationId: AdminUpdateLine
+      parameters:
+        - description: Line ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.UpdateLineRequest"
+        description: Fields to update
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Update a line
+      tags:
+        - admin
+  "/admin/lines/{id}/nodes":
+    get:
+      operationId: AdminGetLineNodes
+      parameters:
+        - description: Line ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  type: string
+                type: array
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Get MAC addresses of nodes assigned to a line
+      tags:
+        - admin
+    put:
+      operationId: AdminSetLineNodes
+      parameters:
+        - description: Line ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.SetLineNodesRequest"
+        description: Node MAC addresses
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Set nodes assigned to a line
+      tags:
+        - admin
+  "/admin/lines/{id}/reset-token":
+    post:
+      operationId: AdminResetLineToken
+      parameters:
+        - description: Line ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ResetTokenResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Reset the subscription token for a line
       tags:
         - admin
   /admin/login:
@@ -126,6 +744,138 @@ paths:
       summary: Get current logged-in user info
       tags:
         - admin
+  /admin/node-status:
+    get:
+      operationId: AdminNodeStatus
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/main.NodeStatusCheck"
+                type: array
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List node status checks
+      tags:
+        - admin
+  /admin/orders:
+    get:
+      operationId: AdminListOrders
+      parameters:
+        - description: filter by customer ID
+          in: query
+          name: customer_id
+          schema:
+            type: integer
+        - description: filter by order status
+          in: query
+          name: status
+          schema:
+            type: string
+        - description: page number (default 1)
+          in: query
+          name: page
+          schema:
+            type: integer
+        - description: page size (default 20, max 100)
+          in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.OrderListResponse"
+      summary: List orders
+      tags:
+        - admin
+  "/admin/orders/{id}":
+    get:
+      operationId: AdminGetOrder
+      parameters:
+        - description: order ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.Order"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Get order by ID
+      tags:
+        - admin
+  "/admin/orders/{id}/status":
+    patch:
+      operationId: AdminUpdateOrderStatus
+      parameters:
+        - description: order ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.UpdateOrderStatusRequest"
+        description: new status
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Update order status
+      tags:
+        - admin
   /admin/permissions:
     get:
       operationId: AdminListPermissions
@@ -145,6 +895,341 @@ paths:
               schema:
                 $ref: "#/components/schemas/main.ErrorResponse"
       summary: List all available permissions
+      tags:
+        - admin
+  /admin/plans:
+    get:
+      operationId: AdminListPlans
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/main.Plan"
+                type: array
+      summary: List all plans
+      tags:
+        - admin
+    post:
+      operationId: AdminCreatePlan
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.CreatePlanRequest"
+        description: Plan to create
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                properties:
+                  id:
+                    type: integer
+                type: object
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Create a plan
+      tags:
+        - admin
+  "/admin/plans/{id}":
+    delete:
+      operationId: AdminDeletePlan
+      parameters:
+        - description: Plan ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Delete a plan
+      tags:
+        - admin
+    patch:
+      operationId: AdminUpdatePlan
+      parameters:
+        - description: Plan ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.UpdatePlanRequest"
+        description: Fields to update
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Update a plan
+      tags:
+        - admin
+  "/admin/plans/{id}/lines":
+    get:
+      operationId: AdminGetPlanLines
+      parameters:
+        - description: Plan ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  type: integer
+                type: array
+      summary: Get line IDs for a plan
+      tags:
+        - admin
+    put:
+      operationId: AdminSetPlanLines
+      parameters:
+        - description: Plan ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.SetPlanLinesRequest"
+        description: Line IDs to associate
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Set line IDs for a plan
+      tags:
+        - admin
+  /admin/promo-codes:
+    get:
+      operationId: AdminListPromoCodes
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/main.PromoCode"
+                type: array
+      summary: List promo codes
+      tags:
+        - admin
+    post:
+      operationId: AdminCreatePromoCode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.CreatePromoCodeRequest"
+        description: promo code payload
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.PromoCode"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Create promo code
+      tags:
+        - admin
+  "/admin/promo-codes/{id}":
+    delete:
+      operationId: AdminDeletePromoCode
+      parameters:
+        - description: promo code ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Delete promo code
+      tags:
+        - admin
+    patch:
+      operationId: AdminUpdatePromoCode
+      parameters:
+        - description: promo code ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.UpdatePromoCodeRequest"
+        description: fields to update
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Update promo code
+      tags:
+        - admin
+  /admin/risk-events:
+    get:
+      operationId: AdminListRiskEvents
+      parameters:
+        - description: filter by customer ID
+          in: query
+          name: customer_id
+          schema:
+            type: integer
+        - description: filter by event type
+          in: query
+          name: event_type
+          schema:
+            type: string
+        - description: page number (default 1)
+          in: query
+          name: page
+          schema:
+            type: integer
+        - description: page size (default 20, max 100)
+          in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.RiskEventListResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: List risk events
       tags:
         - admin
   /admin/roles:
@@ -509,6 +1594,291 @@ paths:
       summary: Reset subscription group token
       tags:
         - admin
+  "/admin/subscriptions/{id}":
+    delete:
+      description: Permanently delete a customer subscription
+      operationId: AdminDeleteSubscription
+      parameters:
+        - description: Subscription ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Delete subscription
+      tags:
+        - admin
+    patch:
+      description: Update subscription status, traffic limit, or expiry
+      operationId: AdminUpdateSubscription
+      parameters:
+        - description: Subscription ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.UpdateSubscriptionRequest"
+        description: Fields to update
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Update subscription
+      tags:
+        - admin
+  "/admin/subscriptions/{id}/reset-token":
+    post:
+      description: Generate a new random token for the subscription
+      operationId: AdminResetSubscriptionToken
+      parameters:
+        - description: Subscription ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Reset subscription token
+      tags:
+        - admin
+  /admin/tickets:
+    get:
+      operationId: AdminListTickets
+      parameters:
+        - description: filter by ticket status
+          in: query
+          name: status
+          schema:
+            type: string
+        - description: filter by customer ID
+          in: query
+          name: customer_id
+          schema:
+            type: integer
+        - description: page number (default 1)
+          in: query
+          name: page
+          schema:
+            type: integer
+        - description: page size (default 20, max 100)
+          in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.TicketListResponse"
+      summary: List tickets
+      tags:
+        - admin
+  "/admin/tickets/{id}":
+    delete:
+      operationId: AdminDeleteTicket
+      parameters:
+        - description: ticket ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Delete a ticket
+      tags:
+        - admin
+    get:
+      operationId: AdminGetTicket
+      parameters:
+        - description: ticket ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.TicketDetailResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Get ticket by ID
+      tags:
+        - admin
+  "/admin/tickets/{id}/close":
+    post:
+      operationId: AdminCloseTicket
+      parameters:
+        - description: ticket ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Close a ticket
+      tags:
+        - admin
+  "/admin/tickets/{id}/replies":
+    post:
+      operationId: AdminReplyTicket
+      parameters:
+        - description: ticket ID
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.TicketReplyRequest"
+        description: reply content
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Reply to a ticket
+      tags:
+        - admin
   /admin/users:
     get:
       operationId: AdminListUsers
@@ -777,6 +2147,58 @@ paths:
       summary: Health check
       tags:
         - health
+  "/l/{token}":
+    get:
+      operationId: PublicLineVless
+      parameters:
+        - description: Line subscription token
+          in: path
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Not Found
+          content:
+            text/plain:
+              schema:
+                type: string
+      summary: Get VLESS subscription content for a line
+      tags:
+        - subscription
+  "/l/{token}/clash":
+    get:
+      operationId: PublicLineClash
+      parameters:
+        - description: Line subscription token
+          in: path
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Not Found
+          content:
+            text/plain:
+              schema:
+                type: string
+      summary: Get Clash subscription content for a line
+      tags:
+        - subscription
   /labels:
     get:
       operationId: LabelsPrint
@@ -924,6 +2346,38 @@ paths:
       summary: Update node (partial)
       tags:
         - nodes
+  /nodes/heartbeat:
+    post:
+      operationId: NodeHeartbeat
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/main.HeartbeatRequest"
+        description: heartbeat payload
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/main.ErrorResponse"
+      summary: Node heartbeat
+      tags:
+        - nodes
   /nodes/register:
     post:
       operationId: NodeRegister
@@ -1057,10 +2511,71 @@ components:
         password:
           type: string
       type: object
+    main.CreateCustomerRequest:
+      properties:
+        email:
+          type: string
+        nickname:
+          type: string
+        password:
+          type: string
+      type: object
     main.CreateGroupRequest:
       properties:
         name:
           type: string
+      type: object
+    main.CreateLineRequest:
+      properties:
+        display_order:
+          type: integer
+        name:
+          type: string
+        note:
+          type: string
+        region:
+          type: string
+      type: object
+    main.CreatePlanRequest:
+      properties:
+        device_limit:
+          type: integer
+        duration_days:
+          type: integer
+        enabled:
+          type: boolean
+        name:
+          type: string
+        price:
+          type: integer
+        sort_order:
+          type: integer
+        speed_limit:
+          type: integer
+        traffic_limit:
+          type: integer
+      type: object
+    main.CreatePromoCodeRequest:
+      properties:
+        code:
+          type: string
+        discount_amt:
+          type: integer
+        discount_pct:
+          type: integer
+        enabled:
+          type: boolean
+        max_uses:
+          type: integer
+        valid_from:
+          type: string
+        valid_to:
+          type: string
+      type: object
+    main.CreateSubscriptionRequest:
+      properties:
+        plan_id:
+          type: integer
       type: object
     main.CreateUserRequest:
       properties:
@@ -1071,17 +2586,121 @@ components:
         username:
           type: string
       type: object
+    main.Customer:
+      properties:
+        created_at:
+          type: string
+        email:
+          type: string
+        id:
+          type: integer
+        nickname:
+          type: string
+        status:
+          type: string
+        updated_at:
+          type: string
+      type: object
+    main.CustomerDetail:
+      properties:
+        customer:
+          $ref: "#/components/schemas/main.Customer"
+        subscriptions:
+          items:
+            $ref: "#/components/schemas/main.CustomerSubscription"
+          type: array
+      type: object
+    main.CustomerSubscription:
+      properties:
+        created_at:
+          type: string
+        customer_id:
+          type: integer
+        device_limit:
+          type: integer
+        expires_at:
+          type: string
+        id:
+          type: integer
+        plan_id:
+          type: integer
+        started_at:
+          type: string
+        status:
+          type: string
+        token:
+          type: string
+        traffic_limit:
+          type: integer
+        traffic_used:
+          type: integer
+        updated_at:
+          type: string
+      type: object
+    main.CustomerTrafficResponse:
+      properties:
+        subscriptions:
+          items:
+            $ref: "#/components/schemas/main.SubTraffic"
+          type: array
+        total_download:
+          type: integer
+        total_upload:
+          type: integer
+      type: object
     main.ErrorResponse:
       properties:
         error:
+          type: string
+      type: object
+    main.HeartbeatRequest:
+      properties:
+        cpu_pct:
+          type: number
+        disk_pct:
+          type: number
+        mac:
+          type: string
+        mem_pct:
+          type: number
+        uptime_sec:
+          type: integer
+      type: object
+    main.Line:
+      properties:
+        created_at:
+          type: string
+        display_order:
+          type: integer
+        enabled:
+          type: boolean
+        id:
+          type: integer
+        name:
+          type: string
+        node_count:
+          type: integer
+        note:
+          type: string
+        region:
+          type: string
+        token:
+          type: string
+        updated_at:
           type: string
       type: object
     main.Node:
       properties:
         cf_url:
           type: string
+        city:
+          type: string
+        country:
+          type: string
         easytier_ip:
           type: string
+        enabled:
+          type: boolean
         frp_port:
           type: integer
         hostname:
@@ -1096,12 +2715,25 @@ components:
           type: string
         note:
           type: string
+        offline_reason:
+          type: string
+        probe_status:
+          description: 来自 node_status_checks（LEFT JOIN），探测状态
+          type: string
+        region:
+          type: string
         registered_at:
+          type: string
+        status:
+          type: string
+        tags:
           type: string
         tailscale_ip:
           type: string
         tunnel_id:
           type: string
+        weight:
+          type: integer
         xray_uuid:
           type: string
       type: object
@@ -1114,6 +2746,88 @@ components:
         status:
           type: string
       type: object
+    main.NodeStatusCheck:
+      properties:
+        checked_at:
+          type: string
+        cpu_pct:
+          type: number
+        disk_pct:
+          type: number
+        hostname:
+          type: string
+        latency_ms:
+          type: integer
+        location:
+          type: string
+        mac:
+          type: string
+        mem_pct:
+          type: number
+        status:
+          type: string
+        uptime_sec:
+          type: integer
+      type: object
+    main.Order:
+      properties:
+        amount:
+          type: integer
+        created_at:
+          type: string
+        customer_id:
+          type: integer
+        id:
+          type: integer
+        order_no:
+          type: string
+        original_amount:
+          type: integer
+        paid_at:
+          type: string
+        plan_id:
+          type: integer
+        promo_code_id:
+          type: integer
+        status:
+          type: string
+        updated_at:
+          type: string
+      type: object
+    main.OrderListResponse:
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/main.Order"
+          type: array
+        total:
+          type: integer
+      type: object
+    main.Plan:
+      properties:
+        created_at:
+          type: string
+        device_limit:
+          type: integer
+        duration_days:
+          type: integer
+        enabled:
+          type: boolean
+        id:
+          type: integer
+        name:
+          type: string
+        price:
+          type: integer
+        sort_order:
+          type: integer
+        speed_limit:
+          type: integer
+        traffic_limit:
+          type: integer
+        updated_at:
+          type: string
+      type: object
     main.PrometheusTarget:
       properties:
         labels:
@@ -1124,6 +2838,31 @@ components:
           items:
             type: string
           type: array
+      type: object
+    main.PromoCode:
+      properties:
+        code:
+          type: string
+        created_at:
+          type: string
+        discount_amt:
+          type: integer
+        discount_pct:
+          type: integer
+        enabled:
+          type: boolean
+        id:
+          type: integer
+        max_uses:
+          type: integer
+        updated_at:
+          type: string
+        used_count:
+          type: integer
+        valid_from:
+          type: string
+        valid_to:
+          type: string
       type: object
     main.RegisterRequest:
       properties:
@@ -1146,10 +2885,39 @@ components:
         xray_uuid:
           type: string
       type: object
+    main.ResetCustomerPasswordRequest:
+      properties:
+        password:
+          type: string
+      type: object
     main.ResetTokenResponse:
       properties:
         token:
           type: string
+      type: object
+    main.RiskEvent:
+      properties:
+        created_at:
+          type: string
+        customer_id:
+          type: integer
+        detail:
+          type: string
+        event_type:
+          type: string
+        id:
+          type: integer
+        ip:
+          type: string
+      type: object
+    main.RiskEventListResponse:
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/main.RiskEvent"
+          type: array
+        total:
+          type: integer
       type: object
     main.Role:
       properties:
@@ -1171,11 +2939,25 @@ components:
             type: string
           type: array
       type: object
+    main.SetLineNodesRequest:
+      properties:
+        nodes:
+          items:
+            type: string
+          type: array
+      type: object
     main.SetPermissionsRequest:
       properties:
         permissions:
           items:
             type: string
+          type: array
+      type: object
+    main.SetPlanLinesRequest:
+      properties:
+        lines:
+          items:
+            type: integer
           type: array
       type: object
     main.SetRolesRequest:
@@ -1189,6 +2971,25 @@ components:
       properties:
         status:
           type: string
+      type: object
+    main.SubTraffic:
+      properties:
+        download_bytes:
+          type: integer
+        expires_at:
+          type: string
+        status:
+          type: string
+        subscription_id:
+          type: integer
+        token:
+          type: string
+        traffic_limit:
+          type: integer
+        traffic_used:
+          type: integer
+        upload_bytes:
+          type: integer
       type: object
     main.SubscriptionGroup:
       properties:
@@ -1205,14 +3006,141 @@ components:
         updated_at:
           type: string
       type: object
+    main.Ticket:
+      properties:
+        created_at:
+          type: string
+        customer_email:
+          type: string
+        customer_id:
+          type: integer
+        id:
+          type: integer
+        status:
+          type: string
+        subject:
+          type: string
+        updated_at:
+          type: string
+      type: object
+    main.TicketDetailResponse:
+      properties:
+        replies:
+          items:
+            $ref: "#/components/schemas/main.TicketReply"
+          type: array
+        ticket:
+          $ref: "#/components/schemas/main.Ticket"
+      type: object
+    main.TicketListResponse:
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/main.Ticket"
+          type: array
+        total:
+          type: integer
+      type: object
+    main.TicketReply:
+      properties:
+        author:
+          type: string
+        content:
+          type: string
+        created_at:
+          type: string
+        id:
+          type: integer
+        is_admin:
+          type: boolean
+        ticket_id:
+          type: integer
+      type: object
+    main.TicketReplyRequest:
+      properties:
+        content:
+          type: string
+      type: object
+    main.UpdateCustomerRequest:
+      properties:
+        nickname:
+          type: string
+        status:
+          type: string
+      type: object
+    main.UpdateLineRequest:
+      properties:
+        display_order:
+          type: integer
+        enabled:
+          type: boolean
+        name:
+          type: string
+        note:
+          type: string
+        region:
+          type: string
+      type: object
+    main.UpdateOrderStatusRequest:
+      properties:
+        status:
+          type: string
+      type: object
+    main.UpdatePlanRequest:
+      properties:
+        device_limit:
+          type: integer
+        duration_days:
+          type: integer
+        enabled:
+          type: boolean
+        name:
+          type: string
+        price:
+          type: integer
+        sort_order:
+          type: integer
+        speed_limit:
+          type: integer
+        traffic_limit:
+          type: integer
+      type: object
+    main.UpdatePromoCodeRequest:
+      properties:
+        code:
+          type: string
+        discount_amt:
+          type: integer
+        discount_pct:
+          type: integer
+        enabled:
+          type: boolean
+        max_uses:
+          type: integer
+        valid_from:
+          type: string
+        valid_to:
+          type: string
+      type: object
     main.UpdateRequest:
       properties:
+        enabled:
+          type: boolean
         location:
           type: string
         note:
           type: string
         tailscale_ip:
           type: string
+      type: object
+    main.UpdateSubscriptionRequest:
+      properties:
+        expires_at:
+          type: string
+        status:
+          type: string
+        traffic_limit:
+          type: integer
       type: object
     main.User:
       properties:

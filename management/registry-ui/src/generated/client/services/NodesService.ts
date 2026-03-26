@@ -2,6 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { main_HeartbeatRequest } from '../models/main_HeartbeatRequest';
 import type { main_Node } from '../models/main_Node';
 import type { main_NodeRegisterResponse } from '../models/main_NodeRegisterResponse';
 import type { main_RegisterRequest } from '../models/main_RegisterRequest';
@@ -105,6 +106,30 @@ export class NodesService {
                 400: `Bad Request`,
                 401: `Unauthorized`,
                 404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * Node heartbeat
+     * @returns main_StatusResponse OK
+     * @throws ApiError
+     */
+    public static nodeHeartbeat({
+        requestBody,
+    }: {
+        /**
+         * heartbeat payload
+         */
+        requestBody: main_HeartbeatRequest,
+    }): CancelablePromise<main_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/nodes/heartbeat',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                500: `Internal Server Error`,
             },
         });
     }
