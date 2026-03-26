@@ -1,5 +1,5 @@
-import { HealthService, OpenAPI } from '../src/generated/client';
-import type { main_StatusResponse } from '../src/generated/client';
+import { SystemService, OpenAPI } from '../src/generated/client';
+import type { handler_StatusResponse } from '../src/generated/client';
 import { ApiError } from '../src/generated/client/core/ApiError';
 
 const rawApiBase = process.env.NEXT_PUBLIC_API_BASE?.trim();
@@ -46,9 +46,9 @@ export async function sessionApi<T>(p: Promise<T>): Promise<T> {
 }
 
 /** 公开健康检查：失败返回 null，不跳转 */
-export async function getHealth(): Promise<main_StatusResponse | null> {
+export async function getHealth(): Promise<handler_StatusResponse | null> {
   try {
-    return await HealthService.health();
+    return await SystemService.health();
   } catch {
     return null;
   }
