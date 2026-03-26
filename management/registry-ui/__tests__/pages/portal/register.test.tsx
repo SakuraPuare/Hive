@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PortalRegisterPage from '@/pages/portal/register';
 
@@ -98,6 +98,6 @@ describe('PortalRegisterPage', () => {
       expect(screen.getByRole('button', { name: 'portal.registering' })).toBeDisabled();
     });
 
-    resolveRegister!({ id: 1 });
+    await act(async () => { resolveRegister!({ id: 1 }); });
   });
 });
