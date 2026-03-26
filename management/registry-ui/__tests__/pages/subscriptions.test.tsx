@@ -69,6 +69,10 @@ describe('Subscriptions page', () => {
   it('renders preview buttons for VLESS and Clash', async () => {
     render(<Subscriptions />);
 
+    await waitFor(() => {
+      expect(screen.getByText('基础组')).toBeInTheDocument();
+    });
+
     // Two preview buttons (VLESS + Clash)
     const previewButtons = screen.getAllByText('common.preview');
     expect(previewButtons.length).toBe(2);

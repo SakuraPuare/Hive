@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PortalLoginPage from '@/pages/portal/login';
 
@@ -93,6 +93,6 @@ describe('PortalLoginPage', () => {
       expect(screen.getByRole('button', { name: 'portal.signingIn' })).toBeDisabled();
     });
 
-    resolveLogin!({ ok: true });
+    await act(async () => { resolveLogin!({ ok: true }); });
   });
 });

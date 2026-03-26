@@ -40,10 +40,11 @@ describe('PortalDashboardPage', () => {
     Object.defineProperty(window, 'location', { writable: true, value: { href: '', origin: 'http://localhost' } });
   });
 
-  it('shows loading state', () => {
+  it('shows loading state', async () => {
     mockUseCustomer.mockReturnValue({ customer: null, subscriptions: [], loading: true });
     render(<PortalDashboardPage />);
     expect(screen.getByText('common.loading')).toBeInTheDocument();
+    await act(async () => {});
   });
 
   it('redirects to login when not authenticated', async () => {
