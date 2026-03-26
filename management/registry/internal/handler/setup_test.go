@@ -20,6 +20,7 @@ import (
 	"hive/registry/internal/config"
 	"hive/registry/internal/mailer"
 	"hive/registry/internal/middleware"
+	"hive/registry/internal/model"
 	"hive/registry/internal/store"
 )
 
@@ -228,7 +229,7 @@ func assertStatus(t *testing.T, resp *http.Response, want int) {
 
 func insertTestNode(t *testing.T, mac string) {
 	t.Helper()
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	mac6 := mac
 	if len(mac) > 6 {
 		mac6 = mac[len(mac)-6:]
@@ -242,7 +243,7 @@ func insertTestNode(t *testing.T, mac string) {
 
 func insertTestCustomer(t *testing.T, email string) uint {
 	t.Helper()
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	hash, _ := bcrypt.GenerateFromPassword([]byte("test123"), bcrypt.MinCost)
 	result := testDB.Exec(`INSERT INTO customers (email, password_hash, nickname, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)`,
 		email, string(hash), "nick-"+email, now, now)
@@ -256,7 +257,7 @@ func insertTestCustomer(t *testing.T, email string) uint {
 
 func insertTestPlan(t *testing.T, name string) uint {
 	t.Helper()
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	result := testDB.Exec(`INSERT INTO plans (name, traffic_limit, speed_limit, device_limit, duration_days, price, enabled, sort_order, created_at, updated_at)
 		VALUES (?, 107374182400, 100, 3, 30, 1000, 1, 0, ?, ?)`,
 		name, now, now)
@@ -286,7 +287,7 @@ func expiredCustomerCookie(customerID uint) *http.Cookie {
 
 func insertTestPromoCode(t *testing.T, code string, discountPct int) uint {
 	t.Helper()
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	result := testDB.Exec(`INSERT INTO promo_codes (code, discount_pct, discount_amt, max_uses, used_count, valid_from, valid_to, enabled, created_at, updated_at)
 		VALUES (?, ?, 0, 100, 0, ?, ?, 1, ?, ?)`,
 		code, discountPct, "2020-01-01 00:00:00", "2099-12-31 23:59:59", now, now)
@@ -300,7 +301,7 @@ func insertTestPromoCode(t *testing.T, code string, discountPct int) uint {
 
 func createTestUser(t *testing.T, username, password, role string) uint {
 	t.Helper()
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
 	result := testDB.Exec(`INSERT INTO users (username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		username, string(hash), role, now, now)

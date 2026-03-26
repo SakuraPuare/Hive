@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"hive/registry/internal/model"
 )
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -16,7 +18,7 @@ func insertResetCode(t *testing.T, email, code string, expiresAt time.Time, used
 	}
 	result := testDB.Exec(
 		"INSERT INTO password_reset_codes (email, code, expires_at, used) VALUES (?, ?, ?, ?)",
-		email, code, expiresAt.UTC().Format("2006-01-02 15:04:05"), usedInt,
+		email, code, expiresAt.UTC().Format(model.TimeLayout), usedInt,
 	)
 	if result.Error != nil {
 		t.Fatalf("insert reset code: %v", result.Error)

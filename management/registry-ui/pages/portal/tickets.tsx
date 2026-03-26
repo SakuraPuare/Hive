@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { useCustomer } from '@/lib/portal-auth';
-import { API_PREFIX } from '@/lib/openapi-session';
+import { portalSessionApi } from '@/lib/openapi-session';
+import { PortalService } from '@/src/generated/client';
+import type { model_Ticket } from '@/src/generated/client/models/model_Ticket';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -15,13 +17,6 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { RefreshCw, Plus } from 'lucide-react';
-
-type Ticket = {
-  id: number;
-  subject: string;
-  status: string;
-  created_at: string;
-};
 
 function formatDate(s: string) {
   const d = new Date(s);
@@ -41,7 +36,7 @@ export default function PortalTicketsPage() {
   const router = useRouter();
   const { customer, loading: authLoading } = useCustomer();
 
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [tickets, setTickets] = useState<model_Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -49,10 +44,8 @@ export default function PortalTicketsPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_PREFIX}/portal/tickets`, { credentials: 'include' });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setTickets(data.items ?? data ?? []);
+      const data = await portalSessionApi(PortalService.portalTickets({}));
+      setTickets(data.items ?? []);
     } catch {
       setError(t('loadFailed'));
     } finally {
@@ -77,16 +70,9 @@ export default function PortalTicketsPage() {
     setSubmitting(true);
     setSubmitError('');
     try {
-      const res = await fetch(`${API_PREFIX}/portal/tickets`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: newSubject.trim(), content: newContent.trim() }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw { error: body.error || t('submitFailed') };
-      }
+      await portalSessionApi(PortalService.portalCreateTicket({
+        requestBody: { subject: newSubject.trim(), content: newContent.trim() },
+      }));
       setShowNew(false);
       setNewSubject('');
       setNewContent('');
@@ -147,11 +133,11 @@ export default function PortalTicketsPage() {
                   <TableCell className="text-muted-foreground">#{ticket.id}</TableCell>
                   <TableCell className="font-medium">{ticket.subject}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={STATUS_COLORS[ticket.status] ?? ''}>
-                      {t(`status${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}` as any)}
+                    <Badge variant="outline" className={STATUS_COLORS[ticket.status ?? ''] ?? ''}>
+                      {t(`status${(ticket.status ?? '').charAt(0).toUpperCase() + (ticket.status ?? '').slice(1)}` as any)}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(ticket.created_at)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{formatDate(ticket.created_at ?? '')}</TableCell>
                 </TableRow>
               ))
             )}

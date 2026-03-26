@@ -331,7 +331,7 @@ export default function PlansPage() {
       <Dialog open={!!deletePlan} onOpenChange={(v) => { if (!v) setDeletePlan(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>{t('deletePlan')}</DialogTitle></DialogHeader>
-          <p>{deletePlan && t('deleteConfirm', { name: deletePlan.name })}</p>
+          <p>{deletePlan && t('deleteConfirm', { name: deletePlan.name ?? '' })}</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeletePlan(null)}>{tCommon('cancel')}</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>

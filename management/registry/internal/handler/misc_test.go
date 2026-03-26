@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hive/registry/internal/model"
 )
 
 // ── Health ───────────────────────────────────────────────────────────────────
@@ -117,7 +119,7 @@ func TestNodeStatus_UnknownWithoutProbe(t *testing.T) {
 func TestNodeStatus_WithProbeData(t *testing.T) {
 	resetDB(t)
 	insertTestNode(t, "aabbccddee22")
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	testDB.Exec(`INSERT INTO node_status_checks (mac, status, latency_ms, cpu_pct, mem_pct, disk_pct, uptime_sec, checked_at)
 		VALUES (?, 'online', 12.5, 30.0, 50.0, 60.0, 86400, ?)`,
 		"aabbccddee22", now)
@@ -160,7 +162,7 @@ func TestRiskEvents_Empty(t *testing.T) {
 
 func TestRiskEvents_WithData(t *testing.T) {
 	resetDB(t)
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	cid := insertTestCustomer(t, "risk@test.com")
 	testDB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (?, 'login_fail', 'bad password', '1.2.3.4', ?)",
 		cid, now)
@@ -186,7 +188,7 @@ func TestRiskEvents_WithData(t *testing.T) {
 
 func TestRiskEvents_FilterByCustomerID(t *testing.T) {
 	resetDB(t)
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	cid1 := insertTestCustomer(t, "risk1@test.com")
 	cid2 := insertTestCustomer(t, "risk2@test.com")
 	testDB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (?, 'login_fail', 'x', '1.1.1.1', ?)", cid1, now)
@@ -202,7 +204,7 @@ func TestRiskEvents_FilterByCustomerID(t *testing.T) {
 
 func TestRiskEvents_FilterByEventType(t *testing.T) {
 	resetDB(t)
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	cid := insertTestCustomer(t, "risk3@test.com")
 	testDB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (?, 'login_fail', 'a', '1.1.1.1', ?)", cid, now)
 	testDB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (?, 'signup', 'b', '2.2.2.2', ?)", cid, now)
@@ -218,7 +220,7 @@ func TestRiskEvents_FilterByEventType(t *testing.T) {
 
 func TestRiskEvents_Pagination(t *testing.T) {
 	resetDB(t)
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	cid := insertTestCustomer(t, "risk4@test.com")
 	for i := 0; i < 5; i++ {
 		testDB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (?, 'login_fail', ?, '1.1.1.1', ?)",

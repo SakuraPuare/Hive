@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"hive/registry/internal/model"
 	"hive/registry/internal/store"
 )
 
@@ -28,7 +29,7 @@ func (h *Handler) StartLifecycleLoop() {
 
 func (h *Handler) runLifecycleTasks() {
 	now := time.Now().UTC()
-	nowStr := now.Format("2006-01-02 15:04:05")
+	nowStr := now.Format(model.TimeLayout)
 
 	// 1. 过期检测
 	h.expireSubscriptions(nowStr)
@@ -105,7 +106,7 @@ func (h *Handler) syncCustomerStatus(nowStr string) {
 
 // cancelStaleOrders cancels pending orders older than 30 minutes.
 func (h *Handler) cancelStaleOrders(nowStr string) {
-	cutoff := time.Now().UTC().Add(-30 * time.Minute).Format("2006-01-02 15:04:05")
+	cutoff := time.Now().UTC().Add(-30 * time.Minute).Format(model.TimeLayout)
 	result := h.DB.Exec(
 		"UPDATE orders SET status = 'cancelled', updated_at = ? WHERE status = 'pending' AND created_at < ?",
 		nowStr, cutoff,
@@ -128,7 +129,7 @@ func (h *Handler) resetMonthlyTraffic(now time.Time, nowStr string) {
 	}
 
 	// Use traffic_reset_at to avoid duplicate resets within the same month.
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02 15:04:05")
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).Format(model.TimeLayout)
 	result := h.DB.Exec(
 		"UPDATE customer_subscriptions SET traffic_used = 0, traffic_reset_at = ?, updated_at = ? WHERE status = 'active' AND (traffic_reset_at IS NULL OR traffic_reset_at < ?)",
 		nowStr, nowStr, monthStart,
@@ -160,7 +161,7 @@ func (h *Handler) resetMonthlyTraffic(now time.Time, nowStr string) {
 // @Router       /admin/subscriptions/{id}/activate [post]
 func (h *Handler) HandleActivateSubscription(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
+	nowStr := time.Now().UTC().Format(model.TimeLayout)
 
 	result := h.DB.Exec(
 		"UPDATE customer_subscriptions SET status = 'active', updated_at = ? WHERE id = ? AND status != 'active'",
@@ -195,7 +196,7 @@ func (h *Handler) HandleActivateSubscription(w http.ResponseWriter, r *http.Requ
 // @Router       /admin/subscriptions/{id}/suspend [post]
 func (h *Handler) HandleSuspendSubscription(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
+	nowStr := time.Now().UTC().Format(model.TimeLayout)
 
 	result := h.DB.Exec(
 		"UPDATE customer_subscriptions SET status = 'suspended', updated_at = ? WHERE id = ? AND status = 'active'",
@@ -230,7 +231,7 @@ func (h *Handler) HandleSuspendSubscription(w http.ResponseWriter, r *http.Reque
 // @Router       /admin/subscriptions/{id}/expire [post]
 func (h *Handler) HandleExpireSubscription(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
+	nowStr := time.Now().UTC().Format(model.TimeLayout)
 
 	result := h.DB.Exec(
 		"UPDATE customer_subscriptions SET status = 'expired', updated_at = ? WHERE id = ? AND status != 'expired'",
@@ -264,7 +265,7 @@ func (h *Handler) HandleExpireSubscription(w http.ResponseWriter, r *http.Reques
 // @Router       /admin/customers/{id}/ban [post]
 func (h *Handler) HandleBanCustomer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
+	nowStr := time.Now().UTC().Format(model.TimeLayout)
 
 	tx := h.DB.Begin()
 	if err := tx.Exec(
@@ -310,7 +311,7 @@ func (h *Handler) HandleBanCustomer(w http.ResponseWriter, r *http.Request) {
 // @Router       /admin/customers/{id}/unban [post]
 func (h *Handler) HandleUnbanCustomer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
+	nowStr := time.Now().UTC().Format(model.TimeLayout)
 
 	result := h.DB.Exec(
 		"UPDATE customers SET status = 'active', updated_at = ? WHERE id = ? AND status = 'banned'",
@@ -350,7 +351,7 @@ func (h *Handler) ActivateSubscription(customerID, planID uint, orderID uint) er
 	}
 
 	now := time.Now().UTC()
-	nowStr := now.Format("2006-01-02 15:04:05")
+	nowStr := now.Format(model.TimeLayout)
 
 	// Check for existing active subscription on the same plan.
 	var existingID uint
@@ -365,11 +366,11 @@ func (h *Handler) ActivateSubscription(customerID, planID uint, orderID uint) er
 
 	if existingID > 0 {
 		// Extend existing subscription.
-		expTime, _ := time.Parse("2006-01-02 15:04:05", existingExpires)
+		expTime, _ := time.Parse(model.TimeLayout, existingExpires)
 		if expTime.Before(now) {
 			expTime = now
 		}
-		newExpires := expTime.AddDate(0, 0, plan.DurationDays).Format("2006-01-02 15:04:05")
+		newExpires := expTime.AddDate(0, 0, plan.DurationDays).Format(model.TimeLayout)
 		newTrafficLimit := existingTrafficLimit + plan.TrafficLimit
 
 		if err := tx.Exec(
@@ -390,7 +391,7 @@ func (h *Handler) ActivateSubscription(customerID, planID uint, orderID uint) er
 			tx.Rollback()
 			return fmt.Errorf("generate token: %w", err)
 		}
-		expiresAt := now.AddDate(0, 0, plan.DurationDays).Format("2006-01-02 15:04:05")
+		expiresAt := now.AddDate(0, 0, plan.DurationDays).Format(model.TimeLayout)
 
 		if err := tx.Exec(
 			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) "+

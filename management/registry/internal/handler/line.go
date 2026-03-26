@@ -96,7 +96,7 @@ func (h *Handler) HandleCreateLine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	l := model.Line{
 		Name:      req.Name,
 		Region:    req.Region,
@@ -149,7 +149,7 @@ func (h *Handler) HandleUpdateLine(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updates := map[string]any{
-		"updated_at": time.Now().UTC().Format("2006-01-02 15:04:05"),
+		"updated_at": time.Now().UTC().Format(model.TimeLayout),
 	}
 	if req.Name != nil {
 		updates["name"] = *req.Name
@@ -287,7 +287,7 @@ func (h *Handler) HandleSetLineNodes(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		return tx.Model(&model.Line{}).Where("id = ?", id).
-			Update("updated_at", time.Now().UTC().Format("2006-01-02 15:04:05")).Error
+			Update("updated_at", time.Now().UTC().Format(model.TimeLayout)).Error
 	})
 	if err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
@@ -327,7 +327,7 @@ func (h *Handler) HandleResetLineToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	result := h.DB.Model(&model.Line{}).Where("id = ?", id).Updates(map[string]any{
 		"token":      token,
 		"updated_at": now,

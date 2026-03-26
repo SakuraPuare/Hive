@@ -86,8 +86,8 @@ export default function PromoCodesPage() {
         discount_pct: parseFloat(createForm.discount_pct) || 0,
         discount_amt: parseInt(createForm.discount_amt) || 0,
         max_uses: parseInt(createForm.max_uses) || 0,
-        valid_from: createForm.valid_from || null,
-        valid_to: createForm.valid_to || null,
+        valid_from: createForm.valid_from || undefined,
+        valid_to: createForm.valid_to || undefined,
         enabled: createForm.enabled,
       }}));
       setCreateOpen(false); loadCodes();
@@ -116,8 +116,8 @@ export default function PromoCodesPage() {
         discount_pct: parseFloat(editForm.discount_pct) || 0,
         discount_amt: parseInt(editForm.discount_amt) || 0,
         max_uses: parseInt(editForm.max_uses) || 0,
-        valid_from: editForm.valid_from || null,
-        valid_to: editForm.valid_to || null,
+        valid_from: editForm.valid_from || undefined,
+        valid_to: editForm.valid_to || undefined,
         enabled: editForm.enabled,
       }}));
       setEditTarget(null); loadCodes();

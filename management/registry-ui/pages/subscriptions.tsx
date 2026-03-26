@@ -85,7 +85,7 @@ export default function Subscriptions() {
   function copyLink(group: model_SubscriptionGroup) {
     const url = `${apiPath('/s/' + group.token!)}`;
     navigator.clipboard.writeText(url).then(() => {
-      setCopiedId(group.id);
+      setCopiedId(group.id ?? null);
       setTimeout(() => setCopiedId(null), 1500);
     });
   }
@@ -184,7 +184,7 @@ export default function Subscriptions() {
   const filteredNodes = allNodes.filter((n) => {
     const q = nodeSearch.toLowerCase();
     return (
-      n.hostname.toLowerCase().includes(q) ||
+      (n.hostname ?? '').toLowerCase().includes(q) ||
       n.location?.toLowerCase().includes(q) ||
       (n.mac ?? '').toLowerCase().includes(q)
     );
@@ -390,8 +390,8 @@ export default function Subscriptions() {
                   >
                     <input
                       type="checkbox"
-                      checked={selectedMacs.has(n.mac)}
-                      onChange={() => toggleMac(n.mac)}
+                      checked={selectedMacs.has(n.mac ?? '')}
+                      onChange={() => toggleMac(n.mac ?? '')}
                       className="h-4 w-4"
                     />
                     <span className="text-sm">

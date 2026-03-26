@@ -180,7 +180,7 @@ func (h *Handler) CreateReferralCommission(order model.Order) {
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	orderID := order.ID
 	if err := h.DB.Exec(
 		"INSERT INTO referrals (referrer_id, referee_id, order_id, commission, status, created_at) VALUES (?,?,?,?,?,?)",

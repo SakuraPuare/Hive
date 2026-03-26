@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"hive/registry/internal/config"
+	"hive/registry/internal/model"
 )
 
 // Mailer handles email sending and expiry notifications.
@@ -145,8 +146,8 @@ type expiryRow struct {
 
 func (m *Mailer) RunExpiryCheck() {
 	now := time.Now().UTC()
-	threeDays := now.Add(3 * 24 * time.Hour).Format("2006-01-02 15:04:05")
-	nowStr := now.Format("2006-01-02 15:04:05")
+	threeDays := now.Add(3 * 24 * time.Hour).Format(model.TimeLayout)
+	nowStr := now.Format(model.TimeLayout)
 
 	// ── expiring within 3 days, not yet notified ─────────────────────────
 	var expiring []expiryRow

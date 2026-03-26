@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { apiPath } from '@/lib/openapi-session';
+import { AdminService } from '@/src/generated/client';
+import { sessionApi } from '@/lib/openapi-session';
+import type { model_Announcement } from '@/src/generated/client/models/model_Announcement';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,17 +22,6 @@ import {
 import { RefreshCw, Plus, Pencil, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-interface Announcement {
-  id: number;
-  title: string;
-  content: string;
-  level: string;
-  pinned: boolean;
-  published: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
 function formatDate(s: string) {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
@@ -43,22 +34,13 @@ const LEVEL_COLORS: Record<string, string> = {
   critical: 'bg-red-100 text-red-800',
 };
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(apiPath(path), { credentials: 'include', ...init });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw { error: body.error || res.statusText, status: res.status };
-  }
-  return res.json();
-}
-
 export default function AnnouncementsPage() {
   const t = useTranslations('announcements');
   const tCommon = useTranslations('common');
   const router = useRouter();
   const { user, loading: authLoading } = useCurrentUser();
 
-  const [items, setItems] = useState<Announcement[]>([]);
+  const [items, setItems] = useState<model_Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -66,7 +48,7 @@ export default function AnnouncementsPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await apiFetch<{ total: number; items: Announcement[] }>('/admin/announcements?limit=100');
+      const data = await sessionApi(AdminService.adminListAnnouncements({ limit: 100 }));
       setItems(data.items ?? []);
     } catch (e: any) {
       setError(e?.error || t('loadFailed'));
@@ -85,7 +67,7 @@ export default function AnnouncementsPage() {
 
   // ── Dialog state ──────────────────────────────────────────────────────
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Announcement | null>(null);
+  const [editing, setEditing] = useState<model_Announcement | null>(null);
   const [form, setForm] = useState({ title: '', content: '', level: 'info', pinned: false, published: false });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -97,9 +79,9 @@ export default function AnnouncementsPage() {
     setDialogOpen(true);
   }
 
-  function openEdit(ann: Announcement) {
+  function openEdit(ann: model_Announcement) {
     setEditing(ann);
-    setForm({ title: ann.title, content: ann.content, level: ann.level, pinned: ann.pinned, published: ann.published });
+    setForm({ title: ann.title ?? '', content: ann.content ?? '', level: ann.level ?? 'info', pinned: ann.pinned ?? false, published: ann.published ?? false });
     setSaveError('');
     setDialogOpen(true);
   }
@@ -109,17 +91,9 @@ export default function AnnouncementsPage() {
     setSaveError('');
     try {
       if (editing) {
-        await apiFetch(`/admin/announcements/${editing.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
-        });
+        await sessionApi(AdminService.adminUpdateAnnouncement({ id: editing.id!, requestBody: form }));
       } else {
-        await apiFetch('/admin/announcements', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
-        });
+        await sessionApi(AdminService.adminCreateAnnouncement({ requestBody: form }));
       }
       setDialogOpen(false);
       loadData();
@@ -133,7 +107,7 @@ export default function AnnouncementsPage() {
   async function handleDelete(id: number) {
     if (!confirm(t('deleteConfirm'))) return;
     try {
-      await apiFetch(`/admin/announcements/${id}`, { method: 'DELETE' });
+      await sessionApi(AdminService.adminDeleteAnnouncement({ id }));
       loadData();
     } catch (e: any) {
       setError(e?.error || t('deleteFailed'));
@@ -186,19 +160,19 @@ export default function AnnouncementsPage() {
                 <TableRow key={ann.id}>
                   <TableCell className="font-medium">{ann.title}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={LEVEL_COLORS[ann.level] ?? ''}>
-                      {t(`level${ann.level.charAt(0).toUpperCase() + ann.level.slice(1)}` as any)}
+                    <Badge variant="outline" className={LEVEL_COLORS[ann.level ?? ''] ?? ''}>
+                      {t(`level${(ann.level ?? '').charAt(0).toUpperCase() + (ann.level ?? '').slice(1)}` as any)}
                     </Badge>
                   </TableCell>
                   <TableCell>{ann.pinned ? '✓' : ''}</TableCell>
                   <TableCell>{ann.published ? '✓' : ''}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(ann.created_at)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{formatDate(ann.created_at ?? '')}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(ann)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(ann.id)}>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(ann.id!)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>

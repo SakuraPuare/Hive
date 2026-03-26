@@ -2,26 +2,31 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useCustomer, type CustomerSubscription } from '@/lib/portal-auth';
+import { useCustomer } from '@/lib/portal-auth';
+import type { CustomerSubscription } from '@/lib/portal-auth';
+
+// Backend returns plan_name via JOIN; extend the generated type locally
+type SubWithPlan = CustomerSubscription & { plan_name?: string };
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Copy, Check, Package, MessageSquare, Megaphone } from 'lucide-react';
-import { API_PREFIX } from '@/lib/openapi-session';
+import { PortalPublicService } from '@/src/generated/client';
+import DOMPurify from 'dompurify';
 
 function trafficGB(bytes: number) {
   return (bytes / (1024 ** 3)).toFixed(2);
 }
 
-function SubscriptionCard({ sub }: { sub: CustomerSubscription }) {
+function SubscriptionCard({ sub }: { sub: SubWithPlan }) {
   const t = useTranslations('portal');
   const [copiedClash, setCopiedClash] = useState(false);
   const [copiedVless, setCopiedVless] = useState(false);
 
-  const isExpired = new Date(sub.expires_at) < new Date();
-  const usedGB = trafficGB(sub.traffic_used);
-  const totalGB = sub.traffic_limit === 0 ? t('unlimited') : trafficGB(sub.traffic_limit);
-  const pct = sub.traffic_limit > 0 ? Math.min(100, (sub.traffic_used / sub.traffic_limit) * 100) : 0;
+  const isExpired = new Date(sub.expires_at ?? '') < new Date();
+  const usedGB = trafficGB(sub.traffic_used ?? 0);
+  const totalGB = sub.traffic_limit === 0 ? t('unlimited') : trafficGB(sub.traffic_limit ?? 0);
+  const pct = (sub.traffic_limit ?? 0) > 0 ? Math.min(100, ((sub.traffic_used ?? 0) / (sub.traffic_limit ?? 1)) * 100) : 0;
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const clashLink = `${origin}/c/${sub.token}`;
@@ -47,7 +52,7 @@ function SubscriptionCard({ sub }: { sub: CustomerSubscription }) {
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <span className="text-muted-foreground">{t('expiresAt')}</span>
-            <p className="font-medium">{new Date(sub.expires_at).toLocaleDateString('zh-CN')}</p>
+            <p className="font-medium">{new Date(sub.expires_at ?? '').toLocaleDateString('zh-CN')}</p>
           </div>
           <div>
             <span className="text-muted-foreground">{t('deviceLimit')}</span>
@@ -64,7 +69,7 @@ function SubscriptionCard({ sub }: { sub: CustomerSubscription }) {
           <div className="h-2 rounded-full bg-muted overflow-hidden">
             <div
               className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${sub.traffic_limit > 0 ? pct : 0}%` }}
+              style={{ width: `${(sub.traffic_limit ?? 0) > 0 ? pct : 0}%` }}
             />
           </div>
         </div>
@@ -117,9 +122,8 @@ export default function PortalDashboardPage() {
   const [announcements, setAnnouncements] = useState<PortalAnnouncement[]>([]);
 
   useEffect(() => {
-    fetch(`${API_PREFIX}/portal/announcements`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((data: PortalAnnouncement[]) => setAnnouncements((data ?? []).slice(0, 3)))
+    PortalPublicService.portalAnnouncements()
+      .then((data) => setAnnouncements(((data as PortalAnnouncement[]) ?? []).slice(0, 3)))
       .catch(() => {});
   }, []);
 
@@ -146,7 +150,7 @@ export default function PortalDashboardPage() {
               <div>
                 <span className="font-medium">{ann.title}</span>
                 {ann.content && (
-                  <p className="mt-0.5 opacity-90" dangerouslySetInnerHTML={{ __html: ann.content.replace(/\n/g, '<br/>') }} />
+                  <p className="mt-0.5 opacity-90" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(ann.content.replace(/\n/g, '<br/>')) }} />
                 )}
               </div>
             </div>

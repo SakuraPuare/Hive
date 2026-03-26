@@ -60,7 +60,7 @@ func (h *Handler) HandleForgotPassword(w http.ResponseWriter, r *http.Request) {
 
 	// Generate 6-digit code
 	code := generate6DigitCode()
-	expiresAt := time.Now().UTC().Add(15 * time.Minute).Format("2006-01-02 15:04:05")
+	expiresAt := time.Now().UTC().Add(15 * time.Minute).Format(model.TimeLayout)
 
 	// Invalidate previous unused codes for this email
 	h.DB.Exec("UPDATE password_reset_codes SET used = 1 WHERE email = ? AND used = 0", req.Email)
@@ -103,7 +103,7 @@ func (h *Handler) HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 
 	// Find valid code
 	var rc model.PasswordResetCode

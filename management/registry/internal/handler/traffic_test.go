@@ -7,12 +7,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hive/registry/internal/model"
 )
 
 // ── checkSubscriptionValid unit tests ────────────────────────────────────────
 
 func TestCheckSubscriptionValid_Active(t *testing.T) {
-	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format("2006-01-02 15:04:05")
+	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format(model.TimeLayout)
 	ok, reason := checkSubscriptionValid("active", 0, 107374182400, expires)
 	if !ok {
 		t.Fatalf("expected valid, got reason=%s", reason)
@@ -20,7 +22,7 @@ func TestCheckSubscriptionValid_Active(t *testing.T) {
 }
 
 func TestCheckSubscriptionValid_Suspended(t *testing.T) {
-	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format("2006-01-02 15:04:05")
+	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format(model.TimeLayout)
 	ok, reason := checkSubscriptionValid("suspended", 0, 107374182400, expires)
 	if ok {
 		t.Fatal("expected invalid for suspended subscription")
@@ -42,7 +44,7 @@ func TestCheckSubscriptionValid_Expired(t *testing.T) {
 }
 
 func TestCheckSubscriptionValid_TrafficExceeded(t *testing.T) {
-	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format("2006-01-02 15:04:05")
+	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format(model.TimeLayout)
 	ok, reason := checkSubscriptionValid("active", 107374182400, 107374182400, expires)
 	if ok {
 		t.Fatal("expected invalid when traffic_used >= traffic_limit")
@@ -53,7 +55,7 @@ func TestCheckSubscriptionValid_TrafficExceeded(t *testing.T) {
 }
 
 func TestCheckSubscriptionValid_TrafficOverLimit(t *testing.T) {
-	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format("2006-01-02 15:04:05")
+	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format(model.TimeLayout)
 	ok, reason := checkSubscriptionValid("active", 200000000000, 107374182400, expires)
 	if ok {
 		t.Fatal("expected invalid when traffic_used > traffic_limit")
@@ -64,7 +66,7 @@ func TestCheckSubscriptionValid_TrafficOverLimit(t *testing.T) {
 }
 
 func TestCheckSubscriptionValid_UnlimitedTraffic(t *testing.T) {
-	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format("2006-01-02 15:04:05")
+	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format(model.TimeLayout)
 	// traffic_limit=0 means unlimited
 	ok, reason := checkSubscriptionValid("active", 999999999999, 0, expires)
 	if !ok {
@@ -307,7 +309,7 @@ func TestResetTrafficIfNeeded_MonthBoundary(t *testing.T) {
 	_, subID := createTestSubscription(t, "reset-month@test.com", "Plan-Month")
 
 	// Set traffic_used and traffic_reset_at to last month
-	lastMonth := time.Now().AddDate(0, -1, -1).UTC().Format("2006-01-02 15:04:05")
+	lastMonth := time.Now().AddDate(0, -1, -1).UTC().Format(model.TimeLayout)
 	testDB.Exec("UPDATE customer_subscriptions SET traffic_used = 50000000000, traffic_reset_at = ? WHERE id = ?", lastMonth, subID)
 
 	testH.resetTrafficIfNeeded()
@@ -332,7 +334,7 @@ func TestResetTrafficIfNeeded_SameMonth(t *testing.T) {
 	_, subID := createTestSubscription(t, "noreset@test.com", "Plan-NoReset")
 
 	// Set traffic_reset_at to today (same month)
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	testDB.Exec("UPDATE customer_subscriptions SET traffic_used = 50000000000, traffic_reset_at = ? WHERE id = ?", now, subID)
 
 	testH.resetTrafficIfNeeded()
@@ -349,7 +351,7 @@ func TestResetTrafficIfNeeded_NoResetAt_UsesStartedAt(t *testing.T) {
 	_, subID := createTestSubscription(t, "noreset-at@test.com", "Plan-NoResetAt")
 
 	// Set started_at to last month, traffic_reset_at to NULL
-	lastMonth := time.Now().AddDate(0, -1, -1).UTC().Format("2006-01-02 15:04:05")
+	lastMonth := time.Now().AddDate(0, -1, -1).UTC().Format(model.TimeLayout)
 	testDB.Exec("UPDATE customer_subscriptions SET traffic_used = 30000000000, started_at = ?, traffic_reset_at = NULL WHERE id = ?", lastMonth, subID)
 
 	testH.resetTrafficIfNeeded()
@@ -365,7 +367,7 @@ func TestResetTrafficIfNeeded_InactiveSub_Skipped(t *testing.T) {
 	resetDB(t)
 	_, subID := createTestSubscription(t, "inactive-reset@test.com", "Plan-Inactive")
 
-	lastMonth := time.Now().AddDate(0, -1, -1).UTC().Format("2006-01-02 15:04:05")
+	lastMonth := time.Now().AddDate(0, -1, -1).UTC().Format(model.TimeLayout)
 	testDB.Exec("UPDATE customer_subscriptions SET status = 'suspended', traffic_used = 50000000000, traffic_reset_at = ? WHERE id = ?", lastMonth, subID)
 
 	testH.resetTrafficIfNeeded()

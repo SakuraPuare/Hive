@@ -125,7 +125,7 @@ func (h *Handler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusInternalServerError, "bcrypt: "+err.Error())
 		return
 	}
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	if err := h.DB.Exec(
 		"INSERT INTO users (username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
 		req.Username, string(hash), req.Role, now, now,
@@ -230,7 +230,7 @@ func (h *Handler) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusInternalServerError, "bcrypt: "+err.Error())
 		return
 	}
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	result := h.DB.Exec("UPDATE users SET password_hash=?, updated_at=? WHERE id=?", string(hash), now, id)
 	if result.Error != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+result.Error.Error())
@@ -327,7 +327,7 @@ func (h *Handler) HandleSetUserRoles(w http.ResponseWriter, r *http.Request) {
 			}
 			tx.Exec("INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)", uid, role.ID)
 		}
-		now := time.Now().UTC().Format("2006-01-02 15:04:05")
+		now := time.Now().UTC().Format(model.TimeLayout)
 		tx.Exec("UPDATE users SET role=?, updated_at=? WHERE id=?", primaryRole, now, uid)
 		return nil
 	}); err != nil {

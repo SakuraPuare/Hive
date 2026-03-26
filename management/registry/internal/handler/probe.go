@@ -63,7 +63,7 @@ func (h *Handler) runProbe() {
 	uptimeMap := h.promQueryInstant(`node_time_seconds{job="hives"} - node_boot_time_seconds{job="hives"}`)
 	latencyMap := h.promQueryInstant(`scrape_duration_seconds{job="hives"}`)
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	updated := 0
 
 	for hostname, mac := range hostnameToMAC {

@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"hive/registry/internal/model"
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -483,7 +485,7 @@ func TestPortalCreateOrder_DiscountAmt(t *testing.T) {
 	resetDB(t)
 	cid := insertTestCustomer(t, "discamt@example.com")
 	planID := insertTestPlan(t, "套餐AMT") // price=1000
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	testDB.Exec(`INSERT INTO promo_codes (code, discount_pct, discount_amt, max_uses, used_count, valid_from, valid_to, enabled, created_at, updated_at)
 		VALUES ('AMT200', 0, 200, 100, 0, '2020-01-01 00:00:00', '2099-12-31 23:59:59', 1, ?, ?)`, now, now)
 
@@ -504,7 +506,7 @@ func TestPortalCreateOrder_DiscountFloorZero(t *testing.T) {
 	resetDB(t)
 	cid := insertTestCustomer(t, "floor@example.com")
 	planID := insertTestPlan(t, "套餐FLOOR") // price=1000
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	testDB.Exec(`INSERT INTO promo_codes (code, discount_pct, discount_amt, max_uses, used_count, valid_from, valid_to, enabled, created_at, updated_at)
 		VALUES ('HUGE', 0, 9999, 100, 0, '2020-01-01 00:00:00', '2099-12-31 23:59:59', 1, ?, ?)`, now, now)
 
@@ -833,7 +835,7 @@ func TestPortalGetTicket_Success(t *testing.T) {
 	tid := insertTestTicket(t, cid)
 
 	// 添加一条回复
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	testDB.Exec(`INSERT INTO ticket_replies (ticket_id, author, is_admin, content, created_at)
 		VALUES (?, 'admin', 1, '管理员回复', ?)`, tid, now)
 
