@@ -248,42 +248,50 @@ func (h *Handler) HandleSetPlanLines(w http.ResponseWriter, r *http.Request) {
 }
 
 // queryPlanNodes resolves a customer subscription token to a plan name and its nodes.
-func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.Node, err error) {
-	var sub struct {
-		ID         uint
-		CustomerID uint
-		PlanID     uint
-		Status     string
-		ExpiresAt  time.Time
+// Also returns subscription metadata for traffic/expiry checks.
+func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.Node, sub struct {
+	ID           uint
+	Status       string
+	TrafficUsed  int64
+	TrafficLimit int64
+	ExpiresAt    string
+}, err error) {
+	var row struct {
+		ID           uint
+		CustomerID   uint
+		PlanID       uint
+		Status       string
+		TrafficUsed  int64
+		TrafficLimit int64
+		ExpiresAt    time.Time
 	}
-	h.DB.Raw("SELECT cs.id, cs.customer_id, cs.plan_id, cs.status, cs.expires_at "+
-		"FROM customer_subscriptions cs WHERE cs.token=?", token).Scan(&sub)
-	if sub.ID == 0 {
-		return "", nil, fmt.Errorf("subscription not found")
+	h.DB.Raw("SELECT id, customer_id, plan_id, status, traffic_used, traffic_limit, expires_at "+
+		"FROM customer_subscriptions WHERE token=?", token).Scan(&row)
+	if row.ID == 0 {
+		return "", nil, sub, fmt.Errorf("subscription not found")
 	}
-	if sub.Status != "active" {
-		return "", nil, fmt.Errorf("subscription not active")
-	}
-	if time.Now().After(sub.ExpiresAt) {
-		return "", nil, fmt.Errorf("subscription expired")
-	}
+	sub.ID = row.ID
+	sub.Status = row.Status
+	sub.TrafficUsed = row.TrafficUsed
+	sub.TrafficLimit = row.TrafficLimit
+	sub.ExpiresAt = row.ExpiresAt.UTC().Format("2006-01-02 15:04:05")
 
 	var custStatus string
-	h.DB.Raw("SELECT status FROM customers WHERE id=?", sub.CustomerID).Scan(&custStatus)
+	h.DB.Raw("SELECT status FROM customers WHERE id=?", row.CustomerID).Scan(&custStatus)
 	if custStatus != "active" {
-		return "", nil, fmt.Errorf("customer not active")
+		return "", nil, sub, fmt.Errorf("customer not active")
 	}
 
-	h.DB.Raw("SELECT name FROM plans WHERE id=?", sub.PlanID).Scan(&planName)
+	h.DB.Raw("SELECT name FROM plans WHERE id=?", row.PlanID).Scan(&planName)
 
 	var macs []string
 	h.DB.Raw("SELECT DISTINCT ln.node_mac FROM plan_lines pl "+
 		"JOIN line_nodes ln ON ln.line_id = pl.line_id "+
 		"JOIN `lines` l ON l.id = pl.line_id AND l.enabled = 1 "+
-		"WHERE pl.plan_id = ?", sub.PlanID).Scan(&macs)
+		"WHERE pl.plan_id = ?", row.PlanID).Scan(&macs)
 
 	nodes, err = h.queryNodesByMACs(macs)
-	return planName, nodes, err
+	return planName, nodes, sub, err
 }
 
 // HandleCustomerSubscriptionClash handles GET /c/{token}
@@ -296,9 +304,15 @@ func (h *Handler) HandleCustomerSubscriptionClash(w http.ResponseWriter, r *http
 		return
 	}
 
-	planName, nodes, err := h.queryPlanNodes(token)
+	planName, nodes, sub, err := h.queryPlanNodes(token)
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+
+	if ok, reason := checkSubscriptionValid(sub.Status, sub.TrafficUsed, sub.TrafficLimit, sub.ExpiresAt); !ok {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprintf(w, "# %s\nproxies: []\n", reason)
 		return
 	}
 
@@ -318,9 +332,16 @@ func (h *Handler) HandleCustomerSubscriptionVless(w http.ResponseWriter, r *http
 		return
 	}
 
-	planName, nodes, err := h.queryPlanNodes(token)
+	planName, nodes, sub, err := h.queryPlanNodes(token)
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+
+	if ok, reason := checkSubscriptionValid(sub.Status, sub.TrafficUsed, sub.TrafficLimit, sub.ExpiresAt); !ok {
+		content := base64.StdEncoding.EncodeToString([]byte("# " + reason))
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprint(w, content)
 		return
 	}
 
