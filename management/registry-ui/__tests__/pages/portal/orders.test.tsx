@@ -10,20 +10,29 @@ vi.mock('@/lib/portal-auth', () => ({
   useCustomer: () => mockUseCustomer(),
 }));
 
+const mockPortalOrders = vi.fn();
+
+vi.mock('@/src/generated/client', () => ({
+  PortalService: {
+    portalOrders: (...args: any[]) => mockPortalOrders(...args),
+  },
+}));
+
 vi.mock('@/lib/openapi-session', () => ({
-  API_PREFIX: '/api',
+  portalSessionApi: (p: any) => p,
 }));
 
 const mockOrders = [
-  { id: 1, order_no: 'ORD-001', plan_name: 'Pro', amount_cents: 2999, status: 'paid', created_at: '2025-06-01T10:00:00Z' },
-  { id: 2, order_no: 'ORD-002', plan_name: 'Basic', amount_cents: 999, status: 'pending', created_at: '2025-06-02T10:00:00Z' },
-  { id: 3, order_no: 'ORD-003', plan_name: 'Pro', amount_cents: 2999, status: 'cancelled', created_at: '2025-06-03T10:00:00Z' },
+  { id: 1, order_no: 'ORD-001', plan_id: 1, amount: 2999, status: 'paid', created_at: '2025-06-01T10:00:00Z' },
+  { id: 2, order_no: 'ORD-002', plan_id: 2, amount: 999, status: 'pending', created_at: '2025-06-02T10:00:00Z' },
+  { id: 3, order_no: 'ORD-003', plan_id: 1, amount: 2999, status: 'cancelled', created_at: '2025-06-03T10:00:00Z' },
 ];
 
 describe('PortalOrdersPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRouter.replace.mockClear();
+    mockPortalOrders.mockReset();
   });
 
   it('shows loading state while auth is loading', () => {
@@ -44,10 +53,7 @@ describe('PortalOrdersPage', () => {
 
   it('renders orders table after loading', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ items: mockOrders }),
-    });
+    mockPortalOrders.mockResolvedValueOnce({ items: mockOrders });
 
     render(<PortalOrdersPage />);
 
@@ -60,10 +66,7 @@ describe('PortalOrdersPage', () => {
 
   it('displays formatted amounts', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ items: mockOrders }),
-    });
+    mockPortalOrders.mockResolvedValueOnce({ items: mockOrders });
 
     render(<PortalOrdersPage />);
 
@@ -75,10 +78,7 @@ describe('PortalOrdersPage', () => {
 
   it('displays status badges', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ items: mockOrders }),
-    });
+    mockPortalOrders.mockResolvedValueOnce({ items: mockOrders });
 
     render(<PortalOrdersPage />);
 
@@ -91,10 +91,7 @@ describe('PortalOrdersPage', () => {
 
   it('shows empty state when no orders', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ items: [] }),
-    });
+    mockPortalOrders.mockResolvedValueOnce({ items: [] });
 
     render(<PortalOrdersPage />);
 
@@ -105,7 +102,7 @@ describe('PortalOrdersPage', () => {
 
   it('shows error on fetch failure', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({ ok: false });
+    mockPortalOrders.mockRejectedValueOnce(new Error('fail'));
 
     render(<PortalOrdersPage />);
 
@@ -116,9 +113,8 @@ describe('PortalOrdersPage', () => {
 
   it('refresh button reloads orders', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ items: mockOrders }) })
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ items: [] }) });
+    mockPortalOrders.mockResolvedValueOnce({ items: mockOrders });
+    mockPortalOrders.mockResolvedValueOnce({ items: [] });
 
     render(<PortalOrdersPage />);
 
@@ -135,10 +131,7 @@ describe('PortalOrdersPage', () => {
 
   it('renders table headers', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ items: [] }),
-    });
+    mockPortalOrders.mockResolvedValueOnce({ items: [] });
 
     render(<PortalOrdersPage />);
 

@@ -1,11 +1,36 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
-import { useCustomer, portalLogin, portalLogout, portalRegister } from '@/lib/portal-auth';
+import { renderHook, waitFor } from '@testing-library/react';
 
-// Mock the openapi-session module to control API_PREFIX
-vi.mock('@/lib/openapi-session', () => ({
-  API_PREFIX: '/api',
+const mockPortalMe = vi.fn();
+const mockPortalLogin = vi.fn();
+const mockPortalLogout = vi.fn();
+const mockPortalRegister = vi.fn();
+
+vi.mock('@/src/generated/client', () => ({
+  PortalService: { portalMe: (...args: any[]) => mockPortalMe(...args) },
+  PortalAuthService: {
+    portalLogin: (...args: any[]) => mockPortalLogin(...args),
+    portalLogout: (...args: any[]) => mockPortalLogout(...args),
+    portalRegister: (...args: any[]) => mockPortalRegister(...args),
+  },
 }));
+
+vi.mock('@/src/generated/client/core/ApiError', () => {
+  class ApiError extends Error {
+    status: number;
+    body: any;
+    constructor(request: any, response: any, message: string) {
+      super(message);
+      this.name = 'ApiError';
+      this.status = response.status;
+      this.body = response.body;
+    }
+  }
+  return { ApiError };
+});
+
+import { useCustomer, portalLogin, portalLogout, portalRegister } from '@/lib/portal-auth';
+import { ApiError } from '@/src/generated/client/core/ApiError';
 
 const mockCustomer = {
   id: 1,
@@ -31,13 +56,17 @@ const mockSubscriptions = [
 describe('portal-auth', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    mockPortalMe.mockReset();
+    mockPortalLogin.mockReset();
+    mockPortalLogout.mockReset();
+    mockPortalRegister.mockReset();
   });
 
   describe('useCustomer', () => {
     it('returns customer and subscriptions on success', async () => {
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ customer: mockCustomer, subscriptions: mockSubscriptions }),
+      mockPortalMe.mockResolvedValueOnce({
+        ...mockCustomer,
+        subscriptions: mockSubscriptions,
       });
 
       const { result } = renderHook(() => useCustomer());
@@ -48,13 +77,14 @@ describe('portal-auth', () => {
 
       await waitFor(() => expect(result.current.loading).toBe(false));
 
-      expect(result.current.customer).toEqual(mockCustomer);
+      expect(result.current.customer).toEqual(expect.objectContaining(mockCustomer));
       expect(result.current.subscriptions).toEqual(mockSubscriptions);
-      expect(global.fetch).toHaveBeenCalledWith('/api/portal/me', { credentials: 'include' });
     });
 
     it('sets customer to null on non-ok response', async () => {
-      global.fetch = vi.fn().mockResolvedValueOnce({ ok: false });
+      mockPortalMe.mockRejectedValueOnce(
+        new ApiError({} as any, { status: 401, body: {} } as any, 'Unauthorized'),
+      );
 
       const { result } = renderHook(() => useCustomer());
       await waitFor(() => expect(result.current.loading).toBe(false));
@@ -64,7 +94,7 @@ describe('portal-auth', () => {
     });
 
     it('sets customer to null on network error', async () => {
-      global.fetch = vi.fn().mockRejectedValueOnce(new Error('Network error'));
+      mockPortalMe.mockRejectedValueOnce(new Error('Network error'));
 
       const { result } = renderHook(() => useCustomer());
       await waitFor(() => expect(result.current.loading).toBe(false));
@@ -73,23 +103,17 @@ describe('portal-auth', () => {
     });
 
     it('handles missing subscriptions in response', async () => {
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ customer: mockCustomer }),
-      });
+      mockPortalMe.mockResolvedValueOnce({ ...mockCustomer });
 
       const { result } = renderHook(() => useCustomer());
       await waitFor(() => expect(result.current.loading).toBe(false));
 
-      expect(result.current.customer).toEqual(mockCustomer);
+      expect(result.current.customer).toEqual(expect.objectContaining(mockCustomer));
       expect(result.current.subscriptions).toEqual([]);
     });
 
     it('handles missing customer in response', async () => {
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({}),
-      });
+      mockPortalMe.mockResolvedValueOnce(undefined);
 
       const { result } = renderHook(() => useCustomer());
       await waitFor(() => expect(result.current.loading).toBe(false));
@@ -100,29 +124,21 @@ describe('portal-auth', () => {
 
   describe('portalLogin', () => {
     it('sends POST with email and password, returns data on success', async () => {
-      const responseData = { token: 'session123' };
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(responseData),
-      });
+      const responseData = { status: 'ok' };
+      mockPortalLogin.mockResolvedValueOnce(responseData);
 
       const result = await portalLogin('test@example.com', 'password123');
 
       expect(result).toEqual(responseData);
-      expect(global.fetch).toHaveBeenCalledWith('/api/portal/login', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'test@example.com', password: 'password123' }),
+      expect(mockPortalLogin).toHaveBeenCalledWith({
+        requestBody: { email: 'test@example.com', password: 'password123' },
       });
     });
 
     it('throws error with server message on failure', async () => {
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        json: () => Promise.resolve({ error: 'Invalid credentials' }),
-      });
+      mockPortalLogin.mockRejectedValueOnce(
+        new ApiError({} as any, { status: 401, body: { error: 'Invalid credentials' } } as any, 'Unauthorized'),
+      );
 
       await expect(portalLogin('bad@example.com', 'wrong')).rejects.toEqual({
         error: 'Invalid credentials',
@@ -131,11 +147,9 @@ describe('portal-auth', () => {
     });
 
     it('throws fallback error when response body is not JSON', async () => {
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        json: () => Promise.reject(new Error('not json')),
-      });
+      mockPortalLogin.mockRejectedValueOnce(
+        new ApiError({} as any, { status: 500, body: null } as any, 'Server Error'),
+      );
 
       await expect(portalLogin('a@b.com', 'x')).rejects.toEqual({
         error: 'Login failed',
@@ -146,42 +160,31 @@ describe('portal-auth', () => {
 
   describe('portalLogout', () => {
     it('sends POST to logout endpoint', async () => {
-      global.fetch = vi.fn().mockResolvedValueOnce({ ok: true });
+      mockPortalLogout.mockResolvedValueOnce({ status: 'ok' });
 
       await portalLogout();
 
-      expect(global.fetch).toHaveBeenCalledWith('/api/portal/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
+      expect(mockPortalLogout).toHaveBeenCalled();
     });
   });
 
   describe('portalRegister', () => {
     it('sends POST with email, password, nickname', async () => {
-      const responseData = { id: 1 };
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(responseData),
-      });
+      const responseData = { status: 'ok' };
+      mockPortalRegister.mockResolvedValueOnce(responseData);
 
       const result = await portalRegister('new@example.com', 'pass123', 'NewUser');
 
       expect(result).toEqual(responseData);
-      expect(global.fetch).toHaveBeenCalledWith('/api/portal/register', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'new@example.com', password: 'pass123', nickname: 'NewUser' }),
+      expect(mockPortalRegister).toHaveBeenCalledWith({
+        requestBody: { email: 'new@example.com', password: 'pass123', nickname: 'NewUser' },
       });
     });
 
     it('throws error with server message on failure', async () => {
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: false,
-        status: 409,
-        json: () => Promise.resolve({ error: 'Email already exists' }),
-      });
+      mockPortalRegister.mockRejectedValueOnce(
+        new ApiError({} as any, { status: 409, body: { error: 'Email already exists' } } as any, 'Conflict'),
+      );
 
       await expect(portalRegister('dup@example.com', 'pass', 'Dup')).rejects.toEqual({
         error: 'Email already exists',
@@ -190,11 +193,9 @@ describe('portal-auth', () => {
     });
 
     it('throws fallback error when response body is not JSON', async () => {
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        json: () => Promise.reject(new Error('not json')),
-      });
+      mockPortalRegister.mockRejectedValueOnce(
+        new ApiError({} as any, { status: 500, body: null } as any, 'Server Error'),
+      );
 
       await expect(portalRegister('a@b.com', 'x', 'n')).rejects.toEqual({
         error: 'Registration failed',

@@ -11,21 +11,33 @@ vi.mock('@/lib/portal-auth', () => ({
   useCustomer: () => mockUseCustomer(),
 }));
 
+const mockPortalGetTicket = vi.fn();
+const mockPortalReplyTicket = vi.fn();
+
+vi.mock('@/src/generated/client', () => ({
+  PortalService: {
+    portalGetTicket: (...args: any[]) => mockPortalGetTicket(...args),
+    portalReplyTicket: (...args: any[]) => mockPortalReplyTicket(...args),
+  },
+}));
+
 vi.mock('@/lib/openapi-session', () => ({
-  API_PREFIX: '/api',
+  portalSessionApi: (p: any) => p,
 }));
 
 const mockTicketDetail = {
   ticket: { id: 42, subject: 'Connection issue', status: 'open', created_at: '2025-06-01T10:00:00Z' },
   replies: [
-    { id: 1, author: 'Admin', role: 'admin', content: 'We are looking into it.', created_at: '2025-06-01T11:00:00Z' },
-    { id: 2, author: 'Test', role: 'customer', content: 'Thanks for the update.', created_at: '2025-06-01T12:00:00Z' },
+    { id: 1, author: 'Admin', is_admin: true, content: 'We are looking into it.', created_at: '2025-06-01T11:00:00Z' },
+    { id: 2, author: 'Test', is_admin: false, content: 'Thanks for the update.', created_at: '2025-06-01T12:00:00Z' },
   ],
 };
 
 describe('PortalTicketDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPortalGetTicket.mockReset();
+    mockPortalReplyTicket.mockReset();
     mockRouter.query = { id: '42' };
     mockRouter.replace.mockClear();
     mockRouter.push.mockClear();
@@ -35,7 +47,6 @@ describe('PortalTicketDetailPage', () => {
 
   it('shows loading state', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: true });
-    global.fetch = vi.fn();
     render(<PortalTicketDetailPage />);
 
     expect(screen.getByText('common.loading')).toBeInTheDocument();
@@ -43,7 +54,6 @@ describe('PortalTicketDetailPage', () => {
 
   it('redirects to login when not authenticated', async () => {
     mockUseCustomer.mockReturnValue({ customer: null, subscriptions: [], loading: false });
-    global.fetch = vi.fn();
     render(<PortalTicketDetailPage />);
 
     await waitFor(() => {
@@ -53,10 +63,7 @@ describe('PortalTicketDetailPage', () => {
 
   it('renders ticket detail with replies', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve(mockTicketDetail),
-    });
+    mockPortalGetTicket.mockResolvedValueOnce(mockTicketDetail);
 
     render(<PortalTicketDetailPage />);
 
@@ -71,10 +78,7 @@ describe('PortalTicketDetailPage', () => {
 
   it('renders admin replies on the left and customer replies on the right', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve(mockTicketDetail),
-    });
+    mockPortalGetTicket.mockResolvedValueOnce(mockTicketDetail);
 
     render(<PortalTicketDetailPage />);
 
@@ -93,10 +97,7 @@ describe('PortalTicketDetailPage', () => {
 
   it('shows no replies message when empty', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ ticket: mockTicketDetail.ticket, replies: [] }),
-    });
+    mockPortalGetTicket.mockResolvedValueOnce({ ticket: mockTicketDetail.ticket, replies: [] });
 
     render(<PortalTicketDetailPage />);
 
@@ -107,10 +108,7 @@ describe('PortalTicketDetailPage', () => {
 
   it('shows reply form for open tickets', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve(mockTicketDetail),
-    });
+    mockPortalGetTicket.mockResolvedValueOnce(mockTicketDetail);
 
     render(<PortalTicketDetailPage />);
 
@@ -125,10 +123,7 @@ describe('PortalTicketDetailPage', () => {
       ticket: { ...mockTicketDetail.ticket, status: 'closed' },
     };
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve(closedTicket),
-    });
+    mockPortalGetTicket.mockResolvedValueOnce(closedTicket);
 
     render(<PortalTicketDetailPage />);
 
@@ -144,13 +139,12 @@ describe('PortalTicketDetailPage', () => {
       ...mockTicketDetail,
       replies: [
         ...mockTicketDetail.replies,
-        { id: 3, author: 'Test', role: 'customer', content: 'My reply', created_at: '2025-06-01T13:00:00Z' },
+        { id: 3, author: 'Test', is_admin: false, content: 'My reply', created_at: '2025-06-01T13:00:00Z' },
       ],
     };
-    global.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockTicketDetail) }) // initial load
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) }) // reply
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(updatedTicket) }); // reload
+    mockPortalGetTicket.mockResolvedValueOnce(mockTicketDetail); // initial load
+    mockPortalReplyTicket.mockResolvedValueOnce({ status: 'ok' }); // reply
+    mockPortalGetTicket.mockResolvedValueOnce(updatedTicket); // reload
 
     const user = userEvent.setup();
     render(<PortalTicketDetailPage />);
@@ -163,10 +157,7 @@ describe('PortalTicketDetailPage', () => {
     fireEvent.click(screen.getByText('portal.reply'));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith('/api/portal/tickets/42/reply', expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ content: 'My reply' }),
-      }));
+      expect(mockPortalReplyTicket).toHaveBeenCalledWith({ id: 42, requestBody: { content: 'My reply' } });
     });
 
     await waitFor(() => {
@@ -176,9 +167,8 @@ describe('PortalTicketDetailPage', () => {
 
   it('shows error when reply fails', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockTicketDetail) })
-      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'Ticket is locked' }) });
+    mockPortalGetTicket.mockResolvedValueOnce(mockTicketDetail);
+    mockPortalReplyTicket.mockRejectedValueOnce({ error: 'Server error' });
 
     const user = userEvent.setup();
     render(<PortalTicketDetailPage />);
@@ -191,16 +181,13 @@ describe('PortalTicketDetailPage', () => {
     fireEvent.click(screen.getByText('portal.reply'));
 
     await waitFor(() => {
-      expect(screen.getByText('Ticket is locked')).toBeInTheDocument();
+      expect(screen.getByText('Server error')).toBeInTheDocument();
     });
   });
 
   it('reply button is disabled when textarea is empty', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve(mockTicketDetail),
-    });
+    mockPortalGetTicket.mockResolvedValueOnce(mockTicketDetail);
 
     render(<PortalTicketDetailPage />);
 
@@ -211,7 +198,7 @@ describe('PortalTicketDetailPage', () => {
 
   it('shows error state on fetch failure', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({ ok: false });
+    mockPortalGetTicket.mockRejectedValueOnce(new Error('fail'));
 
     render(<PortalTicketDetailPage />);
 
@@ -222,10 +209,7 @@ describe('PortalTicketDetailPage', () => {
 
   it('has back button that navigates to tickets list', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve(mockTicketDetail),
-    });
+    mockPortalGetTicket.mockResolvedValueOnce(mockTicketDetail);
 
     render(<PortalTicketDetailPage />);
 
@@ -239,10 +223,7 @@ describe('PortalTicketDetailPage', () => {
 
   it('renders author names in replies', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve(mockTicketDetail),
-    });
+    mockPortalGetTicket.mockResolvedValueOnce(mockTicketDetail);
 
     render(<PortalTicketDetailPage />);
 
