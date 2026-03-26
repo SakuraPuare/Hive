@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"hive/registry/internal/config"
+	"hive/registry/internal/mailer"
 	"hive/registry/internal/middleware"
 	"hive/registry/internal/model"
 )
@@ -17,6 +18,7 @@ type Handler struct {
 	DB     *gorm.DB
 	Config *config.Config
 	Auth   *middleware.Auth
+	Mailer *mailer.Mailer
 }
 
 func (h *Handler) jsonOK(w http.ResponseWriter, v any) {
