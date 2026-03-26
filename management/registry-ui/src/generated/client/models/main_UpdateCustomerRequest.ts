@@ -2,10 +2,8 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type main_UpdateRequest = {
-    enabled?: boolean;
-    location?: string;
-    note?: string;
-    tailscale_ip?: string;
+export type main_UpdateCustomerRequest = {
+    nickname?: string;
+    status?: string;
 };
 

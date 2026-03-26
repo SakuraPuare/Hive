@@ -4,7 +4,10 @@
 /* eslint-disable */
 export type main_Node = {
     cf_url?: string;
+    city?: string;
+    country?: string;
     easytier_ip?: string;
+    enabled?: boolean;
     frp_port?: number;
     hostname?: string;
     last_seen?: string;
@@ -12,9 +15,18 @@ export type main_Node = {
     mac?: string;
     mac6?: string;
     note?: string;
+    offline_reason?: string;
+    /**
+     * 来自 node_status_checks（LEFT JOIN），探测状态
+     */
+    probe_status?: string;
+    region?: string;
     registered_at?: string;
+    status?: string;
+    tags?: string;
     tailscale_ip?: string;
     tunnel_id?: string;
+    weight?: number;
     xray_uuid?: string;
 };
 
