@@ -94,6 +94,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 
 	// ── 订单管理 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /admin/orders", perm("order:read")(h.HandleListOrders))
+	mux.HandleFunc("GET /admin/orders/{id}", perm("order:read")(h.HandleGetOrder))
 	mux.HandleFunc("PATCH /admin/orders/{id}/status", perm("order:write")(h.HandleUpdateOrderStatus))
 	mux.HandleFunc("GET /admin/promo-codes", perm("order:read")(h.HandleListPromoCodes))
 	mux.HandleFunc("POST /admin/promo-codes", perm("order:write")(h.HandleCreatePromoCode))
@@ -114,6 +115,17 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("DELETE /admin/subscriptions/{id}", perm("customer:delete")(h.HandleDeleteSubscription))
 	mux.HandleFunc("POST /admin/subscriptions/{id}/reset-token", perm("customer:write")(h.HandleResetSubscriptionToken))
 
+	// ── 流量管理 ──────────────────────────────────────────────────────────
+	mux.HandleFunc("GET /admin/traffic/summary", perm("customer:read")(h.HandleTrafficSummary))
+	mux.HandleFunc("POST /admin/subscriptions/{id}/reset-traffic", perm("customer:write")(h.HandleResetSubscriptionTraffic))
+
+	// ── 订阅生命周期管理 ────────────────────────────────────────────────────
+	mux.HandleFunc("POST /admin/subscriptions/{id}/activate", perm("subscription:write")(h.HandleActivateSubscription))
+	mux.HandleFunc("POST /admin/subscriptions/{id}/suspend", perm("subscription:write")(h.HandleSuspendSubscription))
+	mux.HandleFunc("POST /admin/subscriptions/{id}/expire", perm("subscription:write")(h.HandleExpireSubscription))
+	mux.HandleFunc("POST /admin/customers/{id}/ban", perm("customer:write")(h.HandleBanCustomer))
+	mux.HandleFunc("POST /admin/customers/{id}/unban", perm("customer:write")(h.HandleUnbanCustomer))
+
 	// ── 工单系统 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /admin/tickets", perm("ticket:read")(h.HandleListTickets))
 	mux.HandleFunc("GET /admin/tickets/{id}", perm("ticket:read")(h.HandleGetTicket))
@@ -121,8 +133,42 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("POST /admin/tickets/{id}/close", perm("ticket:write")(h.HandleCloseTicket))
 	mux.HandleFunc("DELETE /admin/tickets/{id}", perm("ticket:write")(h.HandleDeleteTicket))
 
+	// ── 公告管理 ──────────────────────────────────────────────────────────
+	mux.HandleFunc("GET /admin/announcements", perm("announcement:write")(h.HandleListAnnouncements))
+	mux.HandleFunc("POST /admin/announcements", perm("announcement:write")(h.HandleCreateAnnouncement))
+	mux.HandleFunc("PATCH /admin/announcements/{id}", perm("announcement:write")(h.HandleUpdateAnnouncement))
+	mux.HandleFunc("DELETE /admin/announcements/{id}", perm("announcement:write")(h.HandleDeleteAnnouncement))
+
 	// ── 风控事件 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /admin/risk-events", perm("customer:read")(h.HandleListRiskEvents))
+
+	// ── 客户门户（公开）──────────────────────────────────────────────────────
+	mux.HandleFunc("POST /portal/register", h.HandlePortalRegister)
+	mux.HandleFunc("POST /portal/login", h.HandlePortalLogin)
+	mux.HandleFunc("POST /portal/logout", h.HandlePortalLogout)
+	mux.HandleFunc("GET /portal/plans", h.HandlePortalPlans)
+	mux.HandleFunc("GET /portal/announcements", h.HandlePortalAnnouncements)
+	mux.HandleFunc("POST /portal/forgot-password", h.HandleForgotPassword)
+	mux.HandleFunc("POST /portal/reset-password", h.HandleResetPassword)
+
+	// ── 客户门户（需登录）────────────────────────────────────────────────────
+	cust := h.requireCustomer
+	mux.HandleFunc("GET /portal/me", cust(h.HandlePortalMe))
+	mux.HandleFunc("GET /portal/subscriptions", cust(h.HandlePortalSubscriptions))
+	mux.HandleFunc("POST /portal/orders", cust(h.HandlePortalCreateOrder))
+	mux.HandleFunc("GET /portal/orders", cust(h.HandlePortalOrders))
+	mux.HandleFunc("POST /portal/tickets", cust(h.HandlePortalCreateTicket))
+	mux.HandleFunc("GET /portal/tickets", cust(h.HandlePortalTickets))
+	mux.HandleFunc("GET /portal/tickets/{id}", cust(h.HandlePortalGetTicket))
+	mux.HandleFunc("POST /portal/tickets/{id}/reply", cust(h.HandlePortalReplyTicket))
+
+	// ── 客户门户 — 邀请返利 ──────────────────────────────────────────────────
+	mux.HandleFunc("GET /portal/referral", cust(h.HandlePortalReferral))
+	mux.HandleFunc("GET /portal/referral/records", cust(h.HandlePortalReferralRecords))
+
+	// ── 管理端 — 邀请返利 ──────────────────────────────────────────────────
+	mux.HandleFunc("GET /admin/referrals", perm("customer:read")(h.HandleListReferrals))
+	mux.HandleFunc("PATCH /admin/referrals/{id}", perm("customer:write")(h.HandleUpdateReferral))
 
 	// ── 运维接口 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /admin/node-status", perm("node:read")(h.HandleNodeStatus))
