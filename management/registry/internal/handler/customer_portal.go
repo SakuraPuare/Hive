@@ -15,40 +15,86 @@ import (
 
 // ── 客户门户请求/响应类型 ────────────────────────────────────────────────────
 
-type portalRegisterRequest struct {
-	Email        string `json:"email"`
-	Password     string `json:"password"`
-	Nickname     string `json:"nickname"`
-	ReferralCode string `json:"referral_code"`
+// PortalRegisterRequest is the request body for POST /portal/register.
+type PortalRegisterRequest struct {
+	Email        string `json:"email" example:"user@example.com"`
+	Password     string `json:"password" example:"secret123"`
+	Nickname     string `json:"nickname" example:"alice"`
+	ReferralCode string `json:"referral_code" example:"REF001"`
 }
 
-type portalLoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+// PortalLoginRequest is the request body for POST /portal/login.
+type PortalLoginRequest struct {
+	Email    string `json:"email" example:"user@example.com"`
+	Password string `json:"password" example:"secret123"`
 }
 
-type portalOrderRequest struct {
-	PlanID     uint   `json:"plan_id"`
-	PromoCode  string `json:"promo_code"`
-	UseBalance bool   `json:"use_balance"`
+// PortalCreateOrderRequest is the request body for POST /portal/orders.
+type PortalCreateOrderRequest struct {
+	PlanID     uint   `json:"plan_id" example:"1"`
+	PromoCode  string `json:"promo_code" example:"SAVE10"`
+	UseBalance bool   `json:"use_balance" example:"false"`
 }
 
-type portalTicketRequest struct {
-	Subject string `json:"subject"`
-	Content string `json:"content"`
+// PortalCreateTicketRequest is the request body for POST /portal/tickets.
+type PortalCreateTicketRequest struct {
+	Subject string `json:"subject" example:"连接问题"`
+	Content string `json:"content" example:"无法连接到节点"`
 }
 
-type portalReplyRequest struct {
-	Content string `json:"content"`
+// PortalReplyTicketRequest is the request body for POST /portal/tickets/{id}/reply.
+type PortalReplyTicketRequest struct {
+	Content string `json:"content" example:"问题仍然存在"`
 }
 
-type portalMeResponse struct {
-	ID        uint                        `json:"id"`
-	Email     string                      `json:"email"`
-	Nickname  string                      `json:"nickname"`
-	Status    string                      `json:"status"`
-	CreatedAt string                      `json:"created_at"`
+// PortalMeResponse is the response body for GET /portal/me.
+type PortalMeResponse struct {
+	ID        uint                        `json:"id" example:"1"`
+	Email     string                      `json:"email" example:"user@example.com"`
+	Nickname  string                      `json:"nickname" example:"alice"`
+	Status    string                      `json:"status" example:"active"`
+	CreatedAt string                      `json:"created_at" example:"2025-01-01 00:00:00"`
 	Subs      []model.CustomerSubscription `json:"subscriptions"`
+}
+
+// PortalSubscription is an alias for model.CustomerSubscription used in swagger docs.
+type PortalSubscription = model.CustomerSubscription
+
+// PortalOrder is an alias for model.Order used in swagger docs.
+type PortalOrder = model.Order
+
+// PortalTicket is an alias for model.Ticket used in swagger docs.
+type PortalTicket = model.Ticket
+
+// PortalTicketReply is an alias for model.TicketReply used in swagger docs.
+type PortalTicketReply = model.TicketReply
+
+// PortalTicketDetail is the response body for GET /portal/tickets/{id}.
+type PortalTicketDetail = TicketDetailResponse
+
+// PortalOrderListResponse is the response body for GET /portal/orders.
+type PortalOrderListResponse struct {
+	Total int64        `json:"total" example:"10"`
+	Items []model.Order `json:"items"`
+}
+
+// PortalTicketListResponse is the response body for GET /portal/tickets.
+type PortalTicketListResponse struct {
+	Total int64          `json:"total" example:"5"`
+	Items []model.Ticket `json:"items"`
+}
+
+// PortalCreateOrderResponse is the response body for POST /portal/orders.
+type PortalCreateOrderResponse struct {
+	OrderNo         string `json:"order_no" example:"ORD20250101000000ABC"`
+	Amount          int    `json:"amount" example:"100"`
+	OriginalAmount  int    `json:"original_amount" example:"120"`
+	BalanceDeducted int    `json:"balance_deducted" example:"0"`
+}
+
+// PortalCreateTicketResponse is the response body for POST /portal/tickets.
+type PortalCreateTicketResponse struct {
+	ID uint `json:"id" example:"1"`
 }
 
 // ── 客户认证中间件 ──────────────────────────────────────────────────────────
@@ -81,8 +127,20 @@ func customerID(r *http.Request) uint {
 
 // ── POST /portal/register — 客户自助注册 ────────────────────────────────────
 
+// HandlePortalRegister godoc
+// @Summary      客户自助注册
+// @ID           PortalRegister
+// @Tags         portal-auth
+// @Accept       json
+// @Produce      json
+// @Param        body body PortalRegisterRequest true "注册信息"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      409 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /portal/register [post]
 func (h *Handler) HandlePortalRegister(w http.ResponseWriter, r *http.Request) {
-	var req portalRegisterRequest
+	var req PortalRegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid JSON")
 		return
@@ -134,8 +192,21 @@ func (h *Handler) HandlePortalRegister(w http.ResponseWriter, r *http.Request) {
 
 // ── POST /portal/login — 客户登录 ──────────────────────────────────────────
 
+// HandlePortalLogin godoc
+// @Summary      客户登录
+// @ID           PortalLogin
+// @Tags         portal-auth
+// @Accept       json
+// @Produce      json
+// @Param        body body PortalLoginRequest true "登录凭证"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      403 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /portal/login [post]
 func (h *Handler) HandlePortalLogin(w http.ResponseWriter, r *http.Request) {
-	var req portalLoginRequest
+	var req PortalLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid JSON")
 		return
@@ -194,6 +265,13 @@ func (h *Handler) HandlePortalLogin(w http.ResponseWriter, r *http.Request) {
 
 // ── POST /portal/logout — 客户登出 ─────────────────────────────────────────
 
+// HandlePortalLogout godoc
+// @Summary      客户登出
+// @ID           PortalLogout
+// @Tags         portal-auth
+// @Produce      json
+// @Success      200 {object} StatusResponse
+// @Router       /portal/logout [post]
 func (h *Handler) HandlePortalLogout(w http.ResponseWriter, r *http.Request) {
 	secure := isSecureRequest(r)
 	http.SetCookie(w, &http.Cookie{
@@ -210,6 +288,16 @@ func (h *Handler) HandlePortalLogout(w http.ResponseWriter, r *http.Request) {
 
 // ── GET /portal/me — 当前客户信息 + 活跃订阅 ────────────────────────────────
 
+// HandlePortalMe godoc
+// @Summary      获取当前客户信息
+// @ID           PortalMe
+// @Tags         portal
+// @Produce      json
+// @Success      200 {object} PortalMeResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Security     CustomerSessionCookie
+// @Router       /portal/me [get]
 func (h *Handler) HandlePortalMe(w http.ResponseWriter, r *http.Request) {
 	cid := customerID(r)
 
@@ -222,7 +310,7 @@ func (h *Handler) HandlePortalMe(w http.ResponseWriter, r *http.Request) {
 	subs := make([]model.CustomerSubscription, 0)
 	h.DB.Raw("SELECT * FROM customer_subscriptions WHERE customer_id = ? AND status = 'active' ORDER BY id DESC", cid).Scan(&subs)
 
-	h.jsonOK(w, portalMeResponse{
+	h.jsonOK(w, PortalMeResponse{
 		ID:        c.ID,
 		Email:     c.Email,
 		Nickname:  c.Nickname,
@@ -234,6 +322,14 @@ func (h *Handler) HandlePortalMe(w http.ResponseWriter, r *http.Request) {
 
 // ── GET /portal/plans — 公开套餐列表 ────────────────────────────────────────
 
+// HandlePortalPlans godoc
+// @Summary      获取公开套餐列表
+// @ID           PortalPlans
+// @Tags         portal-public
+// @Produce      json
+// @Success      200 {array} model.Plan
+// @Failure      500 {object} ErrorResponse
+// @Router       /portal/plans [get]
 func (h *Handler) HandlePortalPlans(w http.ResponseWriter, r *http.Request) {
 	plans := make([]model.Plan, 0)
 	if err := h.DB.Raw("SELECT * FROM plans WHERE enabled = 1 ORDER BY sort_order, id").Scan(&plans).Error; err != nil {
@@ -245,6 +341,16 @@ func (h *Handler) HandlePortalPlans(w http.ResponseWriter, r *http.Request) {
 
 // ── GET /portal/subscriptions — 当前客户的所有订阅 ──────────────────────────
 
+// HandlePortalSubscriptions godoc
+// @Summary      获取当前客户的所有订阅
+// @ID           PortalSubscriptions
+// @Tags         portal
+// @Produce      json
+// @Success      200 {array} PortalSubscription
+// @Failure      401 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Security     CustomerSessionCookie
+// @Router       /portal/subscriptions [get]
 func (h *Handler) HandlePortalSubscriptions(w http.ResponseWriter, r *http.Request) {
 	cid := customerID(r)
 	subs := make([]model.CustomerSubscription, 0)
@@ -257,10 +363,23 @@ func (h *Handler) HandlePortalSubscriptions(w http.ResponseWriter, r *http.Reque
 
 // ── POST /portal/orders — 客户下单 ─────────────────────────────────────────
 
+// HandlePortalCreateOrder godoc
+// @Summary      客户下单
+// @ID           PortalCreateOrder
+// @Tags         portal
+// @Accept       json
+// @Produce      json
+// @Param        body body PortalCreateOrderRequest true "下单信息"
+// @Success      200 {object} PortalCreateOrderResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Security     CustomerSessionCookie
+// @Router       /portal/orders [post]
 func (h *Handler) HandlePortalCreateOrder(w http.ResponseWriter, r *http.Request) {
 	cid := customerID(r)
 
-	var req portalOrderRequest
+	var req PortalCreateOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid JSON")
 		return
@@ -338,6 +457,18 @@ func (h *Handler) HandlePortalCreateOrder(w http.ResponseWriter, r *http.Request
 
 // ── GET /portal/orders — 当前客户的订单列表 ─────────────────────────────────
 
+// HandlePortalOrders godoc
+// @Summary      获取当前客户的订单列表
+// @ID           PortalOrders
+// @Tags         portal
+// @Produce      json
+// @Param        page  query int false "页码" default(1)
+// @Param        limit query int false "每页数量" default(20)
+// @Success      200 {object} PortalOrderListResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Security     CustomerSessionCookie
+// @Router       /portal/orders [get]
 func (h *Handler) HandlePortalOrders(w http.ResponseWriter, r *http.Request) {
 	cid := customerID(r)
 	q := r.URL.Query()
@@ -362,10 +493,23 @@ func (h *Handler) HandlePortalOrders(w http.ResponseWriter, r *http.Request) {
 
 // ── POST /portal/tickets — 提交工单 ────────────────────────────────────────
 
+// HandlePortalCreateTicket godoc
+// @Summary      提交工单
+// @ID           PortalCreateTicket
+// @Tags         portal
+// @Accept       json
+// @Produce      json
+// @Param        body body PortalCreateTicketRequest true "工单内容"
+// @Success      200 {object} PortalCreateTicketResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Security     CustomerSessionCookie
+// @Router       /portal/tickets [post]
 func (h *Handler) HandlePortalCreateTicket(w http.ResponseWriter, r *http.Request) {
 	cid := customerID(r)
 
-	var req portalTicketRequest
+	var req PortalCreateTicketRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid JSON")
 		return
@@ -407,6 +551,18 @@ func (h *Handler) HandlePortalCreateTicket(w http.ResponseWriter, r *http.Reques
 
 // ── GET /portal/tickets — 当前客户的工单列表 ────────────────────────────────
 
+// HandlePortalTickets godoc
+// @Summary      获取当前客户的工单列表
+// @ID           PortalTickets
+// @Tags         portal
+// @Produce      json
+// @Param        page  query int false "页码" default(1)
+// @Param        limit query int false "每页数量" default(20)
+// @Success      200 {object} PortalTicketListResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Security     CustomerSessionCookie
+// @Router       /portal/tickets [get]
 func (h *Handler) HandlePortalTickets(w http.ResponseWriter, r *http.Request) {
 	cid := customerID(r)
 	q := r.URL.Query()
@@ -435,6 +591,18 @@ func (h *Handler) HandlePortalTickets(w http.ResponseWriter, r *http.Request) {
 
 // ── GET /portal/tickets/{id} — 工单详情+回复 ────────────────────────────────
 
+// HandlePortalGetTicket godoc
+// @Summary      获取工单详情及回复
+// @ID           PortalGetTicket
+// @Tags         portal
+// @Produce      json
+// @Param        id path int true "工单 ID"
+// @Success      200 {object} PortalTicketDetail
+// @Failure      401 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Security     CustomerSessionCookie
+// @Router       /portal/tickets/{id} [get]
 func (h *Handler) HandlePortalGetTicket(w http.ResponseWriter, r *http.Request) {
 	cid := customerID(r)
 	id := r.PathValue("id")
@@ -472,11 +640,26 @@ func (h *Handler) HandlePortalGetTicket(w http.ResponseWriter, r *http.Request) 
 
 // ── POST /portal/tickets/{id}/reply — 客户回复工单 ──────────────────────────
 
+// HandlePortalReplyTicket godoc
+// @Summary      客户回复工单
+// @ID           PortalReplyTicket
+// @Tags         portal
+// @Accept       json
+// @Produce      json
+// @Param        id   path int                    true "工单 ID"
+// @Param        body body PortalReplyTicketRequest true "回复内容"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Security     CustomerSessionCookie
+// @Router       /portal/tickets/{id}/reply [post]
 func (h *Handler) HandlePortalReplyTicket(w http.ResponseWriter, r *http.Request) {
 	cid := customerID(r)
 	id := r.PathValue("id")
 
-	var req portalReplyRequest
+	var req PortalReplyTicketRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid JSON")
 		return
