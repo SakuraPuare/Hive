@@ -17,6 +17,20 @@ type RiskEventListResponse struct {
 
 // ── handlers ──────────────────────────────────────────────────────────────────
 
+// HandleListRiskEvents godoc
+// @Summary      获取风控事件列表
+// @ID           AdminListRiskEvents
+// @Description  分页查询风控事件，支持按客户 ID 和事件类型筛选
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        customer_id query string false "按客户 ID 筛选"
+// @Param        event_type  query string false "按事件类型筛选"
+// @Param        page        query int    false "页码（默认 1）"
+// @Param        limit       query int    false "每页数量（默认 20，最大 100）"
+// @Success      200 {object} RiskEventListResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/risk-events [get]
 func (h *Handler) HandleListRiskEvents(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	customerID := q.Get("customer_id")

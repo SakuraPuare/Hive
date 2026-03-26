@@ -65,6 +65,83 @@ func maskNickname(s string) string {
 	return string(runes[0:1]) + "***" + string(runes[len(runes)-1:])
 }
 
+// ── swagger types ────────────────────────────────────────────────────────────
+
+// PortalReferralResponse is the response for GET /portal/referral.
+type PortalReferralResponse struct {
+	ReferralCode    string `json:"referral_code" example:"ABCD1234"`
+	ReferralLink    string `json:"referral_link" example:"?ref=ABCD1234"`
+	TotalInvites    int64  `json:"total_invites" example:"5"`
+	TotalCommission int64  `json:"total_commission" example:"1000"`
+	Balance         int    `json:"balance" example:"500"`
+}
+
+// PortalReferralRecord is a single referral record for the portal.
+type PortalReferralRecord struct {
+	ID              uint   `json:"id"`
+	RefereeNickname string `json:"referee_nickname"`
+	Commission      int    `json:"commission"`
+	Status          string `json:"status"`
+	CreatedAt       string `json:"created_at"`
+}
+
+// PortalReferralRecordsResponse is the response for GET /portal/referral/records.
+type PortalReferralRecordsResponse struct {
+	Total int64                  `json:"total"`
+	Items []PortalReferralRecord `json:"items"`
+}
+
+// AdminReferralItem is a single referral record for admin listing.
+type AdminReferralItem struct {
+	model.Referral
+	ReferrerEmail string `json:"referrer_email"`
+	RefereeEmail  string `json:"referee_email"`
+	OrderNo       string `json:"order_no"`
+}
+
+// AdminReferralListResponse is the response for GET /admin/referrals.
+type AdminReferralListResponse struct {
+	Total int64               `json:"total"`
+	Items []AdminReferralItem `json:"items"`
+}
+
+// UpdateReferralRequest is the request body for PATCH /admin/referrals/{id}.
+type UpdateReferralRequest struct {
+	Status string `json:"status" example:"paid"`
+}
+
+// referralDBRow is the DB row used when building admin referral items.
+type referralDBRow struct {
+	ID            uint
+	ReferrerID    uint
+	RefereeID     uint
+	OrderID       *uint
+	Commission    int
+	Status        string
+	CreatedAt     string
+	ReferrerEmail string
+	RefereeEmail  string
+	OrderNo       *string
+}
+
+// referralRecordDBRow is the DB row used when building portal referral records.
+type referralRecordDBRow struct {
+	ID         uint
+	RefereeID  uint
+	Commission int
+	Status     string
+	CreatedAt  string
+	Nickname   string
+}
+
+// referralLookupRow is used to look up a referral for status updates.
+type referralLookupRow struct {
+	ID         uint
+	ReferrerID uint
+	Commission int
+	Status     string
+}
+
 // ── POST /portal/register 扩展：支持 referral_code ──────────────────────────
 
 // ProcessReferralOnRegister 在注册成功后处理邀请关系。
@@ -124,6 +201,16 @@ func (h *Handler) CreateReferralCommission(order model.Order) {
 
 // ── GET /portal/referral — 我的邀请信息 ─────────────────────────────────────
 
+// HandlePortalReferral godoc
+// @Summary      获取我的邀请信息
+// @ID           PortalReferral
+// @Description  返回当前客户的邀请码、邀请链接、邀请人数、累计返利和余额
+// @Tags         portal
+// @Security     CustomerSessionCookie
+// @Produce      json
+// @Success      200 {object} PortalReferralResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /portal/referral [get]
 func (h *Handler) HandlePortalReferral(w http.ResponseWriter, r *http.Request) {
 	cid := customerID(r)
 
@@ -153,6 +240,18 @@ func (h *Handler) HandlePortalReferral(w http.ResponseWriter, r *http.Request) {
 
 // ── GET /portal/referral/records — 我的邀请记录 ─────────────────────────────
 
+// HandlePortalReferralRecords godoc
+// @Summary      获取我的邀请记录
+// @ID           PortalReferralRecords
+// @Description  分页返回当前客户的邀请记录列表
+// @Tags         portal
+// @Security     CustomerSessionCookie
+// @Produce      json
+// @Param        page  query int false "页码（默认 1）"
+// @Param        limit query int false "每页数量（默认 20，最大 100）"
+// @Success      200 {object} PortalReferralRecordsResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /portal/referral/records [get]
 func (h *Handler) HandlePortalReferralRecords(w http.ResponseWriter, r *http.Request) {
 	cid := customerID(r)
 	q := r.URL.Query()
@@ -169,22 +268,7 @@ func (h *Handler) HandlePortalReferralRecords(w http.ResponseWriter, r *http.Req
 	var total int64
 	h.DB.Raw("SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", cid).Scan(&total)
 
-	type record struct {
-		ID              uint   `json:"id"`
-		RefereeNickname string `json:"referee_nickname"`
-		Commission      int    `json:"commission"`
-		Status          string `json:"status"`
-		CreatedAt       string `json:"created_at"`
-	}
-
-	var rows []struct {
-		ID         uint
-		RefereeID  uint
-		Commission int
-		Status     string
-		CreatedAt  string
-		Nickname   string
-	}
+	var rows []referralRecordDBRow
 	h.DB.Raw(`
 		SELECT r.id, r.referee_id, r.commission, r.status, r.created_at, c.nickname
 		FROM referrals r
@@ -193,9 +277,9 @@ func (h *Handler) HandlePortalReferralRecords(w http.ResponseWriter, r *http.Req
 		ORDER BY r.id DESC LIMIT ? OFFSET ?
 	`, cid, limit, offset).Scan(&rows)
 
-	records := make([]record, 0, len(rows))
+	records := make([]PortalReferralRecord, 0, len(rows))
 	for _, row := range rows {
-		records = append(records, record{
+		records = append(records, PortalReferralRecord{
 			ID:              row.ID,
 			RefereeNickname: maskNickname(row.Nickname),
 			Commission:      row.Commission,
@@ -209,6 +293,19 @@ func (h *Handler) HandlePortalReferralRecords(w http.ResponseWriter, r *http.Req
 
 // ── GET /admin/referrals — 全局邀请记录列表 ─────────────────────────────────
 
+// HandleListReferrals godoc
+// @Summary      获取邀请记录列表
+// @ID           AdminListReferrals
+// @Description  分页获取全局邀请记录，支持按状态筛选
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        page   query int    false "页码（默认 1）"
+// @Param        limit  query int    false "每页数量（默认 20，最大 100）"
+// @Param        status query string false "按状态筛选"
+// @Success      200 {object} AdminReferralListResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/referrals [get]
 func (h *Handler) HandleListReferrals(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))
@@ -234,25 +331,7 @@ func (h *Handler) HandleListReferrals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type adminReferral struct {
-		model.Referral
-		ReferrerEmail string `json:"referrer_email"`
-		RefereeEmail  string `json:"referee_email"`
-		OrderNo       string `json:"order_no"`
-	}
-
-	var rows []struct {
-		ID            uint
-		ReferrerID    uint
-		RefereeID     uint
-		OrderID       *uint
-		Commission    int
-		Status        string
-		CreatedAt     string
-		ReferrerEmail string
-		RefereeEmail  string
-		OrderNo       *string
-	}
+	var rows []referralDBRow
 	q2 := h.DB.Raw(`
 		SELECT r.id, r.referrer_id, r.referee_id, r.order_id, r.commission, r.status, r.created_at,
 		       c1.email AS referrer_email, c2.email AS referee_email, o.order_no
@@ -289,13 +368,13 @@ func (h *Handler) HandleListReferrals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items := make([]adminReferral, 0, len(rows))
+	items := make([]AdminReferralItem, 0, len(rows))
 	for _, row := range rows {
 		orderNo := ""
 		if row.OrderNo != nil {
 			orderNo = *row.OrderNo
 		}
-		items = append(items, adminReferral{
+		items = append(items, AdminReferralItem{
 			Referral: model.Referral{
 				ID:         row.ID,
 				ReferrerID: row.ReferrerID,
@@ -316,12 +395,25 @@ func (h *Handler) HandleListReferrals(w http.ResponseWriter, r *http.Request) {
 
 // ── PATCH /admin/referrals/{id} — 修改返利状态 ──────────────────────────────
 
+// HandleUpdateReferral godoc
+// @Summary      更新邀请记录状态
+// @ID           AdminUpdateReferral
+// @Description  修改指定邀请记录的状态（pending/paid/cancelled），自动调整余额
+// @Tags         admin
+// @Security     AdminSession
+// @Accept       json
+// @Produce      json
+// @Param        id   path int                  true "邀请记录 ID"
+// @Param        body body UpdateReferralRequest true "新状态"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/referrals/{id} [patch]
 func (h *Handler) HandleUpdateReferral(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	var req struct {
-		Status string `json:"status"`
-	}
+	var req UpdateReferralRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid JSON")
 		return
@@ -332,12 +424,7 @@ func (h *Handler) HandleUpdateReferral(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 查询当前记录
-	var ref struct {
-		ID         uint
-		ReferrerID uint
-		Commission int
-		Status     string
-	}
+	var ref referralLookupRow
 	h.DB.Raw("SELECT id, referrer_id, commission, status FROM referrals WHERE id = ?", id).Scan(&ref)
 	if ref.ID == 0 {
 		h.jsonErr(w, http.StatusNotFound, "referral not found")

@@ -12,6 +12,25 @@ type PrometheusTarget struct {
 	Labels  map[string]string `json:"labels"`
 }
 
+// prometheusNodeRow is the DB row used to build PrometheusTarget entries.
+type prometheusNodeRow struct {
+	Hostname    string
+	TailscaleIP string
+	EasytierIP  string
+	CFURL       string
+	Location    string
+	MAC6        string
+}
+
+// HandleHealth godoc
+// @Summary      健康检查
+// @ID           Health
+// @Description  检查服务和数据库连接是否正常
+// @Tags         system
+// @Produce      json
+// @Success      200 {object} StatusResponse
+// @Failure      503 {object} ErrorResponse
+// @Router       /health [get]
 func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	sqlDB, err := h.DB.DB()
 	if err != nil {
@@ -25,15 +44,18 @@ func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandlePrometheusTargets godoc
+// @Summary      获取 Prometheus 抓取目标
+// @ID           PrometheusTargets
+// @Description  返回 file_sd 格式的节点列表，供 Prometheus 服务发现使用
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Success      200 {array}  PrometheusTarget
+// @Failure      500 {object} ErrorResponse
+// @Router       /prometheus-targets [get]
 func (h *Handler) HandlePrometheusTargets(w http.ResponseWriter, r *http.Request) {
-	var rows []struct {
-		Hostname    string
-		TailscaleIP string
-		EasytierIP  string
-		CFURL       string
-		Location    string
-		MAC6        string
-	}
+	var rows []prometheusNodeRow
 	err := h.DB.Raw(`
 		SELECT hostname, tailscale_ip, easytier_ip, cf_url, location, mac6
 		FROM nodes
@@ -60,13 +82,26 @@ func (h *Handler) HandlePrometheusTargets(w http.ResponseWriter, r *http.Request
 	h.jsonOK(w, targets)
 }
 
+// labelNodeRow is the DB row used to build label cards.
+type labelNodeRow struct {
+	MAC6         string
+	CFURL        string
+	Location     string
+	RegisteredAt string
+}
+
+// HandleLabels godoc
+// @Summary      打印节点标签页面
+// @ID           LabelsPrint
+// @Description  返回可打印的节点标签 HTML 页面
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      html
+// @Success      200 {string} string "HTML page"
+// @Failure      500 {object} ErrorResponse
+// @Router       /labels [get]
 func (h *Handler) HandleLabels(w http.ResponseWriter, r *http.Request) {
-	var rows []struct {
-		MAC6         string
-		CFURL        string
-		Location     string
-		RegisteredAt string
-	}
+	var rows []labelNodeRow
 	err := h.DB.Raw(
 		"SELECT mac6, cf_url, location, registered_at FROM nodes ORDER BY registered_at",
 	).Scan(&rows).Error
@@ -117,6 +152,14 @@ func (h *Handler) HandleLabels(w http.ResponseWriter, r *http.Request) {
 </body></html>`, cards.String())
 }
 
+// HandleRoot godoc
+// @Summary      首页
+// @ID           Dashboard
+// @Description  返回 Hive Registry 首页 HTML
+// @Tags         dashboard
+// @Produce      html
+// @Success      200 {string} string "HTML page"
+// @Router       / [get]
 func (h *Handler) HandleRoot(w http.ResponseWriter, r *http.Request) {
 	var total, online int64
 	h.DB.Raw("SELECT COUNT(*) FROM nodes").Scan(&total)
