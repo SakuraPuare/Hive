@@ -1,0 +1,40 @@
+# Alertmanager 配置
+# 文档：https://prometheus.io/docs/alerting/latest/configuration/
+#
+# 使用前请将 WEBHOOK_URL 替换为实际的告警接收地址，例如：
+#   - Telegram Bot: https://api.telegram.org/bot<TOKEN>/sendMessage
+#   - 企业微信: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=<KEY>
+#   - 飞书: https://open.feishu.cn/open-apis/bot/v2/hook/<TOKEN>
+#   - 自建 webhook: http://your-server/alert
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'default-webhook'
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # critical 告警立即发送，重复间隔 1 小时
+    - match:
+        severity: critical
+      receiver: 'default-webhook'
+      group_wait: 10s
+      repeat_interval: 1h
+
+receivers:
+  - name: 'default-webhook'
+    webhook_configs:
+      - url: '${ALERTMANAGER_WEBHOOK_URL:-http://localhost:9999/alert}'
+        send_resolved: true
+
+# 抑制规则：critical 告警触发时，抑制同名 warning 告警
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname']
