@@ -31,6 +31,11 @@ import (
 // @name hive_admin_session
 // @description "HttpOnly session cookie for admin UI"
 
+// @securityDefinitions.apikey CustomerSessionCookie
+// @in cookie
+// @name hive_customer_session
+// @description "HttpOnly session cookie for customer portal"
+
 func main() {
 	cfg := config.Load()
 
