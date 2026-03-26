@@ -95,6 +95,55 @@ func (a *Auth) RequirePerm(perm string) func(http.HandlerFunc) http.HandlerFunc 
 	}
 }
 
+// MakeCustomerSessionValue generates a signed customer cookie: {expUnix}.{customerID}.{sig}
+func (a *Auth) MakeCustomerSessionValue(exp int64, customerID uint) string {
+	expStr := strconv.FormatInt(exp, 10)
+	cidStr := strconv.FormatUint(uint64(customerID), 10)
+	payload := expStr + "." + cidStr
+	mac := hmac.New(sha256.New, []byte(a.Config.AdminSessionSecret))
+	_, _ = mac.Write([]byte(payload))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return payload + "." + sig
+}
+
+// ParseCustomerSession parses and validates the customer session cookie, returns (customerID, valid).
+func (a *Auth) ParseCustomerSession(r *http.Request) (customerID uint, valid bool) {
+	if a.Config.AdminSessionSecret == "" {
+		return 0, false
+	}
+	c, err := r.Cookie("hive_customer_session")
+	if err != nil {
+		return 0, false
+	}
+	lastDot := strings.LastIndex(c.Value, ".")
+	if lastDot < 0 {
+		return 0, false
+	}
+	payload := c.Value[:lastDot]
+	gotSig := c.Value[lastDot+1:]
+
+	mac := hmac.New(sha256.New, []byte(a.Config.AdminSessionSecret))
+	_, _ = mac.Write([]byte(payload))
+	wantSig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if subtle.ConstantTimeCompare([]byte(gotSig), []byte(wantSig)) != 1 {
+		return 0, false
+	}
+
+	parts := strings.SplitN(payload, ".", 2)
+	if len(parts) != 2 {
+		return 0, false
+	}
+	expUnix, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || time.Now().Unix() > expUnix {
+		return 0, false
+	}
+	cid, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil || cid == 0 {
+		return 0, false
+	}
+	return uint(cid), true
+}
+
 // RequireDeviceAuth checks Bearer token for device API endpoints.
 // Returns true if auth passed, false if it wrote an error response.
 func (a *Auth) RequireDeviceAuth(w http.ResponseWriter, r *http.Request) bool {
