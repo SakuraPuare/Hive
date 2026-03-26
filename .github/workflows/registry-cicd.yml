@@ -83,6 +83,9 @@ jobs:
       - name: Generate TS client + Zod
         run: npm run gen-api
 
+      - name: Run tests
+        run: npm test
+
       - name: Next.js build (static export)
         run: npm run build
 
