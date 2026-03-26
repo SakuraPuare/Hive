@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { NodesService } from '@/src/generated/client';
-import type { main_Node, main_UpdateRequest } from '@/src/generated/client';
+import { AdminService } from '@/src/generated/client';
+import type { model_Node, handler_NodeUpdateRequest } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +26,7 @@ import { useTranslations } from 'next-intl';
 import { LOCATION_OPTIONS } from '@/lib/locations';
 
 interface NodeEditDialogProps {
-  node: main_Node;
+  node: model_Node;
   onSave: () => void;
 }
 
@@ -59,9 +59,9 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
     setError('');
     try {
       await sessionApi(
-        NodesService.nodeUpdate({
+        AdminService.nodeUpdate({
           mac: node.mac!,
-          requestBody: { location, note, enabled, status, tags } as main_UpdateRequest,
+          requestBody: { location, note, enabled, status, tags } as handler_NodeUpdateRequest,
         }),
       );
       setOpen(false);

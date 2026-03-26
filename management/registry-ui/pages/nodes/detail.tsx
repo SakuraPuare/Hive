@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { NodesService, AdminService } from '@/src/generated/client';
-import type { main_Node, main_UpdateRequest } from '@/src/generated/client';
+import { AdminService } from '@/src/generated/client';
+import type { model_Node, handler_NodeUpdateRequest } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,7 +47,7 @@ export default function NodeDetail() {
   const t = useTranslations('nodeDetail');
   const tCommon = useTranslations('common');
 
-  const [node, setNode] = useState<main_Node | null>(null);
+  const [node, setNode] = useState<model_Node | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -70,7 +70,7 @@ export default function NodeDetail() {
   useEffect(() => {
     if (!mac) return;
     setLoading(true);
-    sessionApi(NodesService.nodeGet({ mac }))
+    sessionApi(AdminService.nodeGet({ mac }))
       .then((n) => {
         setNode(n);
         setLocation(n.location ?? '');
@@ -95,13 +95,13 @@ export default function NodeDetail() {
     setSaveSuccess(false);
     try {
       await sessionApi(
-        NodesService.nodeUpdate({
+        AdminService.nodeUpdate({
           mac,
-          requestBody: { location, note, enabled, status, weight, region, country, city, tags, offline_reason: offlineReason } as main_UpdateRequest,
+          requestBody: { location, note, enabled, status, weight, region, country, city, tags, offline_reason: offlineReason } as handler_NodeUpdateRequest,
         }),
       );
       setSaveSuccess(true);
-      const updated = await sessionApi(NodesService.nodeGet({ mac }));
+      const updated = await sessionApi(AdminService.nodeGet({ mac }));
       setNode(updated);
     } catch (e: any) {
       setSaveError(e?.error || e?.message || t('updateFailed'));

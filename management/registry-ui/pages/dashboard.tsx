@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { NodesService } from '@/src/generated/client';
-import type { main_Node } from '@/src/generated/client';
+import { AdminService } from '@/src/generated/client';
+import type { model_Node } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -47,11 +47,11 @@ export default function Dashboard() {
   const tNav = useTranslations('nav');
   const tNodes = useTranslations('nodes');
   const { locale } = useLocale();
-  const [nodes, setNodes] = useState<main_Node[]>([]);
+  const [nodes, setNodes] = useState<model_Node[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    sessionApi(NodesService.nodesList())
+    sessionApi(AdminService.nodesList({}))
       .then(setNodes)
       .finally(() => setLoading(false));
   }, []);
