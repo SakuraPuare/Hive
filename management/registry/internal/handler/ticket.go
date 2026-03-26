@@ -38,6 +38,20 @@ type ticketReplyRow struct {
 
 // ── handlers ──────────────────────────────────────────────────────────────────
 
+// HandleListTickets godoc
+// @Summary      获取工单列表
+// @ID           AdminListTickets
+// @Description  分页获取工单列表，支持按状态和客户筛选
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        status      query string false "按状态筛选"
+// @Param        customer_id query string false "按客户 ID 筛选"
+// @Param        page        query int    false "页码（默认 1）"
+// @Param        limit       query int    false "每页数量（默认 20，最大 100）"
+// @Success      200 {object} TicketListResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/tickets [get]
 func (h *Handler) HandleListTickets(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	status := q.Get("status")
@@ -76,6 +90,18 @@ func (h *Handler) HandleListTickets(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, TicketListResponse{Total: total, Items: tickets})
 }
 
+// HandleGetTicket godoc
+// @Summary      获取工单详情
+// @ID           AdminGetTicket
+// @Description  根据 ID 获取工单及其所有回复
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        id path int true "工单 ID"
+// @Success      200 {object} TicketDetailResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/tickets/{id} [get]
 func (h *Handler) HandleGetTicket(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -114,6 +140,22 @@ func (h *Handler) HandleGetTicket(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, TicketDetailResponse{Ticket: t, Replies: replies})
 }
 
+// HandleAddTicketReply godoc
+// @Summary      管理员回复工单
+// @ID           AdminReplyTicket
+// @Description  为指定工单添加管理员回复，工单状态自动变为 replied
+// @Tags         admin
+// @Security     AdminSession
+// @Accept       json
+// @Produce      json
+// @Param        id   path int                true "工单 ID"
+// @Param        body body TicketReplyRequest  true "回复内容"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/tickets/{id}/replies [post]
 func (h *Handler) HandleAddTicketReply(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var req TicketReplyRequest
@@ -155,6 +197,18 @@ func (h *Handler) HandleAddTicketReply(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandleCloseTicket godoc
+// @Summary      关闭工单
+// @ID           AdminCloseTicket
+// @Description  将指定工单状态设为 closed
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        id path int true "工单 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/tickets/{id}/close [post]
 func (h *Handler) HandleCloseTicket(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -177,6 +231,18 @@ func (h *Handler) HandleCloseTicket(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandleDeleteTicket godoc
+// @Summary      删除工单
+// @ID           AdminDeleteTicket
+// @Description  删除指定工单及其所有回复
+// @Tags         admin
+// @Security     AdminSession
+// @Produce      json
+// @Param        id path int true "工单 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/tickets/{id} [delete]
 func (h *Handler) HandleDeleteTicket(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
