@@ -42,6 +42,8 @@ Step 5  填写 .env  → 编译镜像 → 烧录 SD 卡 → 上电
 | [02-china-vps.md](./02-china-vps.md)     | 中国 VPS：Node Registry + Prometheus + Grafana + cloudflared |
 | [03-cloudflare-tokens.md](./03-cloudflare-tokens.md) | 获取 CF API Token / Account ID / Zone ID |
 | [04-tailscale-key.md](./04-tailscale-key.md)         | 创建 Tailscale Auth Key |
+| [05-airport-roadmap.md](./05-airport-roadmap.md)     | 自有节点平台管理系统规划 |
+| [06-v1-compatible-infra-roadmap.md](./06-v1-compatible-infra-roadmap.md) | `v1.0.0` 节点兼容基础设施 Roadmap |
 
 ---
 
