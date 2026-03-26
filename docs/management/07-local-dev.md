@@ -132,11 +132,11 @@ make seed-local-demo
 
 数据文件在：
 
-- [seed-local-demo.sql](/home/kent/rk3528-hive/management/registry/dev/seed-local-demo.sql)
+- `management/registry/dev/seed-local-demo.sql`
 
 脚本在：
 
-- [seed-local-demo.sh](/home/kent/rk3528-hive/management/registry/dev/seed-local-demo.sh)
+- `management/registry/dev/seed-local-demo.sh`
 
 默认演示节点包括：
 
