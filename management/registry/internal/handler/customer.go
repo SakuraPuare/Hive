@@ -65,6 +65,21 @@ type CustomerTrafficResponse struct {
 
 // ── handlers ──────────────────────────────────────────────────────────────────
 
+// HandleListCustomers godoc
+// @Summary      获取客户列表
+// @ID           AdminListCustomers
+// @Description  分页查询客户，支持按状态、邮箱、关键词筛选
+// @Tags         admin
+// @Security     CookieAuth
+// @Produce      json
+// @Param        status query string false "按状态筛选"
+// @Param        email  query string false "按邮箱模糊搜索"
+// @Param        search query string false "按邮箱或昵称模糊搜索"
+// @Param        page   query int    false "页码（默认 1）"
+// @Param        limit  query int    false "每页条数（默认 20，最大 100）"
+// @Success      200 {object} CustomerListResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/customers [get]
 func (h *Handler) HandleListCustomers(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	status := q.Get("status")
@@ -112,6 +127,20 @@ func (h *Handler) HandleListCustomers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleCreateCustomer godoc
+// @Summary      创建客户
+// @ID           AdminCreateCustomer
+// @Description  创建新客户账号
+// @Tags         admin
+// @Security     CookieAuth
+// @Accept       json
+// @Produce      json
+// @Param        body body CreateCustomerRequest true "客户信息"
+// @Success      200 {object} CreateIDResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      409 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/customers [post]
 func (h *Handler) HandleCreateCustomer(w http.ResponseWriter, r *http.Request) {
 	var req CreateCustomerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -147,6 +176,18 @@ func (h *Handler) HandleCreateCustomer(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]any{"id": id})
 }
 
+// HandleGetCustomer godoc
+// @Summary      获取客户详情
+// @ID           AdminGetCustomer
+// @Description  返回客户信息及其所有订阅
+// @Tags         admin
+// @Security     CookieAuth
+// @Produce      json
+// @Param        id path int true "客户 ID"
+// @Success      200 {object} CustomerDetail
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/customers/{id} [get]
 func (h *Handler) HandleGetCustomer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -170,6 +211,20 @@ func (h *Handler) HandleGetCustomer(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, CustomerDetail{Customer: c, Subscriptions: subs})
 }
 
+// HandleUpdateCustomer godoc
+// @Summary      更新客户
+// @ID           AdminUpdateCustomer
+// @Description  更新客户昵称或状态
+// @Tags         admin
+// @Security     CookieAuth
+// @Accept       json
+// @Produce      json
+// @Param        id   path int                   true "客户 ID"
+// @Param        body body UpdateCustomerRequest  true "更新字段"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/customers/{id} [patch]
 func (h *Handler) HandleUpdateCustomer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -198,6 +253,17 @@ func (h *Handler) HandleUpdateCustomer(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandleDeleteCustomer godoc
+// @Summary      删除客户
+// @ID           AdminDeleteCustomer
+// @Description  删除指定客户
+// @Tags         admin
+// @Security     CookieAuth
+// @Produce      json
+// @Param        id path int true "客户 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/customers/{id} [delete]
 func (h *Handler) HandleDeleteCustomer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.DB.Exec("DELETE FROM customers WHERE id = ?", id).Error; err != nil {
@@ -211,6 +277,20 @@ func (h *Handler) HandleDeleteCustomer(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandleCreateSubscription godoc
+// @Summary      创建订阅
+// @ID           AdminCreateSubscription
+// @Description  为客户创建新订阅，根据套餐自动设置流量和有效期
+// @Tags         admin
+// @Security     CookieAuth
+// @Accept       json
+// @Produce      json
+// @Param        id   path int                      true "客户 ID"
+// @Param        body body CreateSubscriptionRequest true "订阅信息"
+// @Success      200 {object} CreateSubscriptionResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/customers/{id}/subscriptions [post]
 func (h *Handler) HandleCreateSubscription(w http.ResponseWriter, r *http.Request) {
 	customerID := r.PathValue("id")
 
@@ -268,6 +348,18 @@ func (h *Handler) HandleCreateSubscription(w http.ResponseWriter, r *http.Reques
 	h.jsonOK(w, map[string]any{"id": subID, "token": token})
 }
 
+// HandleGetCustomerTraffic godoc
+// @Summary      获取客户流量统计
+// @ID           AdminGetCustomerTraffic
+// @Description  返回客户所有订阅的流量使用情况
+// @Tags         admin
+// @Security     CookieAuth
+// @Produce      json
+// @Param        id path int true "客户 ID"
+// @Success      200 {object} CustomerTrafficResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/customers/{id}/traffic [get]
 func (h *Handler) HandleGetCustomerTraffic(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -302,6 +394,20 @@ func (h *Handler) HandleGetCustomerTraffic(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+// HandleResetCustomerPassword godoc
+// @Summary      重置客户密码
+// @ID           AdminResetCustomerPassword
+// @Description  管理员重置客户登录密码
+// @Tags         admin
+// @Security     CookieAuth
+// @Accept       json
+// @Produce      json
+// @Param        id   path int                          true "客户 ID"
+// @Param        body body ResetCustomerPasswordRequest true "新密码"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/customers/{id}/password [post]
 func (h *Handler) HandleResetCustomerPassword(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -333,7 +439,17 @@ func (h *Handler) HandleResetCustomerPassword(w http.ResponseWriter, r *http.Req
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// HandleListSubscriptions lists subscriptions for a customer.
+// HandleListSubscriptions godoc
+// @Summary      获取客户订阅列表
+// @ID           AdminListSubscriptions
+// @Description  返回指定客户的所有订阅
+// @Tags         admin
+// @Security     CookieAuth
+// @Produce      json
+// @Param        id path int true "客户 ID"
+// @Success      200 {array}  model.CustomerSubscription
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/customers/{id}/subscriptions [get]
 func (h *Handler) HandleListSubscriptions(w http.ResponseWriter, r *http.Request) {
 	customerID := r.PathValue("id")
 
@@ -346,7 +462,20 @@ func (h *Handler) HandleListSubscriptions(w http.ResponseWriter, r *http.Request
 	h.jsonOK(w, items)
 }
 
-// HandleUpdateSubscription updates subscription fields.
+// HandleUpdateSubscription godoc
+// @Summary      更新订阅
+// @ID           AdminUpdateSubscription
+// @Description  更新订阅状态、流量限制或到期时间
+// @Tags         admin
+// @Security     CookieAuth
+// @Accept       json
+// @Produce      json
+// @Param        id   path int                       true "订阅 ID"
+// @Param        body body UpdateSubscriptionRequest true "更新字段"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscriptions/{id} [patch]
 func (h *Handler) HandleUpdateSubscription(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -378,7 +507,17 @@ func (h *Handler) HandleUpdateSubscription(w http.ResponseWriter, r *http.Reques
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// HandleDeleteSubscription deletes a subscription by ID.
+// HandleDeleteSubscription godoc
+// @Summary      删除订阅
+// @ID           AdminDeleteSubscription
+// @Description  删除指定订阅
+// @Tags         admin
+// @Security     CookieAuth
+// @Produce      json
+// @Param        id path int true "订阅 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscriptions/{id} [delete]
 func (h *Handler) HandleDeleteSubscription(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.DB.Exec("DELETE FROM customer_subscriptions WHERE id = ?", id).Error; err != nil {
@@ -392,7 +531,17 @@ func (h *Handler) HandleDeleteSubscription(w http.ResponseWriter, r *http.Reques
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
-// HandleResetSubscriptionToken generates a new token for a subscription.
+// HandleResetSubscriptionToken godoc
+// @Summary      重置订阅 Token
+// @ID           AdminResetSubscriptionToken
+// @Description  为订阅生成新的 Token
+// @Tags         admin
+// @Security     CookieAuth
+// @Produce      json
+// @Param        id path int true "订阅 ID"
+// @Success      200 {object} ResetSubscriptionTokenResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscriptions/{id}/reset-token [post]
 func (h *Handler) HandleResetSubscriptionToken(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
