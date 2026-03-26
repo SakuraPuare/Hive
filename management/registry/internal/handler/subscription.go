@@ -10,9 +10,6 @@ import (
 
 // HandleSubscriptionVless returns a base64-encoded VLESS subscription.
 func (h *Handler) HandleSubscriptionVless(w http.ResponseWriter, r *http.Request) {
-	if !h.Auth.RequireDeviceAuth(w, r) {
-		return
-	}
 	nodes, err := h.queryAllNodes()
 	if err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
@@ -44,9 +41,6 @@ func (h *Handler) HandleSubscriptionVless(w http.ResponseWriter, r *http.Request
 
 // HandleSubscriptionClash returns a Clash/Mihomo YAML subscription.
 func (h *Handler) HandleSubscriptionClash(w http.ResponseWriter, r *http.Request) {
-	if !h.Auth.RequireDeviceAuth(w, r) {
-		return
-	}
 	nodes, err := h.queryAllNodes()
 	if err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
