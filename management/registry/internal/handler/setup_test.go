@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"hive/registry/internal/config"
+	"hive/registry/internal/mailer"
 	"hive/registry/internal/middleware"
 	"hive/registry/internal/store"
 )
@@ -51,7 +52,8 @@ func TestMain(m *testing.M) {
 	store.BootstrapRBAC(testDB)
 
 	testAuth = &middleware.Auth{Config: testCfg, DB: testDB}
-	testH = &Handler{DB: testDB, Config: testCfg, Auth: testAuth}
+	testMailer := &mailer.Mailer{Config: testCfg, DB: testDB}
+	testH = &Handler{DB: testDB, Config: testCfg, Auth: testAuth, Mailer: testMailer}
 
 	mux := testH.RegisterRoutes()
 	testServer = httptest.NewServer(middleware.WithMetrics(middleware.WithCORS(mux, testCfg)))
@@ -112,12 +114,13 @@ func resetDB(t *testing.T) {
 	testDB.Exec("SET FOREIGN_KEY_CHECKS = 0")
 	for _, table := range []string{
 		"ticket_replies", "tickets", "traffic_logs", "customer_subscriptions",
-		"orders", "promo_codes", "risk_events", "customers",
+		"orders", "promo_codes", "risk_events", "password_reset_codes", "customers",
 		"plan_lines", "plans",
 		"line_nodes", "lines",
 		"subscription_group_nodes", "subscription_groups",
 		"node_status_checks", "nodes",
 		"audit_logs",
+		"announcements",
 		"user_permissions", "user_roles", "role_permissions",
 		"users",
 	} {
@@ -259,6 +262,36 @@ func insertTestPlan(t *testing.T, name string) uint {
 		name, now, now)
 	if result.Error != nil {
 		t.Fatalf("insert test plan %s: %v", name, result.Error)
+	}
+	var id uint
+	testDB.Raw("SELECT LAST_INSERT_ID()").Scan(&id)
+	return id
+}
+
+func customerCookie(customerID uint) *http.Cookie {
+	exp := time.Now().Add(7 * 24 * time.Hour).Unix()
+	return &http.Cookie{
+		Name:  "hive_customer_session",
+		Value: testAuth.MakeCustomerSessionValue(exp, customerID),
+	}
+}
+
+func expiredCustomerCookie(customerID uint) *http.Cookie {
+	exp := time.Now().Add(-1 * time.Hour).Unix()
+	return &http.Cookie{
+		Name:  "hive_customer_session",
+		Value: testAuth.MakeCustomerSessionValue(exp, customerID),
+	}
+}
+
+func insertTestPromoCode(t *testing.T, code string, discountPct int) uint {
+	t.Helper()
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	result := testDB.Exec(`INSERT INTO promo_codes (code, discount_pct, discount_amt, max_uses, used_count, valid_from, valid_to, enabled, created_at, updated_at)
+		VALUES (?, ?, 0, 100, 0, ?, ?, 1, ?, ?)`,
+		code, discountPct, "2020-01-01 00:00:00", "2099-12-31 23:59:59", now, now)
+	if result.Error != nil {
+		t.Fatalf("insert test promo code %s: %v", code, result.Error)
 	}
 	var id uint
 	testDB.Raw("SELECT LAST_INSERT_ID()").Scan(&id)
