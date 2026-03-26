@@ -207,7 +207,7 @@ export default function AuditLogsPage() {
                 logs.map((l) => (
                   <TableRow key={l.id}>
                     <TableCell className="whitespace-nowrap text-muted-foreground text-xs">
-                      {formatDate(l.created_at)}
+                      {formatDate(l.created_at ?? '')}
                     </TableCell>
                     <TableCell className="font-medium">{l.username}</TableCell>
                     <TableCell>

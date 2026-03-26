@@ -121,7 +121,7 @@ export default function CustomerDetail() {
   function openEdit() {
     if (!customer) return;
     setEditNickname(customer.nickname ?? '');
-    setEditStatus(customer.status);
+    setEditStatus(customer.status ?? 'active');
     setEditOpen(true);
   }
 
@@ -241,7 +241,7 @@ export default function CustomerDetail() {
                 </div>
                 <div>
                   <span className="text-xs text-muted-foreground">{t('status')}</span>
-                  <p><Badge className={STATUS_COLORS[customer.status]}>{statusLabel(customer.status)}</Badge></p>
+                  <p><Badge className={STATUS_COLORS[customer.status ?? '']}>{statusLabel(customer.status ?? '')}</Badge></p>
                 </div>
                 <div>
                   <span className="text-xs text-muted-foreground">{t('colCreatedAt')}</span>
@@ -280,7 +280,7 @@ export default function CustomerDetail() {
                     </TableRow>
                   )}
                   {subscriptions.map((sub) => {
-                    const pct = sub.traffic_limit > 0 ? Math.min(100, (sub.traffic_used / sub.traffic_limit) * 100) : 0;
+                    const pct = (sub.traffic_limit ?? 0) > 0 ? Math.min(100, ((sub.traffic_used ?? 0) / (sub.traffic_limit ?? 1)) * 100) : 0;
                     return (
                       <TableRow key={sub.id}>
                         <TableCell>{sub.plan_name}</TableCell>
@@ -299,20 +299,20 @@ export default function CustomerDetail() {
                               <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
                             </div>
                             <span className="text-xs text-muted-foreground">
-                              {formatBytes(sub.traffic_used)} / {formatBytes(sub.traffic_limit)}
+                              {formatBytes(sub.traffic_used ?? 0)} / {formatBytes(sub.traffic_limit ?? 0)}
                             </span>
                           </div>
                         </TableCell>
                         <TableCell>{formatDate(sub.expires_at)}</TableCell>
                         <TableCell>
-                          <Badge className={STATUS_COLORS[sub.status]}>{statusLabel(sub.status)}</Badge>
+                          <Badge className={STATUS_COLORS[sub.status ?? '']}>{statusLabel(sub.status ?? '')}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleResetToken(sub.id)} title={t('resetToken')}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleResetToken(sub.id!)} title={t('resetToken')}>
                               <RefreshCw className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteSub(sub.id)}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteSub(sub.id!)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>

@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"hive/registry/internal/model"
 )
 
 // insertTestTicket 插入一条测试工单，返回工单 ID。
 func insertTestTicket(t *testing.T, customerID uint) uint {
 	t.Helper()
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	result := testDB.Exec(`INSERT INTO tickets (customer_id, subject, status, created_at, updated_at)
 		VALUES (?, ?, 'open', ?, ?)`, customerID, "Test Subject", now, now)
 	if result.Error != nil {
@@ -147,7 +149,7 @@ func TestGetTicket_WithReplies(t *testing.T) {
 	tid := insertTestTicket(t, cid)
 
 	// 插入回复
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	testDB.Exec(`INSERT INTO ticket_replies (ticket_id, author, is_admin, content, created_at)
 		VALUES (?, 'admin', 1, '管理员回复', ?)`, tid, now)
 
@@ -277,7 +279,7 @@ func TestDeleteTicket_CascadeReplies(t *testing.T) {
 	tid := insertTestTicket(t, cid)
 
 	// 先添加回复
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	testDB.Exec(`INSERT INTO ticket_replies (ticket_id, author, is_admin, content, created_at)
 		VALUES (?, 'admin', 1, '回复内容', ?)`, tid, now)
 

@@ -36,7 +36,7 @@ func (h *Handler) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 
 	h.DB.Model(&model.Node{}).Where("mac = ?", req.MAC).Update("last_seen", now)
 

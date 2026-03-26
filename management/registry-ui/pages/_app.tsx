@@ -7,11 +7,13 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { PortalLayout } from '@/components/portal/PortalLayout';
 import { LocaleProvider, useLocale, type Locale } from '@/lib/locale';
 import '@/styles/globals.css';
+import zhMessages from '../messages/zh.json';
+import enMessages from '../messages/en.json';
 
 // 同步加载所有语言包，避免 SSR 阶段 MISSING_MESSAGE 警告
 const allMessages: Record<Locale, Record<string, unknown>> = {
-  zh: require('../messages/zh.json'),
-  en: require('../messages/en.json'),
+  zh: zhMessages,
+  en: enMessages,
 };
 
 const NO_LAYOUT_PATHS = ['/', '/login'];

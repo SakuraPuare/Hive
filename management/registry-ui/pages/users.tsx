@@ -318,7 +318,7 @@ export default function UsersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {allRoles.map((r) => (
-                    <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>
+                    <SelectItem key={r.id} value={r.name ?? ''}>{r.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -365,8 +365,8 @@ export default function UsersPage() {
               <label key={r.id} className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={selectedRoles.includes(r.name)}
-                  onChange={() => toggleRole(r.name)}
+                  checked={selectedRoles.includes(r.name ?? '')}
+                  onChange={() => toggleRole(r.name ?? '')}
                   className="h-4 w-4"
                 />
                 <span className="text-sm font-medium">{r.name}</span>

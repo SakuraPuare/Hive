@@ -71,7 +71,7 @@ func (h *Handler) HandleListRiskEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) writeRiskEvent(customerID *uint, eventType, detail, ip string) {
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	if customerID != nil {
 		h.DB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (?,?,?,?,?)",
 			*customerID, eventType, detail, ip, now)

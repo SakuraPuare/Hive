@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"hive/registry/internal/model"
 	"hive/registry/internal/store"
 )
 
@@ -110,7 +111,7 @@ func (h *Handler) updateTrafficFromPrometheus() {
 		planNodes[pl.PlanID][pl.NodeMAC] = true
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	updated := 0
 
 	for _, sub := range subs {
@@ -166,7 +167,7 @@ func (h *Handler) resetTrafficIfNeeded() {
 	h.DB.Raw("SELECT id, traffic_reset_at, started_at FROM customer_subscriptions WHERE status = 'active'").Scan(&subs)
 
 	now := time.Now().UTC()
-	nowStr := now.Format("2006-01-02 15:04:05")
+	nowStr := now.Format(model.TimeLayout)
 
 	for _, sub := range subs {
 		var lastReset time.Time
@@ -203,7 +204,7 @@ func checkSubscriptionValid(status string, trafficUsed, trafficLimit int64, expi
 		return false, "订阅已停用"
 	}
 
-	expTime, err := time.Parse("2006-01-02 15:04:05", expiresAt)
+	expTime, err := time.Parse(model.TimeLayout, expiresAt)
 	if err == nil && time.Now().UTC().After(expTime) {
 		return false, "订阅已过期"
 	}
@@ -263,7 +264,7 @@ func (h *Handler) HandleTrafficSummary(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleResetSubscriptionTraffic(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	res := h.DB.Exec(
 		"UPDATE customer_subscriptions SET traffic_used = 0, traffic_reset_at = ?, updated_at = ? WHERE id = ?",
 		now, now, id,

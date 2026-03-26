@@ -2,22 +2,15 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { useCustomer } from '@/lib/portal-auth';
-import { API_PREFIX } from '@/lib/openapi-session';
+import { portalSessionApi } from '@/lib/openapi-session';
+import { PortalService } from '@/src/generated/client';
+import type { model_Order } from '@/src/generated/client/models/model_Order';
 import { Badge } from '@/components/ui/badge';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
-
-type Order = {
-  id: number;
-  order_no: string;
-  plan_name: string;
-  amount_cents: number;
-  status: string;
-  created_at: string;
-};
 
 function formatDate(s: string) {
   const d = new Date(s);
@@ -37,7 +30,7 @@ export default function PortalOrdersPage() {
   const router = useRouter();
   const { customer, loading: authLoading } = useCustomer();
 
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<model_Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -45,10 +38,8 @@ export default function PortalOrdersPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_PREFIX}/portal/orders`, { credentials: 'include' });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setOrders(data.items ?? data ?? []);
+      const data = await portalSessionApi(PortalService.portalOrders({}));
+      setOrders(data.items ?? []);
     } catch {
       setError(t('loadFailed'));
     } finally {
@@ -99,14 +90,14 @@ export default function PortalOrdersPage() {
               orders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="font-mono text-sm">{order.order_no}</TableCell>
-                  <TableCell>{order.plan_name}</TableCell>
-                  <TableCell>¥{(order.amount_cents / 100).toFixed(2)}</TableCell>
+                  <TableCell>{order.plan_id}</TableCell>
+                  <TableCell>¥{((order.amount ?? 0) / 100).toFixed(2)}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={STATUS_COLORS[order.status] ?? ''}>
-                      {t(`status${order.status.charAt(0).toUpperCase() + order.status.slice(1)}` as any)}
+                    <Badge variant="outline" className={STATUS_COLORS[order.status ?? ''] ?? ''}>
+                      {t(`status${(order.status ?? '').charAt(0).toUpperCase() + (order.status ?? '').slice(1)}` as any)}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(order.created_at)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{formatDate(order.created_at ?? '')}</TableCell>
                 </TableRow>
               ))
             )}

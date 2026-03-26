@@ -145,7 +145,7 @@ export default function TicketDetailPage() {
                 <div className={`max-w-[75%] rounded-lg px-4 py-3 ${isAdmin ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-medium opacity-75">{reply.author ?? ''}</span>
-                    <span className="text-xs opacity-50">{formatDate(reply.created_at)}</span>
+                    <span className="text-xs opacity-50">{formatDate(reply.created_at ?? '')}</span>
                   </div>
                   <p className="text-sm whitespace-pre-wrap">{reply.content}</p>
                 </div>

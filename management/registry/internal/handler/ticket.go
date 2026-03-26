@@ -174,7 +174,7 @@ func (h *Handler) HandleAddTicketReply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 
 	var ticketID uint
 	h.DB.Raw("SELECT id FROM tickets WHERE id = ?", id).Scan(&ticketID)
@@ -219,7 +219,7 @@ func (h *Handler) HandleCloseTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	if err := h.DB.Exec("UPDATE tickets SET status='closed', updated_at=? WHERE id=?", now, id).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return

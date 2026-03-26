@@ -164,7 +164,7 @@ func (h *Handler) HandlePortalRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	nickname := req.Nickname
 	if nickname == "" {
 		nickname = req.Email
@@ -404,7 +404,7 @@ func (h *Handler) HandlePortalCreateOrder(w http.ResponseWriter, r *http.Request
 	// 应用优惠码
 	if req.PromoCode != "" {
 		var promo model.PromoCode
-		now := time.Now().UTC().Format("2006-01-02 15:04:05")
+		now := time.Now().UTC().Format(model.TimeLayout)
 		h.DB.Raw(
 			"SELECT * FROM promo_codes WHERE code = ? AND enabled = 1 AND (valid_from = '' OR valid_from <= ?) AND (valid_to = '' OR valid_to >= ?) AND (max_uses = 0 OR used_count < max_uses)",
 			req.PromoCode, now, now,
@@ -432,7 +432,7 @@ func (h *Handler) HandlePortalCreateOrder(w http.ResponseWriter, r *http.Request
 	}
 
 	orderNo := generateOrderNo()
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 
 	if err := h.DB.Exec(
 		"INSERT INTO orders (order_no, customer_id, plan_id, amount, original_amount, promo_code_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -519,7 +519,7 @@ func (h *Handler) HandlePortalCreateTicket(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 
 	result := h.DB.Exec(
 		"INSERT INTO tickets (customer_id, subject, status, created_at, updated_at) VALUES (?,?,?,?,?)",
@@ -677,7 +677,7 @@ func (h *Handler) HandlePortalReplyTicket(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	var email string
 	h.DB.Raw("SELECT email FROM customers WHERE id = ?", cid).Scan(&email)
 

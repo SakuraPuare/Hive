@@ -136,7 +136,7 @@ func (h *Handler) HandleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	if err := h.DB.Exec(
 		"INSERT INTO subscription_groups (name, token, created_at, updated_at) VALUES (?, ?, ?, ?)",
 		req.Name, token, now, now,
@@ -262,7 +262,7 @@ func (h *Handler) HandleSetGroupNodes(w http.ResponseWriter, r *http.Request) {
 		for _, mac := range req.Nodes {
 			tx.Exec("INSERT IGNORE INTO subscription_group_nodes (group_id, node_mac) VALUES (?, ?)", id, mac)
 		}
-		now := time.Now().UTC().Format("2006-01-02 15:04:05")
+		now := time.Now().UTC().Format(model.TimeLayout)
 		tx.Exec("UPDATE subscription_groups SET updated_at=? WHERE id=?", now, id)
 		return nil
 	}); err != nil {
@@ -301,7 +301,7 @@ func (h *Handler) HandleResetGroupToken(w http.ResponseWriter, r *http.Request) 
 		h.jsonErr(w, http.StatusInternalServerError, "token: "+err.Error())
 		return
 	}
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	if err := h.DB.Exec("UPDATE subscription_groups SET token=?, updated_at=? WHERE id=?", token, now, id).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return

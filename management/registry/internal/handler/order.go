@@ -161,7 +161,7 @@ func (h *Handler) HandleUpdateOrderStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 
 	var o model.Order
 	if err := h.DB.Raw(
@@ -202,7 +202,7 @@ func (h *Handler) HandleUpdateOrderStatus(w http.ResponseWriter, r *http.Request
 			token = generateOrderNo()
 		}
 		startedAt := now
-		expiresAt := time.Now().UTC().AddDate(0, 0, plan.DurationDays).Format("2006-01-02 15:04:05")
+		expiresAt := time.Now().UTC().AddDate(0, 0, plan.DurationDays).Format(model.TimeLayout)
 		h.DB.Exec(
 			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) VALUES (?,?,?,0,?,?,?,?,'active',?,?)",
 			o.CustomerID, o.PlanID, token, plan.TrafficLimit, plan.DeviceLimit, startedAt, expiresAt, now, now,
@@ -280,7 +280,7 @@ func (h *Handler) HandleCreatePromoCode(w http.ResponseWriter, r *http.Request) 
 	if req.MaxUses != nil {
 		maxUses = *req.MaxUses
 	}
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	if err := h.DB.Exec(
 		"INSERT INTO promo_codes (code, discount_pct, discount_amt, max_uses, used_count, valid_from, valid_to, enabled, created_at, updated_at) VALUES (?,?,?,?,0,?,?,?,?,?)",
 		req.Code, discountPct, discountAmt, maxUses, *req.ValidFrom, *req.ValidTo, enabled, now, now).Error; err != nil {
@@ -317,7 +317,7 @@ func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) 
 		h.jsonErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	updates := map[string]any{"updated_at": now}
 	if req.DiscountPct != nil {
 		updates["discount_pct"] = *req.DiscountPct

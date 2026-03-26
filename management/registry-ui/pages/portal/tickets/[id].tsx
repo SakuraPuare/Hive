@@ -2,30 +2,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { useCustomer } from '@/lib/portal-auth';
-import { API_PREFIX } from '@/lib/openapi-session';
+import { PortalService } from '@/src/generated/client';
+import { portalSessionApi } from '@/lib/openapi-session';
+import type { handler_PortalTicketDetail } from '@/src/generated/client/models/handler_PortalTicketDetail';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Send } from 'lucide-react';
 
-type Reply = {
-  id: number;
-  author: string;
-  role: string;
-  content: string;
-  created_at: string;
-};
-
-type TicketDetail = {
-  ticket: {
-    id: number;
-    subject: string;
-    status: string;
-    created_at: string;
-  };
-  replies: Reply[];
-};
 
 function formatDate(s: string) {
   const d = new Date(s);
@@ -46,7 +31,7 @@ export default function PortalTicketDetailPage() {
   const { id } = router.query;
   const { customer, loading: authLoading } = useCustomer();
 
-  const [ticket, setTicket] = useState<TicketDetail | null>(null);
+  const [ticket, setTicket] = useState<handler_PortalTicketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -56,9 +41,8 @@ export default function PortalTicketDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_PREFIX}/portal/tickets/${id}`, { credentials: 'include' });
-      if (!res.ok) throw new Error();
-      setTicket(await res.json());
+      const data = await portalSessionApi(PortalService.portalGetTicket({ id: Number(id) }));
+      setTicket(data);
     } catch {
       setError(t('loadFailed'));
     } finally {
@@ -85,16 +69,10 @@ export default function PortalTicketDetailPage() {
     setSending(true);
     setSendError('');
     try {
-      const res = await fetch(`${API_PREFIX}/portal/tickets/${ticket.ticket.id}/reply`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: replyContent.trim() }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw { error: body.error || t('replyFailed') };
-      }
+      await portalSessionApi(PortalService.portalReplyTicket({
+        id: ticket.ticket!.id!,
+        requestBody: { content: replyContent.trim() },
+      }));
       setReplyContent('');
       loadTicket();
     } catch (e: any) {
@@ -108,7 +86,8 @@ export default function PortalTicketDetailPage() {
   if (error) return <p className="p-6 text-sm text-destructive">{error}</p>;
   if (!ticket) return null;
 
-  const isClosed = ticket.ticket.status === 'closed';
+  const tk = ticket.ticket!;
+  const isClosed = tk.status === 'closed';
 
   return (
     <div className="space-y-4">
@@ -117,9 +96,9 @@ export default function PortalTicketDetailPage() {
           <ArrowLeft className="h-4 w-4 mr-1" />
           {tCommon('back')}
         </Button>
-        <h1 className="text-lg font-semibold flex-1">#{ticket.ticket.id} {ticket.ticket.subject}</h1>
-        <Badge variant="outline" className={STATUS_COLORS[ticket.ticket.status] ?? ''}>
-          {t(`status${ticket.ticket.status.charAt(0).toUpperCase() + ticket.ticket.status.slice(1)}` as any)}
+        <h1 className="text-lg font-semibold flex-1">#{tk.id} {tk.subject}</h1>
+        <Badge variant="outline" className={STATUS_COLORS[tk.status ?? ''] ?? ''}>
+          {t(`status${(tk.status ?? '').charAt(0).toUpperCase() + (tk.status ?? '').slice(1)}` as any)}
         </Badge>
       </div>
 
@@ -129,13 +108,13 @@ export default function PortalTicketDetailPage() {
           <p className="text-center text-sm text-muted-foreground py-8">{t('noReplies')}</p>
         ) : (
           ticket.replies.map((reply) => {
-            const isAdmin = reply.role === 'admin';
+            const isAdmin = reply.is_admin;
             return (
               <div key={reply.id} className={`flex ${isAdmin ? 'justify-start' : 'justify-end'}`}>
                 <div className={`max-w-[75%] rounded-lg px-4 py-3 ${isAdmin ? 'bg-muted' : 'bg-primary text-primary-foreground'}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-medium opacity-75">{reply.author}</span>
-                    <span className="text-xs opacity-50">{formatDate(reply.created_at)}</span>
+                    <span className="text-xs opacity-50">{formatDate(reply.created_at ?? '')}</span>
                   </div>
                   <p className="text-sm whitespace-pre-wrap">{reply.content}</p>
                 </div>

@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"hive/registry/internal/mailer"
+	"hive/registry/internal/model"
 )
 
 // insertTestSubscription inserts a customer_subscription and returns its ID.
 func insertTestSubscription(t *testing.T, customerID, planID uint, status string, expiresAt time.Time) uint {
 	t.Helper()
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
-	exp := expiresAt.UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
+	exp := expiresAt.UTC().Format(model.TimeLayout)
 	token := "tok-" + time.Now().Format("150405.000000000")
 	result := testDB.Exec(
 		`INSERT INTO customer_subscriptions (customer_id, plan_id, token, status, traffic_used, traffic_limit, device_limit, started_at, expires_at, created_at, updated_at)
@@ -68,7 +69,7 @@ func TestExpiryNotifier_SkipsAlreadyNotified(t *testing.T) {
 	subID := insertTestSubscription(t, cid, pid, "active", time.Now().UTC().Add(2*24*time.Hour))
 
 	// Manually set expiry_notified_at
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	testDB.Exec("UPDATE customer_subscriptions SET expiry_notified_at = ? WHERE id = ?", now, subID)
 
 	ml := newTestMailer()

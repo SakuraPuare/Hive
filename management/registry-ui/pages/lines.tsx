@@ -139,7 +139,7 @@ export default function LinesPage() {
 
   // ── Delete ──────────────────────────────────────────────────────────
   async function handleDelete(line: model_Line) {
-    if (!confirm(t('lineDeleteConfirm', { name: line.name }))) return;
+    if (!confirm(t('lineDeleteConfirm', { name: line.name ?? '' }))) return;
     try {
       await sessionApi(AdminService.adminDeleteLine({ id: line.id! }));
       loadLines();
@@ -186,9 +186,9 @@ export default function LinesPage() {
     if (!nodeSearch) return true;
     const q = nodeSearch.toLowerCase();
     return (
-      n.hostname.toLowerCase().includes(q) ||
+      (n.hostname ?? '').toLowerCase().includes(q) ||
       n.location?.toLowerCase().includes(q) ||
-      n.mac.toLowerCase().includes(q) ||
+      (n.mac ?? '').toLowerCase().includes(q) ||
       n.tailscale_ip?.toLowerCase().includes(q)
     );
   });
@@ -476,8 +476,8 @@ export default function LinesPage() {
                   >
                     <input
                       type="checkbox"
-                      checked={selectedMacs.has(n.mac)}
-                      onChange={() => toggleMac(n.mac)}
+                      checked={selectedMacs.has(n.mac ?? '')}
+                      onChange={() => toggleMac(n.mac ?? '')}
                       className="h-4 w-4"
                     />
                     <span className="text-sm">

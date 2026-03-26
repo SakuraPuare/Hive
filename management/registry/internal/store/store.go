@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"hive/registry/internal/config"
+	"hive/registry/internal/model"
 )
 
 // AllPermissions is the full list of system-defined permissions, seeded into the permissions table on startup.
@@ -115,7 +116,7 @@ func BootstrapSuperadmin(db *gorm.DB, adminUser, adminPass string) {
 	if err != nil {
 		log.Fatalf("BootstrapSuperadmin bcrypt: %v", err)
 	}
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	if err := db.Exec(
 		"INSERT INTO users (username, password_hash, role, created_at, updated_at) VALUES (?, ?, 'superadmin', ?, ?)",
 		adminUser, string(hash), now, now,
@@ -128,7 +129,7 @@ func BootstrapSuperadmin(db *gorm.DB, adminUser, adminPass string) {
 // BootstrapRBAC idempotently seeds permissions, roles, and role_permissions,
 // and migrates existing users.role values into the user_roles table.
 func BootstrapRBAC(db *gorm.DB) {
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 
 	// 1. Seed permissions
 	for _, p := range AllPermissions {
@@ -178,7 +179,7 @@ func BootstrapRBAC(db *gorm.DB) {
 
 // WriteAuditLog inserts a record into the audit_logs table.
 func WriteAuditLog(db *gorm.DB, username, action, detail, ip string) {
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	if err := db.Exec(
 		"INSERT INTO audit_logs (username, action, detail, ip, created_at) VALUES (?, ?, ?, ?, ?)",
 		username, action, detail, ip, now,

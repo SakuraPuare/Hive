@@ -158,7 +158,7 @@ func (h *Handler) HandleCreateCustomer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	result := h.DB.Exec(
 		"INSERT INTO customers (email, password_hash, nickname, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)",
 		req.Email, string(hash), req.Nickname, now, now,
@@ -234,7 +234,7 @@ func (h *Handler) HandleUpdateCustomer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updates := map[string]any{"updated_at": time.Now().UTC().Format("2006-01-02 15:04:05")}
+	updates := map[string]any{"updated_at": time.Now().UTC().Format(model.TimeLayout)}
 	if req.Nickname != nil {
 		updates["nickname"] = *req.Nickname
 	}
@@ -326,8 +326,8 @@ func (h *Handler) HandleCreateSubscription(w http.ResponseWriter, r *http.Reques
 	}
 
 	now := time.Now().UTC()
-	nowStr := now.Format("2006-01-02 15:04:05")
-	expiresAt := now.AddDate(0, 0, plan.DurationDays).Format("2006-01-02 15:04:05")
+	nowStr := now.Format(model.TimeLayout)
+	expiresAt := now.AddDate(0, 0, plan.DurationDays).Format(model.TimeLayout)
 
 	result := h.DB.Exec(
 		"INSERT INTO customer_subscriptions (customer_id, plan_id, token, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) "+
@@ -427,7 +427,7 @@ func (h *Handler) HandleResetCustomerPassword(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	if err := h.DB.Exec("UPDATE customers SET password_hash = ?, updated_at = ? WHERE id = ?", string(hash), now, id).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
@@ -485,7 +485,7 @@ func (h *Handler) HandleUpdateSubscription(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	updates := map[string]any{"updated_at": time.Now().UTC().Format("2006-01-02 15:04:05")}
+	updates := map[string]any{"updated_at": time.Now().UTC().Format(model.TimeLayout)}
 	if req.Status != nil {
 		updates["status"] = *req.Status
 	}
@@ -551,7 +551,7 @@ func (h *Handler) HandleResetSubscriptionToken(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	if err := h.DB.Exec("UPDATE customer_subscriptions SET token = ?, updated_at = ? WHERE id = ?", token, now, id).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return

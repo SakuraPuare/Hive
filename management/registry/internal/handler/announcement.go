@@ -99,7 +99,7 @@ func (h *Handler) HandleCreateAnnouncement(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	ann := model.Announcement{
 		Title:     req.Title,
 		Content:   req.Content,
@@ -155,7 +155,7 @@ func (h *Handler) HandleUpdateAnnouncement(w http.ResponseWriter, r *http.Reques
 	}
 
 	updates := map[string]any{
-		"updated_at": time.Now().UTC().Format("2006-01-02 15:04:05"),
+		"updated_at": time.Now().UTC().Format(model.TimeLayout),
 	}
 	if req.Title != "" {
 		updates["title"] = req.Title

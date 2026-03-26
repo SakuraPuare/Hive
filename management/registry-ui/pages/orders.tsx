@@ -175,15 +175,15 @@ export default function OrdersPage() {
                   <TableCell className="font-mono text-xs">{order.order_no}</TableCell>
                   <TableCell>{order.customer_email}</TableCell>
                   <TableCell>{order.plan_name}</TableCell>
-                  <TableCell>{formatAmount(order.amount)}</TableCell>
-                  <TableCell className="text-muted-foreground">{formatAmount(order.original_amount)}</TableCell>
+                  <TableCell>{formatAmount(order.amount ?? 0)}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatAmount(order.original_amount ?? 0)}</TableCell>
                   <TableCell>{order.promo_code || <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell>
-                    <Badge className={STATUS_COLORS[order.status] ?? ''} variant="outline">
-                      {t(`status${order.status.charAt(0).toUpperCase() + order.status.slice(1)}` as any)}
+                    <Badge className={STATUS_COLORS[order.status ?? ''] ?? ''} variant="outline">
+                      {t(`status${(order.status ?? '').charAt(0).toUpperCase() + (order.status ?? '').slice(1)}` as any)}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(order.created_at)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{formatDate(order.created_at ?? '')}</TableCell>
                   {canWrite && (
                     <TableCell>
                       {order.status === 'pending' && (

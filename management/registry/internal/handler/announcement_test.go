@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"hive/registry/internal/model"
 )
 
 // insertTestAnnouncement inserts a test announcement and returns its ID.
 func insertTestAnnouncement(t *testing.T, title, level string, pinned, published bool) uint {
 	t.Helper()
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	result := testDB.Exec(
 		`INSERT INTO announcements (title, content, level, pinned, published, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,

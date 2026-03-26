@@ -95,7 +95,7 @@ func (h *Handler) HandleCreatePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	p := model.Plan{
 		Name:      req.Name,
 		Enabled:   true,
@@ -164,7 +164,7 @@ func (h *Handler) HandleUpdatePlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updates := map[string]any{
-		"updated_at": time.Now().UTC().Format("2006-01-02 15:04:05"),
+		"updated_at": time.Now().UTC().Format(model.TimeLayout),
 	}
 	if req.Name != nil {
 		updates["name"] = *req.Name
@@ -346,7 +346,7 @@ func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.N
 	sub.Status = row.Status
 	sub.TrafficUsed = row.TrafficUsed
 	sub.TrafficLimit = row.TrafficLimit
-	sub.ExpiresAt = row.ExpiresAt.UTC().Format("2006-01-02 15:04:05")
+	sub.ExpiresAt = row.ExpiresAt.UTC().Format(model.TimeLayout)
 
 	var custStatus string
 	h.DB.Raw("SELECT status FROM customers WHERE id=?", row.CustomerID).Scan(&custStatus)

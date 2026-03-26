@@ -5,13 +5,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hive/registry/internal/model"
 )
 
 // insertSubTestNode inserts a node with cf_url and xray_uuid set so subscription
 // endpoints actually produce output.
 func insertSubTestNode(t *testing.T, mac string) {
 	t.Helper()
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 	mac6 := mac
 	if len(mac) > 6 {
 		mac6 = mac[len(mac)-6:]
@@ -30,7 +32,7 @@ func setupCustomerSubscription(t *testing.T) string {
 	t.Helper()
 	insertSubTestNode(t, "aabbccddeeff")
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	now := time.Now().UTC().Format(model.TimeLayout)
 
 	// line
 	testDB.Exec("INSERT INTO `lines` (name, region, token, enabled, display_order, created_at, updated_at) VALUES ('JP','JP','dummy',1,0,?,?)", now, now)
@@ -51,7 +53,7 @@ func setupCustomerSubscription(t *testing.T) string {
 
 	// subscription
 	token := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format("2006-01-02 15:04:05")
+	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format(model.TimeLayout)
 	testDB.Exec(`INSERT INTO customer_subscriptions (customer_id, plan_id, token, status, traffic_used, traffic_limit, device_limit, started_at, expires_at, created_at, updated_at)
 		VALUES (?,?,?,'active',0,107374182400,3,?,?,?,?)`, cid, planID, token, now, expires, now, now)
 
