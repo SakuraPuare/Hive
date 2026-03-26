@@ -1,0 +1,182 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "title": "请求 QPS（按路径）",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(hive_http_requests_total[5m])) by (path)",
+          "legendFormat": "{{ path }}"
+        }
+      ]
+    },
+    {
+      "title": "请求延迟 P50 / P95 / P99",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(hive_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(hive_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(hive_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P99"
+        }
+      ]
+    },
+    {
+      "title": "错误率（5xx）",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "min": 0, "max": 1 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(hive_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(hive_http_requests_total[5m]))",
+          "legendFormat": "5xx 错误率"
+        }
+      ]
+    },
+    {
+      "title": "订阅请求量",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(hive_subscription_requests_total[5m])) by (format)",
+          "legendFormat": "{{ format }}"
+        }
+      ]
+    },
+    {
+      "title": "节点总数",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "hive_nodes_total",
+          "legendFormat": "节点数"
+        }
+      ]
+    },
+    {
+      "title": "Goroutines",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "go_goroutines{job=\"hive-registry\"}",
+          "legendFormat": "goroutines"
+        }
+      ]
+    },
+    {
+      "title": "内存使用",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "go_memstats_alloc_bytes{job=\"hive-registry\"}",
+          "legendFormat": "heap alloc"
+        }
+      ]
+    },
+    {
+      "title": "GC 频率",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(go_gc_duration_seconds_count{job=\"hive-registry\"}[5m])",
+          "legendFormat": "GC/s"
+        }
+      ]
+    },
+    {
+      "title": "Go Runtime 内存详情",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "go_memstats_alloc_bytes{job=\"hive-registry\"}",
+          "legendFormat": "heap alloc"
+        },
+        {
+          "expr": "go_memstats_sys_bytes{job=\"hive-registry\"}",
+          "legendFormat": "sys"
+        },
+        {
+          "expr": "go_memstats_stack_inuse_bytes{job=\"hive-registry\"}",
+          "legendFormat": "stack"
+        }
+      ]
+    },
+    {
+      "title": "Goroutines 趋势",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "go_goroutines{job=\"hive-registry\"}",
+          "legendFormat": "goroutines"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["hive", "registry"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Hive Registry",
+  "uid": "hive-registry",
+  "version": 1
+}
