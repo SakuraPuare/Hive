@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { ThemeProvider } from 'next-themes';
 import { NextIntlClientProvider } from 'next-intl';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { PortalLayout } from '@/components/portal/PortalLayout';
 import { LocaleProvider, useLocale, type Locale } from '@/lib/locale';
 import '@/styles/globals.css';
 
@@ -14,6 +15,7 @@ const allMessages: Record<Locale, Record<string, unknown>> = {
 };
 
 const NO_LAYOUT_PATHS = ['/', '/login'];
+const PORTAL_NO_LAYOUT_PATHS = ['/portal/login', '/portal/register'];
 
 function IntlWrapper({ children }: { children: React.ReactNode }) {
   const { locale } = useLocale();
@@ -28,19 +30,24 @@ function IntlWrapper({ children }: { children: React.ReactNode }) {
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
-  const useLayout = !NO_LAYOUT_PATHS.includes(router.pathname);
+  const isNoLayout = NO_LAYOUT_PATHS.includes(router.pathname);
+  const isPortal = router.pathname.startsWith('/portal');
+  const isPortalNoLayout = PORTAL_NO_LAYOUT_PATHS.includes(router.pathname);
+
+  let content: React.ReactNode;
+  if (isNoLayout || isPortalNoLayout) {
+    content = <Component {...pageProps} />;
+  } else if (isPortal) {
+    content = <PortalLayout><Component {...pageProps} /></PortalLayout>;
+  } else {
+    content = <AppLayout><Component {...pageProps} /></AppLayout>;
+  }
 
   return (
     <LocaleProvider>
       <IntlWrapper>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {useLayout ? (
-            <AppLayout>
-              <Component {...pageProps} />
-            </AppLayout>
-          ) : (
-            <Component {...pageProps} />
-          )}
+          {content}
         </ThemeProvider>
       </IntlWrapper>
     </LocaleProvider>
