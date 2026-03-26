@@ -36,6 +36,21 @@ type SetLineNodesRequest struct {
 	Nodes []string `json:"nodes"`
 }
 
+type CreateLineResponse struct {
+	ID    uint   `json:"id"`
+	Token string `json:"token"`
+}
+
+// HandleListLines godoc
+// @Summary      获取线路列表
+// @ID           AdminListLines
+// @Description  返回所有线路（含节点数量）
+// @Tags         admin
+// @Produce      json
+// @Success      200 {array} model.Line
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/lines [get]
+//
 // HandleListLines handles GET /admin/lines
 func (h *Handler) HandleListLines(w http.ResponseWriter, r *http.Request) {
 	var lines []model.Line
@@ -50,6 +65,19 @@ func (h *Handler) HandleListLines(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, lines)
 }
 
+// HandleCreateLine godoc
+// @Summary      创建线路
+// @ID           AdminCreateLine
+// @Description  创建新线路并生成订阅 token
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Param        body body CreateLineRequest true "线路信息"
+// @Success      200 {object} CreateLineResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/lines [post]
+//
 // HandleCreateLine handles POST /admin/lines
 func (h *Handler) HandleCreateLine(w http.ResponseWriter, r *http.Request) {
 	var req CreateLineRequest
@@ -91,6 +119,21 @@ func (h *Handler) HandleCreateLine(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]any{"id": l.ID, "token": token})
 }
 
+// HandleUpdateLine godoc
+// @Summary      更新线路
+// @ID           AdminUpdateLine
+// @Description  更新指定线路的属性
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Param        id   path int              true "线路 ID"
+// @Param        body body UpdateLineRequest true "更新字段"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/lines/{id} [patch]
+//
 // HandleUpdateLine handles PATCH /admin/lines/{id}
 func (h *Handler) HandleUpdateLine(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
@@ -139,6 +182,19 @@ func (h *Handler) HandleUpdateLine(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandleDeleteLine godoc
+// @Summary      删除线路
+// @ID           AdminDeleteLine
+// @Description  删除指定线路
+// @Tags         admin
+// @Produce      json
+// @Param        id path int true "线路 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/lines/{id} [delete]
+//
 // HandleDeleteLine handles DELETE /admin/lines/{id}
 func (h *Handler) HandleDeleteLine(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
@@ -162,6 +218,17 @@ func (h *Handler) HandleDeleteLine(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandleGetLineNodes godoc
+// @Summary      获取线路节点
+// @ID           AdminGetLineNodes
+// @Description  返回指定线路关联的节点 MAC 列表
+// @Tags         admin
+// @Produce      json
+// @Param        id path int true "线路 ID"
+// @Success      200 {array} string
+// @Failure      400 {object} ErrorResponse
+// @Router       /admin/lines/{id}/nodes [get]
+//
 // HandleGetLineNodes handles GET /admin/lines/{id}/nodes
 func (h *Handler) HandleGetLineNodes(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
@@ -175,6 +242,21 @@ func (h *Handler) HandleGetLineNodes(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, macs)
 }
 
+// HandleSetLineNodes godoc
+// @Summary      设置线路节点
+// @ID           AdminSetLineNodes
+// @Description  替换指定线路的节点列表
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Param        id   path int                true "线路 ID"
+// @Param        body body SetLineNodesRequest true "节点 MAC 列表"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/lines/{id}/nodes [put]
+//
 // HandleSetLineNodes handles PUT /admin/lines/{id}/nodes
 func (h *Handler) HandleSetLineNodes(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
@@ -218,6 +300,19 @@ func (h *Handler) HandleSetLineNodes(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// HandleResetLineToken godoc
+// @Summary      重置线路 token
+// @ID           AdminResetLineToken
+// @Description  为指定线路生成新的订阅 token
+// @Tags         admin
+// @Produce      json
+// @Param        id path int true "线路 ID"
+// @Success      200 {object} ResetTokenResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/lines/{id}/reset-token [post]
+//
 // HandleResetLineToken handles POST /admin/lines/{id}/reset-token
 func (h *Handler) HandleResetLineToken(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
@@ -265,6 +360,17 @@ func (h *Handler) queryLineNodes(token string) (lineName string, nodes []model.N
 	return l.Name, nodes, err
 }
 
+// HandlePublicLineVless godoc
+// @Summary      获取线路 VLESS 订阅
+// @ID           PublicLineVless
+// @Description  返回 base64 编码的 VLESS 订阅链接
+// @Tags         subscription
+// @Produce      plain
+// @Param        token path string true "线路 token"
+// @Success      200 {string} string "VLESS subscription"
+// @Failure      404 {string} string "Not Found"
+// @Router       /l/{token} [get]
+//
 // HandlePublicLineVless handles GET /l/{token}
 func (h *Handler) HandlePublicLineVless(w http.ResponseWriter, r *http.Request) {
 	middleware.SubscriptionRequestsTotal.WithLabelValues("public_line_vless").Inc()
@@ -304,6 +410,17 @@ func (h *Handler) HandlePublicLineVless(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprint(w, content)
 }
 
+// HandlePublicLineClash godoc
+// @Summary      获取线路 Clash 订阅
+// @ID           PublicLineClash
+// @Description  返回 Clash/Mihomo YAML 格式订阅配置
+// @Tags         subscription
+// @Produce      plain
+// @Param        token path string true "线路 token"
+// @Success      200 {string} string "Clash subscription"
+// @Failure      404 {string} string "Not Found"
+// @Router       /l/{token}/clash [get]
+//
 // HandlePublicLineClash handles GET /l/{token}/clash
 func (h *Handler) HandlePublicLineClash(w http.ResponseWriter, r *http.Request) {
 	middleware.SubscriptionRequestsTotal.WithLabelValues("public_line_clash").Inc()
