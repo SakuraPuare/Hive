@@ -4,7 +4,7 @@ import type { main_Node } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Server, Network, Globe, CalendarPlus } from 'lucide-react';
+import { Server, Network, Globe, CalendarPlus, Wifi, WifiOff } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useLocale } from '@/lib/locale';
 
@@ -56,8 +56,12 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  const tailscaleCount = useMemo(
-    () => nodes.filter((n) => n.tailscale_ip).length,
+  const onlineCount = useMemo(
+    () => nodes.filter((n) => (n as any).probe_status === 'online').length,
+    [nodes]
+  );
+  const offlineCount = useMemo(
+    () => nodes.filter((n) => (n as any).probe_status === 'offline').length,
     [nodes]
   );
   const cfCount = useMemo(() => nodes.filter((n) => n.cf_url).length, [nodes]);
@@ -91,8 +95,8 @@ export default function Dashboard() {
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatsCard title={t('totalNodes')} value={nodes.length} icon={Server} />
-            <StatsCard title={t('tailscaleConnected')} value={tailscaleCount} icon={Network} />
-            <StatsCard title={t('cfTunnelActive')} value={cfCount} icon={Globe} />
+            <StatsCard title={t('onlineNodes')} value={onlineCount} icon={Wifi} />
+            <StatsCard title={t('offlineNodes')} value={offlineCount} icon={WifiOff} />
             <StatsCard title={t('newThisWeek')} value={recentNodes.length} icon={CalendarPlus} />
           </div>
 
