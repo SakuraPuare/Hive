@@ -2,20 +2,24 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { handler_StatusResponse } from '../models/handler_StatusResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
-export class DashboardService {
+export class SystemService {
     /**
-     * 首页
-     * 返回 Hive Registry 首页 HTML
-     * @returns string HTML page
+     * 健康检查
+     * 检查服务和数据库连接是否正常
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
-    public static dashboard(): CancelablePromise<string> {
+    public static health(): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'GET',
-            url: '/',
+            url: '/health',
+            errors: {
+                503: `Service Unavailable`,
+            },
         });
     }
 }

@@ -7,15 +7,66 @@ import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class SubscriptionService {
     /**
-     * Get VLESS subscription content for a line
-     * @returns string OK
+     * 获取客户 Clash 订阅
+     * 根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)
+     * @returns string Clash subscription
+     * @throws ApiError
+     */
+    public static customerSubscriptionClash({
+        token,
+    }: {
+        /**
+         * 订阅 token
+         */
+        token: string,
+    }): CancelablePromise<string> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/c/{token}',
+            path: {
+                'token': token,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 获取客户 VLESS 订阅
+     * 根据订阅 token 返回 base64 编码的 VLESS 订阅链接 (text/plain)
+     * @returns string VLESS subscription
+     * @throws ApiError
+     */
+    public static customerSubscriptionVless({
+        token,
+    }: {
+        /**
+         * 订阅 token
+         */
+        token: string,
+    }): CancelablePromise<string> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/c/{token}/vless',
+            path: {
+                'token': token,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 获取线路 VLESS 订阅
+     * 返回 base64 编码的 VLESS 订阅链接
+     * @returns string VLESS subscription
      * @throws ApiError
      */
     public static publicLineVless({
         token,
     }: {
         /**
-         * Line subscription token
+         * 线路 token
          */
         token: string,
     }): CancelablePromise<string> {
@@ -31,15 +82,16 @@ export class SubscriptionService {
         });
     }
     /**
-     * Get Clash subscription content for a line
-     * @returns string OK
+     * 获取线路 Clash 订阅
+     * 返回 Clash/Mihomo YAML 格式订阅配置
+     * @returns string Clash subscription
      * @throws ApiError
      */
     public static publicLineClash({
         token,
     }: {
         /**
-         * Line subscription token
+         * 线路 token
          */
         token: string,
     }): CancelablePromise<string> {
@@ -55,8 +107,35 @@ export class SubscriptionService {
         });
     }
     /**
-     * VLESS subscription (base64)
-     * @returns string base64 encoded subscription
+     * 公开订阅组 Clash 配置
+     * 通过 Token 获取订阅组的 Clash YAML 配置（无需认证）
+     * @returns string Clash subscription
+     * @throws ApiError
+     */
+    public static publicGroupClash({
+        token,
+    }: {
+        /**
+         * 订阅组 Token
+         */
+        token: string,
+    }): CancelablePromise<string> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/s/{token}',
+            path: {
+                'token': token,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 获取 VLESS 订阅
+     * 返回 base64 编码的 VLESS 订阅链接
+     * @returns string VLESS subscription
      * @throws ApiError
      */
     public static subscriptionVless(): CancelablePromise<string> {
@@ -64,13 +143,14 @@ export class SubscriptionService {
             method: 'GET',
             url: '/subscription',
             errors: {
-                401: `Unauthorized`,
+                500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Clash/Mihomo subscription YAML
-     * @returns string clash yaml content
+     * 获取 Clash 订阅
+     * 返回 Clash/Mihomo YAML 格式订阅配置
+     * @returns string Clash subscription
      * @throws ApiError
      */
     public static subscriptionClash(): CancelablePromise<string> {
@@ -78,7 +158,7 @@ export class SubscriptionService {
             method: 'GET',
             url: '/subscription/clash',
             errors: {
-                401: `Unauthorized`,
+                500: `Internal Server Error`,
             },
         });
     }

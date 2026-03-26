@@ -2,54 +2,187 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-import type { main_AdminLoginRequest } from '../models/main_AdminLoginRequest';
-import type { main_AuditLog } from '../models/main_AuditLog';
-import type { main_ChangePasswordRequest } from '../models/main_ChangePasswordRequest';
-import type { main_CreateCustomerRequest } from '../models/main_CreateCustomerRequest';
-import type { main_CreateGroupRequest } from '../models/main_CreateGroupRequest';
-import type { main_CreateLineRequest } from '../models/main_CreateLineRequest';
-import type { main_CreatePlanRequest } from '../models/main_CreatePlanRequest';
-import type { main_CreatePromoCodeRequest } from '../models/main_CreatePromoCodeRequest';
-import type { main_CreateSubscriptionRequest } from '../models/main_CreateSubscriptionRequest';
-import type { main_CreateUserRequest } from '../models/main_CreateUserRequest';
-import type { main_Customer } from '../models/main_Customer';
-import type { main_CustomerDetail } from '../models/main_CustomerDetail';
-import type { main_CustomerSubscription } from '../models/main_CustomerSubscription';
-import type { main_CustomerTrafficResponse } from '../models/main_CustomerTrafficResponse';
-import type { main_Line } from '../models/main_Line';
-import type { main_NodeStatusCheck } from '../models/main_NodeStatusCheck';
-import type { main_Order } from '../models/main_Order';
-import type { main_OrderListResponse } from '../models/main_OrderListResponse';
-import type { main_Plan } from '../models/main_Plan';
-import type { main_PromoCode } from '../models/main_PromoCode';
-import type { main_ResetCustomerPasswordRequest } from '../models/main_ResetCustomerPasswordRequest';
-import type { main_ResetTokenResponse } from '../models/main_ResetTokenResponse';
-import type { main_RiskEventListResponse } from '../models/main_RiskEventListResponse';
-import type { main_Role } from '../models/main_Role';
-import type { main_SetGroupNodesRequest } from '../models/main_SetGroupNodesRequest';
-import type { main_SetLineNodesRequest } from '../models/main_SetLineNodesRequest';
-import type { main_SetPermissionsRequest } from '../models/main_SetPermissionsRequest';
-import type { main_SetPlanLinesRequest } from '../models/main_SetPlanLinesRequest';
-import type { main_SetRolesRequest } from '../models/main_SetRolesRequest';
-import type { main_StatusResponse } from '../models/main_StatusResponse';
-import type { main_SubscriptionGroup } from '../models/main_SubscriptionGroup';
-import type { main_TicketDetailResponse } from '../models/main_TicketDetailResponse';
-import type { main_TicketListResponse } from '../models/main_TicketListResponse';
-import type { main_TicketReplyRequest } from '../models/main_TicketReplyRequest';
-import type { main_UpdateCustomerRequest } from '../models/main_UpdateCustomerRequest';
-import type { main_UpdateLineRequest } from '../models/main_UpdateLineRequest';
-import type { main_UpdateOrderStatusRequest } from '../models/main_UpdateOrderStatusRequest';
-import type { main_UpdatePlanRequest } from '../models/main_UpdatePlanRequest';
-import type { main_UpdatePromoCodeRequest } from '../models/main_UpdatePromoCodeRequest';
-import type { main_UpdateSubscriptionRequest } from '../models/main_UpdateSubscriptionRequest';
-import type { main_User } from '../models/main_User';
+import type { handler_AdminLoginRequest } from '../models/handler_AdminLoginRequest';
+import type { handler_AdminReferralListResponse } from '../models/handler_AdminReferralListResponse';
+import type { handler_AnnouncementListResponse } from '../models/handler_AnnouncementListResponse';
+import type { handler_AnnouncementRequest } from '../models/handler_AnnouncementRequest';
+import type { handler_ChangePasswordRequest } from '../models/handler_ChangePasswordRequest';
+import type { handler_CreateCustomerRequest } from '../models/handler_CreateCustomerRequest';
+import type { handler_CreateGroupRequest } from '../models/handler_CreateGroupRequest';
+import type { handler_CreateIDResponse } from '../models/handler_CreateIDResponse';
+import type { handler_CreateLineRequest } from '../models/handler_CreateLineRequest';
+import type { handler_CreateLineResponse } from '../models/handler_CreateLineResponse';
+import type { handler_CreatePlanRequest } from '../models/handler_CreatePlanRequest';
+import type { handler_CreatePlanResponse } from '../models/handler_CreatePlanResponse';
+import type { handler_CreatePromoCodeRequest } from '../models/handler_CreatePromoCodeRequest';
+import type { handler_CreateSubscriptionRequest } from '../models/handler_CreateSubscriptionRequest';
+import type { handler_CreateSubscriptionResponse } from '../models/handler_CreateSubscriptionResponse';
+import type { handler_CreateUserRequest } from '../models/handler_CreateUserRequest';
+import type { handler_CustomerDetail } from '../models/handler_CustomerDetail';
+import type { handler_CustomerListResponse } from '../models/handler_CustomerListResponse';
+import type { handler_CustomerTrafficResponse } from '../models/handler_CustomerTrafficResponse';
+import type { handler_MeResponse } from '../models/handler_MeResponse';
+import type { handler_NodeUpdateRequest } from '../models/handler_NodeUpdateRequest';
+import type { handler_OrderListResponse } from '../models/handler_OrderListResponse';
+import type { handler_PermissionItem } from '../models/handler_PermissionItem';
+import type { handler_PrometheusTarget } from '../models/handler_PrometheusTarget';
+import type { handler_ResetCustomerPasswordRequest } from '../models/handler_ResetCustomerPasswordRequest';
+import type { handler_ResetSubscriptionTokenResponse } from '../models/handler_ResetSubscriptionTokenResponse';
+import type { handler_ResetTokenResponse } from '../models/handler_ResetTokenResponse';
+import type { handler_RiskEventListResponse } from '../models/handler_RiskEventListResponse';
+import type { handler_RoleDetail } from '../models/handler_RoleDetail';
+import type { handler_SetGroupNodesRequest } from '../models/handler_SetGroupNodesRequest';
+import type { handler_SetLineNodesRequest } from '../models/handler_SetLineNodesRequest';
+import type { handler_SetPermissionsRequest } from '../models/handler_SetPermissionsRequest';
+import type { handler_SetPlanLinesRequest } from '../models/handler_SetPlanLinesRequest';
+import type { handler_SetRolesRequest } from '../models/handler_SetRolesRequest';
+import type { handler_StatusResponse } from '../models/handler_StatusResponse';
+import type { handler_TicketDetailResponse } from '../models/handler_TicketDetailResponse';
+import type { handler_TicketListResponse } from '../models/handler_TicketListResponse';
+import type { handler_TicketReplyRequest } from '../models/handler_TicketReplyRequest';
+import type { handler_TrafficSummaryResponse } from '../models/handler_TrafficSummaryResponse';
+import type { handler_UpdateCustomerRequest } from '../models/handler_UpdateCustomerRequest';
+import type { handler_UpdateLineRequest } from '../models/handler_UpdateLineRequest';
+import type { handler_UpdateOrderStatusRequest } from '../models/handler_UpdateOrderStatusRequest';
+import type { handler_UpdatePlanRequest } from '../models/handler_UpdatePlanRequest';
+import type { handler_UpdatePromoCodeRequest } from '../models/handler_UpdatePromoCodeRequest';
+import type { handler_UpdateReferralRequest } from '../models/handler_UpdateReferralRequest';
+import type { handler_UpdateSubscriptionRequest } from '../models/handler_UpdateSubscriptionRequest';
+import type { handler_UserWithRoles } from '../models/handler_UserWithRoles';
+import type { model_Announcement } from '../models/model_Announcement';
+import type { model_AuditLog } from '../models/model_AuditLog';
+import type { model_CustomerSubscription } from '../models/model_CustomerSubscription';
+import type { model_Line } from '../models/model_Line';
+import type { model_Node } from '../models/model_Node';
+import type { model_NodeStatusCheck } from '../models/model_NodeStatusCheck';
+import type { model_Order } from '../models/model_Order';
+import type { model_Plan } from '../models/model_Plan';
+import type { model_PromoCode } from '../models/model_PromoCode';
+import type { model_SubscriptionGroup } from '../models/model_SubscriptionGroup';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class AdminService {
     /**
-     * List audit logs
-     * @returns main_AuditLog OK
+     * 获取公告列表
+     * 分页获取所有公告，按置顶和创建时间排序
+     * @returns handler_AnnouncementListResponse OK
+     * @throws ApiError
+     */
+    public static adminListAnnouncements({
+        page,
+        limit,
+    }: {
+        /**
+         * 页码（默认 1）
+         */
+        page?: number,
+        /**
+         * 每页数量（默认 20，最大 100）
+         */
+        limit?: number,
+    }): CancelablePromise<handler_AnnouncementListResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/announcements',
+            query: {
+                'page': page,
+                'limit': limit,
+            },
+            errors: {
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 创建公告
+     * 创建新公告，level 可选 info/warning/critical
+     * @returns model_Announcement OK
+     * @throws ApiError
+     */
+    public static adminCreateAnnouncement({
+        requestBody,
+    }: {
+        /**
+         * 公告信息
+         */
+        requestBody: handler_AnnouncementRequest,
+    }): CancelablePromise<model_Announcement> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/announcements',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 删除公告
+     * 根据 ID 删除公告
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static adminDeleteAnnouncement({
+        id,
+    }: {
+        /**
+         * 公告 ID
+         */
+        id: number,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/admin/announcements/{id}',
+            path: {
+                'id': id,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 更新公告
+     * 根据 ID 更新公告字段（部分更新）
+     * @returns model_Announcement OK
+     * @throws ApiError
+     */
+    public static adminUpdateAnnouncement({
+        id,
+        requestBody,
+    }: {
+        /**
+         * 公告 ID
+         */
+        id: number,
+        /**
+         * 更新字段
+         */
+        requestBody: handler_AnnouncementRequest,
+    }): CancelablePromise<model_Announcement> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/admin/announcements/{id}',
+            path: {
+                'id': id,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 获取审计日志
+     * 分页查询审计日志，支持按操作类型、用户名、时间范围筛选
+     * @returns model_AuditLog OK
      * @throws ApiError
      */
     public static adminAuditLogs({
@@ -61,30 +194,30 @@ export class AdminService {
         to,
     }: {
         /**
-         * limit (default 50)
+         * 每页条数（默认 50，最大 500）
          */
         limit?: number,
         /**
-         * offset (default 0)
+         * 偏移量
          */
         offset?: number,
         /**
-         * filter by action
+         * 操作类型
          */
         action?: string,
         /**
-         * filter by username
+         * 用户名
          */
         username?: string,
         /**
-         * filter from date (ISO 8601)
+         * 起始时间（含）
          */
         from?: string,
         /**
-         * filter to date (ISO 8601)
+         * 结束时间（含）
          */
         to?: string,
-    }): CancelablePromise<Array<main_AuditLog>> {
+    }): CancelablePromise<Array<model_AuditLog>> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/audit-logs',
@@ -97,50 +230,44 @@ export class AdminService {
                 'to': to,
             },
             errors: {
-                401: `Unauthorized`,
-                403: `Forbidden`,
+                500: `Internal Server Error`,
             },
         });
     }
     /**
-     * List customers
-     * Paginated list of customers with optional status/email/search filters
-     * @returns any OK
+     * 获取客户列表
+     * 分页查询客户，支持按状态、邮箱、关键词筛选
+     * @returns handler_CustomerListResponse OK
      * @throws ApiError
      */
     public static adminListCustomers({
         status,
         email,
         search,
-        page = 1,
-        limit = 20,
+        page,
+        limit,
     }: {
         /**
-         * Filter by status
+         * 按状态筛选
          */
         status?: string,
         /**
-         * Filter by email (partial match)
+         * 按邮箱模糊搜索
          */
         email?: string,
         /**
-         * Search email or nickname
+         * 按邮箱或昵称模糊搜索
          */
         search?: string,
         /**
-         * Page number
+         * 页码（默认 1）
          */
         page?: number,
         /**
-         * Items per page
+         * 每页条数（默认 20，最大 100）
          */
         limit?: number,
-    }): CancelablePromise<{
-        items?: Array<main_Customer>;
-        limit?: number;
-        page?: number;
-        total?: number;
-    }> {
+    }): CancelablePromise<handler_CustomerListResponse> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/customers',
@@ -157,19 +284,19 @@ export class AdminService {
         });
     }
     /**
-     * Create customer
-     * Create a new customer with email, password, and optional nickname
-     * @returns main_Customer OK
+     * 创建客户
+     * 创建新客户账号
+     * @returns handler_CreateIDResponse OK
      * @throws ApiError
      */
     public static adminCreateCustomer({
         requestBody,
     }: {
         /**
-         * Customer info
+         * 客户信息
          */
-        requestBody: main_CreateCustomerRequest,
-    }): CancelablePromise<main_Customer> {
+        requestBody: handler_CreateCustomerRequest,
+    }): CancelablePromise<handler_CreateIDResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/customers',
@@ -177,24 +304,25 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
+                409: `Conflict`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Delete customer
-     * Permanently delete a customer account
-     * @returns main_StatusResponse OK
+     * 删除客户
+     * 删除指定客户
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminDeleteCustomer({
         id,
     }: {
         /**
-         * Customer ID
+         * 客户 ID
          */
         id: number,
-    }): CancelablePromise<main_StatusResponse> {
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'DELETE',
             url: '/admin/customers/{id}',
@@ -202,25 +330,24 @@ export class AdminService {
                 'id': id,
             },
             errors: {
-                404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Get customer
-     * Get customer details including all subscriptions
-     * @returns main_CustomerDetail OK
+     * 获取客户详情
+     * 返回客户信息及其所有订阅
+     * @returns handler_CustomerDetail OK
      * @throws ApiError
      */
     public static adminGetCustomer({
         id,
     }: {
         /**
-         * Customer ID
+         * 客户 ID
          */
         id: number,
-    }): CancelablePromise<main_CustomerDetail> {
+    }): CancelablePromise<handler_CustomerDetail> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/customers/{id}',
@@ -234,9 +361,9 @@ export class AdminService {
         });
     }
     /**
-     * Update customer
-     * Update customer nickname and/or status
-     * @returns main_StatusResponse OK
+     * 更新客户
+     * 更新客户昵称或状态
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminUpdateCustomer({
@@ -244,14 +371,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * Customer ID
+         * 客户 ID
          */
         id: number,
         /**
-         * Fields to update
+         * 更新字段
          */
-        requestBody: main_UpdateCustomerRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_UpdateCustomerRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'PATCH',
             url: '/admin/customers/{id}',
@@ -262,15 +389,39 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
-                404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Reset customer password
-     * Set a new password for the customer
-     * @returns main_StatusResponse OK
+     * 封禁客户
+     * 封禁客户并暂停其所有活跃订阅
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static adminBanCustomer({
+        id,
+    }: {
+        /**
+         * 客户 ID
+         */
+        id: number,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/customers/{id}/ban',
+            path: {
+                'id': id,
+            },
+            errors: {
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 重置客户密码
+     * 管理员重置客户登录密码
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminResetCustomerPassword({
@@ -278,14 +429,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * Customer ID
+         * 客户 ID
          */
         id: number,
         /**
-         * New password
+         * 新密码
          */
-        requestBody: main_ResetCustomerPasswordRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_ResetCustomerPasswordRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/customers/{id}/password',
@@ -301,19 +452,19 @@ export class AdminService {
         });
     }
     /**
-     * List subscriptions
-     * Get all subscriptions belonging to a customer
-     * @returns main_CustomerSubscription OK
+     * 获取客户订阅列表
+     * 返回指定客户的所有订阅
+     * @returns model_CustomerSubscription OK
      * @throws ApiError
      */
     public static adminListSubscriptions({
         id,
     }: {
         /**
-         * Customer ID
+         * 客户 ID
          */
         id: number,
-    }): CancelablePromise<Array<main_CustomerSubscription>> {
+    }): CancelablePromise<Array<model_CustomerSubscription>> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/customers/{id}/subscriptions',
@@ -326,9 +477,9 @@ export class AdminService {
         });
     }
     /**
-     * Create subscription
-     * Create a new subscription for a customer based on a plan
-     * @returns main_CustomerSubscription OK
+     * 创建订阅
+     * 为客户创建新订阅，根据套餐自动设置流量和有效期
+     * @returns handler_CreateSubscriptionResponse OK
      * @throws ApiError
      */
     public static adminCreateSubscription({
@@ -336,14 +487,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * Customer ID
+         * 客户 ID
          */
         id: number,
         /**
-         * Subscription info
+         * 订阅信息
          */
-        requestBody: main_CreateSubscriptionRequest,
-    }): CancelablePromise<main_CustomerSubscription> {
+        requestBody: handler_CreateSubscriptionRequest,
+    }): CancelablePromise<handler_CreateSubscriptionResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/customers/{id}/subscriptions',
@@ -354,25 +505,24 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
-                404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Get customer traffic
-     * Per-subscription traffic summary with upload/download totals
-     * @returns main_CustomerTrafficResponse OK
+     * 获取客户流量统计
+     * 返回客户所有订阅的流量使用情况
+     * @returns handler_CustomerTrafficResponse OK
      * @throws ApiError
      */
     public static adminGetCustomerTraffic({
         id,
     }: {
         /**
-         * Customer ID
+         * 客户 ID
          */
         id: number,
-    }): CancelablePromise<main_CustomerTrafficResponse> {
+    }): CancelablePromise<handler_CustomerTrafficResponse> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/customers/{id}/traffic',
@@ -386,11 +536,38 @@ export class AdminService {
         });
     }
     /**
-     * List all lines
-     * @returns main_Line OK
+     * 解封客户
+     * 将已封禁的客户状态恢复为活跃
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
-    public static adminListLines(): CancelablePromise<Array<main_Line>> {
+    public static adminUnbanCustomer({
+        id,
+    }: {
+        /**
+         * 客户 ID
+         */
+        id: number,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/customers/{id}/unban',
+            path: {
+                'id': id,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 获取线路列表
+     * 返回所有线路（含节点数量）
+     * @returns model_Line OK
+     * @throws ApiError
+     */
+    public static adminListLines(): CancelablePromise<Array<model_Line>> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/lines',
@@ -400,21 +577,19 @@ export class AdminService {
         });
     }
     /**
-     * Create a new line
-     * @returns any OK
+     * 创建线路
+     * 创建新线路并生成订阅 token
+     * @returns handler_CreateLineResponse OK
      * @throws ApiError
      */
     public static adminCreateLine({
         requestBody,
     }: {
         /**
-         * Line to create
+         * 线路信息
          */
-        requestBody: main_CreateLineRequest,
-    }): CancelablePromise<{
-        id?: number;
-        token?: string;
-    }> {
+        requestBody: handler_CreateLineRequest,
+    }): CancelablePromise<handler_CreateLineResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/lines',
@@ -427,18 +602,19 @@ export class AdminService {
         });
     }
     /**
-     * Delete a line
-     * @returns main_StatusResponse OK
+     * 删除线路
+     * 删除指定线路
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminDeleteLine({
         id,
     }: {
         /**
-         * Line ID
+         * 线路 ID
          */
         id: number,
-    }): CancelablePromise<main_StatusResponse> {
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'DELETE',
             url: '/admin/lines/{id}',
@@ -453,8 +629,9 @@ export class AdminService {
         });
     }
     /**
-     * Update a line
-     * @returns main_StatusResponse OK
+     * 更新线路
+     * 更新指定线路的属性
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminUpdateLine({
@@ -462,14 +639,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * Line ID
+         * 线路 ID
          */
         id: number,
         /**
-         * Fields to update
+         * 更新字段
          */
-        requestBody: main_UpdateLineRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_UpdateLineRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'PATCH',
             url: '/admin/lines/{id}',
@@ -486,7 +663,8 @@ export class AdminService {
         });
     }
     /**
-     * Get MAC addresses of nodes assigned to a line
+     * 获取线路节点
+     * 返回指定线路关联的节点 MAC 列表
      * @returns string OK
      * @throws ApiError
      */
@@ -494,7 +672,7 @@ export class AdminService {
         id,
     }: {
         /**
-         * Line ID
+         * 线路 ID
          */
         id: number,
     }): CancelablePromise<Array<string>> {
@@ -510,8 +688,9 @@ export class AdminService {
         });
     }
     /**
-     * Set nodes assigned to a line
-     * @returns main_StatusResponse OK
+     * 设置线路节点
+     * 替换指定线路的节点列表
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminSetLineNodes({
@@ -519,14 +698,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * Line ID
+         * 线路 ID
          */
         id: number,
         /**
-         * Node MAC addresses
+         * 节点 MAC 列表
          */
-        requestBody: main_SetLineNodesRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_SetLineNodesRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'PUT',
             url: '/admin/lines/{id}/nodes',
@@ -543,18 +722,19 @@ export class AdminService {
         });
     }
     /**
-     * Reset the subscription token for a line
-     * @returns main_ResetTokenResponse OK
+     * 重置线路 token
+     * 为指定线路生成新的订阅 token
+     * @returns handler_ResetTokenResponse OK
      * @throws ApiError
      */
     public static adminResetLineToken({
         id,
     }: {
         /**
-         * Line ID
+         * 线路 ID
          */
         id: number,
-    }): CancelablePromise<main_ResetTokenResponse> {
+    }): CancelablePromise<handler_ResetTokenResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/lines/{id}/reset-token',
@@ -570,17 +750,17 @@ export class AdminService {
     }
     /**
      * Admin login
-     * @returns main_StatusResponse OK
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminLogin({
         requestBody,
     }: {
         /**
-         * admin login payload
+         * credentials
          */
-        requestBody: main_AdminLoginRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_AdminLoginRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/login',
@@ -589,26 +769,27 @@ export class AdminService {
             errors: {
                 400: `Bad Request`,
                 401: `Unauthorized`,
+                500: `Internal Server Error`,
             },
         });
     }
     /**
      * Admin logout
-     * @returns main_StatusResponse OK
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
-    public static adminLogout(): CancelablePromise<main_StatusResponse> {
+    public static adminLogout(): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/logout',
         });
     }
     /**
-     * Get current logged-in user info
-     * @returns main_User OK
+     * Get current admin user info
+     * @returns handler_MeResponse OK
      * @throws ApiError
      */
-    public static adminMe(): CancelablePromise<main_User> {
+    public static adminMe(): CancelablePromise<handler_MeResponse> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/me',
@@ -618,11 +799,12 @@ export class AdminService {
         });
     }
     /**
-     * List node status checks
-     * @returns main_NodeStatusCheck OK
+     * 获取节点状态列表
+     * 返回所有节点的最新探测状态（CPU、内存、磁盘、延迟等）
+     * @returns model_NodeStatusCheck OK
      * @throws ApiError
      */
-    public static adminNodeStatus(): CancelablePromise<Array<main_NodeStatusCheck>> {
+    public static adminNodeStatus(): CancelablePromise<Array<model_NodeStatusCheck>> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/node-status',
@@ -632,8 +814,9 @@ export class AdminService {
         });
     }
     /**
-     * List orders
-     * @returns main_OrderListResponse OK
+     * 获取订单列表
+     * 分页获取订单列表，支持按客户和状态筛选
+     * @returns handler_OrderListResponse OK
      * @throws ApiError
      */
     public static adminListOrders({
@@ -643,22 +826,22 @@ export class AdminService {
         limit,
     }: {
         /**
-         * filter by customer ID
+         * 按客户 ID 筛选
          */
-        customerId?: number,
+        customerId?: string,
         /**
-         * filter by order status
+         * 按状态筛选
          */
         status?: string,
         /**
-         * page number (default 1)
+         * 页码（默认 1）
          */
         page?: number,
         /**
-         * page size (default 20, max 100)
+         * 每页数量（默认 20，最大 100）
          */
         limit?: number,
-    }): CancelablePromise<main_OrderListResponse> {
+    }): CancelablePromise<handler_OrderListResponse> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/orders',
@@ -668,21 +851,25 @@ export class AdminService {
                 'page': page,
                 'limit': limit,
             },
+            errors: {
+                500: `Internal Server Error`,
+            },
         });
     }
     /**
-     * Get order by ID
-     * @returns main_Order OK
+     * 获取订单详情
+     * 根据 ID 获取单个订单
+     * @returns model_Order OK
      * @throws ApiError
      */
     public static adminGetOrder({
         id,
     }: {
         /**
-         * order ID
+         * 订单 ID
          */
         id: number,
-    }): CancelablePromise<main_Order> {
+    }): CancelablePromise<model_Order> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/orders/{id}',
@@ -696,8 +883,9 @@ export class AdminService {
         });
     }
     /**
-     * Update order status
-     * @returns main_StatusResponse OK
+     * 更新订单状态
+     * 更新指定订单的状态，若改为 paid 则自动创建订阅
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminUpdateOrderStatus({
@@ -705,14 +893,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * order ID
+         * 订单 ID
          */
         id: number,
         /**
-         * new status
+         * 新状态
          */
-        requestBody: main_UpdateOrderStatusRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_UpdateOrderStatusRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'PATCH',
             url: '/admin/orders/{id}/status',
@@ -729,45 +917,50 @@ export class AdminService {
         });
     }
     /**
-     * List all available permissions
-     * @returns any OK
+     * 获取所有权限
+     * 返回所有可分配的权限列表（仅需有效会话）
+     * @returns handler_PermissionItem OK
      * @throws ApiError
      */
-    public static adminListPermissions(): CancelablePromise<Array<Record<string, any>>> {
+    public static adminListPermissions(): CancelablePromise<Array<handler_PermissionItem>> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/permissions',
             errors: {
                 401: `Unauthorized`,
+                500: `Internal Server Error`,
             },
         });
     }
     /**
-     * List all plans
-     * @returns main_Plan OK
+     * 获取套餐列表
+     * 返回所有套餐
+     * @returns model_Plan OK
      * @throws ApiError
      */
-    public static adminListPlans(): CancelablePromise<Array<main_Plan>> {
+    public static adminListPlans(): CancelablePromise<Array<model_Plan>> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/plans',
+            errors: {
+                500: `Internal Server Error`,
+            },
         });
     }
     /**
-     * Create a plan
-     * @returns any OK
+     * 创建套餐
+     * 创建新的套餐
+     * @returns handler_CreatePlanResponse OK
      * @throws ApiError
      */
     public static adminCreatePlan({
         requestBody,
     }: {
         /**
-         * Plan to create
+         * 套餐信息
          */
-        requestBody: main_CreatePlanRequest,
-    }): CancelablePromise<{
-        id?: number;
-    }> {
+        requestBody: handler_CreatePlanRequest,
+    }): CancelablePromise<handler_CreatePlanResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/plans',
@@ -775,23 +968,25 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
+                401: `Unauthorized`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Delete a plan
-     * @returns main_StatusResponse OK
+     * 删除套餐
+     * 根据 ID 删除套餐
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminDeletePlan({
         id,
     }: {
         /**
-         * Plan ID
+         * 套餐 ID
          */
         id: number,
-    }): CancelablePromise<main_StatusResponse> {
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'DELETE',
             url: '/admin/plans/{id}',
@@ -799,14 +994,16 @@ export class AdminService {
                 'id': id,
             },
             errors: {
+                401: `Unauthorized`,
                 404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Update a plan
-     * @returns main_StatusResponse OK
+     * 更新套餐
+     * 根据 ID 更新套餐信息
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminUpdatePlan({
@@ -814,14 +1011,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * Plan ID
+         * 套餐 ID
          */
         id: number,
         /**
-         * Fields to update
+         * 更新字段
          */
-        requestBody: main_UpdatePlanRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_UpdatePlanRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'PATCH',
             url: '/admin/plans/{id}',
@@ -832,13 +1029,15 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
+                401: `Unauthorized`,
                 404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Get line IDs for a plan
+     * 获取套餐线路
+     * 返回套餐关联的线路 ID 列表
      * @returns number OK
      * @throws ApiError
      */
@@ -846,7 +1045,7 @@ export class AdminService {
         id,
     }: {
         /**
-         * Plan ID
+         * 套餐 ID
          */
         id: number,
     }): CancelablePromise<Array<number>> {
@@ -856,11 +1055,15 @@ export class AdminService {
             path: {
                 'id': id,
             },
+            errors: {
+                500: `Internal Server Error`,
+            },
         });
     }
     /**
-     * Set line IDs for a plan
-     * @returns main_StatusResponse OK
+     * 设置套餐线路
+     * 替换套餐关联的线路列表
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminSetPlanLines({
@@ -868,14 +1071,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * Plan ID
+         * 套餐 ID
          */
         id: number,
         /**
-         * Line IDs to associate
+         * 线路 ID 列表
          */
-        requestBody: main_SetPlanLinesRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_SetPlanLinesRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'PUT',
             url: '/admin/plans/{id}/lines',
@@ -892,29 +1095,34 @@ export class AdminService {
         });
     }
     /**
-     * List promo codes
-     * @returns main_PromoCode OK
+     * 获取优惠码列表
+     * 获取所有优惠码，按 ID 倒序排列
+     * @returns model_PromoCode OK
      * @throws ApiError
      */
-    public static adminListPromoCodes(): CancelablePromise<Array<main_PromoCode>> {
+    public static adminListPromoCodes(): CancelablePromise<Array<model_PromoCode>> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/promo-codes',
+            errors: {
+                500: `Internal Server Error`,
+            },
         });
     }
     /**
-     * Create promo code
-     * @returns main_PromoCode OK
+     * 创建优惠码
+     * 创建新的优惠码
+     * @returns handler_CreateIDResponse OK
      * @throws ApiError
      */
     public static adminCreatePromoCode({
         requestBody,
     }: {
         /**
-         * promo code payload
+         * 优惠码信息
          */
-        requestBody: main_CreatePromoCodeRequest,
-    }): CancelablePromise<main_PromoCode> {
+        requestBody: handler_CreatePromoCodeRequest,
+    }): CancelablePromise<handler_CreateIDResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/promo-codes',
@@ -927,18 +1135,19 @@ export class AdminService {
         });
     }
     /**
-     * Delete promo code
-     * @returns main_StatusResponse OK
+     * 删除优惠码
+     * 按 ID 删除优惠码
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminDeletePromoCode({
         id,
     }: {
         /**
-         * promo code ID
+         * 优惠码 ID
          */
         id: number,
-    }): CancelablePromise<main_StatusResponse> {
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'DELETE',
             url: '/admin/promo-codes/{id}',
@@ -951,8 +1160,9 @@ export class AdminService {
         });
     }
     /**
-     * Update promo code
-     * @returns main_StatusResponse OK
+     * 更新优惠码
+     * 按 ID 更新优惠码字段
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminUpdatePromoCode({
@@ -960,14 +1170,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * promo code ID
+         * 优惠码 ID
          */
         id: number,
         /**
-         * fields to update
+         * 要更新的字段
          */
-        requestBody: main_UpdatePromoCodeRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_UpdatePromoCodeRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'PATCH',
             url: '/admin/promo-codes/{id}',
@@ -977,13 +1187,86 @@ export class AdminService {
             body: requestBody,
             mediaType: 'application/json',
             errors: {
+                400: `Bad Request`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * List risk events
-     * @returns main_RiskEventListResponse OK
+     * 获取邀请记录列表
+     * 分页获取全局邀请记录，支持按状态筛选
+     * @returns handler_AdminReferralListResponse OK
+     * @throws ApiError
+     */
+    public static adminListReferrals({
+        page,
+        limit,
+        status,
+    }: {
+        /**
+         * 页码（默认 1）
+         */
+        page?: number,
+        /**
+         * 每页数量（默认 20，最大 100）
+         */
+        limit?: number,
+        /**
+         * 按状态筛选
+         */
+        status?: string,
+    }): CancelablePromise<handler_AdminReferralListResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/referrals',
+            query: {
+                'page': page,
+                'limit': limit,
+                'status': status,
+            },
+            errors: {
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 更新邀请记录状态
+     * 修改指定邀请记录的状态（pending/paid/cancelled），自动调整余额
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static adminUpdateReferral({
+        id,
+        requestBody,
+    }: {
+        /**
+         * 邀请记录 ID
+         */
+        id: number,
+        /**
+         * 新状态
+         */
+        requestBody: handler_UpdateReferralRequest,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/admin/referrals/{id}',
+            path: {
+                'id': id,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 获取风控事件列表
+     * 分页查询风控事件，支持按客户 ID 和事件类型筛选
+     * @returns handler_RiskEventListResponse OK
      * @throws ApiError
      */
     public static adminListRiskEvents({
@@ -993,22 +1276,22 @@ export class AdminService {
         limit,
     }: {
         /**
-         * filter by customer ID
+         * 按客户 ID 筛选
          */
-        customerId?: number,
+        customerId?: string,
         /**
-         * filter by event type
+         * 按事件类型筛选
          */
         eventType?: string,
         /**
-         * page number (default 1)
+         * 页码（默认 1）
          */
         page?: number,
         /**
-         * page size (default 20, max 100)
+         * 每页数量（默认 20，最大 100）
          */
         limit?: number,
-    }): CancelablePromise<main_RiskEventListResponse> {
+    }): CancelablePromise<handler_RiskEventListResponse> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/risk-events',
@@ -1024,23 +1307,25 @@ export class AdminService {
         });
     }
     /**
-     * List all roles with their permissions
-     * @returns main_Role OK
+     * 获取所有角色
+     * 返回所有角色及其权限列表
+     * @returns handler_RoleDetail OK
      * @throws ApiError
      */
-    public static adminListRoles(): CancelablePromise<Array<main_Role>> {
+    public static adminListRoles(): CancelablePromise<Array<handler_RoleDetail>> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/roles',
             errors: {
                 401: `Unauthorized`,
-                403: `Forbidden`,
+                500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Replace role permissions
-     * @returns main_StatusResponse OK
+     * 更新角色权限
+     * 替换指定角色的全部权限
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminSetRolePermissions({
@@ -1048,14 +1333,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * role id
+         * 角色 ID
          */
         id: number,
         /**
-         * permissions list
+         * 权限列表
          */
-        requestBody: main_SetPermissionsRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_SetPermissionsRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'PUT',
             url: '/admin/roles/{id}/permissions',
@@ -1067,40 +1352,40 @@ export class AdminService {
             errors: {
                 400: `Bad Request`,
                 401: `Unauthorized`,
-                403: `Forbidden`,
                 404: `Not Found`,
-            },
-        });
-    }
-    /**
-     * List subscription groups
-     * @returns main_SubscriptionGroup OK
-     * @throws ApiError
-     */
-    public static adminListSubscriptionGroups(): CancelablePromise<Array<main_SubscriptionGroup>> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/admin/subscription-groups',
-            errors: {
-                401: `Unauthorized`,
-                403: `Forbidden`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Create subscription group
-     * @returns main_SubscriptionGroup OK
+     * 获取订阅组列表
+     * 返回所有订阅组
+     * @returns model_SubscriptionGroup OK
+     * @throws ApiError
+     */
+    public static adminListSubscriptionGroups(): CancelablePromise<Array<model_SubscriptionGroup>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/subscription-groups',
+            errors: {
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 创建订阅组
+     * 创建新的订阅组
+     * @returns model_SubscriptionGroup OK
      * @throws ApiError
      */
     public static adminCreateSubscriptionGroup({
         requestBody,
     }: {
         /**
-         * group name
+         * 订阅组信息
          */
-        requestBody: main_CreateGroupRequest,
-    }): CancelablePromise<main_SubscriptionGroup> {
+        requestBody: handler_CreateGroupRequest,
+    }): CancelablePromise<model_SubscriptionGroup> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/subscription-groups',
@@ -1108,25 +1393,24 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
-                401: `Unauthorized`,
-                403: `Forbidden`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Delete subscription group
-     * @returns main_StatusResponse OK
+     * 删除订阅组
+     * 根据 ID 删除订阅组
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminDeleteSubscriptionGroup({
         id,
     }: {
         /**
-         * group id
+         * 订阅组 ID
          */
         id: number,
-    }): CancelablePromise<main_StatusResponse> {
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'DELETE',
             url: '/admin/subscription-groups/{id}',
@@ -1135,15 +1419,14 @@ export class AdminService {
             },
             errors: {
                 400: `Bad Request`,
-                401: `Unauthorized`,
-                403: `Forbidden`,
                 404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * List node MACs in a subscription group
+     * 获取订阅组节点列表
+     * 返回指定订阅组的节点 MAC 列表
      * @returns string OK
      * @throws ApiError
      */
@@ -1151,7 +1434,7 @@ export class AdminService {
         id,
     }: {
         /**
-         * group id
+         * 订阅组 ID
          */
         id: number,
     }): CancelablePromise<Array<string>> {
@@ -1163,16 +1446,15 @@ export class AdminService {
             },
             errors: {
                 400: `Bad Request`,
-                401: `Unauthorized`,
-                403: `Forbidden`,
                 404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Replace node MACs in a subscription group
-     * @returns main_StatusResponse OK
+     * 设置订阅组节点
+     * 替换指定订阅组的节点列表
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminSetSubscriptionGroupNodes({
@@ -1180,14 +1462,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * group id
+         * 订阅组 ID
          */
         id: number,
         /**
-         * node MAC list
+         * 节点列表
          */
-        requestBody: main_SetGroupNodesRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_SetGroupNodesRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'PUT',
             url: '/admin/subscription-groups/{id}/nodes',
@@ -1198,26 +1480,25 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
-                401: `Unauthorized`,
-                403: `Forbidden`,
                 404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Reset subscription group token
-     * @returns main_ResetTokenResponse OK
+     * 重置订阅组 Token
+     * 为指定订阅组生成新的访问 Token
+     * @returns handler_ResetTokenResponse OK
      * @throws ApiError
      */
     public static adminResetSubscriptionGroupToken({
         id,
     }: {
         /**
-         * group id
+         * 订阅组 ID
          */
         id: number,
-    }): CancelablePromise<main_ResetTokenResponse> {
+    }): CancelablePromise<handler_ResetTokenResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/subscription-groups/{id}/reset-token',
@@ -1226,27 +1507,25 @@ export class AdminService {
             },
             errors: {
                 400: `Bad Request`,
-                401: `Unauthorized`,
-                403: `Forbidden`,
                 404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Delete subscription
-     * Permanently delete a customer subscription
-     * @returns main_StatusResponse OK
+     * 删除订阅
+     * 删除指定订阅
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminDeleteSubscription({
         id,
     }: {
         /**
-         * Subscription ID
+         * 订阅 ID
          */
         id: number,
-    }): CancelablePromise<main_StatusResponse> {
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'DELETE',
             url: '/admin/subscriptions/{id}',
@@ -1254,15 +1533,14 @@ export class AdminService {
                 'id': id,
             },
             errors: {
-                404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Update subscription
-     * Update subscription status, traffic limit, or expiry
-     * @returns main_StatusResponse OK
+     * 更新订阅
+     * 更新订阅状态、流量限制或到期时间
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminUpdateSubscription({
@@ -1270,14 +1548,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * Subscription ID
+         * 订阅 ID
          */
         id: number,
         /**
-         * Fields to update
+         * 更新字段
          */
-        requestBody: main_UpdateSubscriptionRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_UpdateSubscriptionRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'PATCH',
             url: '/admin/subscriptions/{id}',
@@ -1288,28 +1566,27 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
-                404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Reset subscription token
-     * Generate a new random token for the subscription
-     * @returns main_StatusResponse OK
+     * 激活订阅
+     * 手动将订阅状态设为 active
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
-    public static adminResetSubscriptionToken({
+    public static adminActivateSubscription({
         id,
     }: {
         /**
-         * Subscription ID
+         * 订阅 ID
          */
         id: number,
-    }): CancelablePromise<main_StatusResponse> {
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'POST',
-            url: '/admin/subscriptions/{id}/reset-token',
+            url: '/admin/subscriptions/{id}/activate',
             path: {
                 'id': id,
             },
@@ -1320,8 +1597,112 @@ export class AdminService {
         });
     }
     /**
-     * List tickets
-     * @returns main_TicketListResponse OK
+     * 过期订阅
+     * 手动将订阅状态设为 expired
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static adminExpireSubscription({
+        id,
+    }: {
+        /**
+         * 订阅 ID
+         */
+        id: number,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/subscriptions/{id}/expire',
+            path: {
+                'id': id,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 重置订阅 Token
+     * 为订阅生成新的 Token
+     * @returns handler_ResetSubscriptionTokenResponse OK
+     * @throws ApiError
+     */
+    public static adminResetSubscriptionToken({
+        id,
+    }: {
+        /**
+         * 订阅 ID
+         */
+        id: number,
+    }): CancelablePromise<handler_ResetSubscriptionTokenResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/subscriptions/{id}/reset-token',
+            path: {
+                'id': id,
+            },
+            errors: {
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 重置订阅流量
+     * 将指定订阅的 traffic_used 重置为 0
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static adminResetSubscriptionTraffic({
+        id,
+    }: {
+        /**
+         * 订阅 ID
+         */
+        id: number,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/subscriptions/{id}/reset-traffic',
+            path: {
+                'id': id,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 暂停订阅
+     * 手动将订阅状态设为 suspended
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static adminSuspendSubscription({
+        id,
+    }: {
+        /**
+         * 订阅 ID
+         */
+        id: number,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/subscriptions/{id}/suspend',
+            path: {
+                'id': id,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 获取工单列表
+     * 分页获取工单列表，支持按状态和客户筛选
+     * @returns handler_TicketListResponse OK
      * @throws ApiError
      */
     public static adminListTickets({
@@ -1331,22 +1712,22 @@ export class AdminService {
         limit,
     }: {
         /**
-         * filter by ticket status
+         * 按状态筛选
          */
         status?: string,
         /**
-         * filter by customer ID
+         * 按客户 ID 筛选
          */
-        customerId?: number,
+        customerId?: string,
         /**
-         * page number (default 1)
+         * 页码（默认 1）
          */
         page?: number,
         /**
-         * page size (default 20, max 100)
+         * 每页数量（默认 20，最大 100）
          */
         limit?: number,
-    }): CancelablePromise<main_TicketListResponse> {
+    }): CancelablePromise<handler_TicketListResponse> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/tickets',
@@ -1356,21 +1737,25 @@ export class AdminService {
                 'page': page,
                 'limit': limit,
             },
+            errors: {
+                500: `Internal Server Error`,
+            },
         });
     }
     /**
-     * Delete a ticket
-     * @returns main_StatusResponse OK
+     * 删除工单
+     * 删除指定工单及其所有回复
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminDeleteTicket({
         id,
     }: {
         /**
-         * ticket ID
+         * 工单 ID
          */
         id: number,
-    }): CancelablePromise<main_StatusResponse> {
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'DELETE',
             url: '/admin/tickets/{id}',
@@ -1384,18 +1769,19 @@ export class AdminService {
         });
     }
     /**
-     * Get ticket by ID
-     * @returns main_TicketDetailResponse OK
+     * 获取工单详情
+     * 根据 ID 获取工单及其所有回复
+     * @returns handler_TicketDetailResponse OK
      * @throws ApiError
      */
     public static adminGetTicket({
         id,
     }: {
         /**
-         * ticket ID
+         * 工单 ID
          */
         id: number,
-    }): CancelablePromise<main_TicketDetailResponse> {
+    }): CancelablePromise<handler_TicketDetailResponse> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/admin/tickets/{id}',
@@ -1409,18 +1795,19 @@ export class AdminService {
         });
     }
     /**
-     * Close a ticket
-     * @returns main_StatusResponse OK
+     * 关闭工单
+     * 将指定工单状态设为 closed
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminCloseTicket({
         id,
     }: {
         /**
-         * ticket ID
+         * 工单 ID
          */
         id: number,
-    }): CancelablePromise<main_StatusResponse> {
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/tickets/{id}/close',
@@ -1434,8 +1821,9 @@ export class AdminService {
         });
     }
     /**
-     * Reply to a ticket
-     * @returns main_StatusResponse OK
+     * 管理员回复工单
+     * 为指定工单添加管理员回复，工单状态自动变为 replied
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminReplyTicket({
@@ -1443,14 +1831,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * ticket ID
+         * 工单 ID
          */
         id: number,
         /**
-         * reply content
+         * 回复内容
          */
-        requestBody: main_TicketReplyRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_TicketReplyRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/tickets/{id}/replies',
@@ -1461,39 +1849,56 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
+                401: `Unauthorized`,
                 404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
     }
     /**
-     * List all users
-     * @returns main_User OK
+     * 获取流量汇总
+     * 返回活跃订阅的流量使用总量、活跃数和超限数
+     * @returns handler_TrafficSummaryResponse OK
      * @throws ApiError
      */
-    public static adminListUsers(): CancelablePromise<Array<main_User>> {
+    public static adminTrafficSummary(): CancelablePromise<handler_TrafficSummaryResponse> {
         return __request(OpenAPI, {
             method: 'GET',
-            url: '/admin/users',
+            url: '/admin/traffic/summary',
             errors: {
-                401: `Unauthorized`,
-                403: `Forbidden`,
+                500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Create a new user
-     * @returns main_StatusResponse OK
+     * 获取用户列表
+     * 返回所有用户及其角色
+     * @returns handler_UserWithRoles OK
+     * @throws ApiError
+     */
+    public static adminListUsers(): CancelablePromise<Array<handler_UserWithRoles>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/users',
+            errors: {
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 创建用户
+     * 创建新的管理后台用户
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminCreateUser({
         requestBody,
     }: {
         /**
-         * create user payload
+         * 用户信息
          */
-        requestBody: main_CreateUserRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_CreateUserRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/users',
@@ -1501,24 +1906,25 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
-                401: `Unauthorized`,
-                403: `Forbidden`,
+                409: `Conflict`,
+                500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Delete a user
-     * @returns main_StatusResponse OK
+     * 删除用户
+     * 根据 ID 删除管理后台用户
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminDeleteUser({
         id,
     }: {
         /**
-         * user id
+         * 用户 ID
          */
         id: number,
-    }): CancelablePromise<main_StatusResponse> {
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'DELETE',
             url: '/admin/users/{id}',
@@ -1527,15 +1933,15 @@ export class AdminService {
             },
             errors: {
                 400: `Bad Request`,
-                401: `Unauthorized`,
-                403: `Forbidden`,
                 404: `Not Found`,
+                500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Change user password (superadmin for others, any user for self)
-     * @returns main_StatusResponse OK
+     * 修改用户密码
+     * 修改指定用户的密码（可改自己或需要 user:write 权限）
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminChangePassword({
@@ -1543,14 +1949,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * user id
+         * 用户 ID
          */
         id: number,
         /**
-         * new password
+         * 新密码
          */
-        requestBody: main_ChangePasswordRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_ChangePasswordRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/admin/users/{id}/password',
@@ -1564,11 +1970,13 @@ export class AdminService {
                 401: `Unauthorized`,
                 403: `Forbidden`,
                 404: `Not Found`,
+                500: `Internal Server Error`,
             },
         });
     }
     /**
-     * Get user roles
+     * 获取用户角色
+     * 返回指定用户的角色名称列表
      * @returns string OK
      * @throws ApiError
      */
@@ -1576,7 +1984,7 @@ export class AdminService {
         id,
     }: {
         /**
-         * user id
+         * 用户 ID
          */
         id: number,
     }): CancelablePromise<Array<string>> {
@@ -1587,15 +1995,16 @@ export class AdminService {
                 'id': id,
             },
             errors: {
+                400: `Bad Request`,
                 401: `Unauthorized`,
-                403: `Forbidden`,
                 404: `Not Found`,
             },
         });
     }
     /**
-     * Replace user roles
-     * @returns main_StatusResponse OK
+     * 设置用户角色
+     * 替换指定用户的所有角色
+     * @returns handler_StatusResponse OK
      * @throws ApiError
      */
     public static adminSetUserRoles({
@@ -1603,14 +2012,14 @@ export class AdminService {
         requestBody,
     }: {
         /**
-         * user id
+         * 用户 ID
          */
         id: number,
         /**
-         * roles list
+         * 角色列表
          */
-        requestBody: main_SetRolesRequest,
-    }): CancelablePromise<main_StatusResponse> {
+        requestBody: handler_SetRolesRequest,
+    }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
             method: 'PUT',
             url: '/admin/users/{id}/roles',
@@ -1621,9 +2030,178 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
-                401: `Unauthorized`,
-                403: `Forbidden`,
                 404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 打印节点标签页面
+     * 返回可打印的节点标签 HTML 页面
+     * @returns string HTML page
+     * @throws ApiError
+     */
+    public static labelsPrint(): CancelablePromise<string> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/labels',
+            errors: {
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * List nodes
+     * List all nodes with optional filters
+     * @returns model_Node OK
+     * @throws ApiError
+     */
+    public static nodesList({
+        status,
+        enabled,
+        country,
+        region,
+        search,
+        tags,
+    }: {
+        /**
+         * filter by status
+         */
+        status?: string,
+        /**
+         * filter by enabled (0 or 1)
+         */
+        enabled?: string,
+        /**
+         * filter by country
+         */
+        country?: string,
+        /**
+         * filter by region
+         */
+        region?: string,
+        /**
+         * search hostname, location, note, or mac
+         */
+        search?: string,
+        /**
+         * filter by tags (comma-separated)
+         */
+        tags?: string,
+    }): CancelablePromise<Array<model_Node>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/nodes',
+            query: {
+                'status': status,
+                'enabled': enabled,
+                'country': country,
+                'region': region,
+                'search': search,
+                'tags': tags,
+            },
+            errors: {
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * Delete a node
+     * Delete a node by MAC address
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static nodeDelete({
+        mac,
+    }: {
+        /**
+         * node MAC address
+         */
+        mac: string,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/nodes/{mac}',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * Get a node
+     * Get a single node by MAC address
+     * @returns model_Node OK
+     * @throws ApiError
+     */
+    public static nodeGet({
+        mac,
+    }: {
+        /**
+         * node MAC address
+         */
+        mac: string,
+    }): CancelablePromise<model_Node> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/nodes/{mac}',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * Update a node
+     * Update allowed fields of a node by MAC address
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static nodeUpdate({
+        mac,
+        requestBody,
+    }: {
+        /**
+         * node MAC address
+         */
+        mac: string,
+        /**
+         * fields to update
+         */
+        requestBody: handler_NodeUpdateRequest,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/nodes/{mac}',
+            path: {
+                'mac': mac,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 获取 Prometheus 抓取目标
+     * 返回 file_sd 格式的节点列表，供 Prometheus 服务发现使用
+     * @returns handler_PrometheusTarget OK
+     * @throws ApiError
+     */
+    public static prometheusTargets(): CancelablePromise<Array<handler_PrometheusTarget>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/prometheus-targets',
+            errors: {
+                500: `Internal Server Error`,
             },
         });
     }
