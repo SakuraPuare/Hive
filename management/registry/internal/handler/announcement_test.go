@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"hive/registry/internal/model"
 )
 
@@ -13,16 +15,19 @@ import (
 func insertTestAnnouncement(t *testing.T, title, level string, pinned, published bool) uint {
 	t.Helper()
 	now := time.Now().UTC().Format(model.TimeLayout)
-	result := testDB.Exec(
-		`INSERT INTO announcements (title, content, level, pinned, published, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		title, "Test content for "+title, level, pinned, published, now, now,
-	)
-	if result.Error != nil {
-		t.Fatalf("insert test announcement: %v", result.Error)
-	}
 	var id uint
-	testDB.Raw("SELECT LAST_INSERT_ID()").Scan(&id)
+	if err := testDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			`INSERT INTO announcements (title, content, level, pinned, published, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			title, "Test content for "+title, level, pinned, published, now, now,
+		).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&id).Error
+	}); err != nil {
+		t.Fatalf("insert test announcement: %v", err)
+	}
 	return id
 }
 

@@ -245,27 +245,33 @@ func insertTestCustomer(t *testing.T, email string) uint {
 	t.Helper()
 	now := time.Now().UTC().Format(model.TimeLayout)
 	hash, _ := bcrypt.GenerateFromPassword([]byte("test123"), bcrypt.MinCost)
-	result := testDB.Exec(`INSERT INTO customers (email, password_hash, nickname, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)`,
-		email, string(hash), "nick-"+email, now, now)
-	if result.Error != nil {
-		t.Fatalf("insert test customer %s: %v", email, result.Error)
-	}
 	var id uint
-	testDB.Raw("SELECT LAST_INSERT_ID()").Scan(&id)
+	if err := testDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`INSERT INTO customers (email, password_hash, nickname, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)`,
+			email, string(hash), "nick-"+email, now, now).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&id).Error
+	}); err != nil {
+		t.Fatalf("insert test customer %s: %v", email, err)
+	}
 	return id
 }
 
 func insertTestPlan(t *testing.T, name string) uint {
 	t.Helper()
 	now := time.Now().UTC().Format(model.TimeLayout)
-	result := testDB.Exec(`INSERT INTO plans (name, traffic_limit, speed_limit, device_limit, duration_days, price, enabled, sort_order, created_at, updated_at)
-		VALUES (?, 107374182400, 100, 3, 30, 1000, 1, 0, ?, ?)`,
-		name, now, now)
-	if result.Error != nil {
-		t.Fatalf("insert test plan %s: %v", name, result.Error)
-	}
 	var id uint
-	testDB.Raw("SELECT LAST_INSERT_ID()").Scan(&id)
+	if err := testDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`INSERT INTO plans (name, traffic_limit, speed_limit, device_limit, duration_days, price, enabled, sort_order, created_at, updated_at)
+		VALUES (?, 107374182400, 100, 3, 30, 1000, 1, 0, ?, ?)`,
+			name, now, now).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&id).Error
+	}); err != nil {
+		t.Fatalf("insert test plan %s: %v", name, err)
+	}
 	return id
 }
 
@@ -288,14 +294,17 @@ func expiredCustomerCookie(customerID uint) *http.Cookie {
 func insertTestPromoCode(t *testing.T, code string, discountPct int) uint {
 	t.Helper()
 	now := time.Now().UTC().Format(model.TimeLayout)
-	result := testDB.Exec(`INSERT INTO promo_codes (code, discount_pct, discount_amt, max_uses, used_count, valid_from, valid_to, enabled, created_at, updated_at)
-		VALUES (?, ?, 0, 100, 0, ?, ?, 1, ?, ?)`,
-		code, discountPct, "2020-01-01 00:00:00", "2099-12-31 23:59:59", now, now)
-	if result.Error != nil {
-		t.Fatalf("insert test promo code %s: %v", code, result.Error)
-	}
 	var id uint
-	testDB.Raw("SELECT LAST_INSERT_ID()").Scan(&id)
+	if err := testDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`INSERT INTO promo_codes (code, discount_pct, discount_amt, max_uses, used_count, valid_from, valid_to, enabled, created_at, updated_at)
+		VALUES (?, ?, 0, 100, 0, ?, ?, 1, ?, ?)`,
+			code, discountPct, "2020-01-01 00:00:00", "2099-12-31 23:59:59", now, now).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&id).Error
+	}); err != nil {
+		t.Fatalf("insert test promo code %s: %v", code, err)
+	}
 	return id
 }
 
@@ -303,13 +312,16 @@ func createTestUser(t *testing.T, username, password, role string) uint {
 	t.Helper()
 	now := time.Now().UTC().Format(model.TimeLayout)
 	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
-	result := testDB.Exec(`INSERT INTO users (username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		username, string(hash), role, now, now)
-	if result.Error != nil {
-		t.Fatalf("create test user %s: %v", username, result.Error)
-	}
 	var uid uint
-	testDB.Raw("SELECT LAST_INSERT_ID()").Scan(&uid)
+	if err := testDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`INSERT INTO users (username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+			username, string(hash), role, now, now).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&uid).Error
+	}); err != nil {
+		t.Fatalf("create test user %s: %v", username, err)
+	}
 
 	var roleID uint
 	testDB.Raw("SELECT id FROM roles WHERE name = ?", role).Scan(&roleID)
