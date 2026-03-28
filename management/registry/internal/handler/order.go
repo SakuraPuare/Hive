@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"gorm.io/gorm"
+
 	"hive/registry/internal/model"
 	"hive/registry/internal/store"
 )
@@ -59,7 +61,7 @@ func generateOrderNo() string {
 // @ID           AdminListOrders
 // @Description  分页获取订单列表，支持按客户和状态筛选
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        customer_id query string false "按客户 ID 筛选"
 // @Param        status      query string false "按状态筛选"
@@ -111,7 +113,7 @@ func (h *Handler) HandleListOrders(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminGetOrder
 // @Description  根据 ID 获取单个订单
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "订单 ID"
 // @Success      200 {object} model.Order
@@ -139,7 +141,7 @@ func (h *Handler) HandleGetOrder(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminUpdateOrderStatus
 // @Description  更新指定订单的状态，若改为 paid 则自动创建订阅
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Accept       json
 // @Produce      json
 // @Param        id   path int                    true "订单 ID"
@@ -195,7 +197,10 @@ func (h *Handler) HandleUpdateOrderStatus(w http.ResponseWriter, r *http.Request
 			TrafficLimit int64 `gorm:"column:traffic_limit"`
 			DeviceLimit  int   `gorm:"column:device_limit"`
 		}
-		h.DB.Raw("SELECT duration_days, traffic_limit, device_limit FROM plans WHERE id=?", o.PlanID).Scan(&plan)
+		if err := h.DB.Raw("SELECT duration_days, traffic_limit, device_limit FROM plans WHERE id=?", o.PlanID).Scan(&plan).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
 
 		token, err := generateToken()
 		if err != nil {
@@ -203,10 +208,13 @@ func (h *Handler) HandleUpdateOrderStatus(w http.ResponseWriter, r *http.Request
 		}
 		startedAt := now
 		expiresAt := time.Now().UTC().AddDate(0, 0, plan.DurationDays).Format(model.TimeLayout)
-		h.DB.Exec(
+		if err := h.DB.Exec(
 			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) VALUES (?,?,?,0,?,?,?,?,'active',?,?)",
 			o.CustomerID, o.PlanID, token, plan.TrafficLimit, plan.DeviceLimit, startedAt, expiresAt, now, now,
-		)
+		).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
 
 		// 邀请返利
 		h.CreateReferralCommission(o)
@@ -281,14 +289,18 @@ func (h *Handler) HandleCreatePromoCode(w http.ResponseWriter, r *http.Request) 
 		maxUses = *req.MaxUses
 	}
 	now := time.Now().UTC().Format(model.TimeLayout)
-	if err := h.DB.Exec(
-		"INSERT INTO promo_codes (code, discount_pct, discount_amt, max_uses, used_count, valid_from, valid_to, enabled, created_at, updated_at) VALUES (?,?,?,?,0,?,?,?,?,?)",
-		req.Code, discountPct, discountAmt, maxUses, *req.ValidFrom, *req.ValidTo, enabled, now, now).Error; err != nil {
+	var newID int64
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"INSERT INTO promo_codes (code, discount_pct, discount_amt, max_uses, used_count, valid_from, valid_to, enabled, created_at, updated_at) VALUES (?,?,?,?,0,?,?,?,?,?)",
+			req.Code, discountPct, discountAmt, maxUses, *req.ValidFrom, *req.ValidTo, enabled, now, now).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&newID).Error
+	}); err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
-	var newID int64
-	h.DB.Raw("SELECT LAST_INSERT_ID()").Scan(&newID)
 
 	actor, _, _ := h.Auth.ParseSession(r)
 	store.WriteAuditLog(h.DB, actor, "promo_code_create", "code: "+req.Code, getClientIP(r))

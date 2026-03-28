@@ -137,15 +137,19 @@ func (h *Handler) HandleCreateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC().Format(model.TimeLayout)
-	if err := h.DB.Exec(
-		"INSERT INTO subscription_groups (name, token, created_at, updated_at) VALUES (?, ?, ?, ?)",
-		req.Name, token, now, now,
-	).Error; err != nil {
+	var id uint
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"INSERT INTO subscription_groups (name, token, created_at, updated_at) VALUES (?, ?, ?, ?)",
+			req.Name, token, now, now,
+		).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&id).Error
+	}); err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
-	var id uint
-	h.DB.Raw("SELECT LAST_INSERT_ID()").Scan(&id)
 	h.jsonOK(w, model.SubscriptionGroup{
 		ID:        id,
 		Name:      req.Name,

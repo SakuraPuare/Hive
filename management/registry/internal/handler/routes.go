@@ -2,14 +2,21 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"hive/registry/internal/middleware"
 )
 
 // RegisterRoutes creates and returns a ServeMux with all routes registered.
 func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
 	perm := h.Auth.RequirePerm
+
+	// ── 限流器 ──────────────────────────────────────────────────────────
+	loginRL := middleware.NewRateLimiter(5, 1*time.Minute)
+	forgotPwRL := middleware.NewRateLimiter(3, 1*time.Minute)
 
 	// ── 节点注册（设备端调用，Bearer token 认证）──────────────────────────
 	mux.HandleFunc("POST /nodes/register", h.HandleRegister)
@@ -24,7 +31,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("DELETE /nodes/{mac}", perm("node:delete")(h.HandleDeleteNode))
 
 	// ── 管理端登录（Cookie 会话）────────────────────────────────────────────
-	mux.HandleFunc("POST /admin/login", h.HandleAdminLogin)
+	mux.HandleFunc("POST /admin/login", loginRL.Wrap(h.HandleAdminLogin))
 	mux.HandleFunc("POST /admin/logout", h.HandleAdminLogout)
 
 	// ── 当前用户信息（任意已登录用户）──────────────────────────────────────
@@ -144,11 +151,11 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 
 	// ── 客户门户（公开）──────────────────────────────────────────────────────
 	mux.HandleFunc("POST /portal/register", h.HandlePortalRegister)
-	mux.HandleFunc("POST /portal/login", h.HandlePortalLogin)
+	mux.HandleFunc("POST /portal/login", loginRL.Wrap(h.HandlePortalLogin))
 	mux.HandleFunc("POST /portal/logout", h.HandlePortalLogout)
 	mux.HandleFunc("GET /portal/plans", h.HandlePortalPlans)
 	mux.HandleFunc("GET /portal/announcements", h.HandlePortalAnnouncements)
-	mux.HandleFunc("POST /portal/forgot-password", h.HandleForgotPassword)
+	mux.HandleFunc("POST /portal/forgot-password", forgotPwRL.Wrap(h.HandleForgotPassword))
 	mux.HandleFunc("POST /portal/reset-password", h.HandleResetPassword)
 
 	// ── 客户门户（需登录）────────────────────────────────────────────────────

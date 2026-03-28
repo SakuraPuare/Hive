@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"gorm.io/gorm"
@@ -23,7 +24,9 @@ type Handler struct {
 
 func (h *Handler) jsonOK(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("jsonOK: encode error: %v", err)
+	}
 }
 
 func (h *Handler) jsonErr(w http.ResponseWriter, code int, msg string) {

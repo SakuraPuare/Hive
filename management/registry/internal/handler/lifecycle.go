@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,16 +15,26 @@ import (
 // ── lifecycle loop ───────────────────────────────────────────────────────────
 
 // StartLifecycleLoop runs subscription lifecycle tasks every 10 minutes.
-func (h *Handler) StartLifecycleLoop() {
-	time.Sleep(10 * time.Second)
+func (h *Handler) StartLifecycleLoop(ctx context.Context) {
+	select {
+	case <-time.After(10 * time.Second):
+	case <-ctx.Done():
+		return
+	}
 	log.Println("lifecycle: starting subscription lifecycle loop (interval=10m)")
 
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 
 	h.runLifecycleTasks()
-	for range ticker.C {
-		h.runLifecycleTasks()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("lifecycle: shutting down")
+			return
+		case <-ticker.C:
+			h.runLifecycleTasks()
+		}
 	}
 }
 
@@ -152,7 +163,7 @@ func (h *Handler) resetMonthlyTraffic(now time.Time, nowStr string) {
 // @ID           AdminActivateSubscription
 // @Description  手动将订阅状态设为 active
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "订阅 ID"
 // @Success      200 {object} StatusResponse
@@ -187,7 +198,7 @@ func (h *Handler) HandleActivateSubscription(w http.ResponseWriter, r *http.Requ
 // @ID           AdminSuspendSubscription
 // @Description  手动将订阅状态设为 suspended
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "订阅 ID"
 // @Success      200 {object} StatusResponse
@@ -222,7 +233,7 @@ func (h *Handler) HandleSuspendSubscription(w http.ResponseWriter, r *http.Reque
 // @ID           AdminExpireSubscription
 // @Description  手动将订阅状态设为 expired
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "订阅 ID"
 // @Success      200 {object} StatusResponse
@@ -257,7 +268,7 @@ func (h *Handler) HandleExpireSubscription(w http.ResponseWriter, r *http.Reques
 // @ID           AdminBanCustomer
 // @Description  封禁客户并暂停其所有活跃订阅
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "客户 ID"
 // @Success      200 {object} StatusResponse
@@ -272,7 +283,9 @@ func (h *Handler) HandleBanCustomer(w http.ResponseWriter, r *http.Request) {
 		"UPDATE customers SET status = 'banned', updated_at = ? WHERE id = ? AND status != 'banned'",
 		nowStr, id,
 	).Error; err != nil {
-		tx.Rollback()
+		if rbErr := tx.Rollback().Error; rbErr != nil {
+			log.Printf("ban customer: rollback error: %v", rbErr)
+		}
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
@@ -281,7 +294,9 @@ func (h *Handler) HandleBanCustomer(w http.ResponseWriter, r *http.Request) {
 		"UPDATE customer_subscriptions SET status = 'suspended', updated_at = ? WHERE customer_id = ? AND status = 'active'",
 		nowStr, id,
 	).Error; err != nil {
-		tx.Rollback()
+		if rbErr := tx.Rollback().Error; rbErr != nil {
+			log.Printf("ban customer: rollback error: %v", rbErr)
+		}
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
@@ -302,7 +317,7 @@ func (h *Handler) HandleBanCustomer(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminUnbanCustomer
 // @Description  将已封禁的客户状态恢复为活跃
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "客户 ID"
 // @Success      200 {object} StatusResponse
@@ -357,10 +372,13 @@ func (h *Handler) ActivateSubscription(customerID, planID uint, orderID uint) er
 	var existingID uint
 	var existingExpires string
 	var existingTrafficLimit int64
-	h.DB.Raw(
+	row := h.DB.Raw(
 		"SELECT id, expires_at, traffic_limit FROM customer_subscriptions WHERE customer_id = ? AND plan_id = ? AND status = 'active' LIMIT 1",
 		customerID, planID,
-	).Row().Scan(&existingID, &existingExpires, &existingTrafficLimit)
+	).Row()
+	if row != nil {
+		_ = row.Scan(&existingID, &existingExpires, &existingTrafficLimit) // no row is not an error here
+	}
 
 	tx := h.DB.Begin()
 
@@ -377,7 +395,9 @@ func (h *Handler) ActivateSubscription(customerID, planID uint, orderID uint) er
 			"UPDATE customer_subscriptions SET expires_at = ?, traffic_limit = ?, updated_at = ? WHERE id = ?",
 			newExpires, newTrafficLimit, nowStr, existingID,
 		).Error; err != nil {
-			tx.Rollback()
+			if rbErr := tx.Rollback().Error; rbErr != nil {
+				log.Printf("activate subscription: rollback error: %v", rbErr)
+			}
 			return fmt.Errorf("extend subscription: %w", err)
 		}
 
@@ -388,7 +408,9 @@ func (h *Handler) ActivateSubscription(customerID, planID uint, orderID uint) er
 		// Create new subscription.
 		token, err := generateToken()
 		if err != nil {
-			tx.Rollback()
+			if rbErr := tx.Rollback().Error; rbErr != nil {
+				log.Printf("activate subscription: rollback error: %v", rbErr)
+			}
 			return fmt.Errorf("generate token: %w", err)
 		}
 		expiresAt := now.AddDate(0, 0, plan.DurationDays).Format(model.TimeLayout)
@@ -398,7 +420,9 @@ func (h *Handler) ActivateSubscription(customerID, planID uint, orderID uint) er
 				"VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'active', ?, ?)",
 			customerID, planID, token, plan.TrafficLimit, plan.DeviceLimit, nowStr, expiresAt, nowStr, nowStr,
 		).Error; err != nil {
-			tx.Rollback()
+			if rbErr := tx.Rollback().Error; rbErr != nil {
+				log.Printf("activate subscription: rollback error: %v", rbErr)
+			}
 			return fmt.Errorf("create subscription: %w", err)
 		}
 
@@ -411,7 +435,9 @@ func (h *Handler) ActivateSubscription(customerID, planID uint, orderID uint) er
 		"UPDATE customers SET status = 'active', updated_at = ? WHERE id = ? AND status = 'suspended'",
 		nowStr, customerID,
 	).Error; err != nil {
-		tx.Rollback()
+		if rbErr := tx.Rollback().Error; rbErr != nil {
+			log.Printf("activate subscription: rollback error: %v", rbErr)
+		}
 		return fmt.Errorf("activate customer: %w", err)
 	}
 
@@ -420,7 +446,9 @@ func (h *Handler) ActivateSubscription(customerID, planID uint, orderID uint) er
 		"UPDATE orders SET status = 'paid', paid_at = ?, updated_at = ? WHERE id = ?",
 		nowStr, nowStr, orderID,
 	).Error; err != nil {
-		tx.Rollback()
+		if rbErr := tx.Rollback().Error; rbErr != nil {
+			log.Printf("activate subscription: rollback error: %v", rbErr)
+		}
 		return fmt.Errorf("update order: %w", err)
 	}
 

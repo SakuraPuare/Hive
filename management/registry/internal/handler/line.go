@@ -238,7 +238,10 @@ func (h *Handler) HandleGetLineNodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var macs []string
-	h.DB.Model(&model.LineNode{}).Where("line_id = ?", id).Pluck("node_mac", &macs)
+	if err := h.DB.Model(&model.LineNode{}).Where("line_id = ?", id).Pluck("node_mac", &macs).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	h.jsonOK(w, macs)
 }
 
@@ -354,7 +357,9 @@ func (h *Handler) queryLineNodes(token string) (lineName string, nodes []model.N
 	}
 
 	var macs []string
-	h.DB.Model(&model.LineNode{}).Where("line_id = ?", l.ID).Pluck("node_mac", &macs)
+	if err = h.DB.Model(&model.LineNode{}).Where("line_id = ?", l.ID).Pluck("node_mac", &macs).Error; err != nil {
+		return "", nil, fmt.Errorf("query line nodes: %w", err)
+	}
 
 	nodes, err = h.queryNodesByMACs(macs)
 	return l.Name, nodes, err

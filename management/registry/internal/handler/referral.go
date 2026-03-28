@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -31,7 +32,9 @@ func generateReferralCode() (string, error) {
 // ensureReferralCode 确保客户有邀请码，没有则生成一个
 func (h *Handler) ensureReferralCode(customerID uint) (string, error) {
 	var code *string
-	h.DB.Raw("SELECT referral_code FROM customers WHERE id = ?", customerID).Scan(&code)
+	if err := h.DB.Raw("SELECT referral_code FROM customers WHERE id = ?", customerID).Scan(&code).Error; err != nil {
+		return "", fmt.Errorf("query referral_code: %w", err)
+	}
 	if code != nil && *code != "" {
 		return *code, nil
 	}
@@ -48,7 +51,9 @@ func (h *Handler) ensureReferralCode(customerID uint) (string, error) {
 			return newCode, nil
 		}
 		// someone else set it concurrently
-		h.DB.Raw("SELECT referral_code FROM customers WHERE id = ?", customerID).Scan(&code)
+		if err := h.DB.Raw("SELECT referral_code FROM customers WHERE id = ?", customerID).Scan(&code).Error; err != nil {
+			return "", fmt.Errorf("re-read referral_code: %w", err)
+		}
 		if code != nil && *code != "" {
 			return *code, nil
 		}
@@ -153,12 +158,17 @@ func (h *Handler) ProcessReferralOnRegister(newCustomerID uint, referralCode str
 	var referrer struct {
 		ID uint
 	}
-	h.DB.Raw("SELECT id FROM customers WHERE referral_code = ? AND id != ?", referralCode, newCustomerID).Scan(&referrer)
+	if err := h.DB.Raw("SELECT id FROM customers WHERE referral_code = ? AND id != ?", referralCode, newCustomerID).Scan(&referrer).Error; err != nil {
+		log.Printf("referral: lookup referrer by code %s: %v", referralCode, err)
+		return
+	}
 	if referrer.ID == 0 {
 		return
 	}
-	h.DB.Exec("UPDATE customers SET referred_by = ? WHERE id = ? AND referred_by IS NULL",
-		referrer.ID, newCustomerID)
+	if err := h.DB.Exec("UPDATE customers SET referred_by = ? WHERE id = ? AND referred_by IS NULL",
+		referrer.ID, newCustomerID).Error; err != nil {
+		log.Printf("referral: set referred_by for customer %d: %v", newCustomerID, err)
+	}
 }
 
 // ── 支付成功时创建返利记录 ──────────────────────────────────────────────────
@@ -166,7 +176,10 @@ func (h *Handler) ProcessReferralOnRegister(newCustomerID uint, referralCode str
 // CreateReferralCommission 在订单支付成功时调用，为邀请人创建返利记录。
 func (h *Handler) CreateReferralCommission(order model.Order) {
 	var referredBy *uint
-	h.DB.Raw("SELECT referred_by FROM customers WHERE id = ?", order.CustomerID).Scan(&referredBy)
+	if err := h.DB.Raw("SELECT referred_by FROM customers WHERE id = ?", order.CustomerID).Scan(&referredBy).Error; err != nil {
+		log.Printf("referral: lookup referred_by for customer %d: %v", order.CustomerID, err)
+		return
+	}
 	if referredBy == nil || *referredBy == 0 {
 		return
 	}
@@ -186,15 +199,20 @@ func (h *Handler) CreateReferralCommission(order model.Order) {
 		"INSERT INTO referrals (referrer_id, referee_id, order_id, commission, status, created_at) VALUES (?,?,?,?,?,?)",
 		*referredBy, order.CustomerID, orderID, commission, "pending", now,
 	).Error; err != nil {
+		log.Printf("referral: insert commission for order %s: %v", order.OrderNo, err)
 		return
 	}
 
 	// 直接将返利加到邀请人余额
-	h.DB.Exec("UPDATE customers SET balance = balance + ? WHERE id = ?", commission, *referredBy)
+	if err := h.DB.Exec("UPDATE customers SET balance = balance + ? WHERE id = ?", commission, *referredBy).Error; err != nil {
+		log.Printf("referral: add balance for customer %d: %v", *referredBy, err)
+	}
 
 	// 审计日志
 	var email string
-	h.DB.Raw("SELECT email FROM customers WHERE id = ?", *referredBy).Scan(&email)
+	if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", *referredBy).Scan(&email).Error; err != nil {
+		log.Printf("referral: lookup email for customer %d: %v", *referredBy, err)
+	}
 	store.WriteAuditLog(h.DB, email, "referral_commission",
 		fmt.Sprintf("order: %s, referee_cid: %d, commission: %d", order.OrderNo, order.CustomerID, commission), "")
 }
@@ -221,13 +239,22 @@ func (h *Handler) HandlePortalReferral(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var totalInvites int64
-	h.DB.Raw("SELECT COUNT(*) FROM customers WHERE referred_by = ?", cid).Scan(&totalInvites)
+	if err := h.DB.Raw("SELECT COUNT(*) FROM customers WHERE referred_by = ?", cid).Scan(&totalInvites).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	var totalCommission int64
-	h.DB.Raw("SELECT COALESCE(SUM(commission), 0) FROM referrals WHERE referrer_id = ?", cid).Scan(&totalCommission)
+	if err := h.DB.Raw("SELECT COALESCE(SUM(commission), 0) FROM referrals WHERE referrer_id = ?", cid).Scan(&totalCommission).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	var balance int
-	h.DB.Raw("SELECT balance FROM customers WHERE id = ?", cid).Scan(&balance)
+	if err := h.DB.Raw("SELECT balance FROM customers WHERE id = ?", cid).Scan(&balance).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	h.jsonOK(w, map[string]any{
 		"referral_code":    code,
@@ -266,16 +293,22 @@ func (h *Handler) HandlePortalReferralRecords(w http.ResponseWriter, r *http.Req
 	offset := (page - 1) * limit
 
 	var total int64
-	h.DB.Raw("SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", cid).Scan(&total)
+	if err := h.DB.Raw("SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", cid).Scan(&total).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	var rows []referralRecordDBRow
-	h.DB.Raw(`
+	if err := h.DB.Raw(`
 		SELECT r.id, r.referee_id, r.commission, r.status, r.created_at, c.nickname
 		FROM referrals r
 		LEFT JOIN customers c ON c.id = r.referee_id
 		WHERE r.referrer_id = ?
 		ORDER BY r.id DESC LIMIT ? OFFSET ?
-	`, cid, limit, offset).Scan(&rows)
+	`, cid, limit, offset).Scan(&rows).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	records := make([]PortalReferralRecord, 0, len(rows))
 	for _, row := range rows {
@@ -298,7 +331,7 @@ func (h *Handler) HandlePortalReferralRecords(w http.ResponseWriter, r *http.Req
 // @ID           AdminListReferrals
 // @Description  分页获取全局邀请记录，支持按状态筛选
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        page   query int    false "页码（默认 1）"
 // @Param        limit  query int    false "每页数量（默认 20，最大 100）"
@@ -400,7 +433,7 @@ func (h *Handler) HandleListReferrals(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminUpdateReferral
 // @Description  修改指定邀请记录的状态（pending/paid/cancelled），自动调整余额
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Accept       json
 // @Produce      json
 // @Param        id   path int                  true "邀请记录 ID"
@@ -425,7 +458,10 @@ func (h *Handler) HandleUpdateReferral(w http.ResponseWriter, r *http.Request) {
 
 	// 查询当前记录
 	var ref referralLookupRow
-	h.DB.Raw("SELECT id, referrer_id, commission, status FROM referrals WHERE id = ?", id).Scan(&ref)
+	if err := h.DB.Raw("SELECT id, referrer_id, commission, status FROM referrals WHERE id = ?", id).Scan(&ref).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	if ref.ID == 0 {
 		h.jsonErr(w, http.StatusNotFound, "referral not found")
 		return
@@ -440,17 +476,25 @@ func (h *Handler) HandleUpdateReferral(w http.ResponseWriter, r *http.Request) {
 
 	// 余额调整：如果从 pending 变为 cancelled，扣回余额
 	if oldStatus == "pending" && req.Status == "cancelled" {
-		h.DB.Exec("UPDATE customers SET balance = GREATEST(balance - ?, 0) WHERE id = ?", ref.Commission, ref.ReferrerID)
+		if err := h.DB.Exec("UPDATE customers SET balance = GREATEST(balance - ?, 0) WHERE id = ?", ref.Commission, ref.ReferrerID).Error; err != nil {
+			log.Printf("referral: deduct balance for customer %d: %v", ref.ReferrerID, err)
+		}
 		var email string
-		h.DB.Raw("SELECT email FROM customers WHERE id = ?", ref.ReferrerID).Scan(&email)
+		if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", ref.ReferrerID).Scan(&email).Error; err != nil {
+			log.Printf("referral: lookup email for customer %d: %v", ref.ReferrerID, err)
+		}
 		store.WriteAuditLog(h.DB, email, "referral_balance_deduct",
 			fmt.Sprintf("referral_id: %s, amount: %d, reason: cancelled", id, ref.Commission), "")
 	}
 	// 如果从 cancelled 恢复为 pending，加回余额
 	if oldStatus == "cancelled" && req.Status == "pending" {
-		h.DB.Exec("UPDATE customers SET balance = balance + ? WHERE id = ?", ref.Commission, ref.ReferrerID)
+		if err := h.DB.Exec("UPDATE customers SET balance = balance + ? WHERE id = ?", ref.Commission, ref.ReferrerID).Error; err != nil {
+			log.Printf("referral: restore balance for customer %d: %v", ref.ReferrerID, err)
+		}
 		var email string
-		h.DB.Raw("SELECT email FROM customers WHERE id = ?", ref.ReferrerID).Scan(&email)
+		if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", ref.ReferrerID).Scan(&email).Error; err != nil {
+			log.Printf("referral: lookup email for customer %d: %v", ref.ReferrerID, err)
+		}
 		store.WriteAuditLog(h.DB, email, "referral_balance_restore",
 			fmt.Sprintf("referral_id: %s, amount: %d", id, ref.Commission), "")
 	}
@@ -471,7 +515,10 @@ func (h *Handler) ApplyBalanceDeduction(customerID uint, amount int) (finalAmoun
 		return 0, 0
 	}
 	var balance int
-	h.DB.Raw("SELECT balance FROM customers WHERE id = ?", customerID).Scan(&balance)
+	if err := h.DB.Raw("SELECT balance FROM customers WHERE id = ?", customerID).Scan(&balance).Error; err != nil {
+		log.Printf("balance_deduction: query balance for customer %d: %v", customerID, err)
+		return amount, 0
+	}
 	if balance <= 0 {
 		return amount, 0
 	}
@@ -480,10 +527,15 @@ func (h *Handler) ApplyBalanceDeduction(customerID uint, amount int) (finalAmoun
 		deducted = amount
 	}
 	finalAmount = amount - deducted
-	h.DB.Exec("UPDATE customers SET balance = balance - ? WHERE id = ?", deducted, customerID)
+	if err := h.DB.Exec("UPDATE customers SET balance = balance - ? WHERE id = ?", deducted, customerID).Error; err != nil {
+		log.Printf("balance_deduction: update balance for customer %d: %v", customerID, err)
+		return amount, 0
+	}
 
 	var email string
-	h.DB.Raw("SELECT email FROM customers WHERE id = ?", customerID).Scan(&email)
+	if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", customerID).Scan(&email).Error; err != nil {
+		log.Printf("balance_deduction: lookup email for customer %d: %v", customerID, err)
+	}
 	store.WriteAuditLog(h.DB, email, "balance_deduct",
 		fmt.Sprintf("amount: %d, remaining: %d", deducted, balance-deducted), "")
 

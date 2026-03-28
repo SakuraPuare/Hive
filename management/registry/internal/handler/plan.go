@@ -264,7 +264,10 @@ func (h *Handler) HandleDeletePlan(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleGetPlanLines(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var lineIDs []int
-	h.DB.Model(&model.PlanLine{}).Where("plan_id = ?", id).Pluck("line_id", &lineIDs)
+	if err := h.DB.Model(&model.PlanLine{}).Where("plan_id = ?", id).Pluck("line_id", &lineIDs).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	h.jsonOK(w, lineIDs)
 }
 
@@ -337,8 +340,10 @@ func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.N
 		TrafficLimit int64
 		ExpiresAt    time.Time
 	}
-	h.DB.Raw("SELECT id, customer_id, plan_id, status, traffic_used, traffic_limit, expires_at "+
-		"FROM customer_subscriptions WHERE token=?", token).Scan(&row)
+	if err = h.DB.Raw("SELECT id, customer_id, plan_id, status, traffic_used, traffic_limit, expires_at "+
+		"FROM customer_subscriptions WHERE token=?", token).Scan(&row).Error; err != nil {
+		return "", nil, sub, fmt.Errorf("query subscription: %w", err)
+	}
 	if row.ID == 0 {
 		return "", nil, sub, fmt.Errorf("subscription not found")
 	}
@@ -349,18 +354,24 @@ func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.N
 	sub.ExpiresAt = row.ExpiresAt.UTC().Format(model.TimeLayout)
 
 	var custStatus string
-	h.DB.Raw("SELECT status FROM customers WHERE id=?", row.CustomerID).Scan(&custStatus)
+	if err = h.DB.Raw("SELECT status FROM customers WHERE id=?", row.CustomerID).Scan(&custStatus).Error; err != nil {
+		return "", nil, sub, fmt.Errorf("query customer status: %w", err)
+	}
 	if custStatus != "active" {
 		return "", nil, sub, fmt.Errorf("customer not active")
 	}
 
-	h.DB.Raw("SELECT name FROM plans WHERE id=?", row.PlanID).Scan(&planName)
+	if err = h.DB.Raw("SELECT name FROM plans WHERE id=?", row.PlanID).Scan(&planName).Error; err != nil {
+		return "", nil, sub, fmt.Errorf("query plan name: %w", err)
+	}
 
 	var macs []string
-	h.DB.Raw("SELECT DISTINCT ln.node_mac FROM plan_lines pl "+
+	if err = h.DB.Raw("SELECT DISTINCT ln.node_mac FROM plan_lines pl "+
 		"JOIN line_nodes ln ON ln.line_id = pl.line_id "+
 		"JOIN `lines` l ON l.id = pl.line_id AND l.enabled = 1 "+
-		"WHERE pl.plan_id = ?", row.PlanID).Scan(&macs)
+		"WHERE pl.plan_id = ?", row.PlanID).Scan(&macs).Error; err != nil {
+		return "", nil, sub, fmt.Errorf("query plan nodes: %w", err)
+	}
 
 	nodes, err = h.queryNodesByMACs(macs)
 	return planName, nodes, sub, err

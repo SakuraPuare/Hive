@@ -52,11 +52,14 @@ func (h *Handler) HandleListRoles(w http.ResponseWriter, r *http.Request) {
 	roles := make([]RoleDetail, 0, len(roleModels))
 	for _, rm := range roleModels {
 		var slugs []string
-		h.DB.Raw(`
+		if err := h.DB.Raw(`
 			SELECT p.slug FROM role_permissions rp
 			JOIN permissions p ON p.id = rp.permission_id
 			WHERE rp.role_id = ? ORDER BY p.slug
-		`, rm.ID).Scan(&slugs)
+		`, rm.ID).Scan(&slugs).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
 		if slugs == nil {
 			slugs = []string{}
 		}
@@ -108,7 +111,10 @@ func (h *Handler) HandleUpdateRolePermissions(w http.ResponseWriter, r *http.Req
 
 	for _, slug := range req.Permissions {
 		var cnt int64
-		h.DB.Model(&model.Permission{}).Where("slug = ?", slug).Count(&cnt)
+		if err := h.DB.Model(&model.Permission{}).Where("slug = ?", slug).Count(&cnt).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
 		if cnt == 0 {
 			h.jsonErr(w, http.StatusBadRequest, "unknown permission: "+slug)
 			return
@@ -124,7 +130,9 @@ func (h *Handler) HandleUpdateRolePermissions(w http.ResponseWriter, r *http.Req
 			if err := tx.Where("slug = ?", slug).Select("id").First(&perm).Error; err != nil {
 				continue
 			}
-			tx.Exec("INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)", roleID, perm.ID)
+			if err := tx.Exec("INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)", roleID, perm.ID).Error; err != nil {
+				return err
+			}
 		}
 		return nil
 	}); err != nil {
