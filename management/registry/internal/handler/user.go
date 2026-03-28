@@ -2,6 +2,8 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,25 +16,50 @@ import (
 	"hive/registry/internal/store"
 )
 
+// isPrivateIP reports whether ip is a private/loopback/link-local address.
+func isPrivateIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+}
+
+// getClientIP returns the client's real IP by walking X-Forwarded-For
+// from right to left and returning the first non-private IP. The rightmost
+// entry is the one appended by the trusted reverse proxy, so we start there
+// and skip any private addresses (which may come from internal hops).
+// Falls back to r.RemoteAddr if no valid public IP is found.
 func getClientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return strings.SplitN(xff, ",", 2)[0]
+		parts := strings.Split(xff, ",")
+		for i := len(parts) - 1; i >= 0; i-- {
+			candidate := strings.TrimSpace(parts[i])
+			if candidate == "" {
+				continue
+			}
+			ip := net.ParseIP(candidate)
+			if ip == nil {
+				continue
+			}
+			if !isPrivateIP(ip) {
+				return candidate
+			}
+		}
 	}
-	addr := r.RemoteAddr
-	if idx := strings.LastIndex(addr, ":"); idx != -1 {
-		return addr[:idx]
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
-	return addr
+	return host
 }
 
 func (h *Handler) getUserRoleNames(userID uint) []string {
 	var names []string
-	h.DB.Raw(`
+	if err := h.DB.Raw(`
 		SELECT r.name FROM user_roles ur
 		JOIN roles r ON r.id = ur.role_id
 		WHERE ur.user_id = ?
 		ORDER BY r.id
-	`, userID).Scan(&names)
+	`, userID).Scan(&names).Error; err != nil {
+		log.Printf("getUserRoleNames: user %d: %v", userID, err)
+	}
 	return names
 }
 
@@ -110,9 +137,16 @@ func (h *Handler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusBadRequest, "required: username, password")
 		return
 	}
+	if !isValidPassword(req.Password) {
+		h.jsonErr(w, http.StatusBadRequest, "密码长度不能少于8个字符")
+		return
+	}
 	if req.Role != "" {
 		var cnt int64
-		h.DB.Model(&model.RoleModel{}).Where("name=?", req.Role).Count(&cnt)
+		if err := h.DB.Model(&model.RoleModel{}).Where("name=?", req.Role).Count(&cnt).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
 		if cnt == 0 {
 			h.jsonErr(w, http.StatusBadRequest, "unknown role: "+req.Role)
 			return
@@ -126,10 +160,16 @@ func (h *Handler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UTC().Format(model.TimeLayout)
-	if err := h.DB.Exec(
-		"INSERT INTO users (username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-		req.Username, string(hash), req.Role, now, now,
-	).Error; err != nil {
+	var newUID uint
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"INSERT INTO users (username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+			req.Username, string(hash), req.Role, now, now,
+		).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&newUID).Error
+	}); err != nil {
 		if strings.Contains(err.Error(), "Duplicate") {
 			h.jsonErr(w, http.StatusConflict, "username already exists")
 			return
@@ -137,11 +177,11 @@ func (h *Handler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
-	var newUID uint
-	h.DB.Raw("SELECT LAST_INSERT_ID()").Scan(&newUID)
 	var roleID uint
 	if err := h.DB.Raw("SELECT id FROM roles WHERE name=?", req.Role).Scan(&roleID).Error; err == nil && roleID > 0 {
-		h.DB.Exec("INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)", newUID, roleID)
+		if err := h.DB.Exec("INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)", newUID, roleID).Error; err != nil {
+			log.Printf("create user: assign role %s to user %d: %v", req.Role, newUID, err)
+		}
 	}
 	actor, _, _ := h.Auth.ParseSession(r)
 	store.WriteAuditLog(h.DB, actor, "user_create", "created user: "+req.Username+" role: "+req.Role, getClientIP(r))
@@ -210,7 +250,10 @@ func (h *Handler) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if targetUsername != actor {
 		var actorUID uint
-		h.DB.Raw("SELECT id FROM users WHERE username=?", actor).Scan(&actorUID)
+		if err := h.DB.Raw("SELECT id FROM users WHERE username=?", actor).Scan(&actorUID).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
 		if !h.hasPermission(actorUID, "user:write") {
 			h.jsonErr(w, http.StatusForbidden, "forbidden: can only change your own password")
 			return
@@ -223,6 +266,10 @@ func (h *Handler) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Password == "" {
 		h.jsonErr(w, http.StatusBadRequest, "required: password")
+		return
+	}
+	if !isValidPassword(req.Password) {
+		h.jsonErr(w, http.StatusBadRequest, "密码长度不能少于8个字符")
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -309,7 +356,10 @@ func (h *Handler) HandleSetUserRoles(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, name := range req.Roles {
 		var cnt int64
-		h.DB.Model(&model.RoleModel{}).Where("name = ?", name).Count(&cnt)
+		if err := h.DB.Model(&model.RoleModel{}).Where("name = ?", name).Count(&cnt).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
 		if cnt == 0 {
 			h.jsonErr(w, http.StatusBadRequest, "unknown role: "+name)
 			return
