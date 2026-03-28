@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -22,7 +23,7 @@ type RiskEventListResponse struct {
 // @ID           AdminListRiskEvents
 // @Description  分页查询风控事件，支持按客户 ID 和事件类型筛选
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        customer_id query string false "按客户 ID 筛选"
 // @Param        event_type  query string false "按事件类型筛选"
@@ -72,11 +73,15 @@ func (h *Handler) HandleListRiskEvents(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) writeRiskEvent(customerID *uint, eventType, detail, ip string) {
 	now := time.Now().UTC().Format(model.TimeLayout)
+	var err error
 	if customerID != nil {
-		h.DB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (?,?,?,?,?)",
-			*customerID, eventType, detail, ip, now)
+		err = h.DB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (?,?,?,?,?)",
+			*customerID, eventType, detail, ip, now).Error
 	} else {
-		h.DB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (NULL,?,?,?,?)",
-			eventType, detail, ip, now)
+		err = h.DB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (NULL,?,?,?,?)",
+			eventType, detail, ip, now).Error
+	}
+	if err != nil {
+		log.Printf("writeRiskEvent: %v", err)
 	}
 }

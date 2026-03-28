@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -49,7 +50,7 @@ func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 // @ID           PrometheusTargets
 // @Description  返回 file_sd 格式的节点列表，供 Prometheus 服务发现使用
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Success      200 {array}  PrometheusTarget
 // @Failure      500 {object} ErrorResponse
@@ -95,7 +96,7 @@ type labelNodeRow struct {
 // @ID           LabelsPrint
 // @Description  返回可打印的节点标签 HTML 页面
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      html
 // @Success      200 {string} string "HTML page"
 // @Failure      500 {object} ErrorResponse
@@ -162,8 +163,12 @@ func (h *Handler) HandleLabels(w http.ResponseWriter, r *http.Request) {
 // @Router       / [get]
 func (h *Handler) HandleRoot(w http.ResponseWriter, r *http.Request) {
 	var total, online int64
-	h.DB.Raw("SELECT COUNT(*) FROM nodes").Scan(&total)
-	h.DB.Raw("SELECT COUNT(*) FROM nodes WHERE tailscale_ip != 'pending' AND tailscale_ip != ''").Scan(&online)
+	if err := h.DB.Raw("SELECT COUNT(*) FROM nodes").Scan(&total).Error; err != nil {
+		log.Printf("root: count nodes: %v", err)
+	}
+	if err := h.DB.Raw("SELECT COUNT(*) FROM nodes WHERE tailscale_ip != 'pending' AND tailscale_ip != ''").Scan(&online).Error; err != nil {
+		log.Printf("root: count online nodes: %v", err)
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!DOCTYPE html>

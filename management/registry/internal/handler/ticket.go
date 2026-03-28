@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -43,7 +44,7 @@ type ticketReplyRow struct {
 // @ID           AdminListTickets
 // @Description  分页获取工单列表，支持按状态和客户筛选
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        status      query string false "按状态筛选"
 // @Param        customer_id query string false "按客户 ID 筛选"
@@ -95,7 +96,7 @@ func (h *Handler) HandleListTickets(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminGetTicket
 // @Description  根据 ID 获取工单及其所有回复
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "工单 ID"
 // @Success      200 {object} TicketDetailResponse
@@ -145,7 +146,7 @@ func (h *Handler) HandleGetTicket(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminReplyTicket
 // @Description  为指定工单添加管理员回复，工单状态自动变为 replied
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Accept       json
 // @Produce      json
 // @Param        id   path int                true "工单 ID"
@@ -177,7 +178,10 @@ func (h *Handler) HandleAddTicketReply(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC().Format(model.TimeLayout)
 
 	var ticketID uint
-	h.DB.Raw("SELECT id FROM tickets WHERE id = ?", id).Scan(&ticketID)
+	if err := h.DB.Raw("SELECT id FROM tickets WHERE id = ?", id).Scan(&ticketID).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	if ticketID == 0 {
 		h.jsonErr(w, http.StatusNotFound, "ticket not found")
 		return
@@ -190,7 +194,9 @@ func (h *Handler) HandleAddTicketReply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.DB.Exec("UPDATE tickets SET status='replied', updated_at=? WHERE id=?", now, id)
+	if err := h.DB.Exec("UPDATE tickets SET status='replied', updated_at=? WHERE id=?", now, id).Error; err != nil {
+		log.Printf("admin reply ticket: update status for ticket %s: %v", id, err)
+	}
 
 	store.WriteAuditLog(h.DB, actor, "ticket_reply", "ticket_id: "+id, getClientIP(r))
 
@@ -202,7 +208,7 @@ func (h *Handler) HandleAddTicketReply(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminCloseTicket
 // @Description  将指定工单状态设为 closed
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "工单 ID"
 // @Success      200 {object} StatusResponse
@@ -213,7 +219,10 @@ func (h *Handler) HandleCloseTicket(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	var ticketID uint
-	h.DB.Raw("SELECT id FROM tickets WHERE id = ?", id).Scan(&ticketID)
+	if err := h.DB.Raw("SELECT id FROM tickets WHERE id = ?", id).Scan(&ticketID).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	if ticketID == 0 {
 		h.jsonErr(w, http.StatusNotFound, "ticket not found")
 		return
@@ -236,7 +245,7 @@ func (h *Handler) HandleCloseTicket(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminDeleteTicket
 // @Description  删除指定工单及其所有回复
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "工单 ID"
 // @Success      200 {object} StatusResponse
@@ -247,13 +256,19 @@ func (h *Handler) HandleDeleteTicket(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	var ticketID uint
-	h.DB.Raw("SELECT id FROM tickets WHERE id = ?", id).Scan(&ticketID)
+	if err := h.DB.Raw("SELECT id FROM tickets WHERE id = ?", id).Scan(&ticketID).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	if ticketID == 0 {
 		h.jsonErr(w, http.StatusNotFound, "ticket not found")
 		return
 	}
 
-	h.DB.Exec("DELETE FROM ticket_replies WHERE ticket_id = ?", id)
+	if err := h.DB.Exec("DELETE FROM ticket_replies WHERE ticket_id = ?", id).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	if err := h.DB.Exec("DELETE FROM tickets WHERE id = ?", id).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
