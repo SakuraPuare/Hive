@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"hive/registry/internal/model"
 )
 
@@ -35,9 +37,15 @@ func setupCustomerSubscription(t *testing.T) string {
 	now := time.Now().UTC().Format(model.TimeLayout)
 
 	// line
-	testDB.Exec("INSERT INTO `lines` (name, region, token, enabled, display_order, created_at, updated_at) VALUES ('JP','JP','dummy',1,0,?,?)", now, now)
 	var lineID uint
-	testDB.Raw("SELECT LAST_INSERT_ID()").Scan(&lineID)
+	if err := testDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("INSERT INTO `lines` (name, region, token, enabled, display_order, created_at, updated_at) VALUES ('JP','JP','dummy',1,0,?,?)", now, now).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&lineID).Error
+	}); err != nil {
+		t.Fatalf("insert test line: %v", err)
+	}
 
 	// line → node
 	testDB.Exec("INSERT INTO line_nodes (line_id, node_mac) VALUES (?, 'aabbccddeeff')", lineID)

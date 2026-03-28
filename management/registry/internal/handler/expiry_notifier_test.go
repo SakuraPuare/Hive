@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"hive/registry/internal/mailer"
 	"hive/registry/internal/model"
 )
@@ -15,16 +17,19 @@ func insertTestSubscription(t *testing.T, customerID, planID uint, status string
 	now := time.Now().UTC().Format(model.TimeLayout)
 	exp := expiresAt.UTC().Format(model.TimeLayout)
 	token := "tok-" + time.Now().Format("150405.000000000")
-	result := testDB.Exec(
-		`INSERT INTO customer_subscriptions (customer_id, plan_id, token, status, traffic_used, traffic_limit, device_limit, started_at, expires_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, 0, 107374182400, 3, ?, ?, ?, ?)`,
-		customerID, planID, token, status, now, exp, now, now,
-	)
-	if result.Error != nil {
-		t.Fatalf("insert test subscription: %v", result.Error)
-	}
 	var id uint
-	testDB.Raw("SELECT LAST_INSERT_ID()").Scan(&id)
+	if err := testDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			`INSERT INTO customer_subscriptions (customer_id, plan_id, token, status, traffic_used, traffic_limit, device_limit, started_at, expires_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 0, 107374182400, 3, ?, ?, ?, ?)`,
+			customerID, planID, token, status, now, exp, now, now,
+		).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&id).Error
+	}); err != nil {
+		t.Fatalf("insert test subscription: %v", err)
+	}
 	return id
 }
 

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"hive/registry/internal/model"
 )
 
@@ -16,10 +18,16 @@ func insertTestOrder(t *testing.T) (orderID, customerID, planID uint) {
 	customerID = insertTestCustomer(t, "order@test.com")
 	planID = insertTestPlan(t, "OrderPlan")
 	now := time.Now().UTC().Format(model.TimeLayout)
-	testDB.Exec(`INSERT INTO orders (order_no, customer_id, plan_id, amount, original_amount, status, created_at, updated_at)
+	if err := testDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`INSERT INTO orders (order_no, customer_id, plan_id, amount, original_amount, status, created_at, updated_at)
 		VALUES (?, ?, ?, 1000, 1000, 'pending', ?, ?)`,
-		"HV20250101000000ab", customerID, planID, now, now)
-	testDB.Raw("SELECT LAST_INSERT_ID()").Scan(&orderID)
+			"HV20250101000000ab", customerID, planID, now, now).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&orderID).Error
+	}); err != nil {
+		t.Fatalf("insert test order: %v", err)
+	}
 	return
 }
 

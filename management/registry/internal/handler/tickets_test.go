@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"hive/registry/internal/model"
 )
 
@@ -13,13 +15,16 @@ import (
 func insertTestTicket(t *testing.T, customerID uint) uint {
 	t.Helper()
 	now := time.Now().UTC().Format(model.TimeLayout)
-	result := testDB.Exec(`INSERT INTO tickets (customer_id, subject, status, created_at, updated_at)
-		VALUES (?, ?, 'open', ?, ?)`, customerID, "Test Subject", now, now)
-	if result.Error != nil {
-		t.Fatalf("insert test ticket: %v", result.Error)
-	}
 	var ticketID uint
-	testDB.Raw("SELECT LAST_INSERT_ID()").Scan(&ticketID)
+	if err := testDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`INSERT INTO tickets (customer_id, subject, status, created_at, updated_at)
+		VALUES (?, ?, 'open', ?, ?)`, customerID, "Test Subject", now, now).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&ticketID).Error
+	}); err != nil {
+		t.Fatalf("insert test ticket: %v", err)
+	}
 	return ticketID
 }
 
