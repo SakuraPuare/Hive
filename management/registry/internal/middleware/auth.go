@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -148,7 +149,11 @@ func (a *Auth) ParseCustomerSession(r *http.Request) (customerID uint, valid boo
 // Returns true if auth passed, false if it wrote an error response.
 func (a *Auth) RequireDeviceAuth(w http.ResponseWriter, r *http.Request) bool {
 	if a.Config.APISecret == "" {
-		return true
+		log.Println("WARN: API_SECRET is empty, denying device auth request")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"server misconfigured: API_SECRET not set"}`))
+		return false
 	}
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
