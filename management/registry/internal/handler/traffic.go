@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,16 +15,26 @@ import (
 
 // StartTrafficLoop runs every 5 minutes to collect xray traffic from Prometheus
 // and update customer_subscriptions.traffic_used. It also handles monthly resets.
-func (h *Handler) StartTrafficLoop() {
-	time.Sleep(10 * time.Second)
+func (h *Handler) StartTrafficLoop(ctx context.Context) {
+	select {
+	case <-time.After(10 * time.Second):
+	case <-ctx.Done():
+		return
+	}
 	log.Printf("traffic: starting traffic collection loop (interval=5m)")
 
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	h.collectTraffic()
-	for range ticker.C {
-		h.collectTraffic()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("traffic: shutting down")
+			return
+		case <-ticker.C:
+			h.collectTraffic()
+		}
 	}
 }
 
@@ -64,7 +75,10 @@ func (h *Handler) updateTrafficFromPrometheus() {
 		MAC      string
 		Hostname string
 	}
-	h.DB.Raw("SELECT mac, hostname FROM nodes").Scan(&nodes)
+	if err := h.DB.Raw("SELECT mac, hostname FROM nodes").Scan(&nodes).Error; err != nil {
+		log.Printf("traffic: query nodes: %v", err)
+		return
+	}
 	hostnameToMAC := make(map[string]string, len(nodes))
 	for _, n := range nodes {
 		hostnameToMAC[n.Hostname] = n.MAC
@@ -87,7 +101,10 @@ func (h *Handler) updateTrafficFromPrometheus() {
 		PlanID uint
 	}
 	var subs []subInfo
-	h.DB.Raw("SELECT id, plan_id FROM customer_subscriptions WHERE status = 'active'").Scan(&subs)
+	if err := h.DB.Raw("SELECT id, plan_id FROM customer_subscriptions WHERE status = 'active'").Scan(&subs).Error; err != nil {
+		log.Printf("traffic: query active subscriptions: %v", err)
+		return
+	}
 
 	if len(subs) == 0 {
 		return
@@ -99,9 +116,12 @@ func (h *Handler) updateTrafficFromPrometheus() {
 		NodeMAC string
 	}
 	var pls []planLine
-	h.DB.Raw("SELECT pl.plan_id, ln.node_mac FROM plan_lines pl " +
+	if err := h.DB.Raw("SELECT pl.plan_id, ln.node_mac FROM plan_lines pl " +
 		"JOIN line_nodes ln ON ln.line_id = pl.line_id " +
-		"JOIN `lines` l ON l.id = pl.line_id AND l.enabled = 1").Scan(&pls)
+		"JOIN `lines` l ON l.id = pl.line_id AND l.enabled = 1").Scan(&pls).Error; err != nil {
+		log.Printf("traffic: query plan_lines: %v", err)
+		return
+	}
 
 	planNodes := make(map[uint]map[string]bool)
 	for _, pl := range pls {
@@ -133,7 +153,10 @@ func (h *Handler) updateTrafficFromPrometheus() {
 		// We divide the node traffic equally among all active subscriptions sharing that plan.
 		// This is a rough approximation until per-user metering is available.
 		var planSubCount int64
-		h.DB.Raw("SELECT COUNT(*) FROM customer_subscriptions WHERE plan_id = ? AND status = 'active'", sub.PlanID).Scan(&planSubCount)
+		if err := h.DB.Raw("SELECT COUNT(*) FROM customer_subscriptions WHERE plan_id = ? AND status = 'active'", sub.PlanID).Scan(&planSubCount).Error; err != nil {
+			log.Printf("traffic: count subs for plan %d: %v", sub.PlanID, err)
+			continue
+		}
 		if planSubCount > 1 {
 			delta = delta / planSubCount
 		}
@@ -164,7 +187,10 @@ func (h *Handler) resetTrafficIfNeeded() {
 		StartedAt      time.Time
 	}
 	var subs []subReset
-	h.DB.Raw("SELECT id, traffic_reset_at, started_at FROM customer_subscriptions WHERE status = 'active'").Scan(&subs)
+	if err := h.DB.Raw("SELECT id, traffic_reset_at, started_at FROM customer_subscriptions WHERE status = 'active'").Scan(&subs).Error; err != nil {
+		log.Printf("traffic: query subs for reset: %v", err)
+		return
+	}
 
 	now := time.Now().UTC()
 	nowStr := now.Format(model.TimeLayout)
@@ -234,7 +260,7 @@ type TrafficSummaryResponse struct {
 // @ID           AdminTrafficSummary
 // @Description  返回活跃订阅的流量使用总量、活跃数和超限数
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Success      200 {object} TrafficSummaryResponse
 // @Failure      500 {object} ErrorResponse
@@ -242,9 +268,18 @@ type TrafficSummaryResponse struct {
 func (h *Handler) HandleTrafficSummary(w http.ResponseWriter, r *http.Request) {
 	var result TrafficSummaryResponse
 
-	h.DB.Raw("SELECT COALESCE(SUM(traffic_used), 0) FROM customer_subscriptions WHERE status = 'active'").Scan(&result.TotalUsed)
-	h.DB.Raw("SELECT COUNT(*) FROM customer_subscriptions WHERE status = 'active'").Scan(&result.ActiveCount)
-	h.DB.Raw("SELECT COUNT(*) FROM customer_subscriptions WHERE status = 'active' AND traffic_limit > 0 AND traffic_used >= traffic_limit").Scan(&result.OverLimitCount)
+	if err := h.DB.Raw("SELECT COALESCE(SUM(traffic_used), 0) FROM customer_subscriptions WHERE status = 'active'").Scan(&result.TotalUsed).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	if err := h.DB.Raw("SELECT COUNT(*) FROM customer_subscriptions WHERE status = 'active'").Scan(&result.ActiveCount).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	if err := h.DB.Raw("SELECT COUNT(*) FROM customer_subscriptions WHERE status = 'active' AND traffic_limit > 0 AND traffic_used >= traffic_limit").Scan(&result.OverLimitCount).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	h.jsonOK(w, result)
 }
@@ -254,7 +289,7 @@ func (h *Handler) HandleTrafficSummary(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminResetSubscriptionTraffic
 // @Description  将指定订阅的 traffic_used 重置为 0
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "订阅 ID"
 // @Success      200 {object} StatusResponse
