@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -28,16 +29,26 @@ type promQueryResult struct {
 
 // ── probe loop ────────────────────────────────────────────────────────────────
 
-func (h *Handler) StartProbeLoop() {
-	time.Sleep(5 * time.Second)
+func (h *Handler) StartProbeLoop(ctx context.Context) {
+	select {
+	case <-time.After(5 * time.Second):
+	case <-ctx.Done():
+		return
+	}
 	log.Printf("probe: starting Prometheus probe loop (url=%s, interval=60s)", h.Config.PrometheusURL)
 
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
 	h.runProbe()
-	for range ticker.C {
-		h.runProbe()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("probe: shutting down")
+			return
+		case <-ticker.C:
+			h.runProbe()
+		}
 	}
 }
 
@@ -47,7 +58,10 @@ func (h *Handler) runProbe() {
 		MAC      string
 		Hostname string
 	}
-	h.DB.Model(&model.Node{}).Select("mac, hostname").Find(&nodes)
+	if err := h.DB.Model(&model.Node{}).Select("mac, hostname").Find(&nodes).Error; err != nil {
+		log.Printf("probe: query nodes: %v", err)
+		return
+	}
 	for _, n := range nodes {
 		hostnameToMAC[n.Hostname] = n.MAC
 	}
@@ -175,7 +189,7 @@ func (h *Handler) promQueryInstant(query string) map[string]float64 {
 // @ID           AdminNodeStatus
 // @Description  返回所有节点的最新探测状态（CPU、内存、磁盘、延迟等）
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Success      200 {array}  model.NodeStatusCheck
 // @Failure      500 {object} ErrorResponse

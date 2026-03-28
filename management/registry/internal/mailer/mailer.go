@@ -1,6 +1,7 @@
 package mailer
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/smtp"
@@ -124,17 +125,23 @@ func RenderMailTemplate(templateName string, data map[string]string) string {
 
 // ── expiry notifier ──────────────────────────────────────────────────────────
 
-// StartExpiryNotifier runs a daily loop that sends expiry reminders and
-// marks expired subscriptions.
-func (m *Mailer) StartExpiryNotifier() {
+// StartExpiryNotifier runs a daily loop that sends expiry reminders.
+// Status changes are handled exclusively by the lifecycle loop.
+func (m *Mailer) StartExpiryNotifier(ctx context.Context) {
 	log.Println("[expiry-notifier] started")
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 
 	// Run once on startup, then daily.
 	m.RunExpiryCheck()
-	for range ticker.C {
-		m.RunExpiryCheck()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("[expiry-notifier] shutting down")
+			return
+		case <-ticker.C:
+			m.RunExpiryCheck()
+		}
 	}
 }
 
@@ -173,25 +180,26 @@ func (m *Mailer) RunExpiryCheck() {
 		log.Printf("[expiry-notifier] sent %d expiring reminders", len(expiring))
 	}
 
-	// ── already expired but still active ─────────────────────────────────
+	// ── already expired (status set by lifecycle loop), not yet notified ─
 	var expired []expiryRow
 	m.DB.Raw(`
 		SELECT cs.id AS sub_id, c.email, cs.expires_at
 		FROM customer_subscriptions cs
 		JOIN customers c ON c.id = cs.customer_id
-		WHERE cs.status = 'active'
-		  AND cs.expires_at <= ?
-	`, nowStr).Scan(&expired)
+		WHERE cs.status = 'expired'
+		  AND cs.expiry_notified_at IS NULL
+	`).Scan(&expired)
 
 	for _, row := range expired {
 		body := RenderMailTemplate("subscription_expired", map[string]string{
 			"expires_at": row.ExpiresAt,
 		})
-		m.SendMail(row.Email, "订阅已过期通知", body)
-		m.DB.Exec(`UPDATE customer_subscriptions SET status = 'expired', updated_at = ? WHERE id = ?`, nowStr, row.SubID)
+		if err := m.SendMail(row.Email, "订阅已过期通知", body); err == nil {
+			m.DB.Exec(`UPDATE customer_subscriptions SET expiry_notified_at = ? WHERE id = ?`, nowStr, row.SubID)
+		}
 	}
 	if len(expired) > 0 {
-		log.Printf("[expiry-notifier] expired %d subscriptions", len(expired))
+		log.Printf("[expiry-notifier] notified %d expired subscriptions", len(expired))
 	}
 }
 
