@@ -32,7 +32,7 @@ type AnnouncementRequest struct {
 // @ID           AdminListAnnouncements
 // @Description  分页获取所有公告，按置顶和创建时间排序
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        page  query int false "页码（默认 1）"
 // @Param        limit query int false "每页数量（默认 20，最大 100）"
@@ -73,7 +73,7 @@ func (h *Handler) HandleListAnnouncements(w http.ResponseWriter, r *http.Request
 // @ID           AdminCreateAnnouncement
 // @Description  创建新公告，level 可选 info/warning/critical
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Accept       json
 // @Produce      json
 // @Param        body body AnnouncementRequest true "公告信息"
@@ -129,7 +129,7 @@ func (h *Handler) HandleCreateAnnouncement(w http.ResponseWriter, r *http.Reques
 // @ID           AdminUpdateAnnouncement
 // @Description  根据 ID 更新公告字段（部分更新）
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Accept       json
 // @Produce      json
 // @Param        id   path int              true "公告 ID"
@@ -194,7 +194,7 @@ func (h *Handler) HandleUpdateAnnouncement(w http.ResponseWriter, r *http.Reques
 // @ID           AdminDeleteAnnouncement
 // @Description  根据 ID 删除公告
 // @Tags         admin
-// @Security     AdminSession
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "公告 ID"
 // @Success      200 {object} StatusResponse

@@ -50,27 +50,36 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC().Format(model.TimeLayout)
 
 	var existing model.Node
-	h.DB.Where("mac = ?", body.MAC).First(&existing)
+	if err := h.DB.Where("mac = ?", body.MAC).First(&existing).Error; err != nil && err.Error() != "record not found" {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	if existing.MAC != "" {
-		h.DB.Model(&model.Node{}).Where("mac = ?", body.MAC).Updates(map[string]any{
+		if err := h.DB.Model(&model.Node{}).Where("mac = ?", body.MAC).Updates(map[string]any{
 			"mac6":      body.MAC6,
 			"hostname":  body.Hostname,
 			"cf_url":    body.CFURL,
 			"tunnel_id": body.TunnelID,
 			"xray_uuid": body.XrayUUID,
 			"last_seen": now,
-		})
+		}).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
 		h.jsonOK(w, map[string]any{
 			"status":        "updated",
 			"hostname":      body.Hostname,
 			"registered_at": existing.RegisteredAt,
 		})
 	} else {
-		h.DB.Exec(
+		if err := h.DB.Exec(
 			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, xray_uuid, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
 			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, body.XrayUUID, now, now,
-		)
+		).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
 		middleware.RefreshNodeGauge(h.DB)
 		h.jsonOK(w, map[string]any{
 			"status":        "registered",
@@ -85,7 +94,7 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 // @ID      NodesList
 // @Description List all nodes with optional filters
 // @Tags admin
-// @Security AdminSession
+// @Security AdminSessionCookie
 // @Produce json
 // @Param status query string false "filter by status"
 // @Param enabled query string false "filter by enabled (0 or 1)"
@@ -154,7 +163,7 @@ func (h *Handler) HandleListNodes(w http.ResponseWriter, r *http.Request) {
 // @ID      NodeGet
 // @Description Get a single node by MAC address
 // @Tags admin
-// @Security AdminSession
+// @Security AdminSessionCookie
 // @Produce json
 // @Param mac path string true "node MAC address"
 // @Success 200 {object} model.Node
@@ -180,7 +189,7 @@ func (h *Handler) HandleGetNode(w http.ResponseWriter, r *http.Request) {
 // @ID      NodeUpdate
 // @Description Update allowed fields of a node by MAC address
 // @Tags admin
-// @Security AdminSession
+// @Security AdminSessionCookie
 // @Accept json
 // @Produce json
 // @Param mac path string true "node MAC address"
@@ -194,8 +203,7 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	mac := r.PathValue("mac")
 
 	var existing model.Node
-	h.DB.Where("mac = ?", mac).First(&existing)
-	if existing.MAC == "" {
+	if err := h.DB.Where("mac = ?", mac).First(&existing).Error; err != nil {
 		h.jsonErr(w, http.StatusNotFound, "node not found")
 		return
 	}
@@ -237,7 +245,7 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 // @ID      NodeDelete
 // @Description Delete a node by MAC address
 // @Tags admin
-// @Security AdminSession
+// @Security AdminSessionCookie
 // @Produce json
 // @Param mac path string true "node MAC address"
 // @Success 200 {object} StatusResponse
@@ -246,6 +254,10 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleDeleteNode(w http.ResponseWriter, r *http.Request) {
 	mac := r.PathValue("mac")
 	result := h.DB.Where("mac = ?", mac).Delete(&model.Node{})
+	if result.Error != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+result.Error.Error())
+		return
+	}
 	if result.RowsAffected == 0 {
 		h.jsonErr(w, http.StatusNotFound, "node not found")
 		return
