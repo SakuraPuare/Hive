@@ -46,7 +46,7 @@ export function Sidebar() {
         <span className="text-base font-bold tracking-tight">{tAuth('hiveRegistry')}</span>
       </div>
       <Separator />
-      <nav className="flex-1 space-y-1 p-3">
+      <nav aria-label="主导航" className="flex-1 space-y-1 p-3">
         {navItems.map(({ href, label, icon: Icon }) => {
           const isActive =
             router.pathname === href || router.pathname.startsWith(href + '/');
@@ -73,6 +73,8 @@ export function Sidebar() {
           <button
             key={l}
             onClick={() => setLocale(l)}
+            aria-label={l === 'zh' ? '切换到中文' : 'Switch to English'}
+            aria-pressed={locale === l}
             className={cn(
               'rounded px-2 py-1 text-xs font-medium transition-colors',
               locale === l
