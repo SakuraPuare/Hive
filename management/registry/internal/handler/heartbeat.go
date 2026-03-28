@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -38,7 +39,9 @@ func (h *Handler) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC().Format(model.TimeLayout)
 
-	h.DB.Model(&model.Node{}).Where("mac = ?", req.MAC).Update("last_seen", now)
+	if err := h.DB.Model(&model.Node{}).Where("mac = ?", req.MAC).Update("last_seen", now).Error; err != nil {
+		log.Printf("heartbeat: update last_seen for mac=%s: %v", req.MAC, err)
+	}
 
 	if err := h.DB.Exec(`
 		INSERT INTO node_status_checks (mac, status, latency_ms, cpu_pct, mem_pct, disk_pct, uptime_sec, checked_at)

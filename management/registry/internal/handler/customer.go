@@ -70,7 +70,7 @@ type CustomerTrafficResponse struct {
 // @ID           AdminListCustomers
 // @Description  分页查询客户，支持按状态、邮箱、关键词筛选
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        status query string false "按状态筛选"
 // @Param        email  query string false "按邮箱模糊搜索"
@@ -132,7 +132,7 @@ func (h *Handler) HandleListCustomers(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminCreateCustomer
 // @Description  创建新客户账号
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Accept       json
 // @Produce      json
 // @Param        body body CreateCustomerRequest true "客户信息"
@@ -151,6 +151,10 @@ func (h *Handler) HandleCreateCustomer(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusBadRequest, "email and password required")
 		return
 	}
+	if !isValidPassword(req.Password) {
+		h.jsonErr(w, http.StatusBadRequest, "密码长度不能少于8个字符")
+		return
+	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -159,17 +163,20 @@ func (h *Handler) HandleCreateCustomer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC().Format(model.TimeLayout)
-	result := h.DB.Exec(
-		"INSERT INTO customers (email, password_hash, nickname, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)",
-		req.Email, string(hash), req.Nickname, now, now,
-	)
-	if result.Error != nil {
-		h.jsonErr(w, http.StatusConflict, "db: "+result.Error.Error())
+	var id uint
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"INSERT INTO customers (email, password_hash, nickname, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)",
+			req.Email, string(hash), req.Nickname, now, now,
+		).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&id).Error
+	}); err != nil {
+		h.jsonErr(w, http.StatusConflict, "db: "+err.Error())
 		return
 	}
 
-	var id uint
-	h.DB.Raw("SELECT LAST_INSERT_ID()").Scan(&id)
 	actor, _, _ := h.Auth.ParseSession(r)
 	store.WriteAuditLog(h.DB, actor, "customer_create", fmt.Sprintf("id: %d email: %s", id, req.Email), getClientIP(r))
 
@@ -181,7 +188,7 @@ func (h *Handler) HandleCreateCustomer(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminGetCustomer
 // @Description  返回客户信息及其所有订阅
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "客户 ID"
 // @Success      200 {object} CustomerDetail
@@ -216,7 +223,7 @@ func (h *Handler) HandleGetCustomer(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminUpdateCustomer
 // @Description  更新客户昵称或状态
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Accept       json
 // @Produce      json
 // @Param        id   path int                   true "客户 ID"
@@ -258,7 +265,7 @@ func (h *Handler) HandleUpdateCustomer(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminDeleteCustomer
 // @Description  删除指定客户
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "客户 ID"
 // @Success      200 {object} StatusResponse
@@ -282,7 +289,7 @@ func (h *Handler) HandleDeleteCustomer(w http.ResponseWriter, r *http.Request) {
 // @ID           AdminCreateSubscription
 // @Description  为客户创建新订阅，根据套餐自动设置流量和有效期
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Accept       json
 // @Produce      json
 // @Param        id   path int                      true "客户 ID"
@@ -329,18 +336,21 @@ func (h *Handler) HandleCreateSubscription(w http.ResponseWriter, r *http.Reques
 	nowStr := now.Format(model.TimeLayout)
 	expiresAt := now.AddDate(0, 0, plan.DurationDays).Format(model.TimeLayout)
 
-	result := h.DB.Exec(
-		"INSERT INTO customer_subscriptions (customer_id, plan_id, token, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) "+
-			"VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'active', ?, ?)",
-		customerID, req.PlanID, token, plan.TrafficLimit, plan.DeviceLimit, nowStr, expiresAt, nowStr, nowStr,
-	)
-	if result.Error != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+result.Error.Error())
+	var subID uint
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) "+
+				"VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'active', ?, ?)",
+			customerID, req.PlanID, token, plan.TrafficLimit, plan.DeviceLimit, nowStr, expiresAt, nowStr, nowStr,
+		).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&subID).Error
+	}); err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
 
-	var subID uint
-	h.DB.Raw("SELECT LAST_INSERT_ID()").Scan(&subID)
 	actor, _, _ := h.Auth.ParseSession(r)
 	store.WriteAuditLog(h.DB, actor, "customer_subscription_create",
 		fmt.Sprintf("id: %d customer_id: %s plan_id: %d", subID, customerID, req.PlanID), getClientIP(r))
@@ -353,7 +363,7 @@ func (h *Handler) HandleCreateSubscription(w http.ResponseWriter, r *http.Reques
 // @ID           AdminGetCustomerTraffic
 // @Description  返回客户所有订阅的流量使用情况
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "客户 ID"
 // @Success      200 {object} CustomerTrafficResponse
@@ -399,7 +409,7 @@ func (h *Handler) HandleGetCustomerTraffic(w http.ResponseWriter, r *http.Reques
 // @ID           AdminResetCustomerPassword
 // @Description  管理员重置客户登录密码
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Accept       json
 // @Produce      json
 // @Param        id   path int                          true "客户 ID"
@@ -418,6 +428,10 @@ func (h *Handler) HandleResetCustomerPassword(w http.ResponseWriter, r *http.Req
 	}
 	if req.Password == "" {
 		h.jsonErr(w, http.StatusBadRequest, "password required")
+		return
+	}
+	if !isValidPassword(req.Password) {
+		h.jsonErr(w, http.StatusBadRequest, "密码长度不能少于8个字符")
 		return
 	}
 
@@ -444,7 +458,7 @@ func (h *Handler) HandleResetCustomerPassword(w http.ResponseWriter, r *http.Req
 // @ID           AdminListSubscriptions
 // @Description  返回指定客户的所有订阅
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "客户 ID"
 // @Success      200 {array}  model.CustomerSubscription
@@ -467,7 +481,7 @@ func (h *Handler) HandleListSubscriptions(w http.ResponseWriter, r *http.Request
 // @ID           AdminUpdateSubscription
 // @Description  更新订阅状态、流量限制或到期时间
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Accept       json
 // @Produce      json
 // @Param        id   path int                       true "订阅 ID"
@@ -512,7 +526,7 @@ func (h *Handler) HandleUpdateSubscription(w http.ResponseWriter, r *http.Reques
 // @ID           AdminDeleteSubscription
 // @Description  删除指定订阅
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "订阅 ID"
 // @Success      200 {object} StatusResponse
@@ -536,7 +550,7 @@ func (h *Handler) HandleDeleteSubscription(w http.ResponseWriter, r *http.Reques
 // @ID           AdminResetSubscriptionToken
 // @Description  为订阅生成新的 Token
 // @Tags         admin
-// @Security     CookieAuth
+// @Security     AdminSessionCookie
 // @Produce      json
 // @Param        id path int true "订阅 ID"
 // @Success      200 {object} ResetSubscriptionTokenResponse
