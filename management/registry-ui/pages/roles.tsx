@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { handler_RoleDetail } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import type { PermissionItem } from '@/lib/domain-types';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -42,7 +43,7 @@ export default function RolesPage() {
     }
   }, [authLoading, currentUser, router]);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -57,19 +58,18 @@ export default function RolesPage() {
         init[r.id!] = new Set(r.permissions ?? []);
       }
       setEditPerms(init);
-    } catch (e: any) {
-      setError(e?.error || e?.message || tCommon('loading'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, tCommon('loading')));
     } finally {
       setLoading(false);
     }
-  }
+  }, [tCommon]);
 
   useEffect(() => {
     if (!authLoading && currentUser?.can('role:read')) {
       loadData();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, currentUser]);
+  }, [authLoading, currentUser, loadData]);
 
   function togglePerm(roleId: number, slug: string) {
     setEditPerms((prev) => {
@@ -94,8 +94,8 @@ export default function RolesPage() {
       );
       setSuccess(t('permsSaved'));
       await loadData();
-    } catch (e: any) {
-      setError(e?.error || e?.message || t('permsSaveFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('permsSaveFailed')));
     } finally {
       setSaving(null);
     }

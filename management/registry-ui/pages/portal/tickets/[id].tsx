@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useCustomer } from '@/lib/portal-auth';
 import { PortalService } from '@/src/generated/client';
 import { portalSessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import type { handler_PortalTicketDetail } from '@/src/generated/client/models/handler_PortalTicketDetail';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -74,9 +75,9 @@ export default function PortalTicketDetailPage() {
         requestBody: { content: replyContent.trim() },
       }));
       setReplyContent('');
-      loadTicket();
-    } catch (e: any) {
-      setSendError(e?.error || t('replyFailed'));
+      await loadTicket();
+    } catch (e: unknown) {
+      setSendError(getErrorMessage(e, t('replyFailed')));
     } finally {
       setSending(false);
     }
@@ -98,7 +99,7 @@ export default function PortalTicketDetailPage() {
         </Button>
         <h1 className="text-lg font-semibold flex-1">#{tk.id} {tk.subject}</h1>
         <Badge variant="outline" className={STATUS_COLORS[tk.status ?? ''] ?? ''}>
-          {t(`status${(tk.status ?? '').charAt(0).toUpperCase() + (tk.status ?? '').slice(1)}` as any)}
+          {t(`status${(tk.status ?? '').charAt(0).toUpperCase() + (tk.status ?? '').slice(1)}`)}
         </Badge>
       </div>
 

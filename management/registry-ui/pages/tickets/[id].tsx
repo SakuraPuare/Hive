@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { handler_TicketDetailResponse, model_TicketReply } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -43,8 +44,8 @@ export default function TicketDetailPage() {
     try {
       const data = await sessionApi(AdminService.adminGetTicket({ id: Number(id) }));
       setTicket(data);
-    } catch (e: any) {
-      setError(e?.error || t('loadFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -74,9 +75,9 @@ export default function TicketDetailPage() {
     try {
       await sessionApi(AdminService.adminReplyTicket({ id: Number(ticket.ticket!.id), requestBody: { content: replyContent.trim() } }));
       setReplyContent('');
-      loadTicket();
-    } catch (e: any) {
-      setSendError(e?.error || t('replyFailed'));
+      await loadTicket();
+    } catch (e: unknown) {
+      setSendError(getErrorMessage(e, t('replyFailed')));
     } finally {
       setSending(false);
     }
@@ -92,8 +93,8 @@ export default function TicketDetailPage() {
     try {
       await sessionApi(AdminService.adminCloseTicket({ id: Number(ticket.ticket!.id) }));
       loadTicket();
-    } catch (e: any) {
-      alert(e?.error || t('closeFailed'));
+    } catch (e: unknown) {
+      alert(getErrorMessage(e, t('closeFailed')));
     } finally {
       setClosing(false);
     }
@@ -122,7 +123,7 @@ export default function TicketDetailPage() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Badge variant="outline" className={STATUS_COLORS[ticket.ticket?.status ?? ''] ?? ''}>
-                {t(`status${(ticket.ticket?.status ?? '').charAt(0).toUpperCase() + (ticket.ticket?.status ?? '').slice(1)}` as any)}
+                {t(`status${(ticket.ticket?.status ?? '').charAt(0).toUpperCase() + (ticket.ticket?.status ?? '').slice(1)}`)}
               </Badge>
               {!isClosed && (
                 <Button size="sm" variant="outline" onClick={handleClose} disabled={closing}>

@@ -5,10 +5,10 @@ import { useTranslations } from 'next-intl';
 import { Menu, X, LayoutDashboard, Package, MessageSquare, ShoppingCart, LogOut, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
-import { useCustomer, portalLogout } from '@/lib/portal-auth';
+import { CustomerProvider, useCustomer, portalLogout } from '@/lib/portal-auth';
 import { useLocale, type Locale } from '@/lib/locale';
 
-export function PortalLayout({ children }: { children: React.ReactNode }) {
+function PortalLayoutInner({ children }: { children: React.ReactNode }) {
   const t = useTranslations('portal');
   const router = useRouter();
   const { customer } = useCustomer();
@@ -170,5 +170,13 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
       <main className="mx-auto max-w-5xl p-4 md:p-6">{children}</main>
     </div>
+  );
+}
+
+export function PortalLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <CustomerProvider>
+      <PortalLayoutInner>{children}</PortalLayoutInner>
+    </CustomerProvider>
   );
 }

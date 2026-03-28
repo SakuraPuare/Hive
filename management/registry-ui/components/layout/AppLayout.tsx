@@ -5,6 +5,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { AdminService } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { CurrentUserProvider } from '@/lib/auth';
 import { useTranslations } from 'next-intl';
 
 interface AppLayoutProps {
@@ -23,18 +24,20 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b px-4">
-          <ThemeToggle />
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            <LogOut className="mr-2 h-4 w-4" />
-            {tCommon('logout')}
-          </Button>
-        </header>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+    <CurrentUserProvider>
+      <div className="flex h-screen overflow-hidden bg-background">
+        <Sidebar />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b px-4">
+            <ThemeToggle />
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              {tCommon('logout')}
+            </Button>
+          </header>
+          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </CurrentUserProvider>
   );
 }

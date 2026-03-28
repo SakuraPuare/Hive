@@ -9,6 +9,7 @@ const mockUseCustomer = vi.fn();
 const mockPortalLogout = vi.fn();
 
 vi.mock('@/lib/portal-auth', () => ({
+  CustomerProvider: ({ children }: any) => children,
   useCustomer: () => mockUseCustomer(),
   portalLogout: (...args: any[]) => mockPortalLogout(...args),
 }));
