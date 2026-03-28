@@ -3,6 +3,7 @@ import { handlerAdminLoginRequestSchema } from '@/src/generated/zod/schemas';
 import { AdminService } from '@/src/generated/client';
 import type { handler_AdminLoginRequest } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,8 +35,8 @@ export default function Login() {
                 handlerAdminLoginRequestSchema.parse(body);
                 await sessionApi(AdminService.adminLogin({ requestBody: body }));
                 window.location.href = '/dashboard';
-              } catch (e: any) {
-                setError(e?.error || t('loginFailed'));
+              } catch (e: unknown) {
+                setError(getErrorMessage(e, t('loginFailed')));
               } finally {
                 setLoading(false);
               }

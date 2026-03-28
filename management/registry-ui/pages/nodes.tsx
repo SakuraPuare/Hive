@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { model_Node } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -42,7 +43,7 @@ function formatDate(s: string | undefined | null, noData: string) {
 }
 
 function getNodeStatus(n: model_Node): 'online' | 'offline' | 'unknown' {
-  const ps = (n as any).probe_status;
+  const ps = n.probe_status;
   if (ps === 'online') return 'online';
   if (ps === 'offline') return 'offline';
   return 'unknown';
@@ -104,8 +105,8 @@ export default function Nodes() {
     try {
       const list = await sessionApi(AdminService.nodesList({}));
       setNodes(list);
-    } catch (e: any) {
-      setError(e?.error || e?.message || t('loadFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -155,8 +156,8 @@ export default function Nodes() {
     try {
       await sessionApi(AdminService.nodeDelete({ mac }));
       await loadNodes();
-    } catch (e: any) {
-      setError(e?.error || e?.message || t('deleteFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('deleteFailed')));
     }
   }
 
@@ -187,7 +188,7 @@ export default function Nodes() {
 
   function handleExportCSV() {
     const headers = ['hostname', 'location', 'mac', 'tailscale_ip', 'easytier_ip', 'status', 'enabled', 'tags', 'registered_at'];
-    const rows = filteredNodes.map(n => headers.map(h => String((n as any)[h] ?? '')));
+    const rows = filteredNodes.map(n => headers.map(h => String(n[h as keyof model_Node] ?? '')));
     const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);

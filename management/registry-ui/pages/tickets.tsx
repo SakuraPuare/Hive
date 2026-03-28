@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { model_Ticket } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,8 +48,8 @@ export default function TicketsPage() {
         status: statusFilter !== 'all' ? statusFilter : undefined,
       }));
       setTickets(data?.items ?? []);
-    } catch (e: any) {
-      setError(e?.error || t('loadFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -122,7 +123,7 @@ export default function TicketsPage() {
                   <TableCell className="font-medium">{ticket.subject ?? ''}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={STATUS_COLORS[ticket.status ?? ''] ?? ''}>
-                      {ticket.status ? t(`status${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}` as any) : ''}
+                      {ticket.status ? t(`status${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}`) : ''}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{ticket.created_at ? formatDate(ticket.created_at) : ''}</TableCell>
