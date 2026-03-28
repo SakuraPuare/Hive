@@ -3,6 +3,7 @@ import { useTranslations } from 'next-intl';
 import { AdminService } from '@/src/generated/client';
 import type { model_NodeStatusCheck } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
@@ -44,8 +45,8 @@ export default function NodeStatusPage() {
     setError('');
     try {
       setData(await sessionApi(AdminService.adminNodeStatus()) ?? []);
-    } catch (e: any) {
-      setError(e?.message || t('loadFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -76,11 +77,12 @@ export default function NodeStatusPage() {
               <button
                 key={f}
                 onClick={() => setFilter(f)}
+                aria-pressed={filter === f}
                 className={`px-3 py-1 transition-colors ${
                   filter === f ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50'
                 } ${f === 'all' ? 'rounded-l-md' : f === 'offline' ? 'rounded-r-md' : ''}`}
               >
-                {t(`filter${f.charAt(0).toUpperCase() + f.slice(1)}` as any)}
+                {t(`filter${f.charAt(0).toUpperCase() + f.slice(1)}`)}
                 {f === 'online' && ` (${onlineCount})`}
                 {f === 'offline' && ` (${offlineCount})`}
               </button>
