@@ -234,7 +234,10 @@ func TestResetPassword_WrongEmail(t *testing.T) {
 
 func TestGenerate6DigitCode_Format(t *testing.T) {
 	for i := 0; i < 100; i++ {
-		code := generate6DigitCode()
+		code, err := generate6DigitCode()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(code) != 6 {
 			t.Fatalf("expected 6-digit code, got %q (len=%d)", code, len(code))
 		}
@@ -249,7 +252,11 @@ func TestGenerate6DigitCode_Format(t *testing.T) {
 func TestGenerate6DigitCode_Randomness(t *testing.T) {
 	seen := make(map[string]bool)
 	for i := 0; i < 50; i++ {
-		seen[generate6DigitCode()] = true
+		code, err := generate6DigitCode()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		seen[code] = true
 	}
 	// With 50 random codes, we should have at least 40 unique ones
 	if len(seen) < 40 {

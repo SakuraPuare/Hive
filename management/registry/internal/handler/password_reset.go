@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -48,10 +49,17 @@ func (h *Handler) HandleForgotPassword(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusBadRequest, "email required")
 		return
 	}
+	if !isValidEmail(req.Email) {
+		h.jsonErr(w, http.StatusBadRequest, "邮箱格式无效")
+		return
+	}
 
 	// Check customer exists
 	var count int64
-	h.DB.Raw("SELECT COUNT(*) FROM customers WHERE email = ?", req.Email).Scan(&count)
+	if err := h.DB.Raw("SELECT COUNT(*) FROM customers WHERE email = ?", req.Email).Scan(&count).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	if count == 0 {
 		// Don't reveal whether email exists
 		h.jsonOK(w, map[string]string{"message": "如果该邮箱已注册，验证码已发送"})
@@ -59,17 +67,26 @@ func (h *Handler) HandleForgotPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate 6-digit code
-	code := generate6DigitCode()
+	code, err := generate6DigitCode()
+	if err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "generate code: "+err.Error())
+		return
+	}
 	expiresAt := time.Now().UTC().Add(15 * time.Minute).Format(model.TimeLayout)
 
 	// Invalidate previous unused codes for this email
-	h.DB.Exec("UPDATE password_reset_codes SET used = 1 WHERE email = ? AND used = 0", req.Email)
+	if err := h.DB.Exec("UPDATE password_reset_codes SET used = 1 WHERE email = ? AND used = 0", req.Email).Error; err != nil {
+		log.Printf("forgot-password: invalidate old codes for %s: %v", req.Email, err)
+	}
 
 	// Insert new code
-	h.DB.Exec(
+	if err := h.DB.Exec(
 		"INSERT INTO password_reset_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)",
 		req.Email, code, expiresAt,
-	)
+	).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	// Send email
 	body := mailer.RenderMailTemplate("password_reset", map[string]string{"code": code})
@@ -102,6 +119,10 @@ func (h *Handler) HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusBadRequest, "email, code, password required")
 		return
 	}
+	if !isValidPassword(req.Password) {
+		h.jsonErr(w, http.StatusBadRequest, "密码长度不能少于8个字符")
+		return
+	}
 
 	now := time.Now().UTC().Format(model.TimeLayout)
 
@@ -117,7 +138,9 @@ func (h *Handler) HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Mark code as used
-	h.DB.Exec("UPDATE password_reset_codes SET used = 1 WHERE id = ?", rc.ID)
+	if err := h.DB.Exec("UPDATE password_reset_codes SET used = 1 WHERE id = ?", rc.ID).Error; err != nil {
+		log.Printf("reset-password: mark code %d as used: %v", rc.ID, err)
+	}
 
 	// Update password
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -134,9 +157,11 @@ func (h *Handler) HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // generate6DigitCode returns a cryptographically random 6-digit string.
-func generate6DigitCode() string {
+func generate6DigitCode() (string, error) {
 	b := make([]byte, 3)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("crypto/rand: %w", err)
+	}
 	n := (int(b[0])<<16 | int(b[1])<<8 | int(b[2])) % 1000000
-	return fmt.Sprintf("%06d", n)
+	return fmt.Sprintf("%06d", n), nil
 }
