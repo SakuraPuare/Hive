@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { useCustomer } from '@/lib/portal-auth';
 import { portalSessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { PortalService } from '@/src/generated/client';
 import type { model_Ticket } from '@/src/generated/client/models/model_Ticket';
 import { Button } from '@/components/ui/button';
@@ -77,8 +78,8 @@ export default function PortalTicketsPage() {
       setNewSubject('');
       setNewContent('');
       loadTickets();
-    } catch (e: any) {
-      setSubmitError(e?.error || t('submitFailed'));
+    } catch (e: unknown) {
+      setSubmitError(getErrorMessage(e, t('submitFailed')));
     } finally {
       setSubmitting(false);
     }
@@ -134,7 +135,7 @@ export default function PortalTicketsPage() {
                   <TableCell className="font-medium">{ticket.subject}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={STATUS_COLORS[ticket.status ?? ''] ?? ''}>
-                      {t(`status${(ticket.status ?? '').charAt(0).toUpperCase() + (ticket.status ?? '').slice(1)}` as any)}
+                      {t(`status${(ticket.status ?? '').charAt(0).toUpperCase() + (ticket.status ?? '').slice(1)}`)}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatDate(ticket.created_at ?? '')}</TableCell>

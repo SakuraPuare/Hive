@@ -57,11 +57,11 @@ export default function Dashboard() {
   }, []);
 
   const onlineCount = useMemo(
-    () => nodes.filter((n) => (n as any).probe_status === 'online').length,
+    () => nodes.filter((n) => n.probe_status === 'online').length,
     [nodes]
   );
   const offlineCount = useMemo(
-    () => nodes.filter((n) => (n as any).probe_status === 'offline').length,
+    () => nodes.filter((n) => n.probe_status === 'offline').length,
     [nodes]
   );
   const cfCount = useMemo(() => nodes.filter((n) => n.cf_url).length, [nodes]);

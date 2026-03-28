@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import type { model_Announcement } from '@/src/generated/client/models/model_Announcement';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -50,8 +51,8 @@ export default function AnnouncementsPage() {
     try {
       const data = await sessionApi(AdminService.adminListAnnouncements({ limit: 100 }));
       setItems(data.items ?? []);
-    } catch (e: any) {
-      setError(e?.error || t('loadFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -97,8 +98,8 @@ export default function AnnouncementsPage() {
       }
       setDialogOpen(false);
       loadData();
-    } catch (e: any) {
-      setSaveError(e?.error || t('saveFailed'));
+    } catch (e: unknown) {
+      setSaveError(getErrorMessage(e, t('saveFailed')));
     } finally {
       setSaving(false);
     }
@@ -109,8 +110,8 @@ export default function AnnouncementsPage() {
     try {
       await sessionApi(AdminService.adminDeleteAnnouncement({ id }));
       loadData();
-    } catch (e: any) {
-      setError(e?.error || t('deleteFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('deleteFailed')));
     }
   }
 
@@ -161,7 +162,7 @@ export default function AnnouncementsPage() {
                   <TableCell className="font-medium">{ann.title}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={LEVEL_COLORS[ann.level ?? ''] ?? ''}>
-                      {t(`level${(ann.level ?? '').charAt(0).toUpperCase() + (ann.level ?? '').slice(1)}` as any)}
+                      {t(`level${(ann.level ?? '').charAt(0).toUpperCase() + (ann.level ?? '').slice(1)}`)}
                     </Badge>
                   </TableCell>
                   <TableCell>{ann.pinned ? '✓' : ''}</TableCell>

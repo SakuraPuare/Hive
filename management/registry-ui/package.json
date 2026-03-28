@@ -7,7 +7,7 @@
     "gen-api": "node ./scripts/gen-api.mjs",
     "verify": "node ./scripts/verify-local.mjs",
     "export": "echo 'Static export is generated during `next build` (output: export).' && exit 0",
-    "typecheck": "echo \"skip typecheck\"",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },

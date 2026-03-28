@@ -5,6 +5,7 @@ import {
 } from '@/src/generated/client';
 import type { model_Node, model_SubscriptionGroup } from '@/src/generated/client';
 import { apiPath, sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -40,8 +41,8 @@ export default function Subscriptions() {
       const txt = await sessionApi(SubscriptionService.subscriptionClash());
       setPreview(txt);
       setPreviewType('Clash YAML');
-    } catch (e: any) {
-      setError(e?.error || t('previewFailed', { type: 'Clash YAML' }));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('previewFailed', { type: 'Clash YAML' })));
     } finally {
       setLoading(false);
     }
@@ -54,8 +55,8 @@ export default function Subscriptions() {
       const txt = await sessionApi(SubscriptionService.subscriptionVless());
       setPreview(txt);
       setPreviewType('VLESS');
-    } catch (e: any) {
-      setError(e?.error || t('previewFailed', { type: 'VLESS' }));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('previewFailed', { type: 'VLESS' })));
     } finally {
       setLoading(false);
     }
@@ -70,8 +71,8 @@ export default function Subscriptions() {
     setGroupsError('');
     try {
       setGroups(await sessionApi(AdminService.adminListSubscriptionGroups()));
-    } catch (e: any) {
-      setGroupsError(e?.error || tCommon('loading'));
+    } catch (e: unknown) {
+      setGroupsError(getErrorMessage(e, tCommon('loading')));
     } finally {
       setGroupsLoading(false);
     }
@@ -106,8 +107,8 @@ export default function Subscriptions() {
       setCreateOpen(false);
       setNewName('');
       loadGroups();
-    } catch (e: any) {
-      setCreateError(e?.error || t('groupCreateFailed'));
+    } catch (e: unknown) {
+      setCreateError(getErrorMessage(e, t('groupCreateFailed')));
     } finally {
       setCreating(false);
     }
@@ -174,8 +175,8 @@ export default function Subscriptions() {
       );
       setEditGroup(null);
       loadGroups();
-    } catch (e: any) {
-      setSaveNodesError(e?.error || t('groupNodesSaveFailed'));
+    } catch (e: unknown) {
+      setSaveNodesError(getErrorMessage(e, t('groupNodesSaveFailed')));
     } finally {
       setSavingNodes(false);
     }

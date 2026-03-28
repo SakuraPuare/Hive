@@ -94,7 +94,7 @@ export default function PortalOrdersPage() {
                   <TableCell>¥{((order.amount ?? 0) / 100).toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={STATUS_COLORS[order.status ?? ''] ?? ''}>
-                      {t(`status${(order.status ?? '').charAt(0).toUpperCase() + (order.status ?? '').slice(1)}` as any)}
+                      {t(`status${(order.status ?? '').charAt(0).toUpperCase() + (order.status ?? '').slice(1)}`)}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatDate(order.created_at ?? '')}</TableCell>

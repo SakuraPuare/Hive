@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { model_PromoCode } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -65,8 +66,8 @@ export default function PromoCodesPage() {
     setLoading(true); setError('');
     try {
       const data = await sessionApi(AdminService.adminListPromoCodes());
-      setCodes(Array.isArray(data) ? data : (data as any).promo_codes ?? []);
-    } catch (e: any) { setError(e?.error || t('loadFailed')); }
+      setCodes(Array.isArray(data) ? data : []);
+    } catch (e: unknown) { setError(getErrorMessage(e, t('loadFailed'))); }
     finally { setLoading(false); }
   }, [t]);
 
@@ -91,7 +92,7 @@ export default function PromoCodesPage() {
         enabled: createForm.enabled,
       }}));
       setCreateOpen(false); loadCodes();
-    } catch (e: any) { setCreateError(e?.error || t('createFailed')); }
+    } catch (e: unknown) { setCreateError(getErrorMessage(e, t('createFailed'))); }
     finally { setCreating(false); }
   }
 
@@ -121,7 +122,7 @@ export default function PromoCodesPage() {
         enabled: editForm.enabled,
       }}));
       setEditTarget(null); loadCodes();
-    } catch (e: any) { setEditError(e?.error || t('updateFailed')); }
+    } catch (e: unknown) { setEditError(getErrorMessage(e, t('updateFailed'))); }
     finally { setEditing(false); }
   }
 
@@ -134,7 +135,7 @@ export default function PromoCodesPage() {
     try {
       await sessionApi(AdminService.adminDeletePromoCode({ id: deleteTarget.id! }));
       setDeleteTarget(null); loadCodes();
-    } catch (e: any) { alert(e?.error || t('deleteFailed')); }
+    } catch (e: unknown) { alert(getErrorMessage(e, t('deleteFailed'))); }
     finally { setDeleting(false); }
   }
 
@@ -209,7 +210,7 @@ export default function PromoCodesPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>{t('create')}</DialogTitle></DialogHeader>
-          <PromoForm form={createForm} setForm={setCreateForm} t={t as any} />
+          <PromoForm form={createForm} setForm={setCreateForm} t={t as (k: string) => string} />
           {createError && <p className="text-sm text-destructive">{createError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>{tCommon('cancel')}</Button>
@@ -221,7 +222,7 @@ export default function PromoCodesPage() {
       <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) setEditTarget(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>{t('edit')}</DialogTitle></DialogHeader>
-          <PromoForm form={editForm} setForm={setEditForm} t={t as any} />
+          <PromoForm form={editForm} setForm={setEditForm} t={t as (k: string) => string} />
           {editError && <p className="text-sm text-destructive">{editError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditTarget(null)}>{tCommon('cancel')}</Button>

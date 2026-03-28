@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { model_Order } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -75,8 +76,8 @@ export default function OrdersPage() {
         limit: 20,
       }));
       setOrders((data.items ?? []) as Order[]);
-    } catch (e: any) {
-      setError(e?.error || t('loadFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -105,8 +106,8 @@ export default function OrdersPage() {
       }));
       setMarkPaidTarget(null);
       loadOrders();
-    } catch (e: any) {
-      setMarkPaidError(e?.error || t('markPaidFailed'));
+    } catch (e: unknown) {
+      setMarkPaidError(getErrorMessage(e, t('markPaidFailed')));
     } finally {
       setMarkingPaid(false);
     }
@@ -180,7 +181,7 @@ export default function OrdersPage() {
                   <TableCell>{order.promo_code || <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell>
                     <Badge className={STATUS_COLORS[order.status ?? ''] ?? ''} variant="outline">
-                      {t(`status${(order.status ?? '').charAt(0).toUpperCase() + (order.status ?? '').slice(1)}` as any)}
+                      {t(`status${(order.status ?? '').charAt(0).toUpperCase() + (order.status ?? '').slice(1)}`)}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatDate(order.created_at ?? '')}</TableCell>
