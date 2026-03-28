@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { handler_RoleDetail } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import type { AdminUser } from '@/lib/domain-types';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -76,7 +77,7 @@ export default function UsersPage() {
     }
   }, [authLoading, currentUser, router]);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -86,19 +87,18 @@ export default function UsersPage() {
       ]);
       setUsers(userList);
       setAllRoles(roleList);
-    } catch (e: any) {
-      setError(e?.error || e?.message || tCommon('loading'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, tCommon('loading')));
     } finally {
       setLoading(false);
     }
-  }
+  }, [tCommon]);
 
   useEffect(() => {
     if (!authLoading && currentUser?.can('user:read')) {
       loadData();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, currentUser]);
+  }, [authLoading, currentUser, loadData]);
 
   async function handleCreate() {
     setCreating(true);
@@ -116,8 +116,8 @@ export default function UsersPage() {
       setNewPassword('');
       setNewRole('viewer');
       await loadData();
-    } catch (e: any) {
-      setError(e?.error || e?.message || t('userCreateFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('userCreateFailed')));
     } finally {
       setCreating(false);
     }
@@ -131,8 +131,8 @@ export default function UsersPage() {
       await sessionApi(AdminService.adminDeleteUser({ id: u.id }));
       setSuccess(t('userDeleted'));
       await loadData();
-    } catch (e: any) {
-      setError(e?.error || e?.message || t('userDeleteFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('userDeleteFailed')));
     }
   }
 
@@ -156,8 +156,8 @@ export default function UsersPage() {
       );
       setSuccess(t('passwordChanged'));
       setPwdOpen(false);
-    } catch (e: any) {
-      setError(e?.error || e?.message || t('passwordChangeFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('passwordChangeFailed')));
     } finally {
       setSavingPwd(false);
     }
@@ -190,8 +190,8 @@ export default function UsersPage() {
       setSuccess(t('rolesSaved'));
       setRolesOpen(false);
       await loadData();
-    } catch (e: any) {
-      setError(e?.error || e?.message || t('rolesSaveFailed'));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, t('rolesSaveFailed')));
     } finally {
       setSavingRoles(false);
     }
