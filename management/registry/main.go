@@ -4,7 +4,9 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -39,6 +41,21 @@ import (
 func main() {
 	cfg := config.Load()
 
+	// Validate critical security secrets in production.
+	// Missing secrets would silently disable auth, so we fail fast.
+	if os.Getenv("HIVE_ENV") != "dev" {
+		var missing []string
+		if cfg.APISecret == "" {
+			missing = append(missing, "API_SECRET")
+		}
+		if cfg.AdminSessionSecret == "" {
+			missing = append(missing, "ADMIN_SESSION_SECRET")
+		}
+		if len(missing) > 0 {
+			log.Fatalf("FATAL: required security env vars not set: %v — set them or use HIVE_ENV=dev to skip this check", missing)
+		}
+	}
+
 	db := store.Init(cfg)
 	store.RunMigrations(db)
 	store.BootstrapSuperadmin(db, cfg.AdminUser, cfg.AdminPass)
@@ -48,10 +65,15 @@ func main() {
 	ml := &mailer.Mailer{Config: cfg, DB: db}
 	h := &handler.Handler{DB: db, Config: cfg, Auth: auth, Mailer: ml}
 
-	go h.StartProbeLoop()
-	go h.StartLifecycleLoop()
-	go h.StartTrafficLoop()
-	go ml.StartExpiryNotifier()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() { defer wg.Done(); h.StartProbeLoop(ctx) }()
+	go func() { defer wg.Done(); h.StartLifecycleLoop(ctx) }()
+	go func() { defer wg.Done(); h.StartTrafficLoop(ctx) }()
+	go func() { defer wg.Done(); ml.StartExpiryNotifier(ctx) }()
 
 	mux := h.RegisterRoutes()
 
@@ -61,9 +83,6 @@ func main() {
 
 	addr := ":" + cfg.Port
 	srv := &http.Server{Addr: addr, Handler: wrapped}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		log.Printf("listening on %s", addr)
@@ -80,5 +99,7 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}
+
+	wg.Wait()
 	log.Println("stopped")
 }
