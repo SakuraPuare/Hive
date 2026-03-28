@@ -1,13 +1,16 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"hive/registry/internal/model"
 	"hive/registry/internal/store"
@@ -99,7 +102,21 @@ type PortalCreateTicketResponse struct {
 
 // ── 客户认证中间件 ──────────────────────────────────────────────────────────
 
-// requireCustomer 验证客户 session cookie，将 customerID 注入 header 供后续使用。
+// ctxKeyCustomerID 是存储已验证客户 ID 的 context key。
+type ctxKeyCustomerID struct{}
+
+// withCustomerID 将客户 ID 存入 context。
+func withCustomerID(ctx context.Context, id uint) context.Context {
+	return context.WithValue(ctx, ctxKeyCustomerID{}, id)
+}
+
+// customerID 从 context 中提取已验证的客户 ID。
+func customerID(r *http.Request) uint {
+	id, _ := r.Context().Value(ctxKeyCustomerID{}).(uint)
+	return id
+}
+
+// requireCustomer 验证客户 session cookie，将 customerID 注入 context 供后续使用。
 func (h *Handler) requireCustomer(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cid, ok := h.Auth.ParseCustomerSession(r)
@@ -109,20 +126,16 @@ func (h *Handler) requireCustomer(next http.HandlerFunc) http.HandlerFunc {
 		}
 		// 检查客户状态
 		var status string
-		h.DB.Raw("SELECT status FROM customers WHERE id = ?", cid).Scan(&status)
+		if err := h.DB.Raw("SELECT status FROM customers WHERE id = ?", cid).Scan(&status).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
 		if status != "active" {
 			h.jsonErr(w, http.StatusForbidden, "account disabled")
 			return
 		}
-		r.Header.Set("X-Customer-ID", strconv.FormatUint(uint64(cid), 10))
-		next(w, r)
+		next(w, r.WithContext(withCustomerID(r.Context(), cid)))
 	}
-}
-
-// customerID 从 header 中提取已验证的客户 ID。
-func customerID(r *http.Request) uint {
-	id, _ := strconv.ParseUint(r.Header.Get("X-Customer-ID"), 10, 64)
-	return uint(id)
 }
 
 // ── POST /portal/register — 客户自助注册 ────────────────────────────────────
@@ -149,10 +162,21 @@ func (h *Handler) HandlePortalRegister(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusBadRequest, "required: email, password")
 		return
 	}
+	if !isValidEmail(req.Email) {
+		h.jsonErr(w, http.StatusBadRequest, "邮箱格式无效")
+		return
+	}
+	if !isValidPassword(req.Password) {
+		h.jsonErr(w, http.StatusBadRequest, "密码长度不能少于8个字符")
+		return
+	}
 
 	// 检查 email 唯一性
 	var exists int64
-	h.DB.Raw("SELECT COUNT(*) FROM customers WHERE email = ?", req.Email).Scan(&exists)
+	if err := h.DB.Raw("SELECT COUNT(*) FROM customers WHERE email = ?", req.Email).Scan(&exists).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	if exists > 0 {
 		h.jsonErr(w, http.StatusConflict, "email already registered")
 		return
@@ -181,7 +205,9 @@ func (h *Handler) HandlePortalRegister(w http.ResponseWriter, r *http.Request) {
 
 	// 处理邀请关系
 	var newCID uint
-	h.DB.Raw("SELECT id FROM customers WHERE email = ?", req.Email).Scan(&newCID)
+	if err := h.DB.Raw("SELECT id FROM customers WHERE email = ?", req.Email).Scan(&newCID).Error; err != nil {
+		log.Printf("register: lookup new customer id for %s: %v", req.Email, err)
+	}
 	if newCID > 0 {
 		h.ProcessReferralOnRegister(newCID, req.ReferralCode)
 	}
@@ -308,7 +334,10 @@ func (h *Handler) HandlePortalMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	subs := make([]model.CustomerSubscription, 0)
-	h.DB.Raw("SELECT * FROM customer_subscriptions WHERE customer_id = ? AND status = 'active' ORDER BY id DESC", cid).Scan(&subs)
+	if err := h.DB.Raw("SELECT * FROM customer_subscriptions WHERE customer_id = ? AND status = 'active' ORDER BY id DESC", cid).Scan(&subs).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	h.jsonOK(w, PortalMeResponse{
 		ID:        c.ID,
@@ -391,7 +420,10 @@ func (h *Handler) HandlePortalCreateOrder(w http.ResponseWriter, r *http.Request
 
 	// 验证套餐存在且启用
 	var plan model.Plan
-	h.DB.Raw("SELECT * FROM plans WHERE id = ? AND enabled = 1", req.PlanID).Scan(&plan)
+	if err := h.DB.Raw("SELECT * FROM plans WHERE id = ? AND enabled = 1", req.PlanID).Scan(&plan).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	if plan.ID == 0 {
 		h.jsonErr(w, http.StatusBadRequest, "plan not found or disabled")
 		return
@@ -405,10 +437,13 @@ func (h *Handler) HandlePortalCreateOrder(w http.ResponseWriter, r *http.Request
 	if req.PromoCode != "" {
 		var promo model.PromoCode
 		now := time.Now().UTC().Format(model.TimeLayout)
-		h.DB.Raw(
+		if err := h.DB.Raw(
 			"SELECT * FROM promo_codes WHERE code = ? AND enabled = 1 AND (valid_from = '' OR valid_from <= ?) AND (valid_to = '' OR valid_to >= ?) AND (max_uses = 0 OR used_count < max_uses)",
 			req.PromoCode, now, now,
-		).Scan(&promo)
+		).Scan(&promo).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
 		if promo.ID == 0 {
 			h.jsonErr(w, http.StatusBadRequest, "invalid or expired promo code")
 			return
@@ -444,12 +479,16 @@ func (h *Handler) HandlePortalCreateOrder(w http.ResponseWriter, r *http.Request
 
 	// 优惠码使用次数 +1
 	if promoCodeID != nil {
-		h.DB.Exec("UPDATE promo_codes SET used_count = used_count + 1 WHERE id = ?", *promoCodeID)
+		if err := h.DB.Exec("UPDATE promo_codes SET used_count = used_count + 1 WHERE id = ?", *promoCodeID).Error; err != nil {
+			log.Printf("create order: update promo code used_count: %v", err)
+		}
 	}
 
 	// 查询客户 email 用于审计
 	var email string
-	h.DB.Raw("SELECT email FROM customers WHERE id = ?", cid).Scan(&email)
+	if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", cid).Scan(&email).Error; err != nil {
+		log.Printf("create order: lookup email for customer %d: %v", cid, err)
+	}
 	store.WriteAuditLog(h.DB, email, "portal_order_create", fmt.Sprintf("order: %s, plan: %d", orderNo, plan.ID), getClientIP(r))
 
 	h.jsonOK(w, map[string]any{"order_no": orderNo, "amount": finalAmount, "original_amount": originalAmount, "balance_deducted": balanceDeducted})
@@ -483,10 +522,16 @@ func (h *Handler) HandlePortalOrders(w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * limit
 
 	var total int64
-	h.DB.Raw("SELECT COUNT(*) FROM orders WHERE customer_id = ?", cid).Scan(&total)
+	if err := h.DB.Raw("SELECT COUNT(*) FROM orders WHERE customer_id = ?", cid).Scan(&total).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	orders := make([]model.Order, 0)
-	h.DB.Raw("SELECT * FROM orders WHERE customer_id = ? ORDER BY id DESC LIMIT ? OFFSET ?", cid, limit, offset).Scan(&orders)
+	if err := h.DB.Raw("SELECT * FROM orders WHERE customer_id = ? ORDER BY id DESC LIMIT ? OFFSET ?", cid, limit, offset).Scan(&orders).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	h.jsonOK(w, map[string]any{"total": total, "items": orders})
 }
@@ -521,28 +566,31 @@ func (h *Handler) HandlePortalCreateTicket(w http.ResponseWriter, r *http.Reques
 
 	now := time.Now().UTC().Format(model.TimeLayout)
 
-	result := h.DB.Exec(
-		"INSERT INTO tickets (customer_id, subject, status, created_at, updated_at) VALUES (?,?,?,?,?)",
-		cid, req.Subject, "open", now, now,
-	)
-	if result.Error != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+result.Error.Error())
+	var tid uint
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"INSERT INTO tickets (customer_id, subject, status, created_at, updated_at) VALUES (?,?,?,?,?)",
+			cid, req.Subject, "open", now, now,
+		).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&tid).Error
+	}); err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
 
-	ticketID := result.Statement.Dest
-	// 获取插入的 ticket ID
-	var tid uint
-	h.DB.Raw("SELECT LAST_INSERT_ID()").Scan(&tid)
-
 	// 插入首条内容作为回复
 	var email string
-	h.DB.Raw("SELECT email FROM customers WHERE id = ?", cid).Scan(&email)
-	h.DB.Exec(
+	if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", cid).Scan(&email).Error; err != nil {
+		log.Printf("create ticket: lookup email for customer %d: %v", cid, err)
+	}
+	if err := h.DB.Exec(
 		"INSERT INTO ticket_replies (ticket_id, author, is_admin, content, created_at) VALUES (?,?,0,?,?)",
 		tid, email, req.Content, now,
-	)
-	_ = ticketID
+	).Error; err != nil {
+		log.Printf("create ticket: insert first reply for ticket %d: %v", tid, err)
+	}
 
 	store.WriteAuditLog(h.DB, email, "portal_ticket_create", fmt.Sprintf("ticket_id: %d", tid), getClientIP(r))
 
@@ -577,14 +625,20 @@ func (h *Handler) HandlePortalTickets(w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * limit
 
 	var total int64
-	h.DB.Raw("SELECT COUNT(*) FROM tickets WHERE customer_id = ?", cid).Scan(&total)
+	if err := h.DB.Raw("SELECT COUNT(*) FROM tickets WHERE customer_id = ?", cid).Scan(&total).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	tickets := make([]model.Ticket, 0)
-	h.DB.Raw(
+	if err := h.DB.Raw(
 		"SELECT t.id, t.customer_id, COALESCE(c.email,'') AS customer_email, t.subject, t.status, t.created_at, t.updated_at "+
 			"FROM tickets t LEFT JOIN customers c ON c.id = t.customer_id WHERE t.customer_id = ? ORDER BY t.id DESC LIMIT ? OFFSET ?",
 		cid, limit, offset,
-	).Scan(&tickets)
+	).Scan(&tickets).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	h.jsonOK(w, map[string]any{"total": total, "items": tickets})
 }
@@ -608,20 +662,26 @@ func (h *Handler) HandlePortalGetTicket(w http.ResponseWriter, r *http.Request) 
 	id := r.PathValue("id")
 
 	var t model.Ticket
-	h.DB.Raw(
+	if err := h.DB.Raw(
 		"SELECT t.id, t.customer_id, COALESCE(c.email,'') AS customer_email, t.subject, t.status, t.created_at, t.updated_at "+
 			"FROM tickets t LEFT JOIN customers c ON c.id = t.customer_id WHERE t.id = ? AND t.customer_id = ?",
 		id, cid,
-	).Scan(&t)
+	).Scan(&t).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	if t.ID == 0 {
 		h.jsonErr(w, http.StatusNotFound, "ticket not found")
 		return
 	}
 
 	var rows []ticketReplyRow
-	h.DB.Raw(
+	if err := h.DB.Raw(
 		"SELECT id, ticket_id, author, is_admin, content, created_at FROM ticket_replies WHERE ticket_id = ? ORDER BY id ASC", id,
-	).Scan(&rows)
+	).Scan(&rows).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 
 	replies := make([]model.TicketReply, 0, len(rows))
 	for _, row := range rows {
@@ -671,7 +731,10 @@ func (h *Handler) HandlePortalReplyTicket(w http.ResponseWriter, r *http.Request
 
 	// 验证工单属于当前客户
 	var ticketID uint
-	h.DB.Raw("SELECT id FROM tickets WHERE id = ? AND customer_id = ?", id, cid).Scan(&ticketID)
+	if err := h.DB.Raw("SELECT id FROM tickets WHERE id = ? AND customer_id = ?", id, cid).Scan(&ticketID).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
 	if ticketID == 0 {
 		h.jsonErr(w, http.StatusNotFound, "ticket not found")
 		return
@@ -679,7 +742,9 @@ func (h *Handler) HandlePortalReplyTicket(w http.ResponseWriter, r *http.Request
 
 	now := time.Now().UTC().Format(model.TimeLayout)
 	var email string
-	h.DB.Raw("SELECT email FROM customers WHERE id = ?", cid).Scan(&email)
+	if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", cid).Scan(&email).Error; err != nil {
+		log.Printf("reply ticket: lookup email for customer %d: %v", cid, err)
+	}
 
 	if err := h.DB.Exec(
 		"INSERT INTO ticket_replies (ticket_id, author, is_admin, content, created_at) VALUES (?,?,0,?,?)",
@@ -690,7 +755,9 @@ func (h *Handler) HandlePortalReplyTicket(w http.ResponseWriter, r *http.Request
 	}
 
 	// 更新工单状态为 open（客户回复后重新打开）
-	h.DB.Exec("UPDATE tickets SET status='open', updated_at=? WHERE id=?", now, id)
+	if err := h.DB.Exec("UPDATE tickets SET status='open', updated_at=? WHERE id=?", now, id).Error; err != nil {
+		log.Printf("reply ticket: update ticket %s status: %v", id, err)
+	}
 
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
