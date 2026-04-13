@@ -252,6 +252,7 @@ time ./compile.sh build \
     KERNEL_CONFIGURE="${OPTIMIZED_CONFIG}" \
     USE_CCACHE=yes \
     COMPRESS_OUTPUTIMAGE=sha,xz \
+    PATCHES_TO_GIT=yes \
     UBOOT_MIRROR="${UBOOT_MIRROR}" \
     GITHUB_MIRROR="${GITHUB_MIRROR}" \
     GHCR_MIRROR="${GHCR_MIRROR}" \
