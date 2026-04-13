@@ -17,13 +17,13 @@ case "${PROFILE}" in
   nanopi-zero2)
     BOARD="nanopi-zero2"
     BRANCH="vendor"
-    KERNEL_CONFIGURE="linux-rk35xx-vendor-optimized"
+    BASE_KERNEL_CONFIG="linux-rk35xx-vendor"
     EXTRA_CFLAGS="-O2 -march=armv8-a -mtune=cortex-a53 -fomit-frame-pointer"
     ;;
   nanopi-r3s)
     BOARD="nanopi-r3s"
     BRANCH="current"
-    KERNEL_CONFIGURE="no"
+    BASE_KERNEL_CONFIG="linux-rockchip64-current"
     EXTRA_CFLAGS="-O2 -march=armv8-a+crc+crypto -mtune=cortex-a55 -fomit-frame-pointer"
     ;;
   *)
@@ -33,13 +33,16 @@ case "${PROFILE}" in
     ;;
 esac
 
+OPTIMIZED_CONFIG="${BASE_KERNEL_CONFIG}-hive"
+KERNEL_OPTIMIZE_SCRIPT="${ROOT_DIR}/configs/kernel/${PROFILE}.sh"
+
 RELEASE="trixie"
 export KERNEL_EXTRA_CFLAGS="${EXTRA_CFLAGS}"
 
 echo "🚀 Hive Armbian 构建脚本"
 echo "=============================="
 echo "Profile: ${PROFILE}"
-echo "  BOARD=${BOARD}  BRANCH=${BRANCH}  KERNEL_CONFIGURE=${KERNEL_CONFIGURE}"
+echo "  BOARD=${BOARD}  BRANCH=${BRANCH}  CONFIG=${OPTIMIZED_CONFIG}"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 系统环境检测与优化
@@ -141,14 +144,18 @@ echo ">>> 准备构建环境..."
 echo "同步 userpatches..."
 rsync -a --delete "${ROOT_DIR}/armbian-build/userpatches/" "${ARMBIAN_DIR}/userpatches/"
 
-# 复制自定义内核配置（仅在使用自定义 config 时）
-if [ "${KERNEL_CONFIGURE}" != "no" ] && [ -f "${ROOT_DIR}/${KERNEL_CONFIGURE}.config" ]; then
-    echo "设置自定义内核配置: ${KERNEL_CONFIGURE}"
-    cp "${ROOT_DIR}/${KERNEL_CONFIGURE}.config" \
-        "${ARMBIAN_DIR}/config/kernel/${KERNEL_CONFIGURE}.config"
-else
-    echo "使用 Armbian 默认内核配置"
+# 生成优化内核配置（基线 config + 优化脚本 → 定制 config）
+KERNEL_CONFIG_DIR="${ARMBIAN_DIR}/config/kernel"
+BASE_CONFIG_PATH="${KERNEL_CONFIG_DIR}/${BASE_KERNEL_CONFIG}.config"
+OPTIMIZED_CONFIG_PATH="${KERNEL_CONFIG_DIR}/${OPTIMIZED_CONFIG}.config"
+
+if [ ! -f "${BASE_CONFIG_PATH}" ]; then
+    echo "ERROR: 基线内核配置不存在: ${BASE_CONFIG_PATH}"
+    exit 1
 fi
+
+echo "生成优化内核配置: ${BASE_KERNEL_CONFIG} → ${OPTIMIZED_CONFIG}"
+"${KERNEL_OPTIMIZE_SCRIPT}" "${BASE_CONFIG_PATH}" "${OPTIMIZED_CONFIG_PATH}"
 
 # 渲染配置模板
 echo "渲染配置模板..."
@@ -199,7 +206,7 @@ time ./compile.sh build \
     BRANCH="${BRANCH}" \
     RELEASE="${RELEASE}" \
     BUILD_MINIMAL=no \
-    KERNEL_CONFIGURE="${KERNEL_CONFIGURE}" \
+    KERNEL_CONFIGURE="${OPTIMIZED_CONFIG}" \
     USE_CCACHE=yes \
     COMPRESS_OUTPUTIMAGE=sha,xz \
     ${MIRROR_ARGS} \
