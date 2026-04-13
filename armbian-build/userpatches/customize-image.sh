@@ -15,9 +15,10 @@ echo ">>> customize-image.sh: RELEASE=${RELEASE} ARCH=${ARCH}"
 echo ">>> Copying overlay files to root..."
 if [ -d "/tmp/overlay" ]; then
     cp -a /tmp/overlay/* / 2>/dev/null || true
-    # cp -a 会保留构建主机的 UID/GID（kent:kent），必须修正回 root:root
-    chown -R root:root /etc /usr/local/bin 2>/dev/null || true
-    # 确保 MOTD 脚本可执行
+    # cp -a 保留构建主机的 UID/GID（kent:kent），只修正 overlay 涉及的目录
+    chown -R root:root /etc/hive /etc/xray /etc/frp /etc/cloudflared \
+        /etc/systemd/system /etc/nginx /etc/update-motd.d \
+        /usr/local/bin 2>/dev/null || true
     chmod +x /etc/update-motd.d/* 2>/dev/null || true
     echo ">>> Overlay files copied to root directory"
 else
@@ -27,7 +28,7 @@ fi
 # ─────────────────────────────────────────────
 # 1. 系统基础调优
 # ─────────────────────────────────────────────
-cat >> /etc/sysctl.d/99-hive.conf << 'EOF'
+cat > /etc/sysctl.d/99-hive.conf << 'EOF'
 # IP 转发（代理节点必须）
 net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 1
@@ -75,7 +76,19 @@ kernel.randomize_va_space = 2
 EOF
 
 # ─────────────────────────────────────────────
-# 2. 安装运行时依赖
+# 2. 添加第三方 apt 源（先加源，再统一 update + install）
+# ─────────────────────────────────────────────
+
+# Tailscale 官方 apt 源
+echo ">>> Adding Tailscale apt repo..."
+curl -fsSL "https://pkgs.tailscale.com/stable/debian/${RELEASE}.noarmor.gpg" \
+    | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] \
+https://pkgs.tailscale.com/stable/debian ${RELEASE} main" \
+    | tee /etc/apt/sources.list.d/tailscale.list
+
+# ─────────────────────────────────────────────
+# 3. 安装运行时依赖（单次 update + install）
 # ─────────────────────────────────────────────
 apt-get update -q
 apt-get install -y --no-install-recommends \
@@ -91,19 +104,12 @@ apt-get install -y --no-install-recommends \
     nginx \
     zsh \
     net-tools \
-    vim
+    vim \
+    tailscale
 
-# ─────────────────────────────────────────────
-# 3. 安装 Tailscale（官方 apt 源）
-# ─────────────────────────────────────────────
-echo ">>> Installing Tailscale..."
-curl -fsSL "https://pkgs.tailscale.com/stable/debian/${RELEASE}.noarmor.gpg" \
-    | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null
-echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] \
-https://pkgs.tailscale.com/stable/debian ${RELEASE} main" \
-    | tee /etc/apt/sources.list.d/tailscale.list
-apt-get update -q
-apt-get install -y tailscale
+# 清理 apt 缓存，减少镜像体积
+apt-get clean
+rm -rf /var/lib/apt/lists/*
 
 # ─────────────────────────────────────────────
 # 4. 设置二进制权限（由 download-binaries.sh 预置到 overlay）
@@ -150,7 +156,7 @@ echo ">>> Setting up pre-configured user accounts..."
 
 ROOT_PASSWORD="${DEFAULT_ROOT_PASSWORD:-1234}"
 echo "root:${ROOT_PASSWORD}" | chpasswd
-echo ">>> Root password set to: ${ROOT_PASSWORD}"
+echo ">>> Root password configured"
 
 # 完全禁用首次登录交互（只保留root账号）
 echo ">>> Disabling first login interactive setup..."
@@ -169,7 +175,7 @@ systemctl mask armbian-firstrun.service 2>/dev/null || true
 # 设置root默认shell为zsh
 chsh -s /bin/zsh root
 
-# SSH 安全加固：仅允许密钥登录
+# SSH 安全加固
 echo ">>> Hardening SSH configuration..."
 cat > /etc/ssh/sshd_config.d/99-hive-hardening.conf << 'EOF'
 PermitRootLogin yes
