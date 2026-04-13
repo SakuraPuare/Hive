@@ -20,10 +20,18 @@ Armbian 基线 config ──→ 优化脚本 ──→ 定制 config（构建时
 | 类别 | 禁用项 | 理由 |
 |------|--------|------|
 | 过时网络协议 | AppleTalk, X.25, LAPB, Phonet | 已废弃，无人使用 |
-| PCIe WiFi 驱动 | Atheros, Intel iwlwifi, Broadcom legacy, Ralink rt2x00 | 板子无 PCIe 插槽 |
+| PCIe WiFi 驱动 | Atheros, Broadcom legacy, Ralink rt2x00 等 | 板子无 PCIe 插槽 |
+| 更多过时 WiFi | HostAP (Prism), Libertas, Unisoc | 上古硬件 |
 | USB 视频采集 | em28xx, cx231xx, go7007, hdpvr 等 | 路由器不做视频采集 |
 | DVB 前端芯片 | 十余种卫星/有线电视解调器 | 路由器不接电视棒 |
-| 过时文件系统 | ReiserFS, JFS, GFS2, OCFS2 | 只需 ext4/btrfs/f2fs |
+| 音频子系统 | 整个 SOUND + 40 余种 SoC codec | headless 不需要声音 |
+| 显示/GPU | 整个 DRM + Framebuffer | headless 不需要 HDMI |
+| 输入设备 | 游戏手柄、手写板、触摸屏 | 路由器不接这些 |
+| 过时文件系统 | ReiserFS, JFS, GFS2, OCFS2, NILFS2, HFS/HFS+ | 只需 ext4/btrfs/f2fs |
+| Debug/Profiling | DWARF5, ftrace, kprobes, BTF, LKDTM 等 | 生产镜像不需要 |
+
+nanopi-zero2 特别说明：
+- Intel iwlwifi/iwlmvm 保留（AX210 网卡需要）
 
 nanopi-r3s.sh 额外优化：
 - `NR_CPUS` 从 256 降到 8（R3S 只有 4 核）

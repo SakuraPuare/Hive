@@ -112,5 +112,46 @@ disable CONFIG_JFS_STATISTICS
 disable CONFIG_GFS2_FS           # GFS2 — Red Hat 集群文件系统
 disable CONFIG_GFS2_FS_LOCKING_DLM
 disable CONFIG_OCFS2_FS          # OCFS2 — Oracle 集群文件系统
+disable CONFIG_NILFS2_FS         # NILFS2 — 日志结构文件系统，无人用
+disable CONFIG_HFS_FS            # HFS — 老 Mac 文件系统
+disable CONFIG_HFSPLUS_FS        # HFS+ — Mac 文件系统
+
+# ── 音频子系统（headless 路由器不需要声音）────────────────────────────────
+
+disable CONFIG_SOUND             # 关掉整个音频子系统（含 40+ SoC codec 驱动）
+
+# ── 显示/GPU（纯 headless，不需要 HDMI 输出）─────────────────────────────
+
+disable CONFIG_DRM               # 关掉整个 DRM 子系统（含 Rockchip 显示驱动、面板驱动）
+disable CONFIG_FB                # Framebuffer
+disable CONFIG_FB_TFT            # SPI TFT 小屏
+
+# ── 无用输入设备（路由器不接游戏手柄/手写板/触摸屏）──────────────────────
+
+disable CONFIG_INPUT_JOYSTICK    # 游戏手柄（~30 个子驱动）
+disable CONFIG_INPUT_TABLET      # 手写板（~6 个子驱动）
+disable CONFIG_INPUT_TOUCHSCREEN # 触摸屏（~80 个子驱动）
+
+# ── 更多过时 WiFi 驱动 ───────────────────────────────────────────────────
+
+disable CONFIG_HOSTAP            # Prism2/2.5/3 — 上古 ISA/PCI WiFi
+disable CONFIG_LIBERTAS          # Marvell 88W8xxx — 老旧 USB/SDIO
+disable CONFIG_LIBERTAS_USB
+disable CONFIG_LIBERTAS_SDIO
+disable CONFIG_LIBERTAS_SPI
+disable CONFIG_WLAN_UWE5621      # Unisoc WiFi — 不相关
+disable CONFIG_WLAN_UWE5622
+
+# ── Debug/Profiling（生产镜像不需要）─────────────────────────────────────
+
+disable CONFIG_PROFILING         # perf 基础设施
+disable CONFIG_KPROBES           # 动态内核探针
+disable CONFIG_DEBUG_INFO_DWARF5 # DWARF5 调试符号 — 最占编译时间和体积
+disable CONFIG_DEBUG_INFO_BTF    # BTF 元数据（eBPF 工具链依赖）
+disable CONFIG_SCHEDSTATS        # 调度器统计
+disable CONFIG_FUNCTION_TRACER   # ftrace 函数追踪
+disable CONFIG_FTRACE_SYSCALLS   # 系统调用追踪
+disable CONFIG_BLK_DEV_IO_TRACE  # blktrace 块 I/O 追踪
+disable CONFIG_LKDTM             # 内核崩溃测试模块 — 纯开发用
 
 echo "✅ 已应用 nanopi-zero2 内核优化 ($(grep -c 'is not set' "$OUT" | head -1) 项禁用)"
