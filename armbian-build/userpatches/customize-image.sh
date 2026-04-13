@@ -223,33 +223,34 @@ systemctl enable auditd.service        # 系统审计日志
 systemctl enable unattended-upgrades.service  # 自动安全更新
 
 # ─────────────────────────────────────────────
-# 7. apt 源：追加官方镜像（中国+官方并存，apt 自动选快的）
+# 7. apt 源：多镜像冗余（国内源容易 403，多列几个互为 fallback）
 # ─────────────────────────────────────────────
-# DEB822 格式的 URIs 字段支持多个空格分隔的 URI，apt 自动选最快的
-# 构建时可能写入了 tuna/bfsu 镜像，这里把官方源追加上去
-echo ">>> Adding official apt mirrors alongside Chinese mirrors..."
+# DEB822 URIs 字段支持多个空格分隔的 URI，apt 自动选最快可用的
+echo ">>> Configuring multi-mirror apt sources..."
 
-add_official_uri() {
-    local file="$1" china_host="$2" official_uri="$3"
-    # 如果文件里有中国镜像但没有官方源，在 URIs 行末追加官方源
-    if [ -f "$file" ] && grep -q "$china_host" "$file" && ! grep -q "$official_uri" "$file"; then
-        sed -i "s|^\(URIs:.*${china_host}[^ ]*\)|\1 ${official_uri}|" "$file"
-    fi
-}
-
-# debian.sources
-add_official_uri /etc/apt/sources.list.d/debian.sources mirrors.tuna.tsinghua.edu.cn/debian http://deb.debian.org/debian
-add_official_uri /etc/apt/sources.list.d/debian.sources mirrors.bfsu.edu.cn/debian http://deb.debian.org/debian
+# debian.sources 有两个 stanza（主源 + security），按内容分别替换
+if [ -f /etc/apt/sources.list.d/debian.sources ]; then
+    # 主源（匹配含 /debian 但不含 security 的 URIs 行）
+    sed -i '/security/!s|^URIs:.*debian.*|URIs: http://mirrors.tuna.tsinghua.edu.cn/debian http://mirrors.ustc.edu.cn/debian http://mirrors.aliyun.com/debian http://deb.debian.org/debian|' \
+        /etc/apt/sources.list.d/debian.sources
+    # security 源
+    sed -i 's|^URIs:.*security.*|URIs: http://mirrors.tuna.tsinghua.edu.cn/debian-security http://mirrors.ustc.edu.cn/debian-security http://security.debian.org/|' \
+        /etc/apt/sources.list.d/debian.sources
+fi
 
 # ubuntu.sources
-add_official_uri /etc/apt/sources.list.d/ubuntu.sources mirrors.tuna.tsinghua.edu.cn/ubuntu http://ports.ubuntu.com/
-add_official_uri /etc/apt/sources.list.d/ubuntu.sources mirrors.bfsu.edu.cn/ubuntu http://ports.ubuntu.com/
+if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+    sed -i 's|^URIs:.*|URIs: http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ http://mirrors.ustc.edu.cn/ubuntu-ports/ http://mirrors.aliyun.com/ubuntu-ports/ http://ports.ubuntu.com/|' \
+        /etc/apt/sources.list.d/ubuntu.sources
+fi
 
 # armbian.sources
-add_official_uri /etc/apt/sources.list.d/armbian.sources mirrors.tuna.tsinghua.edu.cn/armbian http://apt.armbian.com
-add_official_uri /etc/apt/sources.list.d/armbian.sources mirrors.bfsu.edu.cn/armbian http://apt.armbian.com
+if [ -f /etc/apt/sources.list.d/armbian.sources ]; then
+    sed -i 's|^URIs:.*|URIs: http://mirrors.tuna.tsinghua.edu.cn/armbian http://mirrors.ustc.edu.cn/armbian http://apt.armbian.com|' \
+        /etc/apt/sources.list.d/armbian.sources
+fi
 
-echo ">>> apt sources: Chinese + official mirrors configured"
+echo ">>> apt sources: multi-mirror configured (tuna/ustc/aliyun/official)"
 
 # ─────────────────────────────────────────────
 # 8. 镜像清洗（移除唯一标识，供批量烧录）
