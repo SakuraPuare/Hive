@@ -74,7 +74,7 @@ docker start hive-mysql
 进入后端目录：
 
 ```bash
-cd /home/kent/rk3528-hive/management/registry
+cd ~/rk3528-hive/management/registry
 ```
 
 设置本地开发环境变量：
@@ -124,14 +124,14 @@ curl http://127.0.0.1:8080/health
 后端启动并完成建表后，执行：
 
 ```bash
-cd /home/kent/rk3528-hive/management/registry
+cd ~/rk3528-hive/management/registry
 make seed-local-demo
 ```
 
 如果你本地数据库账号密码不是文档里的示例值，先显式传入：
 
 ```bash
-cd /home/kent/rk3528-hive/management/registry
+cd ~/rk3528-hive/management/registry
 MYSQL_USER=root MYSQL_PASSWORD=123456 make seed-local-demo
 ```
 
@@ -165,7 +165,7 @@ MYSQL_USER=root MYSQL_PASSWORD=123456 make seed-local-demo
 进入前端目录：
 
 ```bash
-cd /home/kent/rk3528-hive/management/registry-ui
+cd ~/rk3528-hive/management/registry-ui
 ```
 
 指定 API 地址并启动开发服务器：
@@ -256,7 +256,7 @@ docker rm -f hive-mysql
 如果表结构没变，只想重新插入演示数据：
 
 ```bash
-cd /home/kent/rk3528-hive/management/registry
+cd ~/rk3528-hive/management/registry
 make seed-local-demo
 ```
 
@@ -286,7 +286,7 @@ Generic Error: status: 405; status text: Method Not Allowed
 3. 停掉前端，重新执行：
 
 ```bash
-cd /home/kent/rk3528-hive/management/registry-ui
+cd ~/rk3528-hive/management/registry-ui
 NEXT_PUBLIC_API_BASE=http://127.0.0.1:8080 \
   npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
