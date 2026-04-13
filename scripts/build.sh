@@ -217,10 +217,15 @@ if [ -z "${REGIONAL_MIRROR:-}" ]; then
   fi
 fi
 
+# REGIONAL_MIRROR=china 会同时切换 apt 和 git 源
+# git 源（gitee/ghproxy）经常需要登录或不稳定，强制走官方
+UBOOT_MIRROR="${UBOOT_MIRROR:-github}"
+GITHUB_MIRROR="${GITHUB_MIRROR:-github}"
+
 MIRROR_ARGS=""
 if [ -n "$REGIONAL_MIRROR" ]; then
   MIRROR_ARGS="REGIONAL_MIRROR=${REGIONAL_MIRROR}"
-  echo "镜像源: REGIONAL_MIRROR=${REGIONAL_MIRROR}"
+  echo "镜像源: apt=${REGIONAL_MIRROR}  git=github（强制官方）"
 else
   echo "镜像源: 官方（CI 环境）"
 fi
@@ -245,6 +250,8 @@ time ./compile.sh build \
     KERNEL_CONFIGURE="${OPTIMIZED_CONFIG}" \
     USE_CCACHE=yes \
     COMPRESS_OUTPUTIMAGE=sha,xz \
+    UBOOT_MIRROR="${UBOOT_MIRROR}" \
+    GITHUB_MIRROR="${GITHUB_MIRROR}" \
     ${MIRROR_ARGS} \
     "$@"
 
