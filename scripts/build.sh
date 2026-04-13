@@ -129,8 +129,8 @@ fi
 # 系统性能优化（如果有权限）
 if [ "$EUID" -eq 0 ] || sudo -n true 2>/dev/null; then
   # 提高脏页比例，减少编译期间的写回中断
-  echo 40 > /proc/sys/vm/dirty_ratio 2>/dev/null || true
-  echo 10 > /proc/sys/vm/dirty_background_ratio 2>/dev/null || true
+  echo 40 | sudo tee /proc/sys/vm/dirty_ratio > /dev/null 2>&1 || true
+  echo 10 | sudo tee /proc/sys/vm/dirty_background_ratio > /dev/null 2>&1 || true
   echo "  系统参数: 已优化（dirty_ratio=40）"
 else
   echo "  系统参数: 默认配置"
