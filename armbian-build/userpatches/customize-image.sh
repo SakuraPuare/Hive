@@ -223,7 +223,29 @@ systemctl enable auditd.service        # 系统审计日志
 systemctl enable unattended-upgrades.service  # 自动安全更新
 
 # ─────────────────────────────────────────────
-# 7. 镜像清洗（移除唯一标识，供批量烧录）
+# 7. 恢复 apt 源为官方（构建时用大陆镜像加速，镜像内不保留）
+# ─────────────────────────────────────────────
+echo ">>> Restoring apt sources to official mirrors..."
+if [ -f /etc/apt/sources.list.d/debian.sources ]; then
+    sed -i 's|mirrors.tuna.tsinghua.edu.cn/debian-security|security.debian.org/|g' /etc/apt/sources.list.d/debian.sources
+    sed -i 's|mirrors.tuna.tsinghua.edu.cn/debian|deb.debian.org/debian|g' /etc/apt/sources.list.d/debian.sources
+    sed -i 's|mirrors.bfsu.edu.cn/debian-security|security.debian.org/|g' /etc/apt/sources.list.d/debian.sources
+    sed -i 's|mirrors.bfsu.edu.cn/debian|deb.debian.org/debian|g' /etc/apt/sources.list.d/debian.sources
+fi
+if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+    sed -i 's|mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/|ports.ubuntu.com/|g' /etc/apt/sources.list.d/ubuntu.sources
+    sed -i 's|mirrors.tuna.tsinghua.edu.cn/ubuntu/|archive.ubuntu.com/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
+    sed -i 's|mirrors.bfsu.edu.cn/ubuntu-ports/|ports.ubuntu.com/|g' /etc/apt/sources.list.d/ubuntu.sources
+    sed -i 's|mirrors.bfsu.edu.cn/ubuntu/|archive.ubuntu.com/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
+fi
+if [ -f /etc/apt/sources.list.d/armbian.sources ]; then
+    sed -i 's|mirrors.tuna.tsinghua.edu.cn/armbian|apt.armbian.com|g' /etc/apt/sources.list.d/armbian.sources
+    sed -i 's|mirrors.bfsu.edu.cn/armbian|apt.armbian.com|g' /etc/apt/sources.list.d/armbian.sources
+fi
+echo ">>> apt sources restored to official"
+
+# ─────────────────────────────────────────────
+# 8. 镜像清洗（移除唯一标识，供批量烧录）
 # ─────────────────────────────────────────────
 echo ">>> Sanitizing image for mass deployment..."
 truncate -s 0 /etc/machine-id
