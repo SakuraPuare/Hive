@@ -1,5 +1,5 @@
 #!/bin/bash
-# /opt/rk3528-hive/management/scripts/test-node.sh
+# /opt/hive/management/scripts/test-node.sh
 # 从管理 VPS 测试任意 hive 节点的所有通道
 #
 # 用法：

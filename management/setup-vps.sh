@@ -4,8 +4,8 @@
 # 幂等：可重复执行，已安装的组件只会更新配置或重启服务
 #
 # 在 VPS 上执行：
-#   git clone <your-repo> /opt/rk3528-hive
-#   cd /opt/rk3528-hive
+#   git clone https://github.com/SakuraPuare/Hive /opt/hive
+#   cd /opt/hive
 #   cp .env.example .env && nano .env    # 填入所有必填项
 #   bash management/setup-vps.sh
 

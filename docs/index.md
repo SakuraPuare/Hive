@@ -31,5 +31,5 @@ features:
     details: UFW 默认拒绝全部入站，fail2ban 实时封禁暴力破解，auditd 记录关键变更，unattended-upgrades 自动应用安全补丁。生产级防护，开箱即用。
   - icon: ⚡
     title: ARM64 原生
-    details: 专为 RK3528A SoC 裁剪，全链路 arm64 静态二进制，无运行时依赖。典型空载内存占用低于 200 MB。
+    details: 专为 Rockchip ARM SoC 裁剪，全链路 arm64 静态二进制，无运行时依赖。典型空载内存占用低于 200 MB。
 ---

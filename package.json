@@ -1,5 +1,5 @@
 {
-  "name": "rk3528-hive-docs",
+  "name": "hive-docs",
   "private": true,
   "scripts": {
     "docs:dev": "vitepress dev docs",

@@ -22,7 +22,7 @@
 
 ```bash
 ssh root@<VPS-IP>
-cd /opt/rk3528-hive
+cd /opt/hive
 bash management/scripts/deploy.sh
 ```
 
@@ -45,7 +45,7 @@ bash management/scripts/deploy.sh
 
 ```bash
 ssh root@<VPS-IP>
-cd /opt/rk3528-hive
+cd /opt/hive
 
 # 1. 拉取代码
 git pull --ff-only
@@ -174,7 +174,7 @@ gunzip < /var/backups/hive-db/hive_registry_20260326_030000.sql.gz \
 
 ```bash
 # 安装 cron（setup-vps.sh 已包含）
-echo "0 3 * * * root /opt/rk3528-hive/management/scripts/backup-db.sh" > /etc/cron.d/hive-backup
+echo "0 3 * * * root /opt/hive/management/scripts/backup-db.sh" > /etc/cron.d/hive-backup
 chmod 0644 /etc/cron.d/hive-backup
 ```
 
