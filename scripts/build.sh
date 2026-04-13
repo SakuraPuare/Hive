@@ -74,6 +74,41 @@ echo "编译优化："
 echo "  编译线程: ${MAKE_JOBS}"
 echo "  并行下载: ${PARALLEL_DOWNLOADS}"
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 文件系统 I/O 优化（仅本地构建，CI 跳过）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IS_LOCAL=true
+[ "${GITHUB_ACTIONS:-}" = "true" ] && IS_LOCAL=false
+
+CACHE_DIR="${ARMBIAN_DIR}/cache"
+
+if $IS_LOCAL; then
+  # ── btrfs CoW 优化 ──────────────────────────────────────────────────
+  # 编译产生海量随机写，btrfs 的 Copy-on-Write 会产生额外开销
+  # 对 ccache 和构建缓存目录关闭 CoW（仅 btrfs 生效，其他 FS 静默跳过）
+  for dir in "${CACHE_DIR}/ccache" "${CACHE_DIR}/toolchain" "${CACHE_DIR}/sources"; do
+    mkdir -p "$dir"
+    chattr +C "$dir" 2>/dev/null || true
+  done
+
+  # ── Docker 存储驱动检测 ─────────────────────────────────────────────
+  # btrfs 根分区上 Docker 用 overlay2 有 copy-up 开销，建议切换到 btrfs 驱动
+  ROOT_FS=$(df --output=fstype / 2>/dev/null | tail -1)
+  DOCKER_DRIVER=$(docker info --format '{{.Driver}}' 2>/dev/null || echo "unknown")
+  if [ "$ROOT_FS" = "btrfs" ] && [ "$DOCKER_DRIVER" = "overlay2" ]; then
+    echo "  ⚠ Docker 存储驱动: overlay2（根分区是 btrfs）"
+    echo "    建议切换到 btrfs 驱动以避免 copy-up 开销："
+    echo "    sudo mkdir -p /etc/docker"
+    echo '    echo '"'"'{"storage-driver":"btrfs"}'"'"' | sudo tee /etc/docker/daemon.json'
+    echo "    sudo systemctl restart docker"
+  else
+    echo "  Docker 存储驱动: ${DOCKER_DRIVER}"
+  fi
+
+  echo "  btrfs nodatacow: 已设置（ccache/toolchain/sources）"
+fi
+
 # 内存优化策略
 if [ $TOTAL_RAM_GB -ge 16 ]; then
   export USE_TMPFS=yes
@@ -93,9 +128,10 @@ fi
 
 # 系统性能优化（如果有权限）
 if [ "$EUID" -eq 0 ] || sudo -n true 2>/dev/null; then
+  # 提高脏页比例，减少编译期间的写回中断
   echo 40 > /proc/sys/vm/dirty_ratio 2>/dev/null || true
   echo 10 > /proc/sys/vm/dirty_background_ratio 2>/dev/null || true
-  echo "  系统参数: 已优化"
+  echo "  系统参数: 已优化（dirty_ratio=40）"
 else
   echo "  系统参数: 默认配置"
 fi
