@@ -71,28 +71,6 @@ echo "编译优化："
 echo "  编译线程: ${MAKE_JOBS}"
 echo "  并行下载: ${PARALLEL_DOWNLOADS}"
 
-# ccache 编译缓存配置
-CCACHE_DIR="/tmp/armbian-ccache"
-mkdir -p "$CCACHE_DIR"
-
-export CCACHE_DIR="$CCACHE_DIR"
-export CCACHE_MAXFILES=0
-export CCACHE_COMPRESS=1
-export CCACHE_COMPRESSLEVEL=3
-export CCACHE_HARDLINK=1
-export CCACHE_BASEDIR="$(pwd)"
-
-# 检查并配置 ccache
-if command -v ccache >/dev/null 2>&1; then
-  echo "  ccache: 已启用"
-  # 首次使用时配置
-  ccache --set-config=cache_dir="$CCACHE_DIR" 2>/dev/null || true
-  ccache --set-config=max_size=20G 2>/dev/null || true
-  ccache --set-config=compression=true 2>/dev/null || true
-else
-  echo "  ccache: 未安装（建议：sudo apt install ccache）"
-fi
-
 # 内存优化策略
 if [ $TOTAL_RAM_GB -ge 16 ]; then
   export USE_TMPFS=yes
@@ -215,13 +193,14 @@ echo ""
 
 cd "${ARMBIAN_DIR}"
 
-# 执行构建
+# 执行构建（USE_CCACHE=yes 让 Armbian 在 Docker 内启用 ccache）
 time ./compile.sh build \
     BOARD="${BOARD}" \
     BRANCH="${BRANCH}" \
     RELEASE="${RELEASE}" \
     BUILD_MINIMAL=no \
     KERNEL_CONFIGURE="${KERNEL_CONFIGURE}" \
+    USE_CCACHE=yes \
     COMPRESS_OUTPUTIMAGE=sha,xz \
     ${MIRROR_ARGS} \
     "$@"
@@ -233,13 +212,6 @@ time ./compile.sh build \
 echo ""
 echo "✅ 构建完成！"
 echo "时间: $(date)"
-
-# 显示 ccache 统计
-if command -v ccache >/dev/null 2>&1; then
-  echo ""
-  echo "缓存统计:"
-  ccache -s | grep -E "(cache hit|cache size)" 2>/dev/null || echo "ccache 统计不可用"
-fi
 
 # 显示输出文件
 echo ""
