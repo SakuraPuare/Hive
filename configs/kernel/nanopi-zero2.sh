@@ -56,10 +56,7 @@ disable CONFIG_B43         # Broadcom 43xx legacy
 disable CONFIG_B43LEGACY   # Broadcom 43xx 更老的版本
 disable CONFIG_BRCMSMAC    # Broadcom SoftMAC — PCIe 老卡
 
-# Intel（x86 笔记本 WiFi 卡，ARM 板子不可能用到）
-disable CONFIG_IWLWIFI     # Intel WiFi 主驱动
-disable CONFIG_IWLDVM      # Intel DVM 固件接口
-disable CONFIG_IWLMVM      # Intel MVM 固件接口
+# Intel iwlwifi 保留 — AX210 网卡需要 (iwlwifi + iwlmvm)
 
 # Marvell（老旧 SDIO/USB WiFi）
 disable CONFIG_MWIFIEX     # Marvell WiFiEx 主驱动
