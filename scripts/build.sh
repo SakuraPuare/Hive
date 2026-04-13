@@ -1,13 +1,45 @@
 #!/bin/bash
-# RK3528 一键构建脚本 - 集成所有优化
+# Hive 镜像一键构建脚本 - 支持多板子
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 ARMBIAN_DIR="${ROOT_DIR}/armbian-build/build"
 
-echo "🚀 RK3528 Armbian 优化构建脚本"
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 板子 profile — 所有板子相关参数在此收敛
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROFILE="${1:-nanopi-zero2}"
+shift 2>/dev/null || true  # 剩余参数透传给 compile.sh
+
+case "${PROFILE}" in
+  nanopi-zero2)
+    BOARD="nanopi-zero2"
+    BRANCH="vendor"
+    KERNEL_CONFIGURE="linux-rk35xx-vendor-optimized"
+    EXTRA_CFLAGS="-O2 -march=armv8-a -mtune=cortex-a53 -fomit-frame-pointer"
+    ;;
+  nanopi-r3s)
+    BOARD="nanopi-r3s"
+    BRANCH="current"
+    KERNEL_CONFIGURE="no"
+    EXTRA_CFLAGS="-O2 -march=armv8-a+crc+crypto -mtune=cortex-a55 -fomit-frame-pointer"
+    ;;
+  *)
+    echo "ERROR: 未知 profile '${PROFILE}'"
+    echo "支持的 profile: nanopi-zero2, nanopi-r3s"
+    exit 1
+    ;;
+esac
+
+RELEASE="trixie"
+export KERNEL_EXTRA_CFLAGS="${EXTRA_CFLAGS}"
+
+echo "🚀 Hive Armbian 构建脚本"
 echo "=============================="
+echo "Profile: ${PROFILE}"
+echo "  BOARD=${BOARD}  BRANCH=${BRANCH}  KERNEL_CONFIGURE=${KERNEL_CONFIGURE}"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 系统环境检测与优化
@@ -78,14 +110,6 @@ else
   echo "  I/O模式: 标准磁盘"
 fi
 
-# 编译器优化参数（针对 RK3528 Cortex-A53）
-export KERNEL_EXTRA_CFLAGS="
-  -O2
-  -march=armv8-a
-  -mtune=cortex-a53
-  -fomit-frame-pointer
-"
-
 # 系统性能优化（如果有权限）
 if [ "$EUID" -eq 0 ] || sudo -n true 2>/dev/null; then
   echo 40 > /proc/sys/vm/dirty_ratio 2>/dev/null || true
@@ -139,10 +163,14 @@ echo ">>> 准备构建环境..."
 echo "同步 userpatches..."
 rsync -a --delete "${ROOT_DIR}/armbian-build/userpatches/" "${ARMBIAN_DIR}/userpatches/"
 
-# 复制优化内核配置（默认使用优化版本）
-echo "设置优化内核配置..."
-cp "${ROOT_DIR}/linux-rk35xx-vendor-optimized.config" \
-    "${ARMBIAN_DIR}/config/kernel/linux-rk35xx-vendor-optimized.config"
+# 复制自定义内核配置（仅在使用自定义 config 时）
+if [ "${KERNEL_CONFIGURE}" != "no" ] && [ -f "${ROOT_DIR}/${KERNEL_CONFIGURE}.config" ]; then
+    echo "设置自定义内核配置: ${KERNEL_CONFIGURE}"
+    cp "${ROOT_DIR}/${KERNEL_CONFIGURE}.config" \
+        "${ARMBIAN_DIR}/config/kernel/${KERNEL_CONFIGURE}.config"
+else
+    echo "使用 Armbian 默认内核配置"
+fi
 
 # 渲染配置模板
 echo "渲染配置模板..."
@@ -187,13 +215,13 @@ echo ""
 
 cd "${ARMBIAN_DIR}"
 
-# 执行优化构建
+# 执行构建
 time ./compile.sh build \
-    BOARD="${BOARD:-nanopi-zero2}" \
-    BRANCH="${BRANCH:-vendor}" \
-    RELEASE="${RELEASE:-trixie}" \
+    BOARD="${BOARD}" \
+    BRANCH="${BRANCH}" \
+    RELEASE="${RELEASE}" \
     BUILD_MINIMAL=no \
-    KERNEL_CONFIGURE="${KERNEL_CONFIGURE:-linux-rk35xx-vendor-optimized}" \
+    KERNEL_CONFIGURE="${KERNEL_CONFIGURE}" \
     COMPRESS_OUTPUTIMAGE=sha,xz \
     ${MIRROR_ARGS} \
     "$@"
@@ -219,5 +247,5 @@ echo "输出文件:"
 ls -lh output/images/*.img* 2>/dev/null || echo "未找到输出镜像"
 
 echo ""
-echo "🎉 RK3528 镜像构建成功！"
+echo "🎉 ${BOARD} 镜像构建成功！"
 echo "💡 提示：后续构建将因 ccache 缓存而更快"

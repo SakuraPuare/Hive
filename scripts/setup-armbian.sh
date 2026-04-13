@@ -31,6 +31,5 @@ git clone --depth=1 "${ARMBIAN_REPO}" "${TARGET_DIR}"
 
 echo ""
 echo ">>> Armbian framework ready."
-echo ">>> Build with: ./scripts/build.sh"
-echo ">>> Or directly:"
-echo "    cd ${TARGET_DIR} && ./compile.sh build BOARD=nanopi-zero2 BRANCH=vendor BUILD_MINIMAL=no KERNEL_CONFIGURE=yes RELEASE=trixie"
+echo ">>> Build with: ./scripts/build.sh <profile>"
+echo ">>> Supported profiles: nanopi-zero2, nanopi-r3s"
