@@ -45,7 +45,7 @@ jobs:
       - name: Restore ccache
         uses: actions/cache@v4
         with:
-          path: /tmp/armbian-ccache
+          path: armbian-build/build/cache/ccache
           key: armbian-ccache-${{ matrix.profile }}-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
             armbian-ccache-${{ matrix.profile }}-${{ github.ref_name }}-
