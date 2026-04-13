@@ -83,9 +83,41 @@ disable CONFIG_VIDEO_EM28XX      # Empia EM28xx
 disable CONFIG_JFS_FS            # JFS — IBM 的老文件系统
 disable CONFIG_GFS2_FS           # GFS2 — Red Hat 集群文件系统
 disable CONFIG_OCFS2_FS          # OCFS2 — Oracle 集群文件系统
+disable CONFIG_NILFS2_FS         # NILFS2 — 日志结构文件系统，无人用
+disable CONFIG_HFS_FS            # HFS — 老 Mac 文件系统
+disable CONFIG_HFSPLUS_FS        # HFS+ — Mac 文件系统
+
+# ── 音频子系统（headless 路由器不需要声音）────────────────────────────────
+
+disable CONFIG_SOUND             # 关掉整个音频子系统
+
+# ── 显示/GPU（纯 headless，不需要 HDMI 输出）─────────────────────────────
+
+disable CONFIG_DRM               # 关掉整个 DRM 子系统
+disable CONFIG_FB                # Framebuffer
+disable CONFIG_FB_TFT            # SPI TFT 小屏
+
+# ── 无用输入设备 ─────────────────────────────────────────────────────────
+
+disable CONFIG_INPUT_JOYSTICK    # 游戏手柄
+disable CONFIG_INPUT_TOUCHSCREEN # 触摸屏
+
+# ── 更多过时 WiFi 驱动 ───────────────────────────────────────────────────
+
+disable CONFIG_WLAN_UWE5621      # Unisoc WiFi — 不相关
+disable CONFIG_WLAN_UWE5622
 
 # ── 其他嵌入式不需要的 ───────────────────────────────────────────────────
 
 disable CONFIG_NFC               # NFC 近场通信 — 路由器不需要
+
+# ── Debug/Profiling（生产镜像不需要）─────────────────────────────────────
+
+disable CONFIG_PROFILING         # perf 基础设施
+disable CONFIG_KPROBES           # 动态内核探针
+disable CONFIG_DEBUG_INFO_DWARF5 # DWARF5 调试符号 — 最占编译时间和体积
+disable CONFIG_DEBUG_INFO_BTF    # BTF 元数据
+disable CONFIG_FUNCTION_TRACER   # ftrace 函数追踪
+disable CONFIG_FTRACE_SYSCALLS   # 系统调用追踪
 
 echo "✅ 已应用 nanopi-r3s 内核优化 ($(grep -c 'is not set' "$OUT" | head -1) 项禁用)"
