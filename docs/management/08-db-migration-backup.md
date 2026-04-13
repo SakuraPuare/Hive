@@ -81,7 +81,7 @@ management/scripts/restore-db.sh  # 恢复
 ### 手动备份
 
 ```bash
-cd /path/to/rk3528-hive/management/scripts
+cd /path/to/hive/management/scripts
 
 # 使用默认配置（连接 127.0.0.1:3306，用户 hive）
 MYSQL_PASSWORD=yourpassword ./backup-db.sh

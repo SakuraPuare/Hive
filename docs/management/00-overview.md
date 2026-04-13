@@ -3,7 +3,7 @@
 ## 架构
 
 ```
-全球边缘节点（RK3528A）
+全球边缘节点（Rockchip ARM）
     │
     ├─── xray+cloudflared ──► Cloudflare Edge ──► 用户（v2ray 客户端）
     │

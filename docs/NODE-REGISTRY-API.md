@@ -274,7 +274,7 @@ Prometheus `file_sd_configs` 格式，供 cron 每分钟更新：
 # 直连 Go 服务（无 /api 前缀），cron 在本机运行
 curl -sf -H "Authorization: Bearer <API_SECRET>" \
     http://127.0.0.1:8080/prometheus-targets \
-    > /opt/rk3528-hive/management/prometheus/targets/nodes.json
+    > /opt/hive/management/prometheus/targets/nodes.json
 ```
 
 **响应**（只包含 tailscale_ip 不为 pending 的节点，target 使用 hostname 而非 IP）：

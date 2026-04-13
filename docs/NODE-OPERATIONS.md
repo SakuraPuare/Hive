@@ -205,7 +205,7 @@ curl https://registry.example.com/api/subscription
 在管理服务器上执行：
 
 ```bash
-cd /opt/rk3528-hive/ansible
+cd /opt/hive/ansible
 
 # 测试连通性
 ansible all -m ping
@@ -277,13 +277,13 @@ curl http://127.0.0.1:9100/metrics | grep -E "^node_(cpu|memory|network).*{" | h
 # 通过 Node Registry 接口刷新（无需 cron）
 curl -sf -H "Authorization: Bearer <API_SECRET>" \
     http://127.0.0.1:8080/prometheus-targets \
-    > /opt/rk3528-hive/management/prometheus/targets/nodes.json
+    > /opt/hive/management/prometheus/targets/nodes.json
 
 # 通知 Prometheus 热重载
 curl -sf -X POST http://127.0.0.1:4230/-/reload
 
 # 通过 Tailscale API 动态发现（update-targets.sh 脚本）
-/opt/rk3528-hive/management/scripts/update-targets.sh
+/opt/hive/management/scripts/update-targets.sh
 ```
 
 ---

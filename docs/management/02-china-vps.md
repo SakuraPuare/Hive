@@ -10,8 +10,8 @@
 大多数组件可通过一键脚本完成安装。在项目根目录执行：
 
 ```bash
-git clone <your-repo> /opt/rk3528-hive
-cd /opt/rk3528-hive
+git clone https://github.com/SakuraPuare/Hive /opt/hive
+cd /opt/hive
 cp .env.example .env && nano .env   # 填入所有必填项
 bash management/setup-vps.sh
 ```
@@ -59,7 +59,7 @@ export PATH=$PATH:/usr/local/go/bin
 echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
 
 # 进入 registry 目录并编译
-cd /opt/rk3528-hive/management/registry
+cd /opt/hive/management/registry
 make build
 
 # 原子替换安装（服务运行中也安全）
@@ -152,10 +152,10 @@ API 完整规范见 [docs/NODE-REGISTRY-API.md](../../docs/NODE-REGISTRY-API.md)
 
 ```bash
 # 创建 Prometheus targets 目录（cron 会把节点列表写在这里）
-mkdir -p /opt/rk3528-hive/management/prometheus/targets
-echo '[]' > /opt/rk3528-hive/management/prometheus/targets/nodes.json
+mkdir -p /opt/hive/management/prometheus/targets
+echo '[]' > /opt/hive/management/prometheus/targets/nodes.json
 
-cd /opt/rk3528-hive/management
+cd /opt/hive/management
 
 # 修改 docker-compose.yml 里的 GF_SECURITY_ADMIN_PASSWORD（或在 .env 中设置）
 nano docker-compose.yml
@@ -169,7 +169,7 @@ docker compose ps
 `setup-vps.sh` 会自动创建 `/etc/cron.d/hive-targets`。手动写入：
 
 ```bash
-TARGETS_FILE="/opt/rk3528-hive/management/prometheus/targets/nodes.json"
+TARGETS_FILE="/opt/hive/management/prometheus/targets/nodes.json"
 AUTH_HEADER='-H "Authorization: Bearer <API_SECRET>"'   # 若无认证则删除此行
 
 cat > /etc/cron.d/hive-targets << EOF
@@ -294,9 +294,9 @@ tailscale up --accept-dns=false
 ## 六、把 Ansible 配好
 
 ```bash
-mkdir -p /opt/rk3528-edge/ansible/{inventory,playbooks,roles}
+mkdir -p /opt/hive/ansible/{inventory,playbooks,roles}
 
-cat > /opt/rk3528-edge/ansible/ansible.cfg << 'EOF'
+cat > /opt/hive/ansible/ansible.cfg << 'EOF'
 [defaults]
 inventory         = inventory/tailscale.yaml
 host_key_checking = False
@@ -308,7 +308,7 @@ stdout_callback   = yaml
 ssh_args = -o ConnectTimeout=10 -o StrictHostKeyChecking=no
 EOF
 
-cat > /opt/rk3528-edge/ansible/inventory/tailscale.yaml << 'EOF'
+cat > /opt/hive/ansible/inventory/tailscale.yaml << 'EOF'
 plugin: community.general.tailscale
 filters:
   - "tag:hive"
@@ -318,7 +318,7 @@ EOF
 ### 测试 Ansible 连通性（等设备上线后）
 
 ```bash
-cd /opt/rk3528-edge/ansible
+cd /opt/hive/ansible
 ansible all -m ping
 ansible all -m command -a "uptime"
 ```
@@ -356,5 +356,5 @@ curl http://127.0.0.1:4231/api/health
 cat /etc/cron.d/hive-targets
 
 # 节点列表更新到 Prometheus（有节点上线后）
-cat /opt/rk3528-hive/management/prometheus/targets/nodes.json
+cat /opt/hive/management/prometheus/targets/nodes.json
 ```

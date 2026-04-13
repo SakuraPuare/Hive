@@ -4,7 +4,7 @@
 #
 # 部署方式（VPS 上执行一次）：
 #   crontab -e
-#   * * * * * /opt/rk3528-hive/management/scripts/update-targets.sh
+#   * * * * * /opt/hive/management/scripts/update-targets.sh
 
 set -e
 

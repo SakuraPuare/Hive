@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'Hive',
-  description: 'RK3528A 分布式边缘节点集群管理系统',
+  description: 'Rockchip ARM 边缘节点大规模部署框架',
   lang: 'zh-CN',
   base: process.env.VITE_BASE ?? '/',
   themeConfig: {
@@ -54,7 +54,7 @@ export default defineConfig({
       },
     ],
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/SakuraPuare/rk3528-hive' },
+      { icon: 'github', link: 'https://github.com/SakuraPuare/hive' },
     ],
     search: { provider: 'local' },
   },

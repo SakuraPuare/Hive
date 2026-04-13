@@ -56,8 +56,8 @@ sudo apt install -y ccache
 ### 步骤 1：克隆仓库
 
 ```bash
-git clone <your-repo-url> rk3528-hive
-cd rk3528-hive
+git clone https://github.com/SakuraPuare/Hive hive
+cd hive
 ```
 
 ### 步骤 2：配置环境变量
@@ -143,7 +143,7 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 **自定义构建参数**：
 
 ```bash
-# 指定开发板型号（默认 nanopi-zero2，RK3528 用 ido-som3588q 或你的实际型号）
+# 指定开发板型号（默认 nanopi-zero2）
 BOARD=nanopi-zero2 ./scripts/build.sh
 
 # 开启 Kernel menuconfig

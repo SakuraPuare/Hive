@@ -1,6 +1,6 @@
 #!/bin/bash
 # 编译 QEMU 可运行的 ARM64 测试镜像
-# 使用与 RK3528 完全相同的 customize-image.sh 和 overlay
+# 使用与实际板子完全相同的 customize-image.sh 和 overlay
 # BRANCH=current (uefi-arm64 不支持 vendor branch)
 set -e
 
@@ -9,7 +9,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 ARMBIAN_DIR="${ROOT_DIR}/armbian-build/build"
 
 echo ">>> Building QEMU-compatible uefi-arm64 image..."
-echo ">>> Uses same customize-image.sh + overlay as RK3528 build"
+echo ">>> Uses same customize-image.sh + overlay as board builds"
 echo ""
 
 # uefi-arm64 overlay 里的 aarch64 二进制仍然兼容
