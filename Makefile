@@ -1,4 +1,4 @@
-.PHONY: help setup setup-armbian download-binaries env \
+.PHONY: help setup setup-armbian download-binaries env setup-docker-btrfs \
        build build-r3s build-qemu run-qemu \
        registry registry-arm64 registry-test registry-test-short registry-openapi registry-seed registry-clean \
        ui-dev ui-build ui-gen-api ui-typecheck ui-test \
@@ -29,6 +29,22 @@ download-binaries: ## 下载 arm64 预编译二进制
 env: ## 从 .env.example 创建 .env（不覆盖已有）
 	@test -f .env || (cp .env.example .env && echo ".env 已创建，请填写配置")
 	@test -f .env && echo ".env 已存在，跳过"
+
+setup-docker-btrfs: ## 切换 Docker 存储驱动为 btrfs（需要 root，会清空 Docker 数据）
+	@ROOT_FS=$$(df --output=fstype / 2>/dev/null | tail -1); \
+	if [ "$$ROOT_FS" != "btrfs" ]; then \
+		echo "ERROR: 根分区不是 btrfs（当前: $$ROOT_FS），无需切换"; exit 1; \
+	fi
+	@DRIVER=$$(docker info --format '{{.Driver}}' 2>/dev/null); \
+	if [ "$$DRIVER" = "btrfs" ]; then \
+		echo "Docker 已经在使用 btrfs 驱动"; exit 0; \
+	fi
+	@echo "⚠ 这会停止 Docker 并清空所有容器/镜像/卷！"
+	@echo "按 Ctrl+C 取消，或按 Enter 继续..." && read _
+	sudo mkdir -p /etc/docker
+	echo '{"storage-driver":"btrfs"}' | sudo tee /etc/docker/daemon.json
+	sudo systemctl restart docker
+	@echo "✅ Docker 存储驱动已切换为 btrfs"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 镜像构建
