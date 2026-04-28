@@ -34,7 +34,7 @@ var (
 
 func TestMain(m *testing.M) {
 	testCfg = &config.Config{
-		Port:                "0",
+		ListenAddr:          ":0",
 		APISecret:           "test-api-secret",
 		AdminUser:           "admin",
 		AdminPass:           "admin123",
