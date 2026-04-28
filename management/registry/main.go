@@ -81,7 +81,7 @@ func main() {
 
 	wrapped := middleware.WithMetrics(middleware.WithCORS(mux, cfg))
 
-	addr := ":" + cfg.Port
+	addr := cfg.ListenAddr
 	srv := &http.Server{Addr: addr, Handler: wrapped}
 
 	go func() {
