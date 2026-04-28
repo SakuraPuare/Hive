@@ -10,7 +10,7 @@ import (
 
 // Config holds all application configuration loaded from environment variables.
 type Config struct {
-	Port               string
+	ListenAddr         string
 	APISecret          string
 	AdminUser          string
 	AdminPass          string
@@ -50,7 +50,7 @@ func Load() *Config {
 	referralRate, _ := strconv.Atoi(Getenv("REFERRAL_RATE", "10"))
 
 	return &Config{
-		Port:                Getenv("PORT", "8080"),
+		ListenAddr:          listenAddr(Getenv("LISTEN_ADDR", ""), Getenv("PORT", "8080")),
 		APISecret:           Getenv("API_SECRET", ""),
 		AdminUser:           Getenv("ADMIN_USER", "admin"),
 		AdminPass:           Getenv("ADMIN_PASS", ""),
@@ -99,6 +99,15 @@ func splitCSV(v string) []string {
 		}
 	}
 	return out
+}
+
+// listenAddr resolves the listen address from LISTEN_ADDR and PORT.
+// LISTEN_ADDR takes precedence; if unset, falls back to ":PORT".
+func listenAddr(addr, port string) string {
+	if addr != "" {
+		return addr
+	}
+	return ":" + port
 }
 
 func parseSameSite(v string) http.SameSite {
