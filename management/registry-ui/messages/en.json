@@ -41,7 +41,8 @@
     "orders": "Orders",
     "promoCodes": "Promo Codes",
     "tickets": "Tickets",
-    "announcements": "Announcements"
+    "announcements": "Announcements",
+    "admin": "Admin"
   },
   "nodeStatus": {
     "title": "Node Status",
@@ -66,7 +67,9 @@
     "offlineNodes": "Offline",
     "newThisWeek": "New This Week",
     "recentlyRegistered": "Recently Registered",
-    "noNodesThisWeek": "No new nodes this week."
+    "noNodesThisWeek": "No new nodes this week.",
+    "subtitle": "Node fleet overview",
+    "onlineRate": "Online Rate"
   },
   "nodes": {
     "searchPlaceholder": "Search hostname, location, IP or MAC…",
@@ -75,6 +78,7 @@
     "deleteConfirm": "Delete node {mac}?",
     "deleteFailed": "Delete failed",
     "loadFailed": "Failed to load nodes",
+    "colName": "Name",
     "colLocation": "Location",
     "colHostname": "Hostname",
     "colTailscaleIp": "Tailscale IP",
@@ -109,7 +113,13 @@
     "batchDelete": "Delete All",
     "batchDeleteConfirm": "Delete {count} nodes?",
     "allTags": "All Tags",
-    "exportCsv": "Export CSV"
+    "exportCsv": "Export CSV",
+    "colRegion": "Region",
+    "colCountry": "Country",
+    "colCity": "City",
+    "offlineReason": "Offline Reason",
+    "filterOnline": "Online",
+    "filterOffline": "Offline"
   },
   "nodeDetail": {
     "nodeNotFound": "Node not found",
@@ -507,7 +517,27 @@
     "replyPlaceholder": "Type your reply… (Ctrl+Enter to send)",
     "replyFailed": "Failed to send reply",
     "logout": "Logout",
-    "usedTraffic": "{used} / {total} GB used"
+    "usedTraffic": "{used} / {total} GB used",
+    "heroTitle": "Secure. Fast.\nUnlimited.",
+    "heroDesc": "Premium proxy service with global coverage and blazing fast connections.",
+    "welcomeBack": "Welcome back",
+    "dashboardSubtitle": "Manage your subscriptions and account.",
+    "daysRemaining": "days left",
+    "noSubDesc": "Browse our plans and get started.",
+    "browsePlans": "Browse Plans",
+    "browsePlansDesc": "View available plans",
+    "ticketDesc": "Need help? Open a ticket",
+    "ordersDesc": "View your order history",
+    "plansSubtitle": "Choose a plan that fits your needs.",
+    "recommended": "Popular",
+    "days": "days",
+    "trafficQuota": "traffic",
+    "simultaneous": "simultaneous",
+    "noSpeedLimit": "Unlimited speed",
+    "allNodes": "All available nodes",
+    "forgotPassword": "Forgot password?",
+    "nicknamePlaceholder": "Enter nickname",
+    "optional": "optional"
   },
   "announcements": {
     "title": "Announcements",

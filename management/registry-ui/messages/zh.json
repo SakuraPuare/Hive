@@ -41,7 +41,8 @@
     "orders": "订单管理",
     "promoCodes": "优惠码",
     "tickets": "工单管理",
-    "announcements": "公告管理"
+    "announcements": "公告管理",
+    "admin": "管理"
   },
   "nodeStatus": {
     "title": "节点状态",
@@ -66,7 +67,9 @@
     "offlineNodes": "离线节点",
     "newThisWeek": "本周新增",
     "recentlyRegistered": "最近注册",
-    "noNodesThisWeek": "本周暂无新节点。"
+    "noNodesThisWeek": "本周暂无新节点。",
+    "subtitle": "节点集群概览",
+    "onlineRate": "在线率"
   },
   "nodes": {
     "searchPlaceholder": "搜索主机名、位置、IP 或 MAC…",
@@ -75,6 +78,7 @@
     "deleteConfirm": "确认删除节点 {mac}？",
     "deleteFailed": "删除失败",
     "loadFailed": "加载节点失败",
+    "colName": "名字",
     "colLocation": "位置",
     "colHostname": "主机名",
     "colTailscaleIp": "Tailscale IP",
@@ -109,7 +113,13 @@
     "batchDelete": "批量删除",
     "batchDeleteConfirm": "确认删除 {count} 个节点？",
     "allTags": "全部标签",
-    "exportCsv": "导出 CSV"
+    "exportCsv": "导出 CSV",
+    "colRegion": "区域",
+    "colCountry": "国家",
+    "colCity": "城市",
+    "offlineReason": "下线原因",
+    "filterOnline": "在线",
+    "filterOffline": "离线"
   },
   "nodeDetail": {
     "nodeNotFound": "节点未找到",
@@ -507,7 +517,27 @@
     "replyPlaceholder": "输入回复内容…（Ctrl+Enter 发送）",
     "replyFailed": "发送失败",
     "logout": "退出",
-    "usedTraffic": "已用 {used} / {total} GB"
+    "usedTraffic": "已用 {used} / {total} GB",
+    "heroTitle": "安全 · 极速 · 无限制",
+    "heroDesc": "全球节点覆盖，极速稳定的代理服务。",
+    "welcomeBack": "欢迎回来",
+    "dashboardSubtitle": "管理你的订阅与账户。",
+    "daysRemaining": "剩余天数",
+    "noSubDesc": "浏览套餐，立即开始使用。",
+    "browsePlans": "浏览套餐",
+    "browsePlansDesc": "查看可用套餐",
+    "ticketDesc": "需要帮助？提交工单",
+    "ordersDesc": "查看订单记录",
+    "plansSubtitle": "选择最适合你的套餐。",
+    "recommended": "推荐",
+    "days": "天",
+    "trafficQuota": "流量",
+    "simultaneous": "同时在线",
+    "noSpeedLimit": "不限速",
+    "allNodes": "全部可用节点",
+    "forgotPassword": "忘记密码？",
+    "nicknamePlaceholder": "输入昵称",
+    "optional": "可选"
   },
   "announcements": {
     "title": "公告管理",

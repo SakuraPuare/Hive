@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
-import { Menu, X, LayoutDashboard, Package, MessageSquare, ShoppingCart, LogOut, ChevronDown } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Package, MessageSquare, ShoppingCart, LogOut, ChevronDown, Globe, Gift } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { CustomerProvider, useCustomer, portalLogout } from '@/lib/portal-auth';
@@ -34,12 +34,15 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       {/* Top navbar */}
-      <header className="sticky top-0 z-50 border-b bg-card">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
+      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-lg">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 md:px-6">
           {/* Logo + desktop nav */}
-          <div className="flex items-center gap-6">
-            <Link href="/portal/dashboard" className="text-base font-bold tracking-tight">
-              {t('brand')}
+          <div className="flex items-center gap-8">
+            <Link href="/portal/dashboard" className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-brand">
+                <Globe className="h-4 w-4 text-white" />
+              </div>
+              <span className="text-base font-bold tracking-tight">{t('brand')}</span>
             </Link>
             <nav className="hidden md:flex items-center gap-1">
               {navItems.map(({ href, label, icon: Icon }) => (
@@ -47,10 +50,10 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
                   key={href}
                   href={href}
                   className={cn(
-                    'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                    'flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all',
                     isActive(href)
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -60,18 +63,18 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
             </nav>
           </div>
 
-          {/* Right side: theme, lang, user */}
+          {/* Right side */}
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <div className="hidden md:flex items-center gap-1">
+            <div className="hidden md:flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
               {(['zh', 'en'] as Locale[]).map((l) => (
                 <button
                   key={l}
                   onClick={() => setLocale(l)}
                   className={cn(
-                    'rounded px-2 py-1 text-xs font-medium transition-colors',
+                    'rounded-md px-2.5 py-1 text-xs font-medium transition-all',
                     locale === l
-                      ? 'bg-accent text-accent-foreground'
+                      ? 'bg-background text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
@@ -85,18 +88,26 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
               <div className="relative hidden md:block">
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-1 rounded-md px-2 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-all hover:bg-accent"
                 >
-                  {customer.nickname || customer.email}
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
+                    {(customer.nickname || customer.email || '?')[0].toUpperCase()}
+                  </div>
+                  <span className="max-w-[120px] truncate">{customer.nickname || customer.email}</span>
                   <ChevronDown className="h-3.5 w-3.5" />
                 </button>
                 {userMenuOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
-                    <div className="absolute right-0 z-50 mt-1 w-36 rounded-md border bg-popover p-1 shadow-md">
+                    <div className="absolute right-0 z-50 mt-1.5 w-44 rounded-xl border bg-popover p-1.5 shadow-lg animate-fade-in">
+                      <div className="px-3 py-2 mb-1">
+                        <p className="text-sm font-medium truncate">{customer.nickname || customer.email}</p>
+                        {customer.nickname && <p className="text-xs text-muted-foreground truncate">{customer.email}</p>}
+                      </div>
+                      <div className="h-px bg-border mx-1 my-1" />
                       <button
                         onClick={handleLogout}
-                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                       >
                         <LogOut className="h-4 w-4" />
                         {t('logout')}
@@ -109,7 +120,7 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
 
             {/* Mobile hamburger */}
             <button
-              className="md:hidden rounded-md p-1.5 text-muted-foreground hover:text-foreground"
+              className="md:hidden flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label="Toggle menu"
             >
@@ -120,7 +131,7 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
 
         {/* Mobile menu */}
         {mobileOpen && (
-          <div className="border-t md:hidden">
+          <div className="border-t md:hidden animate-slide-up">
             <nav className="flex flex-col p-3 space-y-1">
               {navItems.map(({ href, label, icon: Icon }) => (
                 <Link
@@ -128,25 +139,25 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
                   href={href}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
-                    'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
                     isActive(href)
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   )}
                 >
                   <Icon className="h-4 w-4" />
                   {label}
                 </Link>
               ))}
-              <div className="flex items-center gap-1 px-3 py-2">
+              <div className="flex items-center gap-0.5 rounded-lg bg-muted p-0.5 w-fit mx-3 mt-2">
                 {(['zh', 'en'] as Locale[]).map((l) => (
                   <button
                     key={l}
                     onClick={() => setLocale(l)}
                     className={cn(
-                      'rounded px-2 py-1 text-xs font-medium transition-colors',
+                      'rounded-md px-2.5 py-1 text-xs font-medium transition-all',
                       locale === l
-                        ? 'bg-accent text-accent-foreground'
+                        ? 'bg-background text-foreground shadow-sm'
                         : 'text-muted-foreground hover:text-foreground'
                     )}
                   >
@@ -155,20 +166,23 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
                 ))}
               </div>
               {customer && (
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                >
-                  <LogOut className="h-4 w-4" />
-                  {t('logout')}
-                </button>
+                <>
+                  <div className="h-px bg-border mx-1 my-2" />
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    {t('logout')}
+                  </button>
+                </>
               )}
             </nav>
           </div>
         )}
       </header>
 
-      <main className="mx-auto max-w-5xl p-4 md:p-6">{children}</main>
+      <main className="mx-auto max-w-6xl p-4 md:p-6 lg:p-8">{children}</main>
     </div>
   );
 }
