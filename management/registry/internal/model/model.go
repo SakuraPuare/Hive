@@ -26,18 +26,14 @@ type Node struct {
 	Status        string `json:"status"`
 	Weight        int    `json:"weight"`
 	Region        string `json:"region"`
-	Country       string `json:"country"`
-	City          string `json:"city"`
-	Tags          string `json:"tags"`
-	OfflineReason string `json:"offline_reason"`
-	ProbeStatus   string `json:"probe_status"`
+	ProbeStatus string `json:"probe_status"`
 }
 
 // NodeCols SELECT 列顺序，用于 LEFT JOIN 查询
-const NodeCols = "n.mac, n.mac6, n.hostname, n.cf_url, n.tunnel_id, n.tailscale_ip, n.easytier_ip, n.frp_port, n.xray_uuid, n.mesh_tunnel_id, n.mesh_ip, n.location, n.note, n.registered_at, n.last_seen, n.enabled, n.status, n.weight, n.region, n.country, n.city, n.tags, n.offline_reason, COALESCE(nsc.status, 'unknown') AS probe_status"
+const NodeCols = "n.mac, n.mac6, n.hostname, n.cf_url, n.tunnel_id, n.tailscale_ip, n.easytier_ip, n.frp_port, n.xray_uuid, n.mesh_tunnel_id, n.mesh_ip, n.location, n.note, n.registered_at, n.last_seen, n.enabled, n.status, n.weight, n.region, COALESCE(nsc.status, 'unknown') AS probe_status"
 
 // NodeColsPlain 用于不需要 JOIN 的场景
-const NodeColsPlain = "mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, mesh_tunnel_id, mesh_ip, location, note, registered_at, last_seen, enabled, status, weight, region, country, city, tags, offline_reason"
+const NodeColsPlain = "mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, mesh_tunnel_id, mesh_ip, location, note, registered_at, last_seen, enabled, status, weight, region"
 
 // ── User & Auth ──────────────────────────────────────────────────────────────
 

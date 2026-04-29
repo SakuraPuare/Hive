@@ -1,82 +1,70 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { model_Node } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { DataTable } from '@/components/ui/data-table';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
-import { RefreshCw, Trash2, Settings2, ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';
-import { useTranslations } from 'next-intl';
 import {
-  useReactTable,
-  getCoreRowModel,
-  getSortedRowModel,
-  flexRender,
-  createColumnHelper,
-  type SortingState,
-  type VisibilityState,
-} from '@tanstack/react-table';
+  RefreshCw, Trash2, Download, MoreHorizontal, Power, PowerOff,
+} from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { createColumnHelper } from '@tanstack/react-table';
 
-const VISIBILITY_KEY = 'nodes_col_visibility';
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatMac(mac: string | undefined | null) {
   if (!mac || mac.length !== 12) return mac ?? '';
   return mac.match(/.{2}/g)!.join(':');
 }
 
-function formatDate(s: string | undefined | null, noData: string) {
-  if (!s) return noData;
+function formatDate(s: string | undefined | null) {
+  if (!s) return '—';
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
-function getNodeStatus(n: model_Node): 'online' | 'offline' | 'unknown' {
-  const ps = n.probe_status;
-  if (ps === 'online') return 'online';
-  if (ps === 'offline') return 'offline';
+type ProbeStatus = 'online' | 'offline' | 'unknown';
+
+function getProbeStatus(n: model_Node): ProbeStatus {
+  if (n.probe_status === 'online') return 'online';
+  if (n.probe_status === 'offline') return 'offline';
   return 'unknown';
 }
 
-const statusClass: Record<string, string> = {
-  online: 'text-green-600 dark:text-green-400',
-  offline: 'text-red-600 dark:text-red-400',
-  unknown: 'text-muted-foreground',
+const statusConfig = {
+  online:  { label: 'Online',  dot: 'bg-emerald-500', cls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
+  offline: { label: 'Offline', dot: 'bg-red-500',     cls: 'bg-red-500/10 text-red-700 dark:text-red-400' },
+  unknown: { label: 'Unknown', dot: 'bg-gray-400',    cls: 'bg-muted text-muted-foreground' },
 };
 
-const columnHelper = createColumnHelper<model_Node>();
-
-const DEFAULT_VISIBILITY: VisibilityState = {
-  frp_port: true,
-  cf_url: false,
-  tunnel_id: false,
-  mac6: false,
-  note: false,
-  enabled: false,
-  weight: false,
-  tags: false,
-};
-
-function loadVisibility(): VisibilityState {
-  try {
-    const raw = localStorage.getItem(VISIBILITY_KEY);
-    if (raw) return { ...DEFAULT_VISIBILITY, ...JSON.parse(raw) };
-  } catch {}
-  return DEFAULT_VISIBILITY;
+function StatusBadge({ status }: { status: ProbeStatus }) {
+  const c = statusConfig[status];
+  return (
+    <Badge variant="outline" className={`gap-1.5 border-0 font-medium ${c.cls}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
+      {c.label}
+    </Badge>
+  );
 }
 
-export default function Nodes() {
+// ── Columns ──────────────────────────────────────────────────────────────────
+
+const col = createColumnHelper<model_Node>();
+
+type StatusFilter = 'all' | 'online' | 'offline' | 'unknown';
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
+export default function NodesPage() {
   const router = useRouter();
   const t = useTranslations('nodes');
   const tCommon = useTranslations('common');
@@ -86,440 +74,245 @@ export default function Nodes() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'last_seen', desc: true }]);
-  // 初始用默认值保证 SSR 与首次客户端渲染一致，mount 后再从 localStorage 同步
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY);
-  const [showColMenu, setShowColMenu] = useState(false);
-  const [selectedMacs, setSelectedMacs] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedTag, setSelectedTag] = useState('');
+  const [selectedRows, setSelectedRows] = useState<model_Node[]>([]);
 
-  const statusLabel: Record<string, string> = {
-    online: t('statusOnline'),
-    offline: t('statusOffline'),
-    unknown: t('statusUnknown'),
-  };
-
-  async function loadNodes() {
+  const loadNodes = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const list = await sessionApi(AdminService.nodesList({}));
-      setNodes(list);
+      setNodes(await sessionApi(AdminService.nodesList({})));
     } catch (e: unknown) {
       setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
-  }
+  }, [t]);
 
-  useEffect(() => { loadNodes(); }, []);
+  useEffect(() => { loadNodes(); }, [loadNodes]);
 
-  // mount 后从 localStorage 恢复列可见性（避免 SSR hydration 不一致）
-  useEffect(() => {
-    setColumnVisibility(loadVisibility());
-  }, []);
-
-  useEffect(() => {
-    try { localStorage.setItem(VISIBILITY_KEY, JSON.stringify(columnVisibility)); } catch {}
-  }, [columnVisibility]);
+  // ── Filtering ──────────────────────────────────────────────────────────────
 
   const filteredNodes = useMemo(() => {
-    let filtered = nodes;
+    let result = nodes;
+    if (statusFilter !== 'all')
+      result = result.filter(n => getProbeStatus(n) === statusFilter);
+    if (selectedTag)
+      result = result.filter(n => n.tags?.split(',').map(s => s.trim()).includes(selectedTag));
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (n) =>
-          (n.hostname ?? '').toLowerCase().includes(q) ||
-          (n.location ?? '').toLowerCase().includes(q) ||
-          (n.tailscale_ip ?? '').toLowerCase().includes(q) ||
-          (n.easytier_ip ?? '').toLowerCase().includes(q) ||
-          (n.mac ?? '').toLowerCase().includes(q) ||
-          (n.tags ?? '').toLowerCase().includes(q)
+      result = result.filter(n =>
+        [n.hostname, n.location, n.tailscale_ip, n.easytier_ip, n.mac, n.tags, n.note]
+          .some(v => v?.toLowerCase().includes(q))
       );
     }
-    if (selectedTag) {
-      filtered = filtered.filter(n => n.tags && n.tags.split(',').map(t => t.trim()).includes(selectedTag));
-    }
-    return filtered;
-  }, [nodes, searchQuery, selectedTag]);
+    return result;
+  }, [nodes, statusFilter, selectedTag, searchQuery]);
 
   const allTags = useMemo(() => {
-    const tags = new Set<string>();
-    nodes.forEach(n => {
-      if (n.tags) n.tags.split(',').forEach(tag => tags.add(tag.trim()));
-    });
-    return Array.from(tags).sort();
+    const s = new Set<string>();
+    nodes.forEach(n => n.tags?.split(',').forEach(t => { const v = t.trim(); if (v) s.add(v); }));
+    return Array.from(s).sort();
   }, [nodes]);
 
+  const counts = useMemo(() => {
+    const online = nodes.filter(n => n.probe_status === 'online').length;
+    const offline = nodes.filter(n => n.probe_status === 'offline').length;
+    return { all: nodes.length, online, offline, unknown: nodes.length - online - offline };
+  }, [nodes]);
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+
   async function handleDelete(mac: string) {
-    if (!window.confirm(t('deleteConfirm', { mac }))) return;
+    if (!confirm(t('deleteConfirm', { mac }))) return;
     try {
       await sessionApi(AdminService.nodeDelete({ mac }));
-      await loadNodes();
+      loadNodes();
     } catch (e: unknown) {
       setError(getErrorMessage(e, t('deleteFailed')));
     }
   }
 
-  async function handleBatchDelete() {
-    if (!confirm(t('batchDeleteConfirm', { count: selectedMacs.size }))) return;
-    for (const mac of selectedMacs) {
-      await sessionApi(AdminService.nodeDelete({ mac })).catch(() => {});
+  async function batchAction(action: 'enable' | 'disable' | 'delete') {
+    const macs = selectedRows.map(r => r.mac!);
+    if (!macs.length) return;
+    if (action === 'delete' && !confirm(t('batchDeleteConfirm', { count: macs.length }))) return;
+    for (const mac of macs) {
+      if (action === 'delete') await sessionApi(AdminService.nodeDelete({ mac })).catch(() => {});
+      else await sessionApi(AdminService.nodeUpdate({ mac, requestBody: { enabled: action === 'enable' } })).catch(() => {});
     }
-    setSelectedMacs(new Set());
     loadNodes();
   }
 
-  async function handleBatchEnable() {
-    for (const mac of selectedMacs) {
-      await sessionApi(AdminService.nodeUpdate({ mac, requestBody: { enabled: true } })).catch(() => {});
-    }
-    setSelectedMacs(new Set());
-    loadNodes();
-  }
-
-  async function handleBatchDisable() {
-    for (const mac of selectedMacs) {
-      await sessionApi(AdminService.nodeUpdate({ mac, requestBody: { enabled: false } })).catch(() => {});
-    }
-    setSelectedMacs(new Set());
-    loadNodes();
-  }
-
-  function handleExportCSV() {
-    const headers = ['hostname', 'location', 'mac', 'tailscale_ip', 'easytier_ip', 'status', 'enabled', 'tags', 'registered_at'];
-    const rows = filteredNodes.map(n => headers.map(h => String(n[h as keyof model_Node] ?? '')));
+  function exportCSV() {
+    const headers = ['note', 'hostname', 'location', 'mac', 'tailscale_ip', 'easytier_ip', 'frp_port', 'status', 'enabled', 'weight', 'region', 'registered_at', 'last_seen'];
+    const rows = filteredNodes.map(n => headers.map(h => String((n as any)[h] ?? '')));
     const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
-    a.href = url;
+    a.href = URL.createObjectURL(blob);
     a.download = `nodes-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
-    URL.revokeObjectURL(url);
   }
 
-  function goDetail(mac: string) {
-    router.push('/nodes/detail?mac=' + encodeURIComponent(mac));
-  }
-
-  const noData = tCommon('noData');
+  // ── Column defs ────────────────────────────────────────────────────────────
 
   const columns = useMemo(() => [
-    columnHelper.display({
-      id: 'select',
-      header: ({ table }) => (
-        <input
-          type="checkbox"
-          checked={table.getRowModel().rows.length > 0 && selectedMacs.size === table.getRowModel().rows.length}
-          onChange={(e) => {
-            if (e.target.checked) {
-              setSelectedMacs(new Set(table.getRowModel().rows.map(r => r.original.mac!)));
-            } else {
-              setSelectedMacs(new Set());
-            }
-          }}
-          className="h-4 w-4"
-        />
-      ),
+    col.display({ id: 'probe_status', header: t('colStatus'),
+      cell: ({ row }) => <StatusBadge status={getProbeStatus(row.original)} />, enableSorting: false }),
+    col.accessor('note', { header: t('colName'),
+      cell: i => <span className="font-medium">{i.getValue() || '—'}</span> }),
+    col.accessor('hostname', { header: t('colHostname'),
+      cell: i => <span className="font-medium">{i.getValue() || '—'}</span> }),
+    col.accessor('location', { header: t('colLocation'), cell: i => i.getValue() || '—' }),
+    col.accessor('tailscale_ip', { header: t('colTailscaleIp'),
+      cell: i => <span className="font-mono text-xs text-muted-foreground">{i.getValue() || '—'}</span> }),
+    col.accessor('easytier_ip', { header: t('colEasytierIp'),
+      cell: i => <span className="font-mono text-xs text-muted-foreground">{i.getValue() || '—'}</span> }),
+    col.accessor('frp_port', { header: t('colFrpPort'),
+      cell: i => <span className="font-mono text-xs">{i.getValue() || '—'}</span>, enableSorting: false }),
+    col.accessor('mac', { header: t('colMac'),
+      cell: i => <span className="font-mono text-xs text-muted-foreground">{formatMac(i.getValue())}</span>, enableSorting: false }),
+    col.accessor('mac6', { header: t('colMac6'),
+      cell: i => <span className="font-mono text-xs">{i.getValue() || '—'}</span>, enableSorting: false }),
+    col.accessor('last_seen', { header: t('colLastSeen'),
+      cell: i => <span className="text-muted-foreground">{formatDate(i.getValue())}</span>, sortingFn: 'datetime' }),
+    col.accessor('registered_at', { header: t('colRegisteredAt'),
+      cell: i => <span className="text-muted-foreground">{formatDate(i.getValue())}</span>, sortingFn: 'datetime' }),
+    col.accessor('cf_url', { header: t('colCfUrl'),
+      cell: i => { const v = i.getValue(); return v ? <span className="max-w-[140px] truncate block text-xs" title={v}>{v}</span> : '—'; },
+      enableSorting: false }),
+    col.accessor('tunnel_id', { header: t('colTunnelId'),
+      cell: i => { const v = i.getValue(); return v ? <span className="max-w-[80px] truncate block font-mono text-xs" title={v}>{v}</span> : '—'; },
+      enableSorting: false }),
+    col.accessor('enabled', { header: t('colEnabled'),
+      cell: i => i.getValue()
+        ? <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-0 text-[10px]">ON</Badge>
+        : <Badge className="bg-red-500/10 text-red-700 dark:text-red-400 border-0 text-[10px]">OFF</Badge>,
+      enableSorting: false }),
+    col.accessor('weight', { header: t('colWeight'), cell: i => i.getValue() ?? '—' }),
+    col.accessor('region', { header: t('colRegion'), cell: i => i.getValue() || '—', enableSorting: false }),
+    col.display({ id: 'actions', header: () => null, enableSorting: false, enableHiding: false,
       cell: ({ row }) => (
-        <input
-          type="checkbox"
-          checked={selectedMacs.has(row.original.mac!)}
-          onChange={() => {
-            const next = new Set(selectedMacs);
-            if (next.has(row.original.mac!)) next.delete(row.original.mac!);
-            else next.add(row.original.mac!);
-            setSelectedMacs(next);
-          }}
-          className="h-4 w-4"
-        />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => router.push('/nodes/detail?mac=' + encodeURIComponent(row.original.mac!))}>
+              {tCommon('edit')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="text-destructive focus:text-destructive"
+              onClick={() => handleDelete(row.original.mac!)}>
+              {tCommon('delete')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       ),
-    }),
-    columnHelper.accessor('location', {
-      header: t('colLocation'),
-      cell: (info) => info.getValue() || noData,
-    }),
-    columnHelper.accessor('hostname', {
-      header: t('colHostname'),
-      cell: (info) => <span className="font-medium">{info.getValue() || noData}</span>,
-    }),
-    columnHelper.accessor('tailscale_ip', {
-      header: t('colTailscaleIp'),
-      cell: (info) => <span className="font-mono text-xs">{info.getValue() || noData}</span>,
-    }),
-    columnHelper.accessor('easytier_ip', {
-      header: t('colEasytierIp'),
-      cell: (info) => <span className="font-mono text-xs">{info.getValue() || noData}</span>,
-    }),
-    columnHelper.accessor('frp_port', {
-      id: 'frp_port',
-      header: t('colFrpPort'),
-      cell: (info) => info.getValue() || noData,
-      enableSorting: false,
-    }),
-    columnHelper.accessor('mac', {
-      header: t('colMac'),
-      cell: (info) => <span className="font-mono text-xs">{formatMac(info.getValue())}</span>,
-      enableSorting: false,
-    }),
-    columnHelper.accessor('registered_at', {
-      header: t('colRegisteredAt'),
-      cell: (info) => formatDate(info.getValue(), noData),
-      sortingFn: 'datetime',
-    }),
-    columnHelper.accessor('last_seen', {
-      header: t('colLastSeen'),
-      cell: (info) => formatDate(info.getValue(), noData),
-      sortingFn: 'datetime',
-    }),
-    columnHelper.display({
-      id: 'status',
-      header: t('colStatus'),
-      cell: ({ row }) => {
-        const s = getNodeStatus(row.original);
-        const dotClass = s === 'online' ? 'bg-green-500' : s === 'offline' ? 'bg-red-500' : 'bg-gray-400';
-        return (
-          <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${statusClass[s]}`}>
-            <span className={`inline-block h-2 w-2 rounded-full ${dotClass}`} />
-            {statusLabel[s]}
-          </span>
-        );
-      },
-      enableSorting: false,
-    }),
-    columnHelper.accessor('cf_url', {
-      id: 'cf_url',
-      header: t('colCfUrl'),
-      cell: (info) => {
-        const v = info.getValue();
-        if (!v) return noData;
-        return <span className="max-w-[120px] truncate block" title={v}>{v}</span>;
-      },
-      enableSorting: false,
-    }),
-    columnHelper.accessor('tunnel_id', {
-      id: 'tunnel_id',
-      header: t('colTunnelId'),
-      cell: (info) => {
-        const v = info.getValue();
-        if (!v) return noData;
-        return <span className="max-w-[80px] truncate block font-mono text-xs" title={v}>{v}</span>;
-      },
-      enableSorting: false,
-    }),
-    columnHelper.accessor('mac6', {
-      id: 'mac6',
-      header: t('colMac6'),
-      cell: (info) => <span className="font-mono text-xs">{formatMac(info.getValue()) || noData}</span>,
-      enableSorting: false,
-    }),
-    columnHelper.accessor('note', {
-      id: 'note',
-      header: t('colNote'),
-      cell: (info) => {
-        const v = info.getValue();
-        if (!v) return noData;
-        return <span className="max-w-[100px] truncate block" title={v}>{v}</span>;
-      },
-      enableSorting: false,
-    }),
-    columnHelper.accessor('enabled', {
-      id: 'enabled',
-      header: t('colEnabled'),
-      cell: (info) => info.getValue() ? '✓' : '✗',
-      enableSorting: false,
-    }),
-    columnHelper.accessor('weight', {
-      id: 'weight',
-      header: t('colWeight'),
-      cell: (info) => info.getValue() ?? noData,
-      enableSorting: true,
-    }),
-    columnHelper.accessor('tags', {
-      id: 'tags',
-      header: t('colTags'),
-      cell: (info) => {
-        const v = info.getValue();
-        if (!v) return noData;
-        return <span className="max-w-[120px] truncate block text-xs" title={v}>{v}</span>;
-      },
-      enableSorting: false,
-    }),
-    columnHelper.display({
-      id: 'actions',
-      header: () => <span className="sr-only">{t('colActions')}</span>,
-      cell: ({ row }) => (
-        <div className="flex items-center justify-end gap-2">
-          <NodeEditDialog node={row.original} onSave={loadNodes} />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => { e.stopPropagation(); handleDelete(row.original.mac!); }}
-            className="text-destructive hover:text-destructive"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      ),
-      enableSorting: false,
     }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [noData, statusLabel]);
+  ], [t, tCommon]);
 
-  const table = useReactTable({
-    data: filteredNodes,
-    columns,
-    state: { sorting, columnVisibility },
-    onSortingChange: setSorting,
-    onColumnVisibilityChange: setColumnVisibility,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-  });
-
-  const toggleCols = [
-    { id: 'frp_port', label: t('colFrpPort') },
-    { id: 'cf_url', label: t('colCfUrl') },
-    { id: 'tunnel_id', label: t('colTunnelId') },
-    { id: 'mac6', label: t('colMac6') },
-    { id: 'note', label: t('colNote') },
-    { id: 'enabled', label: t('colEnabled') },
-    { id: 'weight', label: t('colWeight') },
-    { id: 'tags', label: t('colTags') },
-  ];
+  // Column labels for the visibility dropdown
+  const columnLabels: Record<string, string> = {
+    probe_status: t('colStatus'), note: t('colName'), hostname: t('colHostname'), location: t('colLocation'),
+    tailscale_ip: t('colTailscaleIp'), easytier_ip: t('colEasytierIp'),
+    frp_port: t('colFrpPort'), mac: t('colMac'), mac6: t('colMac6'),
+    last_seen: t('colLastSeen'), registered_at: t('colRegisteredAt'),
+    cf_url: t('colCfUrl'), tunnel_id: t('colTunnelId'),
+    enabled: t('colEnabled'), weight: t('colWeight'), region: t('colRegion'),
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fade-in">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{tNav('nodes')}</h1>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{tNav('nodes')}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {counts.all} total · {counts.online} online · {counts.offline} offline · {counts.unknown} unknown
+          </p>
+        </div>
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <Button variant="outline" size="sm" onClick={() => setShowColMenu((v) => !v)}>
-              <Settings2 className="mr-2 h-4 w-4" />
-              {t('colSettings')}
-            </Button>
-            {showColMenu && (
-              <div className="absolute right-0 mt-1 z-50 bg-popover border rounded-md shadow-md p-3 min-w-[140px] space-y-2">
-                {toggleCols.map(({ id, label }) => (
-                  <label key={id} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={columnVisibility[id] !== false}
-                      onChange={(e) =>
-                        setColumnVisibility((prev) => ({ ...prev, [id]: e.target.checked }))
-                      }
-                    />
-                    {label}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-          <Button variant="outline" onClick={loadNodes} disabled={loading} size="sm">
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            {tCommon('refresh')}
+          <Button variant="outline" size="sm" onClick={exportCSV}>
+            <Download className="h-4 w-4 mr-1.5" />{t('exportCsv')}
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportCSV}>
-            <Download className="mr-1 h-4 w-4" />
-            {t('exportCsv')}
+          <Button variant="outline" size="sm" onClick={loadNodes} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <Input
-          placeholder={t('searchPlaceholder')}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="max-w-sm"
-        />
-        {allTags.length > 0 && (
-          <select
-            value={selectedTag}
-            onChange={(e) => setSelectedTag(e.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">{t('allTags')}</option>
-            {allTags.map(tag => (
-              <option key={tag} value={tag}>{tag}</option>
-            ))}
-          </select>
-        )}
-      </div>
+      {error && <div className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
 
-      {selectedMacs.size > 0 && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">{t('selectedCount', { count: selectedMacs.size })}</span>
-          <Button size="sm" variant="outline" onClick={handleBatchEnable}>{t('batchEnable')}</Button>
-          <Button size="sm" variant="outline" onClick={handleBatchDisable}>{t('batchDisable')}</Button>
-          <Button size="sm" variant="destructive" onClick={handleBatchDelete}>{t('batchDelete')}</Button>
-        </div>
-      )}
-
-      {error && (
-        <p className="text-sm text-destructive whitespace-pre-wrap">{error}</p>
-      )}
-
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((hg) => (
-                <TableRow key={hg.id}>
-                  {hg.headers.map((header) => {
-                    const canSort = header.column.getCanSort();
-                    const sorted = header.column.getIsSorted();
-                    return (
-                      <TableHead
-                        key={header.id}
-                        onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                        className={canSort ? 'cursor-pointer select-none' : ''}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          {canSort && (
-                            sorted === 'asc' ? <ArrowUp className="h-3 w-3" /> :
-                            sorted === 'desc' ? <ArrowDown className="h-3 w-3" /> :
-                            <ArrowUpDown className="h-3 w-3 opacity-40" />
-                          )}
-                        </span>
-                      </TableHead>
-                    );
-                  })}
-                </TableRow>
+      <DataTable
+        columns={columns}
+        data={filteredNodes}
+        loading={loading}
+        emptyMessage={t('noNodesYet')}
+        emptyFilteredMessage={t('noMatchingNodes')}
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder={t('searchPlaceholder')}
+        enableSelection
+        onSelectionChange={setSelectedRows}
+        storageKey="nodes"
+        columnLabels={columnLabels}
+        getRowId={(row) => row.mac!}
+        onRowClick={(row) => router.push('/nodes/detail?mac=' + encodeURIComponent(row.mac!))}
+        defaultSorting={[{ id: 'last_seen', desc: true }]}
+        toolbar={
+          <>
+            {/* Status filter tabs */}
+            <div className="flex items-center rounded-lg bg-muted p-0.5">
+              {(['all', 'online', 'offline', 'unknown'] as StatusFilter[]).map(s => (
+                <button key={s} onClick={() => setStatusFilter(s)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                    statusFilter === s ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}>
+                  {s === 'all' ? `${t('filterAll')} (${counts.all})`
+                    : s === 'online' ? `${t('filterOnline')} (${counts.online})`
+                    : s === 'offline' ? `${t('filterOffline')} (${counts.offline})`
+                    : `${t('statusUnknown')} (${counts.unknown})`}
+                </button>
               ))}
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={table.getVisibleLeafColumns().length} className="text-center text-muted-foreground py-8">
-                    {tCommon('loading')}
-                  </TableCell>
-                </TableRow>
-              ) : table.getRowModel().rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={table.getVisibleLeafColumns().length} className="text-center text-muted-foreground py-8">
-                    {searchQuery ? t('noMatchingNodes') : t('noNodesYet')}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id} className="cursor-pointer">
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell
-                        key={cell.id}
-                        onClick={cell.column.id === 'actions' || cell.column.id === 'select' ? undefined : () => goDetail(row.original.mac!)}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+            </div>
+
+            {/* Tag filter */}
+            {allTags.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9">
+                    {selectedTag || t('allTags')}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => setSelectedTag('')}>{t('allTags')}</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {allTags.map(tag => <DropdownMenuItem key={tag} onClick={() => setSelectedTag(tag)}>{tag}</DropdownMenuItem>)}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </>
+        }
+        batchActions={
+          <>
+            <Button size="sm" variant="outline" onClick={() => batchAction('enable')}>
+              <Power className="h-3.5 w-3.5 mr-1.5" />{t('batchEnable')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => batchAction('disable')}>
+              <PowerOff className="h-3.5 w-3.5 mr-1.5" />{t('batchDisable')}
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => batchAction('delete')}>
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />{t('batchDelete')}
+            </Button>
+          </>
+        }
+      />
     </div>
   );
 }
