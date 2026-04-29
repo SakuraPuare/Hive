@@ -31,12 +31,14 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		MAC      string `json:"mac"`
-		MAC6     string `json:"mac6"`
-		Hostname string `json:"hostname"`
-		CFURL    string `json:"cf_url"`
-		TunnelID string `json:"tunnel_id"`
-		XrayUUID string `json:"xray_uuid"`
+		MAC          string `json:"mac"`
+		MAC6         string `json:"mac6"`
+		Hostname     string `json:"hostname"`
+		CFURL        string `json:"cf_url"`
+		TunnelID     string `json:"tunnel_id"`
+		XrayUUID     string `json:"xray_uuid"`
+		MeshTunnelID string `json:"mesh_tunnel_id"`
+		MeshIP       string `json:"mesh_ip"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid json")
@@ -57,12 +59,14 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 
 	if existing.MAC != "" {
 		if err := h.DB.Model(&model.Node{}).Where("mac = ?", body.MAC).Updates(map[string]any{
-			"mac6":      body.MAC6,
-			"hostname":  body.Hostname,
-			"cf_url":    body.CFURL,
-			"tunnel_id": body.TunnelID,
-			"xray_uuid": body.XrayUUID,
-			"last_seen": now,
+			"mac6":           body.MAC6,
+			"hostname":       body.Hostname,
+			"cf_url":         body.CFURL,
+			"tunnel_id":      body.TunnelID,
+			"xray_uuid":      body.XrayUUID,
+			"mesh_tunnel_id": body.MeshTunnelID,
+			"mesh_ip":        body.MeshIP,
+			"last_seen":      now,
 		}).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return
@@ -74,8 +78,8 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		})
 	} else {
 		if err := h.DB.Exec(
-			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, xray_uuid, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
-			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, body.XrayUUID, now, now,
+			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, xray_uuid, mesh_tunnel_id, mesh_ip, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)",
+			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, body.XrayUUID, body.MeshTunnelID, body.MeshIP, now, now,
 		).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return
@@ -218,6 +222,7 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		"location": true, "note": true, "tailscale_ip": true, "easytier_ip": true,
 		"frp_port": true, "enabled": true, "status": true, "weight": true,
 		"region": true, "country": true, "city": true, "tags": true, "offline_reason": true,
+		"mesh_tunnel_id": true, "mesh_ip": true,
 	}
 	updates := make(map[string]any)
 	for k, v := range body {

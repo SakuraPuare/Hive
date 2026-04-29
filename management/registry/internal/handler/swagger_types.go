@@ -58,12 +58,14 @@ type SetRolesRequest struct {
 
 // NodeRegisterRequest is the request body for POST /nodes/register.
 type NodeRegisterRequest struct {
-	MAC      string `json:"mac" example:"AA:BB:CC:DD:EE:FF"`
-	MAC6     string `json:"mac6" example:"AABBCC"`
-	Hostname string `json:"hostname" example:"node-01"`
-	CFURL    string `json:"cf_url" example:"https://tunnel.example.com"`
-	TunnelID string `json:"tunnel_id" example:"abc123"`
-	XrayUUID string `json:"xray_uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	MAC          string `json:"mac" example:"AA:BB:CC:DD:EE:FF"`
+	MAC6         string `json:"mac6" example:"AABBCC"`
+	Hostname     string `json:"hostname" example:"node-01"`
+	CFURL        string `json:"cf_url" example:"https://tunnel.example.com"`
+	TunnelID     string `json:"tunnel_id" example:"abc123"`
+	XrayUUID     string `json:"xray_uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	MeshTunnelID string `json:"mesh_tunnel_id" example:"704320e0-f87b-4ca8-a45e-481c1fcd7462"`
+	MeshIP       string `json:"mesh_ip" example:"100.96.0.10"`
 }
 
 // NodeRegisterResponse is the response body for POST /nodes/register.
@@ -88,6 +90,8 @@ type NodeUpdateRequest struct {
 	City          *string `json:"city,omitempty" example:"Tokyo"`
 	Tags          *string `json:"tags,omitempty" example:"fast,premium"`
 	OfflineReason *string `json:"offline_reason,omitempty" example:"maintenance"`
+	MeshTunnelID  *string `json:"mesh_tunnel_id,omitempty" example:"704320e0-f87b-4ca8-a45e-481c1fcd7462"`
+	MeshIP        *string `json:"mesh_ip,omitempty" example:"100.96.0.10"`
 }
 
 // ── customer swagger types ───────────────────────────────────────────────────

@@ -8,7 +8,7 @@
 //   Circular references: 0
 //   Discriminated unions: 0
 //   With constraints: 0
-//   Generated at: 2026-03-26T16:39:31.180Z
+//   Generated at: 2026-04-29T08:01:56.913Z
 
 import { z } from "zod";
 
@@ -251,6 +251,10 @@ export const handlerNodeRegisterRequestSchema = z.object({
   mac: z.string().optional(),
 /** @example "AABBCC" */
   mac6: z.string().optional(),
+/** @example "100.96.0.10" */
+  mesh_ip: z.string().optional(),
+/** @example "704320e0-f87b-4ca8-a45e-481c1fcd7462" */
+  mesh_tunnel_id: z.string().optional(),
 /** @example "abc123" */
   tunnel_id: z.string().optional(),
 /** @example "550e8400-e29b-41d4-a716-446655440000" */
@@ -281,6 +285,10 @@ export const handlerNodeUpdateRequestSchema = z.object({
   frp_port: z.number().int().optional(),
 /** @example "Tokyo" */
   location: z.string().optional(),
+/** @example "100.96.0.10" */
+  mesh_ip: z.string().optional(),
+/** @example "704320e0-f87b-4ca8-a45e-481c1fcd7462" */
+  mesh_tunnel_id: z.string().optional(),
 /** @example "primary node" */
   note: z.string().optional(),
 /** @example "maintenance" */
@@ -719,6 +727,8 @@ export const modelNodeSchema = z.object({
   location: z.string().optional(),
   mac: z.string().optional(),
   mac6: z.string().optional(),
+  mesh_ip: z.string().optional(),
+  mesh_tunnel_id: z.string().optional(),
   note: z.string().optional(),
   offline_reason: z.string().optional(),
   probe_status: z.string().optional(),

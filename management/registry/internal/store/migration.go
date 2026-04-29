@@ -398,6 +398,14 @@ CREATE TABLE IF NOT EXISTS announcements (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公告表';
 `,
 	},
+	{
+		version: 13,
+		desc:    "add mesh_tunnel_id and mesh_ip columns to nodes",
+		up: `
+ALTER TABLE nodes ADD COLUMN mesh_tunnel_id VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Cloudflare Mesh (WARP Connector) tunnel UUID';
+ALTER TABLE nodes ADD COLUMN mesh_ip        VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Cloudflare Mesh virtual IP (100.96.x.x)';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.
