@@ -29,9 +29,10 @@ fi
 # 1. 系统基础调优
 # ─────────────────────────────────────────────
 cat > /etc/sysctl.d/99-hive.conf << 'EOF'
-# IP 转发（代理节点必须）
+# IP 转发（代理节点必须，Cloudflare Mesh 也需要）
 net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 1
+net.ipv6.conf.all.accept_ra = 2
 
 # 网络缓冲区（提升代理吞吐）
 net.core.rmem_max = 67108864
@@ -87,6 +88,14 @@ echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] \
 https://pkgs.tailscale.com/stable/debian ${RELEASE} main" \
     | tee /etc/apt/sources.list.d/tailscale.list
 
+# Cloudflare WARP 官方 apt 源（Mesh 节点需要 warp-cli）
+echo ">>> Adding Cloudflare WARP apt repo..."
+curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+    | gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] \
+https://pkg.cloudflareclient.com/ ${RELEASE} main" \
+    | tee /etc/apt/sources.list.d/cloudflare-client.list
+
 # ─────────────────────────────────────────────
 # 3. 安装运行时依赖（单次 update + install）
 # ─────────────────────────────────────────────
@@ -105,7 +114,8 @@ apt-get install -y --no-install-recommends \
     zsh \
     net-tools \
     vim \
-    tailscale
+    tailscale \
+    cloudflare-warp
 
 # 清理 apt 缓存，减少镜像体积
 apt-get clean
@@ -218,6 +228,7 @@ else
 fi
 
 systemctl enable tailscaled.service   # daemon 预启动，tailscale up 由 provision 执行
+systemctl enable warp-svc.service    # WARP daemon 预启动，warp-cli 注册由 provision 执行
 systemctl enable prometheus-node-exporter.service
 # nginx：禁用默认站点，启用 hive 站点
 rm -f /etc/nginx/sites-enabled/default
