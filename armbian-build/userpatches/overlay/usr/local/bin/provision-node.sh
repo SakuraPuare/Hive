@@ -234,6 +234,10 @@ XRAY_UUID=${UUID}
 
 # CF Tunnel
 TUNNEL_ID=${TUNNEL_ID}
+
+# CF Mesh (WARP Connector)
+MESH_TUNNEL_ID=${MESH_TUNNEL_ID:-none}
+MESH_IP=${MESH_IP:-pending}
 EOF
 echo ">>> node-info written to /etc/hive/node-info"
 
@@ -315,6 +319,61 @@ tailscale up \
     || echo ">>> Tailscale up failed (will retry on next boot via tailscaled)"
 
 # ─────────────────────────────────────────────
+# 7.5. Cloudflare Mesh（WARP Connector）
+# ─────────────────────────────────────────────
+MESH_NAME="hive-${MAC6}"
+echo ">>> Setting up Cloudflare Mesh node: ${MESH_NAME}"
+
+# 查找已存在的同名 WARP Connector（幂等）
+EXISTING_MESH=$(curl -s -G \
+    "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector" \
+    -H "Authorization: Bearer ${CF_API_TOKEN}" \
+    --data-urlencode "name=${MESH_NAME}" \
+    --data-urlencode "is_deleted=false")
+
+MESH_TUNNEL_ID=$(echo "$EXISTING_MESH" | jq -r '.result[0].id // empty')
+
+if [ -z "$MESH_TUNNEL_ID" ]; then
+    echo ">>> Creating new Mesh node..."
+    MESH_CREATE_RES=$(curl -s -X POST \
+        "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector" \
+        -H "Authorization: Bearer ${CF_API_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "{\"name\":\"${MESH_NAME}\"}")
+
+    MESH_TUNNEL_ID=$(echo "$MESH_CREATE_RES" | jq -r '.result.id // empty')
+
+    if [ -z "$MESH_TUNNEL_ID" ]; then
+        echo "!!! Mesh node creation failed (non-fatal):"
+        echo "$MESH_CREATE_RES"
+    fi
+else
+    echo ">>> Mesh node already exists: ${MESH_TUNNEL_ID}"
+fi
+
+if [ -n "$MESH_TUNNEL_ID" ]; then
+    MESH_TOKEN=$(curl -s \
+        "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector/${MESH_TUNNEL_ID}/token" \
+        -H "Authorization: Bearer ${CF_API_TOKEN}" | jq -r '.result // empty')
+
+    if [ -n "$MESH_TOKEN" ]; then
+        echo ">>> Registering WARP Connector..."
+        warp-cli connector new "${MESH_TOKEN}" \
+            && echo ">>> WARP Connector registered" \
+            || echo ">>> WARP Connector registration failed (non-fatal)"
+        warp-cli connect \
+            && echo ">>> WARP connected" \
+            || echo ">>> WARP connect failed (non-fatal)"
+        sleep 3
+        MESH_IP=$(warp-cli status 2>/dev/null | grep -oP '(?<=IP: )\S+' || echo "pending")
+    else
+        echo "!!! Failed to get Mesh token (non-fatal)"
+    fi
+fi
+echo ">>> Mesh tunnel ID: ${MESH_TUNNEL_ID:-none}"
+echo ">>> Mesh IP: ${MESH_IP:-none}"
+
+# ─────────────────────────────────────────────
 # 8. 上报 Node Registry（非关键，失败不中止）
 # ─────────────────────────────────────────────
 TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "pending")
@@ -335,7 +394,9 @@ if [ -n "${NODE_REGISTRY_URL}" ]; then
           \"tailscale_ip\": \"${TAILSCALE_IP}\",
           \"easytier_ip\":  \"${EASYTIER_IP}\",
           \"frp_port\":     ${FRP_PORT},
-          \"xray_uuid\":    \"${UUID}\"
+          \"xray_uuid\":    \"${UUID}\",
+          \"mesh_tunnel_id\": \"${MESH_TUNNEL_ID:-}\",
+          \"mesh_ip\":      \"${MESH_IP:-}\"
         }" && echo ">>> Registered with Node Registry." \
         || echo ">>> Registry unavailable (non-fatal)."
 fi
@@ -353,4 +414,5 @@ echo "  Tailscale: ssh root@${HOSTNAME}  (MagicDNS)"
 echo "  EasyTier : ssh root@${EASYTIER_IP}"
 echo "  FRP      : ssh -p ${FRP_PORT} root@<VPS>"
 echo "  CF Proxy : https://${FULL_DOMAIN}"
+echo "  CF Mesh  : ${MESH_IP:-pending} (tunnel: ${MESH_TUNNEL_ID:-none})"
 echo "============================================"
