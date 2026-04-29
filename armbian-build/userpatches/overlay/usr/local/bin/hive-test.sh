@@ -108,7 +108,22 @@ else
     fail "tailscale" "tailscaled not active"
 fi
 
-# ── 7. Prometheus Node Exporter ───────────────────────────────────────────────
+# ── 7. Cloudflare Mesh (WARP Connector) ──────────────────────────────────
+if command -v warp-cli &>/dev/null; then
+    WARP_STATUS=$(warp-cli status 2>/dev/null)
+    if echo "$WARP_STATUS" | grep -qi "connected"; then
+        WARP_IP=$(echo "$WARP_STATUS" | grep -oP '(?<=IP: )\S+' || echo "unknown")
+        pass "cf-mesh" "connected @ ${WARP_IP}"
+    elif echo "$WARP_STATUS" | grep -qi "registration missing"; then
+        fail "cf-mesh" "not registered (run warp-cli connector new <TOKEN>)"
+    else
+        warn "cf-mesh" "warp-cli present but status: $(echo "$WARP_STATUS" | head -1)"
+    fi
+else
+    warn "cf-mesh" "warp-cli not installed"
+fi
+
+# ── 8. Prometheus Node Exporter ──────────────────────────────────────────────
 if svc_active prometheus-node-exporter; then
     METRIC_LINES=$(curl -sf --max-time 3 http://127.0.0.1:9100/metrics 2>/dev/null | wc -l)
     if [ "${METRIC_LINES:-0}" -gt 10 ]; then
@@ -120,7 +135,7 @@ else
     fail "node-exporter" "service not active"
 fi
 
-# ── 8. UFW Firewall ───────────────────────────────────────────────────────────
+# ── 9. UFW Firewall ───────────────────────────────────────────────────────────
 if svc_active ufw; then
     RULE_COUNT=$(ufw status 2>/dev/null | grep -c "ALLOW\|DENY" || echo 0)
     pass "firewall" "ufw active, ${RULE_COUNT} rules"
@@ -128,7 +143,7 @@ else
     fail "firewall" "ufw not active"
 fi
 
-# ── 9. fail2ban ───────────────────────────────────────────────────────────────
+# ── 10. fail2ban ──────────────────────────────────────────────────────────────
 if svc_active fail2ban; then
     JAIL_COUNT=$(fail2ban-client status 2>/dev/null | grep "Number of jail" | grep -o '[0-9]*' || echo 0)
     if [ "${JAIL_COUNT:-0}" -gt 0 ]; then
@@ -140,7 +155,7 @@ else
     fail "fail2ban" "service not active"
 fi
 
-# ── 10. SSH Host Key 确定性验证 ───────────────────────────────────────────────
+# ── 11. SSH Host Key 确定性验证 ───────────────────────────────────────────
 if [ -f /etc/ssh/ssh_host_ed25519_key.pub ]; then
     FP=$(ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | awk '{print $2}')
     pass "ssh-hostkey" "Ed25519 ${FP}"

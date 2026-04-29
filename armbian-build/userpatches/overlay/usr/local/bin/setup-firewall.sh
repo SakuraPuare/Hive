@@ -137,6 +137,13 @@ ufw allow out $FRP_PORT comment "FRP Client - Port $FRP_PORT"
 ufw allow out 41641/udp comment 'Tailscale - UDP'
 ufw allow out 443/tcp comment 'Tailscale - TCP Fallback'
 
+# Cloudflare WARP / Mesh - 使用 2408/udp 和 1701/udp
+ufw allow out 2408/udp comment 'Cloudflare WARP - UDP'
+ufw allow out 1701/udp comment 'Cloudflare WARP - UDP Fallback'
+# WARP 虚拟网段（100.96.0.0/12）—— 允许 Mesh 节点间互通
+ufw allow from 100.96.0.0/12 comment 'Cloudflare Mesh - Inbound'
+ufw allow out to 100.96.0.0/12 comment 'Cloudflare Mesh - Outbound'
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 安全加固
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -165,7 +172,7 @@ echo ""
 echo "📋 开放的端口："
 echo "  - SSH (22): 本地网络 + Tailscale"
 echo "  - Node Exporter (9100): 仅 Tailscale"
-echo "  - 出站: DNS, NTP, HTTPS, Cloudflare Tunnel(7844,443), Tailscale, FRP($FRP_PORT)"
+echo "  - 出站: DNS, NTP, HTTPS, CF Tunnel(7844,443), CF WARP(2408,1701), Tailscale, FRP($FRP_PORT)"
 echo ""
 echo "🔐 安全特性："
 echo "  - 默认拒绝所有入站连接"
