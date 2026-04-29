@@ -14,6 +14,8 @@ export type model_Node = {
     location?: string;
     mac?: string;
     mac6?: string;
+    mesh_ip?: string;
+    mesh_tunnel_id?: string;
     note?: string;
     offline_reason?: string;
     probe_status?: string;

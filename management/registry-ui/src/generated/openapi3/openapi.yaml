@@ -3952,6 +3952,12 @@ components:
         mac6:
           example: AABBCC
           type: string
+        mesh_ip:
+          example: 100.96.0.10
+          type: string
+        mesh_tunnel_id:
+          example: 704320e0-f87b-4ca8-a45e-481c1fcd7462
+          type: string
         tunnel_id:
           example: abc123
           type: string
@@ -3990,6 +3996,12 @@ components:
           type: integer
         location:
           example: Tokyo
+          type: string
+        mesh_ip:
+          example: 100.96.0.10
+          type: string
+        mesh_tunnel_id:
+          example: 704320e0-f87b-4ca8-a45e-481c1fcd7462
           type: string
         note:
           example: primary node
@@ -4611,6 +4623,10 @@ components:
         mac:
           type: string
         mac6:
+          type: string
+        mesh_ip:
+          type: string
+        mesh_tunnel_id:
           type: string
         note:
           type: string

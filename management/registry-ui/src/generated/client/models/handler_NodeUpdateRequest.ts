@@ -9,6 +9,8 @@ export type handler_NodeUpdateRequest = {
     enabled?: boolean;
     frp_port?: number;
     location?: string;
+    mesh_ip?: string;
+    mesh_tunnel_id?: string;
     note?: string;
     offline_reason?: string;
     region?: string;

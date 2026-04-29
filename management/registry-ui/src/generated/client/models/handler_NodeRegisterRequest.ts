@@ -7,6 +7,8 @@ export type handler_NodeRegisterRequest = {
     hostname?: string;
     mac?: string;
     mac6?: string;
+    mesh_ip?: string;
+    mesh_tunnel_id?: string;
     tunnel_id?: string;
     xray_uuid?: string;
 };
