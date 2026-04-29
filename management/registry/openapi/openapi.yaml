@@ -1157,7 +1157,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 获取公告列表
       tags:
       - admin
@@ -1189,7 +1189,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 创建公告
       tags:
       - admin
@@ -1219,7 +1219,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 删除公告
       tags:
       - admin
@@ -1260,7 +1260,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 更新公告
       tags:
       - admin
@@ -1348,7 +1348,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 获取客户列表
       tags:
       - admin
@@ -1384,7 +1384,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 创建客户
       tags:
       - admin
@@ -1410,7 +1410,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 删除客户
       tags:
       - admin
@@ -1439,7 +1439,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 获取客户详情
       tags:
       - admin
@@ -1476,7 +1476,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 更新客户
       tags:
       - admin
@@ -1502,7 +1502,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 封禁客户
       tags:
       - admin
@@ -1540,7 +1540,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 重置客户密码
       tags:
       - admin
@@ -1568,7 +1568,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 获取客户订阅列表
       tags:
       - admin
@@ -1605,7 +1605,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 创建订阅
       tags:
       - admin
@@ -1635,7 +1635,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 获取客户流量统计
       tags:
       - admin
@@ -1665,7 +1665,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 解封客户
       tags:
       - admin
@@ -1973,7 +1973,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 获取节点状态列表
       tags:
       - admin
@@ -2010,7 +2010,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 获取订单列表
       tags:
       - admin
@@ -2040,7 +2040,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 获取订单详情
       tags:
       - admin
@@ -2082,7 +2082,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 更新订单状态
       tags:
       - admin
@@ -2452,7 +2452,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 获取邀请记录列表
       tags:
       - admin
@@ -2494,7 +2494,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 更新邀请记录状态
       tags:
       - admin
@@ -2531,7 +2531,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 获取风控事件列表
       tags:
       - admin
@@ -2816,7 +2816,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 删除订阅
       tags:
       - admin
@@ -2853,7 +2853,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 更新订阅
       tags:
       - admin
@@ -2883,7 +2883,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 激活订阅
       tags:
       - admin
@@ -2913,7 +2913,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 过期订阅
       tags:
       - admin
@@ -2939,7 +2939,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - CookieAuth: []
+      - AdminSessionCookie: []
       summary: 重置订阅 Token
       tags:
       - admin
@@ -2969,7 +2969,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 重置订阅流量
       tags:
       - admin
@@ -2999,7 +2999,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 暂停订阅
       tags:
       - admin
@@ -3036,7 +3036,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 获取工单列表
       tags:
       - admin
@@ -3066,7 +3066,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 删除工单
       tags:
       - admin
@@ -3095,7 +3095,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 获取工单详情
       tags:
       - admin
@@ -3125,7 +3125,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 关闭工单
       tags:
       - admin
@@ -3171,7 +3171,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 管理员回复工单
       tags:
       - admin
@@ -3191,7 +3191,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 获取流量汇总
       tags:
       - admin
@@ -3544,7 +3544,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 打印节点标签页面
       tags:
       - admin
@@ -3591,7 +3591,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: List nodes
       tags:
       - admin
@@ -3617,7 +3617,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: Delete a node
       tags:
       - admin
@@ -3646,7 +3646,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: Get a node
       tags:
       - admin
@@ -3687,7 +3687,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: Update a node
       tags:
       - admin
@@ -4272,7 +4272,7 @@ paths:
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
-      - AdminSession: []
+      - AdminSessionCookie: []
       summary: 获取 Prometheus 抓取目标
       tags:
       - admin
