@@ -406,6 +406,17 @@ ALTER TABLE nodes ADD COLUMN mesh_tunnel_id VARCHAR(64) NOT NULL DEFAULT '' COMM
 ALTER TABLE nodes ADD COLUMN mesh_ip        VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Cloudflare Mesh virtual IP (100.96.x.x)';
 `,
 	},
+	{
+		version: 14,
+		desc:    "drop unused node columns: country, city, tags, offline_reason",
+		up: `
+ALTER TABLE nodes DROP INDEX IF EXISTS idx_country;
+ALTER TABLE nodes DROP COLUMN IF EXISTS country;
+ALTER TABLE nodes DROP COLUMN IF EXISTS city;
+ALTER TABLE nodes DROP COLUMN IF EXISTS tags;
+ALTER TABLE nodes DROP COLUMN IF EXISTS offline_reason;
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

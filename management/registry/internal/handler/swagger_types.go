@@ -85,12 +85,8 @@ type NodeUpdateRequest struct {
 	Enabled       *bool   `json:"enabled,omitempty" example:"true"`
 	Status        *string `json:"status,omitempty" example:"online"`
 	Weight        *int    `json:"weight,omitempty" example:"10"`
-	Region        *string `json:"region,omitempty" example:"asia"`
-	Country       *string `json:"country,omitempty" example:"JP"`
-	City          *string `json:"city,omitempty" example:"Tokyo"`
-	Tags          *string `json:"tags,omitempty" example:"fast,premium"`
-	OfflineReason *string `json:"offline_reason,omitempty" example:"maintenance"`
-	MeshTunnelID  *string `json:"mesh_tunnel_id,omitempty" example:"704320e0-f87b-4ca8-a45e-481c1fcd7462"`
+	Region       *string `json:"region,omitempty" example:"asia"`
+	MeshTunnelID *string `json:"mesh_tunnel_id,omitempty" example:"704320e0-f87b-4ca8-a45e-481c1fcd7462"`
 	MeshIP        *string `json:"mesh_ip,omitempty" example:"100.96.0.10"`
 }
 

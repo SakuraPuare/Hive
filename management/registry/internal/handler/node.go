@@ -102,10 +102,8 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 // @Produce json
 // @Param status query string false "filter by status"
 // @Param enabled query string false "filter by enabled (0 or 1)"
-// @Param country query string false "filter by country"
 // @Param region query string false "filter by region"
 // @Param search query string false "search hostname, location, note, or mac"
-// @Param tags query string false "filter by tags (comma-separated)"
 // @Success 200 {array} model.Node
 // @Failure 500 {object} ErrorResponse
 // @Router /nodes [get]
@@ -123,10 +121,6 @@ func (h *Handler) HandleListNodes(w http.ResponseWriter, r *http.Request) {
 		conditions = append(conditions, "n.enabled = ?")
 		args = append(args, v)
 	}
-	if v := q.Get("country"); v != "" {
-		conditions = append(conditions, "n.country = ?")
-		args = append(args, v)
-	}
 	if v := q.Get("region"); v != "" {
 		conditions = append(conditions, "n.region = ?")
 		args = append(args, v)
@@ -136,16 +130,6 @@ func (h *Handler) HandleListNodes(w http.ResponseWriter, r *http.Request) {
 		like := "%" + v + "%"
 		args = append(args, like, like, like, like)
 	}
-	if v := q.Get("tags"); v != "" {
-		for _, tag := range strings.Split(v, ",") {
-			tag = strings.TrimSpace(tag)
-			if tag != "" {
-				conditions = append(conditions, "n.tags LIKE ?")
-				args = append(args, "%"+tag+"%")
-			}
-		}
-	}
-
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
@@ -221,8 +205,7 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	allowed := map[string]bool{
 		"location": true, "note": true, "tailscale_ip": true, "easytier_ip": true,
 		"frp_port": true, "enabled": true, "status": true, "weight": true,
-		"region": true, "country": true, "city": true, "tags": true, "offline_reason": true,
-		"mesh_tunnel_id": true, "mesh_ip": true,
+		"region": true, "mesh_tunnel_id": true, "mesh_ip": true,
 	}
 	updates := make(map[string]any)
 	for k, v := range body {
