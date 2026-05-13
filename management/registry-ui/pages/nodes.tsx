@@ -75,7 +75,6 @@ export default function NodesPage() {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [selectedTag, setSelectedTag] = useState('');
   const [selectedRows, setSelectedRows] = useState<model_Node[]>([]);
 
   const loadNodes = useCallback(async () => {
@@ -98,23 +97,15 @@ export default function NodesPage() {
     let result = nodes;
     if (statusFilter !== 'all')
       result = result.filter(n => getProbeStatus(n) === statusFilter);
-    if (selectedTag)
-      result = result.filter(n => n.tags?.split(',').map(s => s.trim()).includes(selectedTag));
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(n =>
-        [n.hostname, n.location, n.tailscale_ip, n.easytier_ip, n.mac, n.tags, n.note]
+        [n.hostname, n.location, n.tailscale_ip, n.easytier_ip, n.mac, n.note]
           .some(v => v?.toLowerCase().includes(q))
       );
     }
     return result;
-  }, [nodes, statusFilter, selectedTag, searchQuery]);
-
-  const allTags = useMemo(() => {
-    const s = new Set<string>();
-    nodes.forEach(n => n.tags?.split(',').forEach(t => { const v = t.trim(); if (v) s.add(v); }));
-    return Array.from(s).sort();
-  }, [nodes]);
+  }, [nodes, statusFilter, searchQuery]);
 
   const counts = useMemo(() => {
     const online = nodes.filter(n => n.probe_status === 'online').length;
@@ -281,22 +272,6 @@ export default function NodesPage() {
                 </button>
               ))}
             </div>
-
-            {/* Tag filter */}
-            {allTags.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9">
-                    {selectedTag || t('allTags')}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => setSelectedTag('')}>{t('allTags')}</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {allTags.map(tag => <DropdownMenuItem key={tag} onClick={() => setSelectedTag(tag)}>{tag}</DropdownMenuItem>)}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
           </>
         }
         batchActions={

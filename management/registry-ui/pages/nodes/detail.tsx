@@ -57,10 +57,6 @@ export default function NodeDetail() {
   const [status, setStatus] = useState('active');
   const [weight, setWeight] = useState(100);
   const [region, setRegion] = useState('');
-  const [country, setCountry] = useState('');
-  const [city, setCity] = useState('');
-  const [tags, setTags] = useState('');
-  const [offlineReason, setOfflineReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -79,10 +75,6 @@ export default function NodeDetail() {
         setStatus(n.status ?? 'active');
         setWeight(n.weight ?? 100);
         setRegion(n.region ?? '');
-        setCountry(n.country ?? '');
-        setCity(n.city ?? '');
-        setTags(n.tags ?? '');
-        setOfflineReason(n.offline_reason ?? '');
       })
       .catch((e: any) => setError(e?.error || t('updateFailed')))
       .finally(() => setLoading(false));
@@ -97,7 +89,7 @@ export default function NodeDetail() {
       await sessionApi(
         AdminService.nodeUpdate({
           mac,
-          requestBody: { location, note, enabled, status, weight, region, country, city, tags, offline_reason: offlineReason } as handler_NodeUpdateRequest,
+          requestBody: { location, note, enabled, status, weight, region } as handler_NodeUpdateRequest,
         }),
       );
       setSaveSuccess(true);
@@ -191,10 +183,6 @@ export default function NodeDetail() {
             <FieldRow label={t('nodeStatus')} value={node.status} noData={noData} />
             <FieldRow label={t('weight')} value={node.weight} noData={noData} />
             <FieldRow label={t('region')} value={node.region} noData={noData} />
-            <FieldRow label={t('country')} value={node.country} noData={noData} />
-            <FieldRow label={t('city')} value={node.city} noData={noData} />
-            <FieldRow label={t('tags')} value={node.tags} noData={noData} />
-            <FieldRow label={t('offlineReason')} value={node.offline_reason} noData={noData} />
           </CardContent>
         </Card>
 
@@ -262,22 +250,6 @@ export default function NodeDetail() {
                 <div className="space-y-1.5">
                   <Label htmlFor="detail-region">{t('region')}</Label>
                   <Input id="detail-region" value={region} onChange={(e) => setRegion(e.target.value)} placeholder={t('regionPlaceholder')} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="detail-country">{t('country')}</Label>
-                  <Input id="detail-country" value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t('countryPlaceholder')} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="detail-city">{t('city')}</Label>
-                  <Input id="detail-city" value={city} onChange={(e) => setCity(e.target.value)} placeholder={t('cityPlaceholder')} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="detail-tags">{t('tags')}</Label>
-                  <Input id="detail-tags" value={tags} onChange={(e) => setTags(e.target.value)} placeholder={t('tagsPlaceholder')} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="detail-offline-reason">{t('offlineReason')}</Label>
-                  <Input id="detail-offline-reason" value={offlineReason} onChange={(e) => setOfflineReason(e.target.value)} placeholder={t('offlineReasonPlaceholder')} />
                 </div>
               </div>
               <div className="md:col-span-2">

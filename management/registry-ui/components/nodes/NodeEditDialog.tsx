@@ -38,7 +38,6 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
   const [note, setNote] = useState(node.note ?? '');
   const [enabled, setEnabled] = useState(node.enabled ?? true);
   const [status, setStatus] = useState(node.status ?? 'active');
-  const [tags, setTags] = useState(node.tags ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -48,7 +47,6 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
       setNote(node.note ?? '');
       setEnabled(node.enabled ?? true);
       setStatus(node.status ?? 'active');
-      setTags(node.tags ?? '');
       setError('');
     }
     setOpen(v);
@@ -61,7 +59,7 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
       await sessionApi(
         AdminService.nodeUpdate({
           mac: node.mac!,
-          requestBody: { location, note, enabled, status, tags } as handler_NodeUpdateRequest,
+          requestBody: { location, note, enabled, status } as handler_NodeUpdateRequest,
         }),
       );
       setOpen(false);
@@ -124,15 +122,6 @@ export function NodeEditDialog({ node, onSave }: NodeEditDialogProps) {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-tags">{t('tags')}</Label>
-            <Input
-              id="edit-tags"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder={t('tagsPlaceholder')}
-            />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
