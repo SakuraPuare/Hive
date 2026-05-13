@@ -8,7 +8,7 @@
 //   Circular references: 0
 //   Discriminated unions: 0
 //   With constraints: 0
-//   Generated at: 2026-04-29T08:01:56.913Z
+//   Generated at: 2026-05-13T18:15:36.490Z
 
 import { z } from "zod";
 
@@ -273,10 +273,6 @@ export const handlerNodeRegisterResponseSchema = z.object({
 export type HandlerNodeRegisterResponse = z.infer<typeof handlerNodeRegisterResponseSchema>;
 
 export const handlerNodeUpdateRequestSchema = z.object({
-/** @example "Tokyo" */
-  city: z.string().optional(),
-/** @example "JP" */
-  country: z.string().optional(),
 /** @example "10.0.0.1" */
   easytier_ip: z.string().optional(),
 /** @example true */
@@ -291,14 +287,10 @@ export const handlerNodeUpdateRequestSchema = z.object({
   mesh_tunnel_id: z.string().optional(),
 /** @example "primary node" */
   note: z.string().optional(),
-/** @example "maintenance" */
-  offline_reason: z.string().optional(),
 /** @example "asia" */
   region: z.string().optional(),
 /** @example "online" */
   status: z.string().optional(),
-/** @example "fast,premium" */
-  tags: z.string().optional(),
 /** @example "100.64.0.1" */
   tailscale_ip: z.string().optional(),
 /** @example 10 */
@@ -717,8 +709,6 @@ export type ModelLine = z.infer<typeof modelLineSchema>;
 
 export const modelNodeSchema = z.object({
   cf_url: z.string().optional(),
-  city: z.string().optional(),
-  country: z.string().optional(),
   easytier_ip: z.string().optional(),
   enabled: z.boolean().optional(),
   frp_port: z.number().int().optional(),
@@ -730,12 +720,10 @@ export const modelNodeSchema = z.object({
   mesh_ip: z.string().optional(),
   mesh_tunnel_id: z.string().optional(),
   note: z.string().optional(),
-  offline_reason: z.string().optional(),
   probe_status: z.string().optional(),
   region: z.string().optional(),
   registered_at: z.string().optional(),
   status: z.string().optional(),
-  tags: z.string().optional(),
   tailscale_ip: z.string().optional(),
   tunnel_id: z.string().optional(),
   weight: z.number().int().optional(),
@@ -880,10 +868,8 @@ export type AdminListTicketsQueryParams = z.infer<typeof adminListTicketsQueryPa
 export const nodesListQueryParamsSchema = z.object({
   status: z.string().optional(),
   enabled: z.string().optional(),
-  country: z.string().optional(),
   region: z.string().optional(),
-  search: z.string().optional(),
-  tags: z.string().optional()
+  search: z.string().optional()
 });
 export type NodesListQueryParams = z.infer<typeof nodesListQueryParamsSchema>;
 

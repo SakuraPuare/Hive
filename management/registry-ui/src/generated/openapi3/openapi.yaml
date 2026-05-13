@@ -2798,11 +2798,6 @@ paths:
           name: enabled
           schema:
             type: string
-        - description: filter by country
-          in: query
-          name: country
-          schema:
-            type: string
         - description: filter by region
           in: query
           name: region
@@ -2811,11 +2806,6 @@ paths:
         - description: search hostname, location, note, or mac
           in: query
           name: search
-          schema:
-            type: string
-        - description: filter by tags (comma-separated)
-          in: query
-          name: tags
           schema:
             type: string
       responses:
@@ -3979,12 +3969,6 @@ components:
       type: object
     handler.NodeUpdateRequest:
       properties:
-        city:
-          example: Tokyo
-          type: string
-        country:
-          example: JP
-          type: string
         easytier_ip:
           example: 10.0.0.1
           type: string
@@ -4006,17 +3990,11 @@ components:
         note:
           example: primary node
           type: string
-        offline_reason:
-          example: maintenance
-          type: string
         region:
           example: asia
           type: string
         status:
           example: online
-          type: string
-        tags:
-          example: fast,premium
           type: string
         tailscale_ip:
           example: 100.64.0.1
@@ -4604,10 +4582,6 @@ components:
       properties:
         cf_url:
           type: string
-        city:
-          type: string
-        country:
-          type: string
         easytier_ip:
           type: string
         enabled:
@@ -4630,8 +4604,6 @@ components:
           type: string
         note:
           type: string
-        offline_reason:
-          type: string
         probe_status:
           type: string
         region:
@@ -4639,8 +4611,6 @@ components:
         registered_at:
           type: string
         status:
-          type: string
-        tags:
           type: string
         tailscale_ip:
           type: string

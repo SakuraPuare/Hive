@@ -280,12 +280,6 @@ definitions:
     type: object
   handler.NodeUpdateRequest:
     properties:
-      city:
-        example: Tokyo
-        type: string
-      country:
-        example: JP
-        type: string
       easytier_ip:
         example: 10.0.0.1
         type: string
@@ -307,17 +301,11 @@ definitions:
       note:
         example: primary node
         type: string
-      offline_reason:
-        example: maintenance
-        type: string
       region:
         example: asia
         type: string
       status:
         example: online
-        type: string
-      tags:
-        example: fast,premium
         type: string
       tailscale_ip:
         example: 100.64.0.1
@@ -905,10 +893,6 @@ definitions:
     properties:
       cf_url:
         type: string
-      city:
-        type: string
-      country:
-        type: string
       easytier_ip:
         type: string
       enabled:
@@ -931,8 +915,6 @@ definitions:
         type: string
       note:
         type: string
-      offline_reason:
-        type: string
       probe_status:
         type: string
       region:
@@ -940,8 +922,6 @@ definitions:
       registered_at:
         type: string
       status:
-        type: string
-      tags:
         type: string
       tailscale_ip:
         type: string
@@ -3561,10 +3541,6 @@ paths:
         in: query
         name: enabled
         type: string
-      - description: filter by country
-        in: query
-        name: country
-        type: string
       - description: filter by region
         in: query
         name: region
@@ -3572,10 +3548,6 @@ paths:
       - description: search hostname, location, note, or mac
         in: query
         name: search
-        type: string
-      - description: filter by tags (comma-separated)
-        in: query
-        name: tags
         type: string
       produces:
       - application/json

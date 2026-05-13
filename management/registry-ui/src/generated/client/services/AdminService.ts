@@ -2059,10 +2059,8 @@ export class AdminService {
     public static nodesList({
         status,
         enabled,
-        country,
         region,
         search,
-        tags,
     }: {
         /**
          * filter by status
@@ -2073,10 +2071,6 @@ export class AdminService {
          */
         enabled?: string,
         /**
-         * filter by country
-         */
-        country?: string,
-        /**
          * filter by region
          */
         region?: string,
@@ -2084,10 +2078,6 @@ export class AdminService {
          * search hostname, location, note, or mac
          */
         search?: string,
-        /**
-         * filter by tags (comma-separated)
-         */
-        tags?: string,
     }): CancelablePromise<Array<model_Node>> {
         return __request(OpenAPI, {
             method: 'GET',
@@ -2095,10 +2085,8 @@ export class AdminService {
             query: {
                 'status': status,
                 'enabled': enabled,
-                'country': country,
                 'region': region,
                 'search': search,
-                'tags': tags,
             },
             errors: {
                 500: `Internal Server Error`,

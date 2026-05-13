@@ -4,8 +4,6 @@
 /* eslint-disable */
 export type model_Node = {
     cf_url?: string;
-    city?: string;
-    country?: string;
     easytier_ip?: string;
     enabled?: boolean;
     frp_port?: number;
@@ -17,12 +15,10 @@ export type model_Node = {
     mesh_ip?: string;
     mesh_tunnel_id?: string;
     note?: string;
-    offline_reason?: string;
     probe_status?: string;
     region?: string;
     registered_at?: string;
     status?: string;
-    tags?: string;
     tailscale_ip?: string;
     tunnel_id?: string;
     weight?: number;
