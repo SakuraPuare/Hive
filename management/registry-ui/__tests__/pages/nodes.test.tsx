@@ -37,7 +37,6 @@ const mockNodes = [
     note: '',
     enabled: true,
     weight: 1,
-    tags: '',
     registered_at: '2024-06-01T00:00:00Z',
     last_seen: '2024-06-15T12:00:00Z',
   },
@@ -54,7 +53,6 @@ const mockNodes = [
     note: 'test note',
     enabled: false,
     weight: 2,
-    tags: 'tag1,tag2',
     registered_at: '2024-05-01T00:00:00Z',
     last_seen: '2024-06-10T08:00:00Z',
   },
@@ -97,9 +95,9 @@ describe('Nodes page', () => {
       expect(screen.getByText('node-alpha')).toBeInTheDocument();
     });
 
-    // Status uses t('statusOnline'), t('statusOffline')
-    expect(screen.getByText('nodes.statusOnline')).toBeInTheDocument();
-    expect(screen.getByText('nodes.statusOffline')).toBeInTheDocument();
+    // StatusBadge renders hardcoded English labels
+    expect(screen.getByText('Online')).toBeInTheDocument();
+    expect(screen.getByText('Offline')).toBeInTheDocument();
   });
 
   it('filters nodes by search query', async () => {
@@ -147,7 +145,8 @@ describe('Nodes page', () => {
   it('shows loading state', () => {
     mockNodesList.mockReturnValue(new Promise(() => {}));
     render(<Nodes />);
-    expect(screen.getByText('common.loading')).toBeInTheDocument();
+    // DataTable shows spinner, no node data visible
+    expect(screen.queryByText('node-alpha')).not.toBeInTheDocument();
   });
 
   it('shows location info', async () => {

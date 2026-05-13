@@ -18,7 +18,7 @@ describe('PortalRegisterPage', () => {
   it('renders register form with email, nickname, and password fields', () => {
     render(<PortalRegisterPage />);
 
-    expect(screen.getByText('portal.brand')).toBeInTheDocument();
+    expect(screen.getAllByText('portal.brand').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('portal.customerRegister')).toBeInTheDocument();
     expect(screen.getByLabelText('portal.email')).toBeInTheDocument();
     expect(screen.getByLabelText('portal.nickname')).toBeInTheDocument();
@@ -95,7 +95,7 @@ describe('PortalRegisterPage', () => {
     await user.click(screen.getByRole('button', { name: 'portal.register' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'portal.registering' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '' })).toBeDisabled();
     });
 
     await act(async () => { resolveRegister!({ id: 1 }); });

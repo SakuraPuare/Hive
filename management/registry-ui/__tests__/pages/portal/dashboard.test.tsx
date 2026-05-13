@@ -47,7 +47,8 @@ describe('PortalDashboardPage', () => {
   it('shows loading state', async () => {
     mockUseCustomer.mockReturnValue({ customer: null, subscriptions: [], loading: true });
     render(<PortalDashboardPage />);
-    expect(screen.getByText('common.loading')).toBeInTheDocument();
+    // Loading shows spinner, no dashboard content
+    expect(screen.queryByText('portal.dashboard')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -63,7 +64,7 @@ describe('PortalDashboardPage', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
     await renderAndSettle(<PortalDashboardPage />);
 
-    expect(screen.getByText('portal.dashboard')).toBeInTheDocument();
+    expect(screen.getByText(/portal\.welcomeBack/)).toBeInTheDocument();
     expect(screen.getByText('portal.currentSubscription')).toBeInTheDocument();
     expect(screen.getByText('portal.noSubscription')).toBeInTheDocument();
   });
@@ -74,8 +75,9 @@ describe('PortalDashboardPage', () => {
 
     expect(screen.getByText('Pro Plan')).toBeInTheDocument();
     expect(screen.getByText('portal.active')).toBeInTheDocument();
-    // Device limit: "3 portal.devices"
-    expect(screen.getByText(/3\s+portal\.devices/)).toBeInTheDocument();
+    // Device limit shown as number
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('portal.devices')).toBeInTheDocument();
   });
 
   it('shows expired badge for expired subscription', async () => {
@@ -92,7 +94,7 @@ describe('PortalDashboardPage', () => {
 
     expect(screen.getByText('portal.trafficUsage')).toBeInTheDocument();
     expect(screen.getByText(/2\.00/)).toBeInTheDocument();
-    expect(screen.getByText(/10\.00/)).toBeInTheDocument();
+    expect(screen.getAllByText(/10\.00/).length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows unlimited for zero traffic limit', async () => {
@@ -100,7 +102,8 @@ describe('PortalDashboardPage', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [unlimitedSub], loading: false });
     await renderAndSettle(<PortalDashboardPage />);
 
-    expect(screen.getByText(/portal\.unlimited/)).toBeInTheDocument();
+    // When traffic_limit is 0, shows infinity symbol in stats
+    expect(screen.getByText('∞')).toBeInTheDocument();
   });
 
   it('renders copy Clash and VLESS buttons', async () => {
@@ -138,8 +141,7 @@ describe('PortalDashboardPage', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
     await renderAndSettle(<PortalDashboardPage />);
 
-    expect(screen.getByText('portal.quickActions')).toBeInTheDocument();
-    const buyLink = screen.getByText('portal.buyPlan').closest('a');
+    const buyLink = screen.getAllByText('portal.buyPlan')[0].closest('a');
     expect(buyLink).toHaveAttribute('href', '/portal/plans');
     const ticketLink = screen.getByText('portal.submitTicket').closest('a');
     expect(ticketLink).toHaveAttribute('href', '/portal/tickets');

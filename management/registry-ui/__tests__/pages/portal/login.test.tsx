@@ -18,7 +18,7 @@ describe('PortalLoginPage', () => {
   it('renders login form with email and password fields', () => {
     render(<PortalLoginPage />);
 
-    expect(screen.getByText('portal.brand')).toBeInTheDocument();
+    expect(screen.getAllByText('portal.brand').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('portal.customerLogin')).toBeInTheDocument();
     expect(screen.getByLabelText('portal.email')).toBeInTheDocument();
     expect(screen.getByLabelText('portal.password')).toBeInTheDocument();
@@ -90,7 +90,7 @@ describe('PortalLoginPage', () => {
     await user.click(screen.getByRole('button', { name: 'portal.login' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'portal.signingIn' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '' })).toBeDisabled();
     });
 
     await act(async () => { resolveLogin!({ ok: true }); });

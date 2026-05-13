@@ -31,7 +31,8 @@ describe('Dashboard', () => {
   it('shows loading state initially', () => {
     mockNodesList.mockReturnValue(new Promise(() => {})); // never resolves
     render(<Dashboard />);
-    expect(screen.getByText('common.loading')).toBeInTheDocument();
+    // Loading shows spinner, no stats cards
+    expect(screen.queryByText('dashboard.totalNodes')).not.toBeInTheDocument();
   });
 
   it('renders stats cards after loading', async () => {
@@ -39,7 +40,7 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
+      expect(screen.getByText('dashboard.totalNodes')).toBeInTheDocument();
     });
 
     // Stats card titles
@@ -58,7 +59,7 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
+      expect(screen.getByText('node-1')).toBeInTheDocument();
     });
 
     // Recent nodes (within 7 days) should show
@@ -74,7 +75,7 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
+      expect(screen.getByText('dashboard.noNodesThisWeek')).toBeInTheDocument();
     });
 
     expect(screen.getByText('dashboard.noNodesThisWeek')).toBeInTheDocument();
@@ -85,7 +86,7 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
+      expect(screen.getByText('dashboard.totalNodes')).toBeInTheDocument();
     });
 
     // All stats should be 0

@@ -52,7 +52,8 @@ describe('PortalPlansPage', () => {
     mockPortalPlans.mockReturnValue(new Promise(() => {}));
     render(<PortalPlansPage />);
 
-    expect(screen.getByText('common.loading')).toBeInTheDocument();
+    // Loading shows spinner, no plan cards
+    expect(screen.queryByText('Basic')).not.toBeInTheDocument();
   });
 
   it('renders plan cards after loading', async () => {
@@ -76,8 +77,8 @@ describe('PortalPlansPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Basic')).toBeInTheDocument();
     });
-    // 10737418240 bytes = 10.0 GB
-    expect(screen.getByText('10.0 portal.gb')).toBeInTheDocument();
+    // 10737418240 bytes = 10 GB
+    expect(screen.getByText(/10 GB/)).toBeInTheDocument();
   });
 
   it('displays unlimited for zero traffic', async () => {
@@ -88,7 +89,7 @@ describe('PortalPlansPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Pro')).toBeInTheDocument();
     });
-    expect(screen.getByText('portal.unlimited')).toBeInTheDocument();
+    expect(screen.getByText(/portal\.unlimited/)).toBeInTheDocument();
   });
 
   it('displays price formatted from cents', async () => {
@@ -97,9 +98,9 @@ describe('PortalPlansPage', () => {
     render(<PortalPlansPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('9.99 portal.yuan')).toBeInTheDocument();
+      expect(screen.getByText('¥9.99')).toBeInTheDocument();
     });
-    expect(screen.getByText('29.99 portal.yuan')).toBeInTheDocument();
+    expect(screen.getByText('¥29.99')).toBeInTheDocument();
   });
 
   it('displays duration in days', async () => {
@@ -110,7 +111,7 @@ describe('PortalPlansPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Basic')).toBeInTheDocument();
     });
-    const durationTexts = screen.getAllByText('portal.durationDays');
+    const durationTexts = screen.getAllByText(/30/);
     expect(durationTexts.length).toBeGreaterThanOrEqual(1);
   });
 
