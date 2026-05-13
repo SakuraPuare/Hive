@@ -63,7 +63,8 @@ var defaultRegionGroups = []regionGroup{
 	{"日本", `"(?i)日|jp|japan"`},
 	{"新加坡", `"(?i)新|sg|singapore"`},
 	{"美国", `"(?i)美|us|unitedstates|united states"`},
-	{"其它地区", `"(?i)^(?!.*(?:港|hk|hongkong|台|tw|taiwan|日|jp|japan|新|sg|singapore|美|us|unitedstates|直连))"`},
+	{"巴西", `"(?i)巴西|br|brazil"`},
+	{"其它地区", `"(?i)^(?!.*(?:港|hk|hongkong|台|tw|taiwan|日|jp|japan|新|sg|singapore|美|us|unitedstates|巴西|br|brazil|直连))"`},
 }
 
 var defaultDomainProviders = []ruleProvider{
