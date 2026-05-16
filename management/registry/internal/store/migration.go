@@ -1,9 +1,11 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"log"
 
+	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -410,11 +412,11 @@ ALTER TABLE nodes ADD COLUMN mesh_ip        VARCHAR(40) NOT NULL DEFAULT '' COMM
 		version: 14,
 		desc:    "drop unused node columns: country, city, tags, offline_reason",
 		up: `
-ALTER TABLE nodes DROP INDEX IF EXISTS idx_country;
-ALTER TABLE nodes DROP COLUMN IF EXISTS country;
-ALTER TABLE nodes DROP COLUMN IF EXISTS city;
-ALTER TABLE nodes DROP COLUMN IF EXISTS tags;
-ALTER TABLE nodes DROP COLUMN IF EXISTS offline_reason;
+DROP INDEX idx_country ON nodes;
+ALTER TABLE nodes DROP COLUMN country;
+ALTER TABLE nodes DROP COLUMN city;
+ALTER TABLE nodes DROP COLUMN tags;
+ALTER TABLE nodes DROP COLUMN offline_reason;
 `,
 	},
 }
@@ -495,6 +497,10 @@ func execMigration(db *gorm.DB, m Migration) error {
 	stmts := splitSQL(m.up)
 	for _, stmt := range stmts {
 		if err := db.Exec(stmt).Error; err != nil {
+			var mysqlErr *mysql.MySQLError
+			if errors.As(err, &mysqlErr) && mysqlErr.Number == 1091 {
+				continue
+			}
 			return fmt.Errorf("stmt %q: %w", truncate(stmt, 80), err)
 		}
 	}
