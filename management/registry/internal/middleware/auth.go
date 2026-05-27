@@ -71,6 +71,10 @@ func (a *Auth) ParseSession(r *http.Request) (username, role string, valid bool)
 func (a *Auth) RequirePerm(perm string) func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
+			if a.checkAPISecret(r) {
+				next(w, r)
+				return
+			}
 			username, _, ok := a.ParseSession(r)
 			if !ok {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
@@ -170,4 +174,15 @@ func (a *Auth) RequireDeviceAuth(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+func (a *Auth) checkAPISecret(r *http.Request) bool {
+	if a.Config.APISecret == "" {
+		return false
+	}
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if token == "" || token == r.Header.Get("Authorization") {
+		token = r.URL.Query().Get("token")
+	}
+	return token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(a.Config.APISecret)) == 1
 }
