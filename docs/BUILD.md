@@ -104,6 +104,12 @@ NODE_REGISTRY_URL=https://registry.example.com
 ```
 
 这会克隆 Armbian 官方构建系统到 `armbian-build/build/`，约需下载 100-200 MB。
+脚本默认自动选择 Armbian 最新 `v*` 版本分支，避免直接跟随不稳定的 `main`。
+如需固定版本，可运行：
+
+```bash
+ARMBIAN_BUILD_BRANCH=v25.11 ./scripts/setup-armbian.sh
+```
 
 ### 步骤 4：下载 arm64 二进制
 
