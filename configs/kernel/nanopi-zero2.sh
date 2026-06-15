@@ -1,7 +1,7 @@
 #!/bin/bash
 # nanopi-zero2 (RK3528) 内核配置优化
 #
-# 基线: Armbian linux-rk35xx-vendor.config (kernel 6.1)
+# 基线: Armbian linux-rockchip64-current.config
 # 目的: 禁用 RK3528 路由器/VPN 网关场景不需要的驱动和子系统，减少编译时间
 #
 # 用法: ./apply.sh <input.config> <output.config>

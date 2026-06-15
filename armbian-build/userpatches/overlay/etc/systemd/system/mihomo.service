@@ -1,0 +1,19 @@
+[Unit]
+Description=Mihomo proxy core
+Documentation=https://wiki.metacubex.one
+After=network-online.target systemd-sysusers.service
+Wants=network-online.target systemd-sysusers.service
+
+[Service]
+Type=simple
+User=root
+Group=mihomo
+ExecStart=/usr/local/bin/mihomo -d /etc/mihomo -f /etc/mihomo/config.yaml
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=1048576
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

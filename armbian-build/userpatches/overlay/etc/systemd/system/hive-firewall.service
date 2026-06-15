@@ -1,9 +1,9 @@
 [Unit]
 Description=Hive Network Node Firewall Setup
 Documentation=https://github.com/your-org/hive-network
-After=network.target
+After=network-online.target
 Before=ssh.service tailscaled.service
-Wants=network.target
+Wants=network-online.target
 ConditionPathExists=!/var/lib/hive/firewall-configured
 
 [Service]

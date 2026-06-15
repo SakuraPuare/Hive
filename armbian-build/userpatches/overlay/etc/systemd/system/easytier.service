@@ -1,10 +1,11 @@
 [Unit]
 Description=EasyTier Mesh Network
-After=network-online.target
-Wants=network-online.target
+After=network-online.target systemd-sysusers.service
+Wants=network-online.target systemd-sysusers.service
 
 [Service]
 Type=simple
+Group=mihomo-bypass
 ExecStart=/usr/local/bin/start-easytier.sh
 Restart=always
 RestartSec=10

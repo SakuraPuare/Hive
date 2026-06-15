@@ -14,11 +14,13 @@ echo ">>> customize-image.sh: RELEASE=${RELEASE} ARCH=${ARCH}"
 # ─────────────────────────────────────────────
 echo ">>> Copying overlay files to root..."
 if [ -d "/tmp/overlay" ]; then
-    cp -a /tmp/overlay/* / 2>/dev/null || true
-    # cp -a 保留构建主机的 UID/GID（kent:kent），只修正 overlay 涉及的目录
-    chown -R root:root /etc/hive /etc/xray /etc/frp /etc/cloudflared \
+    cp -a --no-preserve=ownership /tmp/overlay/. / 2>/dev/null || true
+    # overlay 来自构建主机，确保根目录和 overlay 涉及路径不会保留宿主 UID/GID。
+    chown root:root /etc /usr /var /etc/default /usr/local /var/www 2>/dev/null || true
+    chown -R root:root /etc/hive /etc/xray /etc/frp /etc/cloudflared /etc/mihomo \
+        /etc/default /etc/sysusers.d \
         /etc/systemd/system /etc/nginx /etc/update-motd.d \
-        /usr/local/bin 2>/dev/null || true
+        /usr/local/bin /var/www/hive 2>/dev/null || true
     chmod +x /etc/update-motd.d/* 2>/dev/null || true
     echo ">>> Overlay files copied to root directory"
 else
@@ -105,6 +107,7 @@ apt-get install -y --no-install-recommends \
     jq \
     ca-certificates \
     gnupg \
+    nftables \
     prometheus-node-exporter \
     ufw \
     fail2ban \
@@ -125,7 +128,7 @@ rm -rf /var/lib/apt/lists/*
 # 4. 设置二进制权限（由 download-binaries.sh 预置到 overlay）
 # ─────────────────────────────────────────────
 MISSING_BINARIES=""
-for bin in xray cloudflared frpc easytier-core; do
+for bin in xray cloudflared frpc easytier-core mihomo; do
     if [ -f "/usr/local/bin/${bin}" ]; then
         chmod +x "/usr/local/bin/${bin}"
         echo ">>> ${bin}: OK"
@@ -143,10 +146,26 @@ else
     MISSING_BINARIES="${MISSING_BINARIES} provision-node.sh"
 fi
 
+if [ -f "/usr/local/bin/setup-mihomo-tproxy.sh" ]; then
+    chmod +x /usr/local/bin/setup-mihomo-tproxy.sh
+    echo ">>> setup-mihomo-tproxy.sh: OK"
+else
+    echo ">>> WARNING: /usr/local/bin/setup-mihomo-tproxy.sh not found"
+    MISSING_BINARIES="${MISSING_BINARIES} setup-mihomo-tproxy.sh"
+fi
+
 if [ -n "$MISSING_BINARIES" ]; then
     echo ">>> ERROR: Missing binaries:$MISSING_BINARIES"
     echo ">>> Please run: ./scripts/download-binaries.sh"
     exit 1
+fi
+
+# Mihomo 和关键隧道服务以独立系统组运行，nftables 通过 meta skgid 避免回环/代理隧道。
+if [ -f /etc/sysusers.d/hive-mihomo.conf ] && command -v systemd-sysusers >/dev/null 2>&1; then
+    systemd-sysusers /etc/sysusers.d/hive-mihomo.conf
+else
+    getent group mihomo >/dev/null 2>&1 || groupadd --system mihomo
+    getent group mihomo-bypass >/dev/null 2>&1 || groupadd --system mihomo-bypass
 fi
 
 # ─────────────────────────────────────────────
@@ -234,6 +253,8 @@ systemctl enable prometheus-node-exporter.service
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/hive /etc/nginx/sites-enabled/hive
 systemctl enable nginx.service
+systemctl enable mihomo.service
+systemctl enable mihomo-tproxy.service
 systemctl enable hive-firewall.service  # 启动时自动配置防火墙
 systemctl enable hive-fail2ban.service  # 启动时自动配置入侵防护
 systemctl enable auditd.service        # 系统审计日志

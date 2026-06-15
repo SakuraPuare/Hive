@@ -1,0 +1,18 @@
+[Unit]
+Description=Mihomo TProxy nftables rules
+After=network-online.target hive-firewall.service mihomo.service
+Wants=network-online.target mihomo.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/setup-mihomo-tproxy.sh start
+ExecReload=/usr/local/bin/setup-mihomo-tproxy.sh restart
+ExecStop=/usr/local/bin/setup-mihomo-tproxy.sh stop
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

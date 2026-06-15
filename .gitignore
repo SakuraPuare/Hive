@@ -19,6 +19,7 @@ armbian-build/userpatches/overlay/usr/local/bin/xray
 armbian-build/userpatches/overlay/usr/local/bin/cloudflared
 armbian-build/userpatches/overlay/usr/local/bin/frpc
 armbian-build/userpatches/overlay/usr/local/bin/easytier-core
+armbian-build/userpatches/overlay/usr/local/bin/mihomo
 
 # 镜像文件
 *.img

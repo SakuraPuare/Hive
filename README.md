@@ -69,7 +69,7 @@ sudo apt install -y git curl wget jq build-essential python3 \
 # 1. 初始化 Armbian 框架（首次）
 ./scripts/setup-armbian.sh
 
-# 2. 下载 arm64 二进制（xray / cloudflared / frpc / easytier）
+# 2. 下载 arm64 二进制（xray / cloudflared / frpc / easytier / mihomo）
 ./scripts/download-binaries.sh
 
 # 3. 填写凭证
@@ -142,6 +142,7 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 | frpc | — | FRP 客户端，暴露 SSH 到 VPS |
 | easytier | — | P2P mesh，提供备用管理 IP |
 | tailscaled | — | Tailscale VPN，主管理通道 |
+| mihomo | 7893/1053/9090 | TProxy 透明代理、DNS 劫持与控制端口 |
 | prometheus-node-exporter | 9100 | 指标采集（仅 Tailscale 可达） |
 | ufw | — | 防火墙，开机自动配置（日志默认关闭） |
 | fail2ban | — | SSH 暴力破解防护 |
@@ -217,6 +218,7 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 │   ├── customize-image.sh         # 镜像定制钩子（chroot 内执行）
 │   └── overlay/                   # 直接覆盖到镜像根目录
 │       ├── etc/hive/              # 节点配置目录
+│       ├── etc/mihomo/config.yaml # mihomo TProxy 默认配置
 │       ├── etc/xray/config.json   # xray 配置（含 UUID 占位符）
 │       ├── etc/frp/frpc.toml      # FRP 客户端配置
 │       ├── etc/systemd/system/    # systemd 服务文件
@@ -224,6 +226,7 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 │       └── usr/local/bin/
 │           ├── provision-node.sh  # 首次启动编排脚本（核心）
 │           ├── setup-firewall.sh  # UFW 防火墙配置
+│           ├── setup-mihomo-tproxy.sh # mihomo nftables TProxy 规则
 │           ├── setup-fail2ban.sh  # fail2ban 配置
 │           ├── hive-firewall      # 防火墙管理工具
 │           ├── hive-fail2ban      # 入侵防护管理工具

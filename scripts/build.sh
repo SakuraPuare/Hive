@@ -16,8 +16,8 @@ shift 2>/dev/null || true  # 剩余参数透传给 compile.sh
 case "${PROFILE}" in
   nanopi-zero2)
     BOARD="nanopi-zero2"
-    BRANCH="vendor"
-    BASE_KERNEL_CONFIG="linux-rk35xx-vendor"
+    BRANCH="current"
+    BASE_KERNEL_CONFIG="linux-rockchip64-current"
     EXTRA_CFLAGS="-O2 -march=armv8-a -mtune=cortex-a53 -fomit-frame-pointer"
     ;;
   nanopi-r3s)
@@ -162,7 +162,7 @@ fi
 
 # 检查关键二进制
 OVERLAY_BIN="${ROOT_DIR}/armbian-build/userpatches/overlay/usr/local/bin"
-for bin in xray cloudflared frpc easytier-core; do
+for bin in xray cloudflared frpc easytier-core mihomo; do
     if [ ! -f "${OVERLAY_BIN}/${bin}" ]; then
         echo "ERROR: ${bin} not found. Run: ./scripts/download-binaries.sh"
         exit 1

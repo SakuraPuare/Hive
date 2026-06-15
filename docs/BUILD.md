@@ -104,6 +104,12 @@ NODE_REGISTRY_URL=https://registry.example.com
 ```
 
 这会克隆 Armbian 官方构建系统到 `armbian-build/build/`，约需下载 100-200 MB。
+脚本默认自动选择 Armbian 最新 `v*` 版本分支，避免直接跟随不稳定的 `main`。
+如需固定版本，可运行：
+
+```bash
+ARMBIAN_BUILD_BRANCH=v25.11 ./scripts/setup-armbian.sh
+```
 
 ### 步骤 4：下载 arm64 二进制
 
@@ -119,6 +125,7 @@ NODE_REGISTRY_URL=https://registry.example.com
 | `cloudflared` | Cloudflare Tunnel 客户端 |
 | `frpc` | FRP 客户端（SSH 应急隧道） |
 | `easytier-core` | P2P mesh 网络 |
+| `mihomo` | 透明代理内核（TProxy） |
 
 下载均来自各项目 GitHub Releases，可通过环境变量指定版本：
 
@@ -203,12 +210,13 @@ echo "所有 SD 卡烧录完成"
 | 组件 | 版本/说明 |
 |------|-----------|
 | Debian | trixie (Debian 13) |
-| Kernel | Rockchip vendor kernel（优化版） |
+| Kernel | Rockchip current kernel（优化版） |
 | nginx | 反向代理（监听 10077，WebSocket → xray） |
 | xray | 最新 arm64 版（WebSocket 转发，监听 10079） |
 | cloudflared | 最新 arm64 版 |
 | frpc | 0.67.0 arm64 |
 | easytier-core | v2.4.5 arm64 |
+| mihomo | 最新 arm64 版（TProxy + DNS） |
 | Tailscale | 官方 apt 源安装 |
 | 防火墙 | UFW + fail2ban（UFW 日志默认关闭） |
 | 监控 | Prometheus Node Exporter |
@@ -269,7 +277,7 @@ rsync -a armbian-build/userpatches/ armbian-build/build/userpatches/
 
 # 重跑 customize-image 阶段（Armbian 支持 --skip-kernel）
 cd armbian-build/build
-./compile.sh build BOARD=nanopi-zero2 BRANCH=vendor RELEASE=trixie \
+./compile.sh build BOARD=nanopi-zero2 BRANCH=current RELEASE=trixie \
     SKIP_EXTERNAL_TOOLCHAINS=yes \
     COMPRESS_OUTPUTIMAGE=yes
 ```
