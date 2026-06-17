@@ -1,0 +1,12 @@
+[Unit]
+Description=Run hive-xray-sync periodically
+
+[Timer]
+# 启动后 30s 首次运行，之后每 60s 一次（带 15s 抖动，避免所有节点同时打 registry）
+OnBootSec=30s
+OnUnitActiveSec=60s
+RandomizedDelaySec=15s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

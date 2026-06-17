@@ -1,0 +1,18 @@
+[Unit]
+Description=Xray traffic exporter (Stats API -> Prometheus per-user metrics)
+After=network.target xray.service
+Wants=xray.service
+
+[Service]
+Type=simple
+User=root
+# 读取本机 Xray StatsService gRPC，在 :9550/scrape 暴露 per-user 流量指标
+ExecStart=/usr/local/bin/xray-exporter --xray-endpoint 127.0.0.1:10085 --listen :9550 --metrics-path /scrape
+Restart=on-failure
+RestartSec=5
+Nice=10
+MemoryHigh=64M
+MemoryMax=96M
+
+[Install]
+WantedBy=multi-user.target

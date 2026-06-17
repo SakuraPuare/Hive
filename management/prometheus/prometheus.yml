@@ -23,6 +23,25 @@ scrape_configs:
       - source_labels: [hostname]
         target_label: instance
 
+  # 边缘节点 Xray per-user 流量（xray-exporter，:9550/scrape）
+  # 复用同一份 nodes.json 目标，仅把端口 9100 改写为 9550、路径改为 /scrape。
+  # 暴露 xray_traffic_{up,down}link_bytes_total{dimension="user",target="sub-<id>"}，
+  # 供 registry 计费循环按订阅归属流量。
+  - job_name: 'xray-users'
+    metrics_path: /scrape
+    file_sd_configs:
+      - files:
+          - '/etc/prometheus/targets/nodes.json'
+        refresh_interval: 60s
+    scrape_timeout: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '(.*):\d+'
+        target_label: __address__
+        replacement: '${1}:9550'
+      - source_labels: [hostname]
+        target_label: instance
+
   # 管理 VPS 自身（host 网络模式下 localhost 即宿主机）
   - job_name: 'management-server'
     static_configs:

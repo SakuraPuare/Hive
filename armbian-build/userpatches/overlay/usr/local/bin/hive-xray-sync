@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# hive-xray-sync —— 把本节点应有的 Xray 用户（订阅）同步到运行中的 Xray
+#
+# 工作原理：
+#   1. 从 registry 拉取本机 MAC 对应的有效订阅用户列表 [{uuid,email}]
+#   2. 与上一轮的期望状态（state 文件）对比
+#   3. 通过 Xray HandlerService gRPC API（xray api adu/rmu）增量增删用户
+#      —— 运行时生效，不重启、不断开在线连接
+#   4. Xray 重启会丢失 API 注入的用户，故重启后 state 文件里的 last_seen_pid
+#      与当前 Xray PID 不一致时，执行全量重建（先全删再全加）
+#
+# 由 hive-xray-sync.timer 每 ~1 分钟触发。所有失败都不致命（下轮重试）。
+set -uo pipefail
+
+CONFIG_ENV="/etc/hive/config.env"
+NODE_INFO="/etc/hive/node-info"
+STATE_DIR="/var/lib/hive"
+STATE_FILE="${STATE_DIR}/xray-users.state"   # 每行: <email>\t<uuid>
+PID_FILE="${STATE_DIR}/xray-sync.pid"         # 记录上次同步时的 xray 主进程 PID
+API_ADDR="127.0.0.1:10085"
+INBOUND_TAG="vless-ws"
+XRAY_LEVEL="0"
+
+log() { echo "[hive-xray-sync] $*"; }
+
+[ -f "${CONFIG_ENV}" ] && source "${CONFIG_ENV}"
+[ -f "${NODE_INFO}" ]  && source "${NODE_INFO}"
+
+if [ -z "${NODE_REGISTRY_URL:-}" ]; then
+    log "NODE_REGISTRY_URL 未配置，跳过"
+    exit 0
+fi
+if [ -z "${MAC:-}" ]; then
+    log "MAC 未知（node-info 缺失），跳过"
+    exit 0
+fi
+
+mkdir -p "${STATE_DIR}"
+touch "${STATE_FILE}"
+
+# ── 1. 拉取期望用户列表 ────────────────────────────────────────────────
+RESP=$(curl -sf --max-time 10 \
+    ${NODE_REGISTRY_API_SECRET:+-H "Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"} \
+    "${NODE_REGISTRY_URL}/nodes/${MAC}/xray-users" 2>/dev/null) || {
+    log "拉取用户列表失败（registry 不可达？），保持现状"
+    exit 0
+}
+
+# desired: email\tuuid 排序去重
+DESIRED=$(echo "${RESP}" | jq -r '.users[]? | "\(.email)\t\(.uuid)"' 2>/dev/null | sort -u)
+if [ -z "${DESIRED}" ] && ! echo "${RESP}" | jq -e '.users' >/dev/null 2>&1; then
+    log "响应非预期 JSON，保持现状: ${RESP:0:200}"
+    exit 0
+fi
+
+# ── 2. 检测 Xray 重启（PID 变化 → 全量重建）────────────────────────────
+XRAY_PID=$(systemctl show -p MainPID --value xray 2>/dev/null || echo "0")
+LAST_PID=$(cat "${PID_FILE}" 2>/dev/null || echo "")
+FULL_REBUILD=0
+if [ "${XRAY_PID}" = "0" ]; then
+    log "xray 未运行，跳过"
+    exit 0
+fi
+if [ "${XRAY_PID}" != "${LAST_PID}" ]; then
+    log "检测到 xray PID 变化(${LAST_PID:-none}→${XRAY_PID})，全量重建用户"
+    FULL_REBUILD=1
+    : > "${STATE_FILE}"   # 视作当前无任何 API 注入用户
+fi
+
+CURRENT=$(sort -u "${STATE_FILE}")
+
+# ── 3. 计算差集并增删 ──────────────────────────────────────────────────
+# 需要新增：desired - current
+TO_ADD=$(comm -23 <(echo "${DESIRED}") <(echo "${CURRENT}"))
+# 需要删除：current - desired
+TO_DEL=$(comm -13 <(echo "${DESIRED}") <(echo "${CURRENT}"))
+
+add_user() {
+    local email="$1" uuid="$2"
+    # adu 读取「文件路径」参数（非 stdin），且内容须是可 Build 的完整 inbound 配置：
+    # VLESS 要求 settings.decryption 字段，否则 inb.Build() 失败。
+    local tmp
+    tmp=$(mktemp /tmp/hive-xray-adu.XXXXXX.json) || return 1
+    cat > "${tmp}" <<JSON
+{
+  "inbounds": [{
+    "tag": "${INBOUND_TAG}",
+    "protocol": "vless",
+    "settings": {
+      "clients": [{ "id": "${uuid}", "email": "${email}", "level": ${XRAY_LEVEL} }],
+      "decryption": "none"
+    }
+  }]
+}
+JSON
+    xray api adu --server="${API_ADDR}" "${tmp}" >/dev/null 2>&1
+    local rc=$?
+    rm -f "${tmp}"
+    return ${rc}
+}
+
+del_user() {
+    local email="$1"
+    # rmu: -tag 为 flag，email 为位置参数
+    xray api rmu --server="${API_ADDR}" -tag="${INBOUND_TAG}" "${email}" >/dev/null 2>&1
+}
+
+added=0 removed=0
+if [ -n "${TO_ADD}" ]; then
+    while IFS=$'\t' read -r email uuid; do
+        [ -z "${email}" ] && continue
+        if add_user "${email}" "${uuid}"; then
+            added=$((added+1))
+        else
+            log "添加用户失败: ${email}"
+        fi
+    done <<< "${TO_ADD}"
+fi
+if [ -n "${TO_DEL}" ]; then
+    while IFS=$'\t' read -r email uuid; do
+        [ -z "${email}" ] && continue
+        del_user "${email}" && removed=$((removed+1))
+    done <<< "${TO_DEL}"
+fi
+
+# ── 4. 写回 state（以 desired 为准）+ 记录当前 PID ─────────────────────
+echo "${DESIRED}" | grep -v '^$' > "${STATE_FILE}"
+echo "${XRAY_PID}" > "${PID_FILE}"
+
+DESIRED_COUNT=$(echo "${DESIRED}" | grep -c . || true)
+if [ "${added}" -gt 0 ] || [ "${removed}" -gt 0 ] || [ "${FULL_REBUILD}" = "1" ]; then
+    log "同步完成: +${added} -${removed}, 期望用户数=${DESIRED_COUNT}"
+fi
+exit 0

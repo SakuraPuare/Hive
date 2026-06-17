@@ -2,8 +2,27 @@
     "log": {
         "loglevel": "warning"
     },
+    "stats": {},
+    "policy": {
+        "levels": {
+            "0": {
+                "statsUserUplink": true,
+                "statsUserDownlink": true
+            }
+        },
+        "system": {
+            "statsInboundUplink": true,
+            "statsInboundDownlink": true
+        }
+    },
+    "api": {
+        "tag": "api",
+        "listen": "127.0.0.1:10085",
+        "services": ["HandlerService", "StatsService"]
+    },
     "inbounds": [
         {
+            "tag": "vless-ws",
             "port": 10079,
             "listen": "127.0.0.1",
             "protocol": "vless",
@@ -12,7 +31,7 @@
                     {
                         "id": "%%XRAY_UUID%%",
                         "level": 0,
-                        "email": "default@example.com"
+                        "email": "node-%%NODE_MAC%%"
                     }
                 ],
                 "decryption": "none"
