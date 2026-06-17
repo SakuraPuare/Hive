@@ -1,0 +1,19 @@
+{
+  "$schema": "https://react.doctor/schema.json",
+  "lint": true,
+  "deadCode": true,
+  "blocking": "error",
+  "ignore": {
+    "rules": [],
+    "files": [
+      "src/generated/**",
+      "__tests__/**",
+      "test/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "out/**",
+      ".next/**",
+      "node_modules/**"
+    ]
+  }
+}

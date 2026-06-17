@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { apiPath, sessionApi, getHealth } from '@/lib/openapi-session';
 import { ApiError } from '@/src/generated/client/core/ApiError';
 

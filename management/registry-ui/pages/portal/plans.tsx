@@ -3,14 +3,14 @@ import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { PortalPublicService, PortalService } from '@/src/generated/client';
 import { portalSessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import type { model_Plan } from '@/src/generated/client/models/model_Plan';
-import { ApiError } from '@/src/generated/client/core/ApiError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Check, Zap, Loader2 } from 'lucide-react';
 
-function formatTraffic(bytes: number, t: any) {
+function formatTraffic(bytes: number, t: ReturnType<typeof useTranslations>) {
   if (bytes === 0) return t('unlimited');
   return `${(bytes / (1024 ** 3)).toFixed(0)} GB`;
 }
@@ -21,7 +21,6 @@ function formatPrice(cents: number) {
 
 export default function PortalPlansPage() {
   const t = useTranslations('portal');
-  const tCommon = useTranslations('common');
   const router = useRouter();
   const [plans, setPlans] = useState<model_Plan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,8 +47,8 @@ export default function PortalPlansPage() {
     try {
       await portalSessionApi(PortalService.portalCreateOrder({ requestBody: { plan_id: planId } }));
       router.push('/portal/orders');
-    } catch (e: any) {
-      alert(e?.error || t('loadFailed'));
+    } catch (e) {
+      alert(getErrorMessage(e, t('loadFailed')));
     } finally {
       setBuyingId(null);
     }

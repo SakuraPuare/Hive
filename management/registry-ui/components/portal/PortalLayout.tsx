@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
-import { Menu, X, LayoutDashboard, Package, MessageSquare, ShoppingCart, LogOut, ChevronDown, Globe, Gift } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Package, MessageSquare, ShoppingCart, LogOut, ChevronDown, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { CustomerProvider, useCustomer, portalLogout } from '@/lib/portal-auth';
@@ -68,13 +68,13 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
             <ThemeToggle />
             <div className="hidden md:flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
               {(['zh', 'en'] as Locale[]).map((l) => (
-                <button
+                <button type="button"
                   key={l}
                   onClick={() => setLocale(l)}
                   className={cn(
                     'rounded-md px-2.5 py-1 text-xs font-medium transition-all',
                     locale === l
-                      ? 'bg-background text-foreground shadow-sm'
+                      ? 'bg-background text-foreground shadow-xs'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
@@ -86,7 +86,7 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
             {/* User dropdown (desktop) */}
             {customer && (
               <div className="relative hidden md:block">
-                <button
+                <button type="button"
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                   className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-all hover:bg-accent"
                 >
@@ -98,14 +98,14 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
                 </button>
                 {userMenuOpen && (
                   <>
-                    <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+                    <button type="button" aria-label="关闭菜单" className="fixed inset-0 z-40 cursor-default" onClick={() => setUserMenuOpen(false)} />
                     <div className="absolute right-0 z-50 mt-1.5 w-44 rounded-xl border bg-popover p-1.5 shadow-lg animate-fade-in">
                       <div className="px-3 py-2 mb-1">
                         <p className="text-sm font-medium truncate">{customer.nickname || customer.email}</p>
                         {customer.nickname && <p className="text-xs text-muted-foreground truncate">{customer.email}</p>}
                       </div>
                       <div className="h-px bg-border mx-1 my-1" />
-                      <button
+                      <button type="button"
                         onClick={handleLogout}
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                       >
@@ -119,7 +119,7 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
             )}
 
             {/* Mobile hamburger */}
-            <button
+            <button type="button"
               className="md:hidden flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label="Toggle menu"
@@ -151,13 +151,13 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
               ))}
               <div className="flex items-center gap-0.5 rounded-lg bg-muted p-0.5 w-fit mx-3 mt-2">
                 {(['zh', 'en'] as Locale[]).map((l) => (
-                  <button
+                  <button type="button"
                     key={l}
                     onClick={() => setLocale(l)}
                     className={cn(
                       'rounded-md px-2.5 py-1 text-xs font-medium transition-all',
                       locale === l
-                        ? 'bg-background text-foreground shadow-sm'
+                        ? 'bg-background text-foreground shadow-xs'
                         : 'text-muted-foreground hover:text-foreground'
                     )}
                   >
@@ -168,7 +168,7 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
               {customer && (
                 <>
                   <div className="h-px bg-border mx-1 my-2" />
-                  <button
+                  <button type="button"
                     onClick={handleLogout}
                     className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
                   >

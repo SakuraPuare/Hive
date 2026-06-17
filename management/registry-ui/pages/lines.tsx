@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AdminService } from '@/src/generated/client';
 import type { model_Node, model_Line } from '@/src/generated/client';
 import { sessionApi, apiPath } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -44,8 +45,8 @@ export default function LinesPage() {
     setError('');
     try {
       setLines(await sessionApi(AdminService.adminListLines()) ?? []);
-    } catch (e: any) {
-      setError(e?.error || t('loadFailed'));
+    } catch (e) {
+      setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -86,8 +87,8 @@ export default function LinesPage() {
       setCreateOrder('0');
       setCreateNote('');
       loadLines();
-    } catch (e: any) {
-      setCreateError(e?.error || t('lineCreateFailed'));
+    } catch (e) {
+      setCreateError(getErrorMessage(e, t('lineCreateFailed')));
     } finally {
       setCreating(false);
     }
@@ -130,8 +131,8 @@ export default function LinesPage() {
       }));
       setEditLine(null);
       loadLines();
-    } catch (e: any) {
-      setEditError(e?.error || t('lineUpdateFailed'));
+    } catch (e) {
+      setEditError(getErrorMessage(e, t('lineUpdateFailed')));
     } finally {
       setEditing(false);
     }
@@ -143,8 +144,8 @@ export default function LinesPage() {
     try {
       await sessionApi(AdminService.adminDeleteLine({ id: line.id! }));
       loadLines();
-    } catch (e: any) {
-      alert(e?.error || t('lineDeleteFailed'));
+    } catch (e) {
+      alert(getErrorMessage(e, t('lineDeleteFailed')));
     }
   }
 
@@ -204,8 +205,8 @@ export default function LinesPage() {
       }));
       setNodeEditLine(null);
       loadLines();
-    } catch (e: any) {
-      setSaveNodesError(e?.error || t('lineNodesSaveFailed'));
+    } catch (e) {
+      setSaveNodesError(getErrorMessage(e, t('lineNodesSaveFailed')));
     } finally {
       setSavingNodes(false);
     }
@@ -217,8 +218,8 @@ export default function LinesPage() {
     try {
       await sessionApi(AdminService.adminResetLineToken({ id: line.id! }));
       loadLines();
-    } catch (e: any) {
-      alert(e?.error || t('resetTokenFailed'));
+    } catch (e) {
+      alert(getErrorMessage(e, t('resetTokenFailed')));
     }
   }
 

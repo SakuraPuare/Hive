@@ -75,7 +75,6 @@ export default function Dashboard() {
     () => nodes.filter((n) => n.probe_status === 'offline').length,
     [nodes]
   );
-  const cfCount = useMemo(() => nodes.filter((n) => n.cf_url).length, [nodes]);
 
   const oneWeekAgo = useMemo(() => {
     const d = new Date();

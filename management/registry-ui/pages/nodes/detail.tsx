@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
-import type { model_Node, handler_NodeUpdateRequest } from '@/src/generated/client';
+import type { model_Node, handler_NodeUpdateRequest, model_NodeStatusCheck } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -76,7 +77,7 @@ export default function NodeDetail() {
         setWeight(n.weight ?? 100);
         setRegion(n.region ?? '');
       })
-      .catch((e: any) => setError(e?.error || t('updateFailed')))
+      .catch((e: unknown) => setError(getErrorMessage(e, t('updateFailed'))))
       .finally(() => setLoading(false));
   }, [mac]);
 
@@ -95,8 +96,8 @@ export default function NodeDetail() {
       setSaveSuccess(true);
       const updated = await sessionApi(AdminService.nodeGet({ mac }));
       setNode(updated);
-    } catch (e: any) {
-      setSaveError(e?.error || e?.message || t('updateFailed'));
+    } catch (e) {
+      setSaveError(getErrorMessage(e, t('updateFailed')));
     } finally {
       setSaving(false);
     }
@@ -267,8 +268,8 @@ export default function NodeDetail() {
   );
 }
 
-function ProbeStatusCard({ mac, t, noData }: { mac: string; t: any; noData: string }) {
-  const [probe, setProbe] = useState<any>(null);
+function ProbeStatusCard({ mac, t, noData }: { mac: string; t: ReturnType<typeof useTranslations>; noData: string }) {
+  const [probe, setProbe] = useState<model_NodeStatusCheck | null>(null);
 
   useEffect(() => {
     if (!mac) return;
