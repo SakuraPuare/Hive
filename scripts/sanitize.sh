@@ -12,11 +12,6 @@ rm -f /etc/ssh/ssh_host_*
 truncate -s 0 /etc/machine-id
 rm -f /var/lib/dbus/machine-id
 
-# ZeroTier
-rm -f /var/lib/zerotier-one/identity.secret
-rm -f /var/lib/zerotier-one/identity.public
-rm -f /var/lib/zerotier-one/authtoken.secret
-
 # Tailscale
 rm -f /var/lib/tailscale/tailscaled.state
 
