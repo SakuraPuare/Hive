@@ -249,29 +249,29 @@ systemctl enable unattended-upgrades.service  # 自动安全更新
 # 7. apt 源：多镜像冗余（国内源容易 403，多列几个互为 fallback）
 # ─────────────────────────────────────────────
 # DEB822 URIs 字段支持多个空格分隔的 URI，apt 自动选最快可用的
-echo ">>> Configuring multi-mirror apt sources..."
+# echo ">>> Configuring multi-mirror apt sources..."
 
-# debian.sources 有两个 stanza（主源 + security），按内容分别替换
-if [ -f /etc/apt/sources.list.d/debian.sources ]; then
-    # 主源（匹配含 /debian 但不含 security 的 URIs 行）
-    sed -i '/security/!s|^URIs:.*debian.*|URIs: http://mirrors.tuna.tsinghua.edu.cn/debian http://mirrors.ustc.edu.cn/debian http://mirrors.aliyun.com/debian http://deb.debian.org/debian|' \
-        /etc/apt/sources.list.d/debian.sources
-    # security 源
-    sed -i 's|^URIs:.*security.*|URIs: http://mirrors.tuna.tsinghua.edu.cn/debian-security http://mirrors.ustc.edu.cn/debian-security http://security.debian.org/|' \
-        /etc/apt/sources.list.d/debian.sources
-fi
+# # debian.sources 有两个 stanza（主源 + security），按内容分别替换
+# if [ -f /etc/apt/sources.list.d/debian.sources ]; then
+#     # 主源（匹配含 /debian 但不含 security 的 URIs 行）
+#     sed -i '/security/!s|^URIs:.*debian.*|URIs: https://mirrors.tuna.tsinghua.edu.cn/debian https://mirrors.ustc.edu.cn/debian https://mirrors.aliyun.com/debian https://deb.debian.org/debian|' \
+#         /etc/apt/sources.list.d/debian.sources
+#     # security 源
+#     sed -i 's|^URIs:.*security.*|URIs: https://mirrors.tuna.tsinghua.edu.cn/debian-security https://mirrors.ustc.edu.cn/debian-security https://security.debian.org/|' \
+#         /etc/apt/sources.list.d/debian.sources
+# fi
 
-# ubuntu.sources
-if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-    sed -i 's|^URIs:.*|URIs: http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ http://mirrors.ustc.edu.cn/ubuntu-ports/ http://mirrors.aliyun.com/ubuntu-ports/ http://ports.ubuntu.com/|' \
-        /etc/apt/sources.list.d/ubuntu.sources
-fi
+# # ubuntu.sources
+# if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+#     sed -i 's|^URIs:.*|URIs: https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ https://mirrors.ustc.edu.cn/ubuntu-ports/ https://mirrors.aliyun.com/ubuntu-ports/ https://ports.ubuntu.com/|' \
+#         /etc/apt/sources.list.d/ubuntu.sources
+# fi
 
-# armbian.sources
-if [ -f /etc/apt/sources.list.d/armbian.sources ]; then
-    sed -i 's|^URIs:.*|URIs: http://mirrors.tuna.tsinghua.edu.cn/armbian http://mirrors.ustc.edu.cn/armbian http://apt.armbian.com|' \
-        /etc/apt/sources.list.d/armbian.sources
-fi
+# # armbian.sources
+# if [ -f /etc/apt/sources.list.d/armbian.sources ]; then
+#     sed -i 's|^URIs:.*|URIs: https://mirrors.tuna.tsinghua.edu.cn/armbian https://mirrors.ustc.edu.cn/armbian https://apt.armbian.com|' \
+#         /etc/apt/sources.list.d/armbian.sources
+# fi
 
 echo ">>> apt sources: multi-mirror configured (tuna/ustc/aliyun/official)"
 
