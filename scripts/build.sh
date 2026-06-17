@@ -42,7 +42,7 @@ export KERNEL_EXTRA_CFLAGS="${EXTRA_CFLAGS}"
 echo "🚀 Hive Armbian 构建脚本"
 echo "=============================="
 echo "Profile: ${PROFILE}"
-echo "  BOARD=${BOARD}  BRANCH=${BRANCH}  CONFIG=${OPTIMIZED_CONFIG}"
+echo "  BOARD=${BOARD}  BRANCH=${BRANCH}  CONFIG=${BASE_KERNEL_CONFIG}(+hive 优化)"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 系统环境检测与优化
@@ -181,16 +181,23 @@ echo "同步 userpatches..."
 rsync -a --delete "${ROOT_DIR}/armbian-build/userpatches/" "${ARMBIAN_DIR}/userpatches/"
 
 # 生成优化内核配置（基线 config + 优化脚本 → 定制 config）
-KERNEL_CONFIG_DIR="${ARMBIAN_DIR}/config/kernel"
-BASE_CONFIG_PATH="${KERNEL_CONFIG_DIR}/${BASE_KERNEL_CONFIG}.config"
-OPTIMIZED_CONFIG_PATH="${KERNEL_CONFIG_DIR}/${OPTIMIZED_CONFIG}.config"
+# Armbian 选 config 只认 LINUXCONFIG（默认 linux-${LINUXFAMILY}-${BRANCH}），
+# 且 family 配置会无条件覆盖命令行传入的 LINUXCONFIG。框架官方覆盖入口是按
+# 文件名查找 userpatches/config/kernel/<LINUXCONFIG>.config（优先于框架自带），
+# 所以这里用「默认名」写入 userpatches 目录，让框架自动采用优化版。
+# 参考 lib/functions/compilation/kernel-config.sh:14-19
+KERNEL_CONFIG_SRC_DIR="${ARMBIAN_DIR}/config/kernel"
+KERNEL_CONFIG_DST_DIR="${ARMBIAN_DIR}/userpatches/config/kernel"
+BASE_CONFIG_PATH="${KERNEL_CONFIG_SRC_DIR}/${BASE_KERNEL_CONFIG}.config"
+OPTIMIZED_CONFIG_PATH="${KERNEL_CONFIG_DST_DIR}/${BASE_KERNEL_CONFIG}.config"
 
 if [ ! -f "${BASE_CONFIG_PATH}" ]; then
     echo "ERROR: 基线内核配置不存在: ${BASE_CONFIG_PATH}"
     exit 1
 fi
 
-echo "生成优化内核配置: ${BASE_KERNEL_CONFIG} → ${OPTIMIZED_CONFIG}"
+mkdir -p "${KERNEL_CONFIG_DST_DIR}"
+echo "生成优化内核配置: ${BASE_KERNEL_CONFIG} → userpatches/config/kernel/${BASE_KERNEL_CONFIG}.config"
 "${KERNEL_OPTIMIZE_SCRIPT}" "${BASE_CONFIG_PATH}" "${OPTIMIZED_CONFIG_PATH}"
 
 # 渲染配置模板
@@ -244,12 +251,13 @@ echo ""
 cd "${ARMBIAN_DIR}"
 
 # 执行构建（USE_CCACHE=yes 让 Armbian 在 Docker 内启用 ccache）
+# 优化内核 config 已写入 userpatches/config/kernel/，框架按 LINUXCONFIG 文件名
+# 自动采用，无需在此传参（KERNEL_CONFIGURE 是布尔开关，旧用法传文件名无效）
 time ./compile.sh build \
     BOARD="${BOARD}" \
     BRANCH="${BRANCH}" \
     RELEASE="${RELEASE}" \
     BUILD_MINIMAL=no \
-    KERNEL_CONFIGURE="${OPTIMIZED_CONFIG}" \
     USE_CCACHE=yes \
     COMPRESS_OUTPUTIMAGE=sha,xz \
     PATCHES_TO_GIT=yes \
