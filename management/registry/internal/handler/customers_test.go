@@ -18,7 +18,7 @@ func TestCreateCustomer(t *testing.T) {
 
 	resp := doJSON("POST", "/admin/customers", map[string]string{
 		"email":    "test@example.com",
-		"password": "pass123",
+		"password": "pass1234",
 		"nickname": "tester",
 	}, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
@@ -81,7 +81,7 @@ func TestResetCustomerPassword(t *testing.T) {
 	cid := insertTestCustomer(t, "pw@example.com")
 
 	resp := doJSON("POST", fmt.Sprintf("/admin/customers/%d/password", cid), map[string]string{
-		"password": "newpass",
+		"password": "newpass1",
 	}, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 }
