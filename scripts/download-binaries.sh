@@ -6,8 +6,8 @@ set -e
 # 支持通过环境变量覆盖，默认使用 latest（仅 xray / cloudflared）
 XRAY_VER="${XRAY_VER:-latest}"               # e.g. v26.2.6 或 latest
 CLOUDFLARED_VER="${CLOUDFLARED_VER:-latest}" # e.g. 2026.2.0 或 latest
-FRP_VER="${FRP_VER:-0.67.0}"
-EASYTIER_VER="${EASYTIER_VER:-v2.4.5}"
+FRP_VER="${FRP_VER:-0.69.1}"
+EASYTIER_VER="${EASYTIER_VER:-v2.6.4}"
 XRAY_EXPORTER_VER="${XRAY_EXPORTER_VER:-v0.2.0}" # compassvpn/xray-exporter
 
 DEST="armbian-build/userpatches/overlay/usr/local/bin"
