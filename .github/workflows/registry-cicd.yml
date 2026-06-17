@@ -31,6 +31,15 @@ jobs:
           go-version-file: management/registry/go.mod
           cache-dependency-path: management/registry/go.sum
 
+      - name: gofmt check
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
       - name: go vet
         run: go vet ./...
 

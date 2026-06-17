@@ -10,17 +10,17 @@ import (
 
 // Config holds all application configuration loaded from environment variables.
 type Config struct {
-	ListenAddr         string
-	APISecret          string
-	AdminUser          string
-	AdminPass          string
-	AdminSessionSecret string
-	AdminSessionTTL    time.Duration
-	AdminCookieName    string
-	CORSAllowedOrigins []string
+	ListenAddr          string
+	APISecret           string
+	AdminUser           string
+	AdminPass           string
+	AdminSessionSecret  string
+	AdminSessionTTL     time.Duration
+	AdminCookieName     string
+	CORSAllowedOrigins  []string
 	AdminCookieSameSite http.SameSite
-	XrayPath           string
-	PrometheusURL      string
+	XrayPath            string
+	PrometheusURL       string
 
 	// DB
 	MySQLHost     string
