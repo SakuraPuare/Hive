@@ -29,7 +29,8 @@ export default function Login() {
           <p className="mt-1 text-sm text-muted-foreground">{t('adminLogin')}</p>
         </div>
 
-        <div className="rounded-2xl border bg-card p-6 shadow-sm">
+        <div className="rounded-2xl border bg-card p-6 shadow-xs">
+          {/* react-doctor-disable-next-line react-doctor/no-prevent-default -- static-export SPA against a Go API; server actions are not available */}
           <form
             onSubmit={async (e) => {
               e.preventDefault();

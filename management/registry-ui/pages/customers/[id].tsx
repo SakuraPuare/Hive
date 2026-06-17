@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { model_Customer, model_CustomerSubscription, model_Plan } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -104,8 +105,8 @@ export default function CustomerDetail() {
       const detail = await sessionApi(AdminService.adminGetCustomer({ id: Number(id) }));
       setCustomer(detail.customer ?? null);
       setSubscriptions((detail.subscriptions ?? []) as Subscription[]);
-    } catch (e: any) {
-      setError(e?.message || t('loadFailed'));
+    } catch (e) {
+      setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -135,8 +136,8 @@ export default function CustomerDetail() {
       }));
       setEditOpen(false);
       loadCustomer();
-    } catch (e: any) {
-      setError(e?.message || 'Update failed');
+    } catch (e) {
+      setError(getErrorMessage(e, 'Update failed'));
     } finally {
       setSaving(false);
     }
@@ -152,8 +153,8 @@ export default function CustomerDetail() {
       }));
       setPwdOpen(false);
       setNewPwd('');
-    } catch (e: any) {
-      setError(e?.message || 'Reset failed');
+    } catch (e) {
+      setError(getErrorMessage(e, 'Reset failed'));
     } finally {
       setSavingPwd(false);
     }
@@ -170,8 +171,8 @@ export default function CustomerDetail() {
       setSubOpen(false);
       setSelectedPlan('');
       loadCustomer();
-    } catch (e: any) {
-      setError(e?.message || 'Create failed');
+    } catch (e) {
+      setError(getErrorMessage(e, 'Create failed'));
     } finally {
       setCreatingSub(false);
     }
@@ -181,8 +182,8 @@ export default function CustomerDetail() {
     try {
       await sessionApi(AdminService.adminResetSubscriptionToken({ id: subId }));
       loadCustomer();
-    } catch (e: any) {
-      setError(e?.message || 'Reset token failed');
+    } catch (e) {
+      setError(getErrorMessage(e, 'Reset token failed'));
     }
   }
 
@@ -190,8 +191,8 @@ export default function CustomerDetail() {
     try {
       await sessionApi(AdminService.adminDeleteSubscription({ id: subId }));
       loadCustomer();
-    } catch (e: any) {
-      setError(e?.message || 'Delete failed');
+    } catch (e) {
+      setError(getErrorMessage(e, 'Delete failed'));
     }
   }
 

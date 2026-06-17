@@ -89,8 +89,6 @@ describe('CustomersPage', () => {
     await user.click(screen.getByText('customers.createCustomer'));
 
     // Fill form — labels use t('email'), t('password')
-    const inputs = screen.getAllByRole('textbox');
-    const emailInput = inputs.find(i => i.closest('div')?.textContent?.includes('customers.email'));
     // Use the input fields in the dialog
     const dialogInputs = screen.getAllByRole('textbox');
     await user.type(dialogInputs[dialogInputs.length - 2], 'new@example.com');

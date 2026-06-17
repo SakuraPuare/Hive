@@ -25,6 +25,7 @@ import {
 const DEFAULT_PAGE_SIZE = 20;
 
 interface DataTableProps<TData> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TanStack columns hold heterogeneous cell value types
   columns: ColumnDef<TData, any>[];
   data: TData[];
   loading?: boolean;
@@ -100,6 +101,7 @@ export function DataTable<TData>({
   // Inject select column if enabled
   const allColumns = React.useMemo(() => {
     if (!enableSelection) return columns;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches the heterogeneous ColumnDef array above
     const selectCol: ColumnDef<TData, any> = {
       id: '__select',
       header: ({ table }) => (

@@ -11,7 +11,6 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
 import {
   RefreshCw, Trash2, Download, MoreHorizontal, Power, PowerOff,
 } from 'lucide-react';
@@ -138,7 +137,7 @@ export default function NodesPage() {
 
   function exportCSV() {
     const headers = ['note', 'hostname', 'location', 'mac', 'tailscale_ip', 'easytier_ip', 'frp_port', 'status', 'enabled', 'weight', 'region', 'registered_at', 'last_seen'];
-    const rows = filteredNodes.map(n => headers.map(h => String((n as any)[h] ?? '')));
+    const rows = filteredNodes.map(n => headers.map(h => String((n as Record<string, unknown>)[h] ?? '')));
     const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
@@ -261,9 +260,9 @@ export default function NodesPage() {
             {/* Status filter tabs */}
             <div className="flex items-center rounded-lg bg-muted p-0.5">
               {(['all', 'online', 'offline', 'unknown'] as StatusFilter[]).map(s => (
-                <button key={s} onClick={() => setStatusFilter(s)}
+                <button type="button" key={s} onClick={() => setStatusFilter(s)}
                   className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                    statusFilter === s ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                    statusFilter === s ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
                   }`}>
                   {s === 'all' ? `${t('filterAll')} (${counts.all})`
                     : s === 'online' ? `${t('filterOnline')} (${counts.online})`

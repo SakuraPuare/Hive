@@ -74,7 +74,7 @@ export default function NodeStatusPage() {
         <div className="flex items-center gap-2">
           <div className="flex rounded-md border text-sm">
             {(['all', 'online', 'offline'] as const).map((f) => (
-              <button
+              <button type="button"
                 key={f}
                 onClick={() => setFilter(f)}
                 aria-pressed={filter === f}

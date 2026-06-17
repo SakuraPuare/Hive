@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AdminService } from '@/src/generated/client';
 import type { model_Plan, model_Line } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -27,12 +28,12 @@ import { useCurrentUser } from '@/lib/auth';
 import { useRouter } from 'next/router';
 
 
-function formatTraffic(bytes: number, t: any): string {
+function formatTraffic(bytes: number, t: ReturnType<typeof useTranslations>): string {
   if (bytes === 0) return t('unlimited');
   return `${(bytes / (1024 ** 3)).toFixed(1)} ${t('gb')}`;
 }
 
-function formatPrice(cents: number, t: any): string {
+function formatPrice(cents: number, t: ReturnType<typeof useTranslations>): string {
   return `${(cents / 100).toFixed(2)} ${t('yuan')}`;
 }
 
@@ -53,8 +54,8 @@ export default function PlansPage() {
     setError('');
     try {
       setPlans(await sessionApi(AdminService.adminListPlans()));
-    } catch (e: any) {
-      setError(e?.error || t('loadFailed'));
+    } catch (e) {
+      setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -121,8 +122,8 @@ export default function PlansPage() {
         setShowCreate(false);
       }
       loadPlans();
-    } catch (e: any) {
-      setFormError(e?.error || 'Error');
+    } catch (e) {
+      setFormError(getErrorMessage(e, 'Error'));
     } finally {
       setSaving(false);
     }
@@ -184,8 +185,8 @@ export default function PlansPage() {
     try {
       await sessionApi(AdminService.adminSetPlanLines({ id: lineEditPlan.id!, requestBody: { lines: Array.from(selectedLineIds) } }));
       setLineEditPlan(null);
-    } catch (e: any) {
-      setSaveLinesError(e?.error || 'Error');
+    } catch (e) {
+      setSaveLinesError(getErrorMessage(e, 'Error'));
     } finally {
       setSavingLines(false);
     }

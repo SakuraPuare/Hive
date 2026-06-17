@@ -60,7 +60,7 @@ function SubscriptionCard({ sub, index }: { sub: SubWithPlan; index: number }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className={`grid grid-cols-3 gap-3 rounded-xl bg-gradient-to-br ${gradients[index % 3]} p-4`}>
+        <div className={`grid grid-cols-3 gap-3 rounded-xl bg-linear-to-br ${gradients[index % 3]} p-4`}>
           <div className="text-center">
             <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
               <Clock className="h-3.5 w-3.5" />
@@ -144,7 +144,6 @@ const BANNER_STYLES: Record<string, string> = {
 
 export default function PortalDashboardPage() {
   const t = useTranslations('portal');
-  const tCommon = useTranslations('common');
   const router = useRouter();
   const { customer, subscriptions, loading } = useCustomer();
   const [announcements, setAnnouncements] = useState<PortalAnnouncement[]>([]);

@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import type { model_AuditLog } from '@/src/generated/client';
 import { AdminService } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -73,8 +74,8 @@ export default function AuditLogsPage() {
       })) ?? [];
       setLogs(data);
       setHasMore(data.length === PAGE_SIZE);
-    } catch (e: any) {
-      setError(e?.message || tCommon('loading'));
+    } catch (e) {
+      setError(getErrorMessage(e, tCommon('loading')));
     } finally {
       setLoading(false);
     }
@@ -84,7 +85,6 @@ export default function AuditLogsPage() {
     if (!authLoading && currentUser?.can('audit:read')) {
       loadLogs(page);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, currentUser, page, loadLogs]);
 
   function handleFilter() {

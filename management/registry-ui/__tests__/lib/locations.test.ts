@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LOCATION_OPTIONS, type LocationOption } from '@/lib/locations';
+import { LOCATION_OPTIONS } from '@/lib/locations';
 
 describe('LOCATION_OPTIONS', () => {
   it('is a non-empty array', () => {

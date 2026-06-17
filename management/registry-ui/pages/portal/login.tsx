@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { portalLogin } from '@/lib/portal-auth';
+import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,7 +10,6 @@ import { Globe, ArrowRight, Loader2 } from 'lucide-react';
 
 export default function PortalLoginPage() {
   const t = useTranslations('portal');
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -23,7 +22,7 @@ export default function PortalLoginPage() {
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImciIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0ibm9uZSIvPjxjaXJjbGUgY3g9IjMwIiBjeT0iMzAiIHI9IjEuNSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjEpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCBmaWxsPSJ1cmwoI2cpIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9zdmc+')] opacity-60" />
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20">
           <div className="flex items-center gap-3 mb-8">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 backdrop-blur">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
               <Globe className="h-7 w-7 text-white" />
             </div>
             <span className="text-2xl font-bold text-white tracking-tight">{t('brand')}</span>
@@ -58,6 +57,7 @@ export default function PortalLoginPage() {
             </p>
           </div>
 
+          {/* react-doctor-disable-next-line react-doctor/no-prevent-default -- static-export SPA against a Go API; server actions are not available */}
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -66,8 +66,8 @@ export default function PortalLoginPage() {
               try {
                 await portalLogin(email, password);
                 window.location.href = '/portal/dashboard';
-              } catch (e: any) {
-                setError(e?.error || t('loginFailed'));
+              } catch (e) {
+                setError(getErrorMessage(e, t('loginFailed')));
               } finally {
                 setLoading(false);
               }

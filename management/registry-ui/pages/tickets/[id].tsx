@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
-import type { handler_TicketDetailResponse, model_TicketReply } from '@/src/generated/client';
+import type { handler_TicketDetailResponse } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';

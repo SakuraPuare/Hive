@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,7 @@ interface LocationComboboxProps {
 
 export function LocationCombobox({ options, value, onChange, placeholder }: LocationComboboxProps) {
   const [open, setOpen] = useState(false);
+  const listId = useId();
   const selected = options.find((o) => o.value === value);
 
   return (
@@ -35,13 +36,14 @@ export function LocationCombobox({ options, value, onChange, placeholder }: Loca
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-controls={listId}
           className="w-full justify-between font-normal"
         >
           <span className="truncate">{selected ? selected.label : (placeholder ?? '选择...')}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+      <PopoverContent id={listId} className="w-(--radix-popover-trigger-width) p-0" align="start">
         <Command>
           <CommandInput placeholder="搜索..." />
           <CommandList>

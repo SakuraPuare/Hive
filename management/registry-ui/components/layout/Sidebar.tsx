@@ -101,7 +101,7 @@ export function Sidebar() {
       <div className="flex items-center justify-center gap-0.5 p-3">
         <div className="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
           {(['zh', 'en'] as Locale[]).map((l) => (
-            <button
+            <button type="button"
               key={l}
               onClick={() => setLocale(l)}
               aria-label={l === 'zh' ? '切换到中文' : 'Switch to English'}
@@ -109,7 +109,7 @@ export function Sidebar() {
               className={cn(
                 'rounded-md px-3 py-1 text-xs font-medium transition-all',
                 locale === l
-                  ? 'bg-background text-foreground shadow-sm'
+                  ? 'bg-background text-foreground shadow-xs'
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >

@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { model_Customer } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,8 +88,8 @@ export default function CustomersPage() {
       }));
       setCustomers(data?.items ?? []);
       setTotal(data?.total ?? 0);
-    } catch (e: any) {
-      setError(e?.error || t('loadFailed'));
+    } catch (e) {
+      setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -107,8 +108,8 @@ export default function CustomersPage() {
       setNewPassword('');
       setNewNickname('');
       loadCustomers();
-    } catch (e: any) {
-      setError(e?.error || 'Create failed');
+    } catch (e) {
+      setError(getErrorMessage(e, 'Create failed'));
     } finally {
       setCreating(false);
     }
@@ -120,8 +121,8 @@ export default function CustomersPage() {
       await sessionApi(AdminService.adminDeleteCustomer({ id: deleteTarget.id! }));
       setDeleteTarget(null);
       loadCustomers();
-    } catch (e: any) {
-      setError(e?.error || 'Delete failed');
+    } catch (e) {
+      setError(getErrorMessage(e, 'Delete failed'));
     }
   }
 
