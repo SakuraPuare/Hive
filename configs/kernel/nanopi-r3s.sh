@@ -29,6 +29,14 @@ set_val() {
   sed -i "s/^${key}=.*$/${key}=${val}/" "$OUT"
 }
 
+force() {
+  # 强制设值：无论该符号原本是 =x / # is not set / 整行不存在，都落定为指定值。
+  # 用于必须显式兜底、不能依赖 select 推导的符号（如 CONFIG_I2C）。
+  local key="$1" val="${2:-y}"
+  sed -i "/^${key}=/d; /^# ${key} is not set$/d" "$OUT"
+  echo "${key}=${val}" >> "$OUT"
+}
+
 # ── 过大的默认值（R3S 是 4 核嵌入式，不需要服务器级配置）────────────────
 
 set_val CONFIG_NR_CPUS 8   # 原值 256，R3S 只有 4 核
@@ -68,15 +76,18 @@ disable CONFIG_RT2500USB   # Ralink USB 老卡
 disable CONFIG_RT73USB     # Ralink USB 老卡
 disable CONFIG_RT2800USB   # Ralink USB
 
-# ── USB 视频采集卡（路由器不需要）────────────────────────────────────────
+# ── 整个媒体子系统（路由器/VPN 网关不需要任何视频/电视/采集功能）──────────
+# 禁顶层 MEDIA_SUPPORT，olddefconfig 会级联清除其下全部子项：
+#   V4L 摄像头、DVB 卫星/有线电视前端、USB 视频采集卡、调谐器、红外遥控、SDR
+#
+# ⚠ 兜底 I2C：本精简 config 未显式写入 CONFIG_I2C，它原本仅靠 DRM 和
+#   MEDIA_SUPPORT 的 `select I2C` 撑着。本脚本同时关掉 DRM+MEDIA，会让 I2C
+#   失去全部 selector，olddefconfig 随即把它归零，连带 regmap-i2c 等编译失败。
+#   故必须显式 force 启用。（注：rockchip64-current(6.18) 树的 rockchip PHY
+#   未裸用 v4l2_subdev.entity，无需像 zero2 那样禁摄像头 PHY。）
+force CONFIG_I2C y
 
-disable CONFIG_VIDEO_GO7007
-disable CONFIG_VIDEO_HDPVR       # Hauppauge HD PVR
-disable CONFIG_VIDEO_PVRUSB2     # Hauppauge PVR USB2
-disable CONFIG_VIDEO_STK1160     # STK1160 采集卡（6.18 里叫 STK1160 不带 _COMMON）
-disable CONFIG_VIDEO_AU0828      # Auvitek AU0828
-disable CONFIG_VIDEO_CX231XX     # Conexant CX231xx
-disable CONFIG_VIDEO_EM28XX      # Empia EM28xx
+disable CONFIG_MEDIA_SUPPORT
 
 # ── 过时/罕见文件系统（只保留 ext4、btrfs、xfs、f2fs）────────────────────
 
@@ -97,6 +108,14 @@ disable CONFIG_DRM               # 关掉整个 DRM 子系统
 disable CONFIG_FB                # Framebuffer
 disable CONFIG_FB_TFT            # SPI TFT 小屏
 
+# Mali GPU 驱动必须随 DRM 一起关：它 select DMA_SHARED_BUFFER，但其 fence 代码
+# （mali_kbase_csf_kcpu.c:kcpu_fence_timeout_dump）引用了仅在 CONFIG_SYNC_FILE
+# 下才有定义的符号。DRM=y 时 SYNC_FILE 被间接 select 上，故默认 config 能编过；
+# 一旦关掉 DRM，olddefconfig 重算使 SYNC_FILE=n，Mali 驱动随即编译失败。
+# headless 节点不需要 GPU，连驱动一起关，既消除编译错误又省编译时间。
+disable CONFIG_MALI_BIFROST      # Mali Bifrost 框架（RK3566 Mali-G52）
+disable CONFIG_MALI_MIDGARD      # Mali Midgard 框架（rockchip 改版，连带子项）
+
 # ── 无用输入设备 ─────────────────────────────────────────────────────────
 
 disable CONFIG_INPUT_JOYSTICK    # 游戏手柄
@@ -110,6 +129,9 @@ disable CONFIG_WLAN_UWE5622
 # ── 其他嵌入式不需要的 ───────────────────────────────────────────────────
 
 disable CONFIG_NFC               # NFC 近场通信 — 路由器不需要
+disable CONFIG_CAN               # CAN 总线 — 车载/工业现场总线，路由器不需要
+disable CONFIG_HAMRADIO          # 业余无线电 AX.25/NetRom — 不需要
+# W1（1-Wire）在 rockchip64-current 基线未启用，无需处理
 
 # ── Debug/Profiling（生产镜像不需要）─────────────────────────────────────
 
