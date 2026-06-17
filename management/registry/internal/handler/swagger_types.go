@@ -77,17 +77,17 @@ type NodeRegisterResponse struct {
 
 // NodeUpdateRequest is the request body for PATCH /nodes/{mac}.
 type NodeUpdateRequest struct {
-	Location      *string `json:"location,omitempty" example:"Tokyo"`
-	Note          *string `json:"note,omitempty" example:"primary node"`
-	TailscaleIP   *string `json:"tailscale_ip,omitempty" example:"100.64.0.1"`
-	EasytierIP    *string `json:"easytier_ip,omitempty" example:"10.0.0.1"`
-	FRPPort       *int    `json:"frp_port,omitempty" example:"7000"`
-	Enabled       *bool   `json:"enabled,omitempty" example:"true"`
-	Status        *string `json:"status,omitempty" example:"online"`
-	Weight        *int    `json:"weight,omitempty" example:"10"`
+	Location     *string `json:"location,omitempty" example:"Tokyo"`
+	Note         *string `json:"note,omitempty" example:"primary node"`
+	TailscaleIP  *string `json:"tailscale_ip,omitempty" example:"100.64.0.1"`
+	EasytierIP   *string `json:"easytier_ip,omitempty" example:"10.0.0.1"`
+	FRPPort      *int    `json:"frp_port,omitempty" example:"7000"`
+	Enabled      *bool   `json:"enabled,omitempty" example:"true"`
+	Status       *string `json:"status,omitempty" example:"online"`
+	Weight       *int    `json:"weight,omitempty" example:"10"`
 	Region       *string `json:"region,omitempty" example:"asia"`
 	MeshTunnelID *string `json:"mesh_tunnel_id,omitempty" example:"704320e0-f87b-4ca8-a45e-481c1fcd7462"`
-	MeshIP        *string `json:"mesh_ip,omitempty" example:"100.96.0.10"`
+	MeshIP       *string `json:"mesh_ip,omitempty" example:"100.96.0.10"`
 }
 
 // ── customer swagger types ───────────────────────────────────────────────────

@@ -419,6 +419,21 @@ ALTER TABLE nodes DROP COLUMN tags;
 ALTER TABLE nodes DROP COLUMN offline_reason;
 `,
 	},
+	{
+		version: 15,
+		desc:    "customer_subscriptions: add xray_uuid for per-subscription xray identity & billing",
+		up: `
+ALTER TABLE customer_subscriptions ADD COLUMN xray_uuid CHAR(36) NOT NULL DEFAULT '' COMMENT '订阅专属 Xray UUID (VLESS client id), 用于按用户计费';
+UPDATE customer_subscriptions SET xray_uuid = LOWER(CONCAT(
+    LPAD(HEX(FLOOR(RAND()*4294967296)), 8, '0'), '-',
+    LPAD(HEX(FLOOR(RAND()*65536)), 4, '0'), '-4',
+    LPAD(HEX(FLOOR(RAND()*4096)), 3, '0'), '-',
+    HEX(FLOOR(RAND()*4)+8), LPAD(HEX(FLOOR(RAND()*4096)), 3, '0'), '-',
+    LPAD(HEX(FLOOR(RAND()*281474976710656)), 12, '0')
+)) WHERE xray_uuid = '';
+CREATE INDEX idx_sub_xray_uuid ON customer_subscriptions (xray_uuid);
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

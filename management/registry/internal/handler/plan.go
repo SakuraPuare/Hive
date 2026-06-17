@@ -327,6 +327,7 @@ func (h *Handler) HandleSetPlanLines(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.Node, sub struct {
 	ID           uint
 	Status       string
+	XrayUUID     string
 	TrafficUsed  int64
 	TrafficLimit int64
 	ExpiresAt    string
@@ -336,11 +337,12 @@ func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.N
 		CustomerID   uint
 		PlanID       uint
 		Status       string
+		XrayUUID     string
 		TrafficUsed  int64
 		TrafficLimit int64
 		ExpiresAt    time.Time
 	}
-	if err = h.DB.Raw("SELECT id, customer_id, plan_id, status, traffic_used, traffic_limit, expires_at "+
+	if err = h.DB.Raw("SELECT id, customer_id, plan_id, status, xray_uuid, traffic_used, traffic_limit, expires_at "+
 		"FROM customer_subscriptions WHERE token=?", token).Scan(&row).Error; err != nil {
 		return "", nil, sub, fmt.Errorf("query subscription: %w", err)
 	}
@@ -349,6 +351,7 @@ func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.N
 	}
 	sub.ID = row.ID
 	sub.Status = row.Status
+	sub.XrayUUID = row.XrayUUID
 	sub.TrafficUsed = row.TrafficUsed
 	sub.TrafficLimit = row.TrafficLimit
 	sub.ExpiresAt = row.ExpiresAt.UTC().Format(model.TimeLayout)
@@ -408,7 +411,7 @@ func (h *Handler) HandleCustomerSubscriptionClash(w http.ResponseWriter, r *http
 		return
 	}
 
-	yaml := h.buildGroupClashYAML(planName, nodes)
+	yaml := h.buildGroupClashYAML(planName, nodes, sub.XrayUUID)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.yaml"`, planName))
 	fmt.Fprint(w, yaml)
@@ -449,7 +452,7 @@ func (h *Handler) HandleCustomerSubscriptionVless(w http.ResponseWriter, r *http
 	var links []string
 	for _, n := range nodes {
 		host := stripScheme(n.CFURL)
-		if host == "" || n.XrayUUID == "" {
+		if host == "" || sub.XrayUUID == "" {
 			continue
 		}
 		name := buildNodeName(n)
@@ -459,7 +462,7 @@ func (h *Handler) HandleCustomerSubscriptionVless(w http.ResponseWriter, r *http
 		params.Set("sni", host)
 		params.Set("path", fmt.Sprintf("/%s?ed=2560", h.Config.XrayPath))
 		link := fmt.Sprintf("vless://%s@%s:443?%s#%s",
-			n.XrayUUID, host, params.Encode(), url.PathEscape(name))
+			sub.XrayUUID, host, params.Encode(), url.PathEscape(name))
 		links = append(links, link)
 	}
 

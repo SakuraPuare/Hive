@@ -41,7 +41,7 @@ type UpdatePromoCodeRequest struct {
 }
 
 type OrderListResponse struct {
-	Total int64        `json:"total"`
+	Total int64         `json:"total"`
 	Items []model.Order `json:"items"`
 }
 
@@ -206,11 +206,16 @@ func (h *Handler) HandleUpdateOrderStatus(w http.ResponseWriter, r *http.Request
 		if err != nil {
 			token = generateOrderNo()
 		}
+		xrayUUID, err := generateUUID()
+		if err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "uuid: "+err.Error())
+			return
+		}
 		startedAt := now
 		expiresAt := time.Now().UTC().AddDate(0, 0, plan.DurationDays).Format(model.TimeLayout)
 		if err := h.DB.Exec(
-			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) VALUES (?,?,?,0,?,?,?,?,'active',?,?)",
-			o.CustomerID, o.PlanID, token, plan.TrafficLimit, plan.DeviceLimit, startedAt, expiresAt, now, now,
+			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, xray_uuid, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) VALUES (?,?,?,?,0,?,?,?,?,'active',?,?)",
+			o.CustomerID, o.PlanID, token, xrayUUID, plan.TrafficLimit, plan.DeviceLimit, startedAt, expiresAt, now, now,
 		).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return

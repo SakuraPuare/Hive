@@ -17,10 +17,14 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// ── 限流器 ──────────────────────────────────────────────────────────
 	loginRL := middleware.NewRateLimiter(5, 1*time.Minute)
 	forgotPwRL := middleware.NewRateLimiter(3, 1*time.Minute)
+	h.loginRL = loginRL
+	h.forgotPwRL = forgotPwRL
 
 	// ── 节点注册（设备端调用，Bearer token 认证）──────────────────────────
 	mux.HandleFunc("POST /nodes/register", h.HandleRegister)
 	mux.HandleFunc("POST /nodes/heartbeat", h.HandleHeartbeat)
+	// 节点拉取本机应下发的 Xray 用户列表（设备端调用，Bearer token 认证）
+	mux.HandleFunc("GET /nodes/{mac}/xray-users", h.HandleNodeXrayUsers)
 
 	// ── 节点查询 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /nodes", perm("node:read")(h.HandleListNodes))

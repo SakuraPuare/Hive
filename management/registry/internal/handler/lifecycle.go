@@ -413,12 +413,19 @@ func (h *Handler) ActivateSubscription(customerID, planID uint, orderID uint) er
 			}
 			return fmt.Errorf("generate token: %w", err)
 		}
+		xrayUUID, err := generateUUID()
+		if err != nil {
+			if rbErr := tx.Rollback().Error; rbErr != nil {
+				log.Printf("activate subscription: rollback error: %v", rbErr)
+			}
+			return fmt.Errorf("generate uuid: %w", err)
+		}
 		expiresAt := now.AddDate(0, 0, plan.DurationDays).Format(model.TimeLayout)
 
 		if err := tx.Exec(
-			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) "+
-				"VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'active', ?, ?)",
-			customerID, planID, token, plan.TrafficLimit, plan.DeviceLimit, nowStr, expiresAt, nowStr, nowStr,
+			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, xray_uuid, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) "+
+				"VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, 'active', ?, ?)",
+			customerID, planID, token, xrayUUID, plan.TrafficLimit, plan.DeviceLimit, nowStr, expiresAt, nowStr, nowStr,
 		).Error; err != nil {
 			if rbErr := tx.Rollback().Error; rbErr != nil {
 				log.Printf("activate subscription: rollback error: %v", rbErr)

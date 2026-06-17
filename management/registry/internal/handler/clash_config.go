@@ -92,17 +92,24 @@ var defaultIPProviders = []ruleProvider{
 }
 
 // buildFullClashYAML generates a complete Clash/Mihomo YAML subscription config.
-func buildFullClashYAML(title string, nodes []model.Node, xrayPath string) string {
+// If overrideUUID is non-empty, all proxies use that UUID instead of the node's
+// own XrayUUID — used for per-subscription (per-customer) configs so traffic is
+// attributed to the subscription's Xray client identity.
+func buildFullClashYAML(title string, nodes []model.Node, xrayPath, overrideUUID string) string {
 	var proxies []clashProxy
 	for _, n := range nodes {
 		host := stripScheme(n.CFURL)
-		if host == "" || n.XrayUUID == "" {
+		uuid := n.XrayUUID
+		if overrideUUID != "" {
+			uuid = overrideUUID
+		}
+		if host == "" || uuid == "" {
 			continue
 		}
 		proxies = append(proxies, clashProxy{
 			Name:   yamlStr(buildNodeName(n)),
 			Server: host,
-			UUID:   n.XrayUUID,
+			UUID:   uuid,
 		})
 	}
 

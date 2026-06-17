@@ -4,9 +4,12 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 
 	"hive/registry/internal/model"
 )
@@ -399,6 +402,53 @@ func TestUpdateTrafficFromPrometheus_NoNodes(t *testing.T) {
 
 	// Prometheus is configured but no nodes exist — should not panic
 	testH.updateTrafficFromPrometheus()
+}
+
+// TestUpdateTrafficFromPrometheus_PerUserAttribution verifies that traffic from a
+// mocked Prometheus, labelled per-user (target="sub-<id>"), is attributed to the
+// exact subscription — and that non-subscription users (e.g. node-*) are ignored.
+func TestUpdateTrafficFromPrometheus_PerUserAttribution(t *testing.T) {
+	resetDB(t)
+
+	// Seed a customer + subscription so we have a real id to attribute to.
+	cid := insertTestCustomer(t, "perf@test.com")
+	planID := insertTestPlan(t, "PerfPlan")
+	now := time.Now().UTC().Format(model.TimeLayout)
+	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format(model.TimeLayout)
+	var subID uint
+	if err := testDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`INSERT INTO customer_subscriptions (customer_id, plan_id, token, xray_uuid, status, traffic_used, traffic_limit, device_limit, started_at, expires_at, created_at, updated_at)
+			VALUES (?,?,?,?,'active',0,107374182400,3,?,?,?,?)`,
+			cid, planID, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+			"99999999-8888-4777-8666-555555555555", now, expires, now, now).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&subID).Error
+	}); err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+
+	// Mock Prometheus instant-query endpoint returning per-user traffic:
+	//   sub-<id> => 1500 bytes ; node-aabb => 9999 bytes (must be ignored)
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":[
+			{"metric":{"dimension":"user","target":"sub-%d"},"value":[1719000000,"1500"]},
+			{"metric":{"dimension":"user","target":"node-aabb"},"value":[1719000000,"9999"]}
+		]}}`, subID)
+	}))
+	defer mock.Close()
+
+	origURL := testH.Config.PrometheusURL
+	testH.Config.PrometheusURL = mock.URL
+	defer func() { testH.Config.PrometheusURL = origURL }()
+
+	testH.updateTrafficFromPrometheus()
+
+	var used int64
+	testDB.Raw("SELECT traffic_used FROM customer_subscriptions WHERE id = ?", subID).Scan(&used)
+	if used != 1500 {
+		t.Fatalf("traffic_used = %d, want 1500 (exact per-user attribution, node-* ignored)", used)
+	}
 }
 
 // ── collectTraffic integration ───────────────────────────────────────────────

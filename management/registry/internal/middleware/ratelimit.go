@@ -79,6 +79,14 @@ func (rl *RateLimiter) allow(ip string) bool {
 	return true
 }
 
+// Reset clears all tracked windows. Intended for use in tests so that a
+// shared limiter does not leak state across test cases.
+func (rl *RateLimiter) Reset() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	rl.windows = make(map[string][]time.Time)
+}
+
 // Wrap returns middleware that rate-limits the wrapped handler by client IP.
 func (rl *RateLimiter) Wrap(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

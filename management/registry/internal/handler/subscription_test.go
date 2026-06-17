@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/base64"
 	"net/http"
 	"strings"
 	"testing"
@@ -20,8 +21,8 @@ func insertSubTestNode(t *testing.T, mac string) {
 	if len(mac) > 6 {
 		mac6 = mac[len(mac)-6:]
 	}
-	err := testDB.Exec(`INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, location, note, registered_at, last_seen, enabled, status, weight, region, country, city, tags, offline_reason)
-		VALUES (?, ?, ?, 'https://test.example.com', '', '', '', 0, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'JP', 'test', ?, ?, 1, 'active', 100, 'Asia', 'JP', 'Tokyo', '', '')`,
+	err := testDB.Exec(`INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, location, note, registered_at, last_seen, enabled, status, weight, region)
+		VALUES (?, ?, ?, 'https://test.example.com', '', '', '', 0, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'JP', 'test', ?, ?, 1, 'active', 100, 'Asia')`,
 		mac, mac6, "test-"+mac, now, now).Error
 	if err != nil {
 		t.Fatalf("insertSubTestNode %s: %v", mac, err)
@@ -62,8 +63,8 @@ func setupCustomerSubscription(t *testing.T) string {
 	// subscription
 	token := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	expires := time.Now().Add(30 * 24 * time.Hour).UTC().Format(model.TimeLayout)
-	testDB.Exec(`INSERT INTO customer_subscriptions (customer_id, plan_id, token, status, traffic_used, traffic_limit, device_limit, started_at, expires_at, created_at, updated_at)
-		VALUES (?,?,?,'active',0,107374182400,3,?,?,?,?)`, cid, planID, token, now, expires, now, now)
+	testDB.Exec(`INSERT INTO customer_subscriptions (customer_id, plan_id, token, xray_uuid, status, traffic_used, traffic_limit, device_limit, started_at, expires_at, created_at, updated_at)
+		VALUES (?,?,?,'11111111-2222-4333-8444-555555555555','active',0,107374182400,3,?,?,?,?)`, cid, planID, token, now, expires, now, now)
 
 	return token
 }
@@ -175,6 +176,79 @@ func TestCustomerSubscriptionVless(t *testing.T) {
 	ct := resp.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "text/plain") {
 		t.Errorf("Content-Type = %q, want text/plain", ct)
+	}
+
+	// The VLESS link must use the SUBSCRIPTION's xray_uuid, not the node's.
+	decoded, err := base64.StdEncoding.DecodeString(body)
+	if err != nil {
+		t.Fatalf("decode base64 body: %v", err)
+	}
+	link := string(decoded)
+	if !strings.Contains(link, "11111111-2222-4333-8444-555555555555") {
+		t.Errorf("VLESS link should contain subscription UUID, got: %s", link)
+	}
+	if strings.Contains(link, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") {
+		t.Errorf("VLESS link must NOT contain node UUID, got: %s", link)
+	}
+}
+
+func TestNodeXrayUsers(t *testing.T) {
+	resetDB(t)
+	token := setupCustomerSubscription(t) // builds node aabbccddeeff → line → plan → sub
+
+	resp := doBearer("GET", "/nodes/aabbccddeeff/xray-users", nil, testCfg.APISecret)
+	assertStatus(t, resp, http.StatusOK)
+
+	var out struct {
+		MAC   string `json:"mac"`
+		Users []struct {
+			UUID  string `json:"uuid"`
+			Email string `json:"email"`
+		} `json:"users"`
+	}
+	decodeBody(t, resp, &out)
+
+	if out.MAC != "aabbccddeeff" {
+		t.Fatalf("mac = %q, want aabbccddeeff", out.MAC)
+	}
+	if len(out.Users) != 1 {
+		t.Fatalf("expected 1 user, got %d (%+v)", len(out.Users), out.Users)
+	}
+	if out.Users[0].UUID != "11111111-2222-4333-8444-555555555555" {
+		t.Errorf("user uuid = %q, want subscription uuid", out.Users[0].UUID)
+	}
+	// email must be sub-<id> so traffic loop can attribute back to the subscription.
+	if !strings.HasPrefix(out.Users[0].Email, "sub-") {
+		t.Errorf("user email = %q, want sub-<id> form", out.Users[0].Email)
+	}
+
+	_ = token
+}
+
+func TestNodeXrayUsers_Unauthorized(t *testing.T) {
+	resetDB(t)
+	resp := doBearer("GET", "/nodes/aabbccddeeff/xray-users", nil, "wrong-secret")
+	assertStatus(t, resp, http.StatusUnauthorized)
+}
+
+func TestNodeXrayUsers_ExcludesInvalidSubs(t *testing.T) {
+	resetDB(t)
+	token := setupCustomerSubscription(t)
+
+	// Expire the subscription: it must drop out of the node's user list.
+	testDB.Exec("UPDATE customer_subscriptions SET expires_at = '2020-01-01 00:00:00' WHERE token = ?", token)
+
+	resp := doBearer("GET", "/nodes/aabbccddeeff/xray-users", nil, testCfg.APISecret)
+	assertStatus(t, resp, http.StatusOK)
+
+	var out struct {
+		Users []struct {
+			UUID string `json:"uuid"`
+		} `json:"users"`
+	}
+	decodeBody(t, resp, &out)
+	if len(out.Users) != 0 {
+		t.Fatalf("expired subscription must be excluded, got %d users", len(out.Users))
 	}
 }
 
