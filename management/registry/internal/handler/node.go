@@ -256,3 +256,78 @@ func (h *Handler) HandleDeleteNode(w http.ResponseWriter, r *http.Request) {
 	store.WriteAuditLog(h.DB, actor, "node_delete", "mac="+mac, getClientIP(r))
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
+
+// XrayUser is one VLESS client to be provisioned on a node's Xray inbound.
+type XrayUser struct {
+	UUID  string `json:"uuid"`
+	Email string `json:"email"`
+}
+
+// NodeXrayUsersResponse is the body returned by GET /nodes/{mac}/xray-users.
+type NodeXrayUsersResponse struct {
+	MAC   string     `json:"mac"`
+	Users []XrayUser `json:"users"`
+}
+
+// HandleNodeXrayUsers godoc
+// @Summary List Xray users for a node
+// @ID      NodeXrayUsers
+// @Description Returns the set of VLESS clients (uuid + email) that should be active
+// @Description on this node's Xray inbound: all valid (active, non-expired, under-quota)
+// @Description customer subscriptions whose plan grants access to a line containing this node.
+// @Tags nodes
+// @Security BearerAuth
+// @Produce json
+// @Param mac path string true "node MAC"
+// @Success 200 {object} NodeXrayUsersResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /nodes/{mac}/xray-users [get]
+func (h *Handler) HandleNodeXrayUsers(w http.ResponseWriter, r *http.Request) {
+	if !h.Auth.RequireDeviceAuth(w, r) {
+		return
+	}
+
+	mac := r.PathValue("mac")
+	if mac == "" {
+		h.jsonErr(w, http.StatusBadRequest, "mac required")
+		return
+	}
+
+	now := time.Now().UTC().Format(model.TimeLayout)
+
+	var rows []struct {
+		ID       uint
+		XrayUUID string
+	}
+	// Resolve: node MAC -> enabled lines containing it -> plans granting those lines
+	// -> active subscriptions of those plans whose customer is active, not expired,
+	// and not over traffic quota. DISTINCT because a sub's plan may map to several
+	// lines that all include this node.
+	if err := h.DB.Raw(
+		"SELECT DISTINCT cs.id, cs.xray_uuid "+
+			"FROM customer_subscriptions cs "+
+			"JOIN customers c ON c.id = cs.customer_id AND c.status = 'active' "+
+			"JOIN plan_lines pl ON pl.plan_id = cs.plan_id "+
+			"JOIN `lines` l ON l.id = pl.line_id AND l.enabled = 1 "+
+			"JOIN line_nodes ln ON ln.line_id = pl.line_id AND ln.node_mac = ? "+
+			"WHERE cs.status = 'active' "+
+			"AND cs.xray_uuid <> '' "+
+			"AND cs.expires_at > ? "+
+			"AND (cs.traffic_limit = 0 OR cs.traffic_used < cs.traffic_limit)",
+		mac, now,
+	).Scan(&rows).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+
+	users := make([]XrayUser, 0, len(rows))
+	for _, row := range rows {
+		users = append(users, XrayUser{
+			UUID:  row.XrayUUID,
+			Email: fmt.Sprintf("sub-%d", row.ID),
+		})
+	}
+
+	h.jsonOK(w, NodeXrayUsersResponse{MAC: mac, Users: users})
+}

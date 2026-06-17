@@ -7,26 +7,26 @@ const TimeLayout = "2006-01-02 15:04:05"
 
 // Node 是所有接口通用的节点数据结构。
 type Node struct {
-	MAC           string `json:"mac" gorm:"primaryKey;column:mac"`
-	MAC6          string `json:"mac6"`
-	Hostname      string `json:"hostname"`
-	CFURL         string `json:"cf_url"`
-	TunnelID      string `json:"tunnel_id"`
-	TailscaleIP   string `json:"tailscale_ip"`
-	EasytierIP    string `json:"easytier_ip"`
-	FRPPort       int    `json:"frp_port"`
-	XrayUUID      string `json:"xray_uuid"`
-	MeshTunnelID  string `json:"mesh_tunnel_id"`
-	MeshIP        string `json:"mesh_ip"`
-	Location      string `json:"location"`
-	Note          string `json:"note"`
-	RegisteredAt  string `json:"registered_at"`
-	LastSeen      string `json:"last_seen"`
-	Enabled       bool   `json:"enabled"`
-	Status        string `json:"status"`
-	Weight        int    `json:"weight"`
-	Region        string `json:"region"`
-	ProbeStatus string `json:"probe_status"`
+	MAC          string `json:"mac" gorm:"primaryKey;column:mac"`
+	MAC6         string `json:"mac6"`
+	Hostname     string `json:"hostname"`
+	CFURL        string `json:"cf_url"`
+	TunnelID     string `json:"tunnel_id"`
+	TailscaleIP  string `json:"tailscale_ip"`
+	EasytierIP   string `json:"easytier_ip"`
+	FRPPort      int    `json:"frp_port"`
+	XrayUUID     string `json:"xray_uuid"`
+	MeshTunnelID string `json:"mesh_tunnel_id"`
+	MeshIP       string `json:"mesh_ip"`
+	Location     string `json:"location"`
+	Note         string `json:"note"`
+	RegisteredAt string `json:"registered_at"`
+	LastSeen     string `json:"last_seen"`
+	Enabled      bool   `json:"enabled"`
+	Status       string `json:"status"`
+	Weight       int    `json:"weight"`
+	Region       string `json:"region"`
+	ProbeStatus  string `json:"probe_status"`
 }
 
 // NodeCols SELECT 列顺序，用于 LEFT JOIN 查询
@@ -120,6 +120,7 @@ type CustomerSubscription struct {
 	CustomerID     uint    `json:"customer_id"`
 	PlanID         uint    `json:"plan_id"`
 	Token          string  `json:"token"`
+	XrayUUID       string  `json:"xray_uuid"`
 	TrafficUsed    int64   `json:"traffic_used"`
 	TrafficLimit   int64   `json:"traffic_limit"`
 	TrafficResetAt *string `json:"traffic_reset_at"`

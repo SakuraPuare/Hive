@@ -27,8 +27,9 @@ type ResetTokenResponse struct {
 }
 
 // buildGroupClashYAML generates a group-specific Clash YAML.
-func (h *Handler) buildGroupClashYAML(groupName string, nodes []model.Node) string {
-	return buildFullClashYAML(groupName, nodes, h.Config.XrayPath)
+// overrideUUID, when non-empty, forces all proxies to use that UUID (per-subscription).
+func (h *Handler) buildGroupClashYAML(groupName string, nodes []model.Node, overrideUUID string) string {
+	return buildFullClashYAML(groupName, nodes, h.Config.XrayPath, overrideUUID)
 }
 
 // HandleListGroups handles GET /admin/subscription-groups
@@ -297,7 +298,7 @@ func (h *Handler) HandlePublicGroupClash(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	yaml := h.buildGroupClashYAML(sg.Name, nodes)
+	yaml := h.buildGroupClashYAML(sg.Name, nodes, "")
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.yaml"`, sg.Name))
 	fmt.Fprint(w, yaml)

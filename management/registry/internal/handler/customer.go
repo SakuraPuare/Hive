@@ -331,6 +331,11 @@ func (h *Handler) HandleCreateSubscription(w http.ResponseWriter, r *http.Reques
 		h.jsonErr(w, http.StatusInternalServerError, "token: "+err.Error())
 		return
 	}
+	xrayUUID, err := generateUUID()
+	if err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "uuid: "+err.Error())
+		return
+	}
 
 	now := time.Now().UTC()
 	nowStr := now.Format(model.TimeLayout)
@@ -339,9 +344,9 @@ func (h *Handler) HandleCreateSubscription(w http.ResponseWriter, r *http.Reques
 	var subID uint
 	if err := h.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(
-			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) "+
-				"VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'active', ?, ?)",
-			customerID, req.PlanID, token, plan.TrafficLimit, plan.DeviceLimit, nowStr, expiresAt, nowStr, nowStr,
+			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, xray_uuid, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) "+
+				"VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, 'active', ?, ?)",
+			customerID, req.PlanID, token, xrayUUID, plan.TrafficLimit, plan.DeviceLimit, nowStr, expiresAt, nowStr, nowStr,
 		).Error; err != nil {
 			return err
 		}

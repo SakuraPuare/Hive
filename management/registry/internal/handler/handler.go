@@ -20,6 +20,22 @@ type Handler struct {
 	Config *config.Config
 	Auth   *middleware.Auth
 	Mailer *mailer.Mailer
+
+	// Rate limiters, populated by RegisterRoutes. Exposed so tests can reset
+	// their shared state between cases.
+	loginRL    *middleware.RateLimiter
+	forgotPwRL *middleware.RateLimiter
+}
+
+// ResetRateLimiters clears the request windows of all rate limiters. Intended
+// for tests where a single server instance is shared across many cases.
+func (h *Handler) ResetRateLimiters() {
+	if h.loginRL != nil {
+		h.loginRL.Reset()
+	}
+	if h.forgotPwRL != nil {
+		h.forgotPwRL.Reset()
+	}
 }
 
 func (h *Handler) jsonOK(w http.ResponseWriter, v any) {
@@ -38,7 +54,7 @@ func (h *Handler) jsonErr(w http.ResponseWriter, code int, msg string) {
 // queryAllNodes returns all nodes with probe status via LEFT JOIN.
 func (h *Handler) queryAllNodes() ([]model.Node, error) {
 	var nodes []model.Node
-	err := h.DB.Raw("SELECT "+model.NodeCols+" FROM nodes n LEFT JOIN node_status_checks nsc ON n.mac = nsc.mac ORDER BY n.hostname").Scan(&nodes).Error
+	err := h.DB.Raw("SELECT " + model.NodeCols + " FROM nodes n LEFT JOIN node_status_checks nsc ON n.mac = nsc.mac ORDER BY n.hostname").Scan(&nodes).Error
 	return nodes, err
 }
 

@@ -442,7 +442,7 @@ func (h *Handler) HandlePublicLineClash(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	yaml := h.buildGroupClashYAML(lineName, nodes)
+	yaml := h.buildGroupClashYAML(lineName, nodes, "")
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.yaml"`, lineName))
 	fmt.Fprint(w, yaml)

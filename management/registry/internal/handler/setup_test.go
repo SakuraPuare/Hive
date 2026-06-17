@@ -131,6 +131,10 @@ func resetDB(t *testing.T) {
 
 	store.BootstrapSuperadmin(testDB, testCfg.AdminUser, testCfg.AdminPass)
 	store.BootstrapRBAC(testDB)
+
+	// Rate limiters are shared across the whole test binary; clear their
+	// windows so earlier cases don't exhaust the budget for later ones.
+	testH.ResetRateLimiters()
 }
 
 // ── Cookie helpers ───────────────────────────────────────────────────────────
@@ -214,6 +218,15 @@ func readBody(resp *http.Response) string {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	return string(b)
+}
+
+// decodeBody decodes a JSON response body into out.
+func decodeBody(t *testing.T, resp *http.Response, out any) {
+	t.Helper()
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
 }
 
 func assertStatus(t *testing.T, resp *http.Response, want int) {

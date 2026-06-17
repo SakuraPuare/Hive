@@ -314,6 +314,15 @@ definitions:
         example: 10
         type: integer
     type: object
+  handler.NodeXrayUsersResponse:
+    properties:
+      mac:
+        type: string
+      users:
+        items:
+          $ref: '#/definitions/handler.XrayUser'
+        type: array
+    type: object
   handler.OrderListResponse:
     properties:
       items:
@@ -503,6 +512,8 @@ definitions:
       traffic_used:
         type: integer
       updated_at:
+        type: string
+      xray_uuid:
         type: string
     type: object
   handler.PortalTicketDetail:
@@ -775,6 +786,13 @@ definitions:
         example: admin
         type: string
     type: object
+  handler.XrayUser:
+    properties:
+      email:
+        type: string
+      uuid:
+        type: string
+    type: object
   model.Announcement:
     properties:
       content:
@@ -851,6 +869,8 @@ definitions:
       traffic_used:
         type: integer
       updated_at:
+        type: string
+      xray_uuid:
         type: string
     type: object
   model.HeartbeatRequest:
@@ -3663,6 +3683,39 @@ paths:
       summary: Update a node
       tags:
       - admin
+  /nodes/{mac}/xray-users:
+    get:
+      description: |-
+        Returns the set of VLESS clients (uuid + email) that should be active
+        on this node's Xray inbound: all valid (active, non-expired, under-quota)
+        customer subscriptions whose plan grants access to a line containing this node.
+      operationId: NodeXrayUsers
+      parameters:
+      - description: node MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.NodeXrayUsersResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List Xray users for a node
+      tags:
+      - nodes
   /nodes/heartbeat:
     post:
       consumes:

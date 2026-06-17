@@ -67,7 +67,7 @@ func (h *Handler) HandleSubscriptionClash(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	yaml := buildFullClashYAML("Clash/Mihomo subscription", nodes, h.Config.XrayPath)
+	yaml := buildFullClashYAML("Clash/Mihomo subscription", nodes, h.Config.XrayPath, "")
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", "attachment; filename=hive-clash.yaml")
 	fmt.Fprint(w, yaml)

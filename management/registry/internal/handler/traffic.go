@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"hive/registry/internal/model"
@@ -43,129 +45,52 @@ func (h *Handler) collectTraffic() {
 	h.updateTrafficFromPrometheus()
 }
 
-// updateTrafficFromPrometheus queries Prometheus for xray traffic and writes
-// increments into customer_subscriptions.traffic_used.
+// updateTrafficFromPrometheus queries Prometheus for per-user xray traffic and
+// writes increments into customer_subscriptions.traffic_used.
+//
+// Each subscription is provisioned on nodes as a distinct VLESS client whose Xray
+// email is "sub-<id>" (see HandleNodeXrayUsers). xray-exporter exposes per-user
+// counters labelled target="<email>", so we can attribute traffic to the exact
+// subscription — no more equal-split approximation across a plan's subscribers.
 func (h *Handler) updateTrafficFromPrometheus() {
 	if h.Config.PrometheusURL == "" {
 		return
 	}
 
-	// Query total xray traffic (up + down) increase over the last 5 minutes, keyed by instance.
-	trafficMap := h.promQueryInstant(
-		`increase(xray_traffic_total{direction="up"}[5m]) + increase(xray_traffic_total{direction="down"}[5m])`,
+	// Sum up+down increase over the last 5 minutes, keyed by the user email label.
+	emailTraffic := h.promQueryInstantByLabel(
+		`increase(xray_traffic_uplink_bytes_total{dimension="user"}[5m]) `+
+			`+ increase(xray_traffic_downlink_bytes_total{dimension="user"}[5m])`,
+		"target", false,
 	)
-	if len(trafficMap) == 0 {
+	if len(emailTraffic) == 0 {
 		return
-	}
-
-	// Build hostname -> total bytes map (sum across all instances on same host).
-	hostTraffic := make(map[string]int64)
-	for instance, val := range trafficMap {
-		if val <= 0 {
-			continue
-		}
-		hostTraffic[instance] += int64(val)
-	}
-	if len(hostTraffic) == 0 {
-		return
-	}
-
-	// Map hostname -> node MAC.
-	var nodes []struct {
-		MAC      string
-		Hostname string
-	}
-	if err := h.DB.Raw("SELECT mac, hostname FROM nodes").Scan(&nodes).Error; err != nil {
-		log.Printf("traffic: query nodes: %v", err)
-		return
-	}
-	hostnameToMAC := make(map[string]string, len(nodes))
-	for _, n := range nodes {
-		hostnameToMAC[n.Hostname] = n.MAC
-	}
-
-	// Map node MAC -> total traffic bytes from this cycle.
-	macTraffic := make(map[string]int64)
-	for hostname, bytes := range hostTraffic {
-		if mac, ok := hostnameToMAC[hostname]; ok {
-			macTraffic[mac] += bytes
-		}
-	}
-	if len(macTraffic) == 0 {
-		return
-	}
-
-	// For each active subscription, sum traffic from its plan's nodes and add to traffic_used.
-	type subInfo struct {
-		ID     uint
-		PlanID uint
-	}
-	var subs []subInfo
-	if err := h.DB.Raw("SELECT id, plan_id FROM customer_subscriptions WHERE status = 'active'").Scan(&subs).Error; err != nil {
-		log.Printf("traffic: query active subscriptions: %v", err)
-		return
-	}
-
-	if len(subs) == 0 {
-		return
-	}
-
-	// Build plan -> set of node MACs.
-	type planLine struct {
-		PlanID  uint
-		NodeMAC string
-	}
-	var pls []planLine
-	if err := h.DB.Raw("SELECT pl.plan_id, ln.node_mac FROM plan_lines pl " +
-		"JOIN line_nodes ln ON ln.line_id = pl.line_id " +
-		"JOIN `lines` l ON l.id = pl.line_id AND l.enabled = 1").Scan(&pls).Error; err != nil {
-		log.Printf("traffic: query plan_lines: %v", err)
-		return
-	}
-
-	planNodes := make(map[uint]map[string]bool)
-	for _, pl := range pls {
-		if planNodes[pl.PlanID] == nil {
-			planNodes[pl.PlanID] = make(map[string]bool)
-		}
-		planNodes[pl.PlanID][pl.NodeMAC] = true
 	}
 
 	now := time.Now().UTC().Format(model.TimeLayout)
 	updated := 0
 
-	for _, sub := range subs {
-		nodeMacs := planNodes[sub.PlanID]
-		if len(nodeMacs) == 0 {
+	for email, bytesF := range emailTraffic {
+		// We only bill subscription users, whose email is "sub-<id>".
+		// Anything else (e.g. the node's own "node-*" public client) is ignored.
+		idStr, ok := strings.CutPrefix(email, "sub-")
+		if !ok {
 			continue
 		}
-
-		// Sum traffic from all nodes in this subscription's plan.
-		var delta int64
-		for mac := range nodeMacs {
-			delta += macTraffic[mac]
+		subID, err := strconv.ParseUint(idStr, 10, 64)
+		if err != nil || subID == 0 {
+			continue
 		}
+		delta := int64(bytesF)
 		if delta <= 0 {
 			continue
 		}
 
-		// NOTE: Since xray uses node-level UUIDs, we can't distinguish per-user traffic.
-		// We divide the node traffic equally among all active subscriptions sharing that plan.
-		// This is a rough approximation until per-user metering is available.
-		var planSubCount int64
-		if err := h.DB.Raw("SELECT COUNT(*) FROM customer_subscriptions WHERE plan_id = ? AND status = 'active'", sub.PlanID).Scan(&planSubCount).Error; err != nil {
-			log.Printf("traffic: count subs for plan %d: %v", sub.PlanID, err)
-			continue
-		}
-		if planSubCount > 1 {
-			delta = delta / planSubCount
-		}
-
 		if err := h.DB.Exec(
 			"UPDATE customer_subscriptions SET traffic_used = traffic_used + ?, updated_at = ? WHERE id = ?",
-			delta, now, sub.ID,
+			delta, now, subID,
 		).Error; err != nil {
-			log.Printf("traffic: update sub %d: %v", sub.ID, err)
+			log.Printf("traffic: update sub %d: %v", subID, err)
 			continue
 		}
 		updated++

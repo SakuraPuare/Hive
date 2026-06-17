@@ -137,6 +137,14 @@ func (h *Handler) runProbe() {
 }
 
 func (h *Handler) promQueryInstant(query string) map[string]float64 {
+	return h.promQueryInstantByLabel(query, "instance", true)
+}
+
+// promQueryInstantByLabel runs an instant query and aggregates result values keyed
+// by the given metric label. When stripPort is true, a trailing ":port" is removed
+// from the label value (useful for the "instance" label). Values for the same key
+// are summed.
+func (h *Handler) promQueryInstantByLabel(query, label string, stripPort bool) map[string]float64 {
 	result := make(map[string]float64)
 
 	u := fmt.Sprintf("%s/api/v1/query?query=%s", h.Config.PrometheusURL, url.QueryEscape(query))
@@ -160,9 +168,14 @@ func (h *Handler) promQueryInstant(query string) map[string]float64 {
 	}
 
 	for _, r := range pr.Data.Result {
-		instance := r.Metric["instance"]
-		if idx := strings.LastIndex(instance, ":"); idx > 0 {
-			instance = instance[:idx]
+		key := r.Metric[label]
+		if key == "" {
+			continue
+		}
+		if stripPort {
+			if idx := strings.LastIndex(key, ":"); idx > 0 {
+				key = key[:idx]
+			}
 		}
 		if len(r.Value) < 2 {
 			continue
@@ -178,7 +191,7 @@ func (h *Handler) promQueryInstant(query string) map[string]float64 {
 		if math.IsNaN(val) || math.IsInf(val, 0) {
 			continue
 		}
-		result[instance] = val
+		result[key] += val
 	}
 
 	return result
