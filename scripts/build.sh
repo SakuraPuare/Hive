@@ -26,14 +26,20 @@ case "${PROFILE}" in
     BASE_KERNEL_CONFIG="linux-rockchip64-current"
     EXTRA_CFLAGS="-O2 -march=armv8-a+crc+crypto -mtune=cortex-a55 -fomit-frame-pointer"
     ;;
+  orangepi4-lts)
+    BOARD="orangepi4-lts"
+    BRANCH="current"
+    BASE_KERNEL_CONFIG="linux-rockchip64-current"
+    # RK3399 / big.LITTLE（2×Cortex-A72 + 4×Cortex-A53）：ARMv8.0-A + crc + crypto
+    EXTRA_CFLAGS="-O2 -march=armv8-a+crc+crypto -mtune=cortex-a72.cortex-a53 -fomit-frame-pointer"
+    ;;
   *)
     echo "ERROR: 未知 profile '${PROFILE}'"
-    echo "支持的 profile: nanopi-zero2, nanopi-r3s"
+    echo "支持的 profile: nanopi-zero2, nanopi-r3s, orangepi4-lts"
     exit 1
     ;;
 esac
 
-OPTIMIZED_CONFIG="${BASE_KERNEL_CONFIG}-hive"
 KERNEL_OPTIMIZE_SCRIPT="${ROOT_DIR}/configs/kernel/${PROFILE}.sh"
 
 RELEASE="trixie"
@@ -253,11 +259,18 @@ cd "${ARMBIAN_DIR}"
 # 执行构建（USE_CCACHE=yes 让 Armbian 在 Docker 内启用 ccache）
 # 优化内核 config 已写入 userpatches/config/kernel/，框架按 LINUXCONFIG 文件名
 # 自动采用，无需在此传参（KERNEL_CONFIGURE 是布尔开关，旧用法传文件名无效）
+#
+# KERNEL_CONFIGURE=no / BUILD_DESKTOP=no 必须显式传，否则交互菜单会弹出：
+#   - 不传 KERNEL_CONFIGURE → 弹"是否查看内核配置"菜单（所有板）
+#   - 不传 BUILD_DESKTOP    → 有 HDMI 的板（如香橙派 Pi 4 LTS HAS_VIDEO_OUTPUT=yes）
+#     会弹"是否编译桌面版"菜单；headless 边缘节点一律 no
 time ./compile.sh build \
     BOARD="${BOARD}" \
     BRANCH="${BRANCH}" \
     RELEASE="${RELEASE}" \
     BUILD_MINIMAL=no \
+    BUILD_DESKTOP=no \
+    KERNEL_CONFIGURE=no \
     USE_CCACHE=yes \
     COMPRESS_OUTPUTIMAGE=sha,xz \
     PATCHES_TO_GIT=yes \

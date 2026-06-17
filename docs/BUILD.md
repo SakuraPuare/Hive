@@ -143,15 +143,21 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 **自定义构建参数**：
 
 ```bash
-# 指定开发板型号（默认 nanopi-zero2）
-BOARD=nanopi-zero2 ./scripts/build.sh
-
-# 开启 Kernel menuconfig
-KERNEL_CONFIGURE=yes ./scripts/build.sh
-
-# 指定 Debian release（默认 trixie）
-RELEASE=bookworm ./scripts/build.sh
+# 指定开发板 profile（默认 nanopi-zero2）
+./scripts/build.sh nanopi-zero2   # NanoPi Zero2  (RK3528)
+./scripts/build.sh nanopi-r3s     # NanoPi R3S    (RK3566)
+./scripts/build.sh orangepi4-lts  # 香橙派 Pi 4 LTS (RK3399)
 ```
+
+> 内核精简 config 由 `configs/kernel/<profile>.sh` 在构建时生成，写入
+> `userpatches/config/kernel/<LINUXCONFIG>.config`，Armbian 按文件名自动优先采用。
+> 如需交互式调整内核选项，用 Armbian CLI 独立命令（`KERNEL_CONFIGURE=yes` 旧用法已废弃）：
+>
+> ```bash
+> cd armbian-build/build
+> ./compile.sh kernel-config BOARD=orangepi4-lts BRANCH=current   # 进 menuconfig
+> ./compile.sh config-dump   BOARD=orangepi4-lts BRANCH=current   # 查看解析后的全部变量
+> ```
 
 ### 步骤 6：烧录到 SD 卡
 

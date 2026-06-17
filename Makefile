@@ -1,5 +1,5 @@
 .PHONY: help setup setup-armbian download-binaries env setup-docker-btrfs \
-       build build-r3s build-qemu run-qemu \
+       build build-r3s build-opi4 build-qemu run-qemu \
        registry registry-arm64 registry-test registry-test-short registry-openapi registry-seed registry-clean \
        ui-dev ui-build ui-gen-api ui-typecheck ui-test \
        monitoring-up monitoring-down monitoring-logs \
@@ -56,7 +56,10 @@ build: ## 构建 nanopi-zero2 (RK3528) 镜像
 build-r3s: ## 构建 nanopi-r3s (RK3566) 镜像
 	./scripts/build.sh nanopi-r3s
 
-build-all: build build-r3s ## 构建所有板子镜像
+build-opi4: ## 构建 orangepi4-lts (香橙派 Pi 4 LTS / RK3399) 镜像
+	./scripts/build.sh orangepi4-lts
+
+build-all: build build-r3s build-opi4 ## 构建所有板子镜像
 
 build-qemu: ## 构建 QEMU 测试镜像
 	./scripts/build-qemu.sh
