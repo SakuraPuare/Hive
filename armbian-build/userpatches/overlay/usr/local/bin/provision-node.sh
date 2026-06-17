@@ -85,6 +85,8 @@ UUID_HEX=$(printf 'hive-xray-uuid:%s' "${MAC}" | sha256sum | awk '{print $1}')
 # 取前 32 hex 构造 UUID v4 格式（设置 version=4, variant=10xx）
 UUID="${UUID_HEX:0:8}-${UUID_HEX:8:4}-4${UUID_HEX:13:3}-$(printf '%x' $(( 0x${UUID_HEX:16:2} & 0x3f | 0x80 )))${UUID_HEX:18:2}-${UUID_HEX:20:12}"
 sed -i "s/%%XRAY_UUID%%/${UUID}/g" /etc/xray/config.json
+# 节点公共 client 的 email（计费按 sub-<id> 归属，node-* 仅作占位/兜底，不计费）
+sed -i "s/%%NODE_MAC%%/${MAC}/g" /etc/xray/config.json
 echo ">>> xray UUID: ${UUID} (deterministic from MAC)"
 
 # 伪装跳转 URL
@@ -248,6 +250,12 @@ echo ">>> Starting services..."
 systemctl enable --now xray
 systemctl enable --now cloudflared
 systemctl enable --now frpc
+
+# Xray 用户同步定时器（从 registry 拉取订阅用户并注入 Xray，非致命）
+systemctl enable --now hive-xray-sync.timer || echo ">>> hive-xray-sync.timer failed (non-fatal)"
+
+# Xray 流量统计 exporter（供 Prometheus 抓取 per-user 流量，非致命）
+systemctl enable --now xray-exporter || echo ">>> xray-exporter failed (non-fatal)"
 
 # EasyTier：start-easytier.sh 从 node-info 读取 --ipv4 参数
 systemctl enable --now easytier

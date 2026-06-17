@@ -8,6 +8,7 @@ XRAY_VER="${XRAY_VER:-latest}"               # e.g. v26.2.6 或 latest
 CLOUDFLARED_VER="${CLOUDFLARED_VER:-latest}" # e.g. 2026.2.0 或 latest
 FRP_VER="${FRP_VER:-0.67.0}"
 EASYTIER_VER="${EASYTIER_VER:-v2.4.5}"
+XRAY_EXPORTER_VER="${XRAY_EXPORTER_VER:-v0.2.0}" # compassvpn/xray-exporter
 
 DEST="armbian-build/userpatches/overlay/usr/local/bin"
 mkdir -p "$DEST"
@@ -53,6 +54,15 @@ unzip -jo /tmp/easytier.zip "*/easytier-core" -d "${DEST}"
 chmod +x "${DEST}/easytier-core"
 rm /tmp/easytier.zip
 echo "    easytier-core: OK"
+
+# ── xray-exporter ──────────────────────────────────────────────────────
+# https://github.com/compassvpn/xray-exporter
+# 读取 Xray StatsService(gRPC) 并暴露 per-user Prometheus 指标，供计费使用
+echo ">>> Downloading xray-exporter ${XRAY_EXPORTER_VER}..."
+curl -L "https://github.com/compassvpn/xray-exporter/releases/download/${XRAY_EXPORTER_VER}/xray-exporter-linux-arm64" \
+    -o "${DEST}/xray-exporter"
+chmod +x "${DEST}/xray-exporter"
+echo "    xray-exporter: OK"
 
 echo ""
 echo ">>> All binaries downloaded:"

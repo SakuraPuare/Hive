@@ -125,7 +125,7 @@ rm -rf /var/lib/apt/lists/*
 # 4. 设置二进制权限（由 download-binaries.sh 预置到 overlay）
 # ─────────────────────────────────────────────
 MISSING_BINARIES=""
-for bin in xray cloudflared frpc easytier-core; do
+for bin in xray cloudflared frpc easytier-core xray-exporter; do
     if [ -f "/usr/local/bin/${bin}" ]; then
         chmod +x "/usr/local/bin/${bin}"
         echo ">>> ${bin}: OK"
@@ -134,6 +134,12 @@ for bin in xray cloudflared frpc easytier-core; do
         MISSING_BINARIES="${MISSING_BINARIES} ${bin}"
     fi
 done
+
+# Hive 运维脚本权限
+if [ -f "/usr/local/bin/hive-xray-sync" ]; then
+    chmod +x /usr/local/bin/hive-xray-sync
+    echo ">>> hive-xray-sync: OK"
+fi
 
 if [ -f "/usr/local/bin/provision-node.sh" ]; then
     chmod +x /usr/local/bin/provision-node.sh

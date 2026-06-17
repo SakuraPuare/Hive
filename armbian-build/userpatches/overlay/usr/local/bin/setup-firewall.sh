@@ -68,6 +68,9 @@ ufw allow from 100.0.0.0/8 to any port 22 comment 'SSH - Tailscale'
 echo "配置监控服务..."
 ufw allow from 100.0.0.0/8 to any port 9100 comment 'Node Exporter - Tailscale Only'
 
+# Xray Exporter (9550) - per-user 流量指标，仅 Tailscale 网络
+ufw allow from 100.0.0.0/8 to any port 9550 comment 'Xray Exporter - Tailscale Only'
+
 # 如果有其他监控系统，取消注释并调整：
 # ufw allow from YOUR_MONITORING_IP to any port 9100 comment 'Node Exporter - Monitoring'
 
