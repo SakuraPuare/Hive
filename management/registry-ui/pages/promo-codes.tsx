@@ -44,7 +44,7 @@ function PromoForm({ form, setForm, t }: { form: FormState; setForm: (f: FormSta
         <div><Label>{t('validTo')}</Label><Input type="datetime-local" value={form.valid_to} onChange={(e) => setForm({ ...form, valid_to: e.target.value })} /></div>
       </div>
       <div className="flex items-center gap-2">
-        <input type="checkbox" id="pc-enabled" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} className="h-4 w-4" />
+        <input type="checkbox" id="pc-enabled" aria-label={t('enabled')} checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} className="h-4 w-4" />
         <Label htmlFor="pc-enabled">{t('enabled')}</Label>
       </div>
     </div>
