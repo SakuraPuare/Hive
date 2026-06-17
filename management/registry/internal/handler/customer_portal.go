@@ -52,11 +52,11 @@ type PortalReplyTicketRequest struct {
 
 // PortalMeResponse is the response body for GET /portal/me.
 type PortalMeResponse struct {
-	ID        uint                        `json:"id" example:"1"`
-	Email     string                      `json:"email" example:"user@example.com"`
-	Nickname  string                      `json:"nickname" example:"alice"`
-	Status    string                      `json:"status" example:"active"`
-	CreatedAt string                      `json:"created_at" example:"2025-01-01 00:00:00"`
+	ID        uint                         `json:"id" example:"1"`
+	Email     string                       `json:"email" example:"user@example.com"`
+	Nickname  string                       `json:"nickname" example:"alice"`
+	Status    string                       `json:"status" example:"active"`
+	CreatedAt string                       `json:"created_at" example:"2025-01-01 00:00:00"`
 	Subs      []model.CustomerSubscription `json:"subscriptions"`
 }
 
@@ -77,7 +77,7 @@ type PortalTicketDetail = TicketDetailResponse
 
 // PortalOrderListResponse is the response body for GET /portal/orders.
 type PortalOrderListResponse struct {
-	Total int64        `json:"total" example:"10"`
+	Total int64         `json:"total" example:"10"`
 	Items []model.Order `json:"items"`
 }
 

@@ -380,8 +380,8 @@ func TestPortalCreateOrder_Success(t *testing.T) {
 func TestPortalCreateOrder_WithPromoCode(t *testing.T) {
 	resetDB(t)
 	cid := insertTestCustomer(t, "promo@example.com")
-	planID := insertTestPlan(t, "优惠套餐") // price=1000
-	insertTestPromoCode(t, "SAVE20", 20)     // 20% off
+	planID := insertTestPlan(t, "优惠套餐")  // price=1000
+	insertTestPromoCode(t, "SAVE20", 20) // 20% off
 
 	resp := doJSON("POST", "/portal/orders", map[string]any{
 		"plan_id":    planID,
