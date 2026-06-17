@@ -26,7 +26,7 @@ func TestCreateUser(t *testing.T) {
 
 	resp := doJSON("POST", "/admin/users", map[string]string{
 		"username": "newuser",
-		"password": "pass123",
+		"password": "pass1234",
 		"role":     "viewer",
 	}, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
@@ -45,7 +45,7 @@ func TestCreateUser_DuplicateUsername(t *testing.T) {
 
 	payload := map[string]string{
 		"username": "dup",
-		"password": "pass123",
+		"password": "pass1234",
 		"role":     "viewer",
 	}
 	resp := doJSON("POST", "/admin/users", payload, adminCookie())
@@ -113,7 +113,7 @@ func TestChangePassword_Self(t *testing.T) {
 	cookie := userCookieWithRole("selfpw", "viewer")
 
 	resp := doJSON("POST", fmt.Sprintf("/admin/users/%d/password", uid), map[string]string{
-		"password": "newpass",
+		"password": "newpass1",
 	}, cookie)
 	assertStatus(t, resp, http.StatusOK)
 }
