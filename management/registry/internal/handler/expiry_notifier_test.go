@@ -97,6 +97,9 @@ func TestExpiryNotifier_ExpiresSubscription(t *testing.T) {
 	// Expired 1 hour ago
 	subID := insertTestSubscription(t, cid, pid, "active", time.Now().UTC().Add(-1*time.Hour))
 
+	// Status transitions are owned by the lifecycle loop, not the notifier.
+	testH.expireSubscriptions(time.Now().UTC().Format(model.TimeLayout))
+
 	ml := newTestMailer()
 	ml.RunExpiryCheck()
 
@@ -113,8 +116,10 @@ func TestExpiryNotifier_SkipsNonActive(t *testing.T) {
 	resetDB(t)
 	cid := insertTestCustomer(t, "inactive@example.com")
 	pid := insertTestPlan(t, "Monthly")
-	// Already expired status, expires in 2 days
-	subID := insertTestSubscription(t, cid, pid, "expired", time.Now().UTC().Add(2*24*time.Hour))
+	// Suspended status, expiring in 2 days. The notifier only touches
+	// active (expiring reminder) and expired (expired notice) subscriptions,
+	// so a suspended one must be left alone.
+	subID := insertTestSubscription(t, cid, pid, "suspended", time.Now().UTC().Add(2*24*time.Hour))
 
 	ml := newTestMailer()
 	ml.RunExpiryCheck()
@@ -162,6 +167,10 @@ func TestExpiryNotifier_MixedScenario(t *testing.T) {
 	sub2 := insertTestSubscription(t, cid2, pid, "active", time.Now().UTC().Add(-2*time.Hour))
 	// sub3: expires in 10 days (should skip)
 	sub3 := insertTestSubscription(t, cid3, pid, "active", time.Now().UTC().Add(10*24*time.Hour))
+
+	// Production order: lifecycle loop expires past-due subs, then the
+	// notifier sends reminders/notices.
+	testH.expireSubscriptions(time.Now().UTC().Format(model.TimeLayout))
 
 	ml := newTestMailer()
 	ml.RunExpiryCheck()
