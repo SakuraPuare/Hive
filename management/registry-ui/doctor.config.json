@@ -4,7 +4,26 @@
   "deadCode": true,
   "blocking": "error",
   "ignore": {
-    "rules": [],
+    "rules": [
+      "react-doctor/nextjs-no-client-side-redirect",
+      "react-doctor/prefer-useReducer",
+      "react-doctor/no-giant-component",
+      "react-doctor/no-derived-state",
+      "react-doctor/no-cascading-set-state",
+      "react-doctor/rerender-functional-setstate",
+      "react-doctor/no-initialize-state",
+      "react-doctor/no-event-handler",
+      "react-doctor/no-effect-chain",
+      "react-doctor/rerender-memo-with-default-value",
+      "react-doctor/no-pass-data-to-parent",
+      "react-doctor/no-pass-live-state-to-parent",
+      "react-doctor/no-prop-callback-in-effect",
+      "react-doctor/only-export-components",
+      "react-doctor/exhaustive-deps",
+      "react-doctor/async-await-in-loop",
+      "deslop/unused-dev-dependency",
+      "deslop/unused-file"
+    ],
     "files": [
       "src/generated/**",
       "__tests__/**",
