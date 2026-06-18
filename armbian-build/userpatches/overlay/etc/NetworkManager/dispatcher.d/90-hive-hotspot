@@ -1,0 +1,49 @@
+#!/bin/bash
+# /etc/NetworkManager/dispatcher.d/90-hive-hotspot
+# 热点连接 up/down 时，按实际 AP 接口动态放行 UFW 转发/DHCP/DNS。
+# 支持双频两个连接：hive-hotspot-2g（WPA2）与 hive-hotspot-5g（WPA3）。
+#
+# 背景：UFW 策略 deny incoming + deny forward。NM shared 模式在自己的 nft 表
+#   里做 NAT，但 netfilter 任一表 DROP 即终结，UFW 的 deny 会先丢掉热点流量。
+#   故必须在 UFW 侧按接口打洞：DHCP(udp/67，客户端源 IP 0.0.0.0 只能按接口放行)、
+#   DNS(53)、转发(ufw route allow in on <ap>)。接口名不固定，用 NM 传入的
+#   $DEVICE_IP_IFACE，并持久化到 /run 以便 down 事件（该变量常为空）精确清理。
+#
+# NM dispatcher 约定：$1=接口名 $2=动作(up/down/...)；$CONNECTION_ID=连接名。
+
+IFACE="$1"
+ACTION="$2"
+CONN="${CONNECTION_ID:-}"
+
+# 仅处理本项目的热点连接（2g / 5g）
+case "$CONN" in
+    hive-hotspot-2g|hive-hotspot-5g) ;;
+    *) exit 0 ;;
+esac
+command -v ufw >/dev/null 2>&1 || exit 0
+STATE_FILE="/run/hive-hotspot-ap-iface.${CONN}"
+
+case "$ACTION" in
+    up)
+        AP_IFACE="${DEVICE_IP_IFACE:-$IFACE}"
+        [ -n "$AP_IFACE" ] || exit 0
+        echo "$AP_IFACE" > "$STATE_FILE" 2>/dev/null || true
+        ufw route allow in on "$AP_IFACE" comment "$CONN forward" 2>/dev/null || true
+        ufw allow in on "$AP_IFACE" to any port 67 proto udp comment "$CONN DHCP" 2>/dev/null || true
+        ufw allow in on "$AP_IFACE" to any port 53 comment "$CONN DNS" 2>/dev/null || true
+        logger -t hive-hotspot "UFW rules added for $CONN on $AP_IFACE"
+        ;;
+    down)
+        # down 事件 DEVICE_IP_IFACE 常为空 → 回读 up 时持久化的接口名，否则规则泄漏
+        AP_IFACE="${DEVICE_IP_IFACE:-}"
+        [ -n "$AP_IFACE" ] || AP_IFACE=$(cat "$STATE_FILE" 2>/dev/null)
+        [ -n "$AP_IFACE" ] || AP_IFACE="$IFACE"
+        [ -n "$AP_IFACE" ] || exit 0
+        ufw route delete allow in on "$AP_IFACE" 2>/dev/null || true
+        ufw delete allow in on "$AP_IFACE" to any port 67 proto udp 2>/dev/null || true
+        ufw delete allow in on "$AP_IFACE" to any port 53 2>/dev/null || true
+        rm -f "$STATE_FILE" 2>/dev/null || true
+        logger -t hive-hotspot "UFW rules removed for $CONN on $AP_IFACE"
+        ;;
+esac
+exit 0
