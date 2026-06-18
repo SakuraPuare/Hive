@@ -4,10 +4,11 @@
 # 基线: Armbian linux-rockchip64-current.config
 # 目的: 禁用香橙派 Pi 4 LTS 路由器/VPN 网关场景不需要的驱动和子系统，减少编译时间
 #
-# 注意: 香橙派 Pi 4 LTS 板载 WiFi/BT 是 Spreadtrum 芯片（sprdwl_ng / sprdbt_tty
-#       out-of-tree 模块，由 Armbian board 配置加载），不靠内核内置 WiFi 驱动，
-#       因此下面禁用各类 PCIe/USB WiFi 驱动不影响板载无线；
-#       板载网卡是 RK3399 内置 GMAC + RTL8211F GbE PHY，保留不禁用。
+# 注意: 香橙派 Pi 4 LTS 板载 WiFi/BT 是 Spreadtrum 芯片，WiFi 走 SDIO 的
+#       in-tree 内核模块 sprdwl_ng（CONFIG_SPRDWL_NG / CONFIG_WLAN_UWE5622），
+#       由 board 配置的 MODULES_CURRENT="sprdbt_tty sprdwl_ng" 开机加载；
+#       蓝牙走 UART 的 sprdbt_tty。这些 WiFi 符号必须保留，否则板载无线失效。
+#       板载有线网卡是 RK3399 内置 GMAC + RTL8211F GbE PHY，保留不禁用。
 #
 # 用法: ./apply.sh <input.config> <output.config>
 set -e
@@ -34,6 +35,13 @@ set_val() {
   sed -i "s/^${key}=.*$/${key}=${val}/" "$OUT"
 }
 
+force() {
+  # 强制设值：无论原本是 =x / # is not set / 整行不存在，都落定为指定值（幂等）。
+  local key="$1" val="${2:-y}"
+  sed -i "/^${key}=/d; /^# ${key} is not set$/d" "$OUT"
+  echo "${key}=${val}" >> "$OUT"
+}
+
 # ── 过大的默认值（RK3399 是 6 核嵌入式，不需要服务器级配置）────────────────
 
 set_val CONFIG_NR_CPUS 8   # 原值 256，RK3399 只有 6 核（2×A72 + 4×A53）
@@ -47,7 +55,7 @@ disable CONFIG_X25         # X.25 — 上世纪的分组交换网络
 disable CONFIG_LAPB        # LAPB — X.25 的链路层
 disable CONFIG_PHONET      # Phonet — Nokia 手机内部总线协议
 
-# ── WiFi 驱动（板载是 Spreadtrum out-of-tree 模块，内置 WiFi 驱动均可禁）──────
+# ── WiFi 驱动（板载是 Spreadtrum SDIO，可插 USB 卡的 MT7921U 保留）──────────
 
 # Atheros（需要 PCIe 插槽）
 disable CONFIG_ATH9K       # Atheros 9xxx — 802.11n PCIe
@@ -107,9 +115,19 @@ disable CONFIG_INPUT_JOYSTICK    # 游戏手柄
 disable CONFIG_INPUT_TOUCHSCREEN # 触摸屏
 
 # ── 更多过时 WiFi 驱动 ───────────────────────────────────────────────────
+# 注意：CONFIG_WLAN_UWE5621/UWE5622 是香橙派 4 LTS 板载 WiFi 的 in-tree 驱动，
+#       绝不能禁（旧版本曾误禁导致板载无线失效）。改为下方"AP 栈保活"显式保留。
 
-disable CONFIG_WLAN_UWE5621      # Unisoc WiFi — 不相关
-disable CONFIG_WLAN_UWE5622
+# ── WiFi 热点（AP 模式）驱动保活 ──────────────────────────────────────────
+# 香橙派 4 LTS 板载 Spreadtrum UWE5622（sprdwl_ng）支持 SoftAP，可开机自动开热点。
+# 基线 rockchip64-current config 已含这些符号(=m)，此处显式 force 兜底，
+# 防止将来 base 变动或 olddefconfig 级联裁剪悄悄丢掉板载 WiFi / 热点能力。
+force CONFIG_CFG80211 m            # 80211 配置层
+force CONFIG_MAC80211 m            # 软 MAC 层（AP 模式在此实现）
+force CONFIG_WLAN_UWE5621 m        # Unisoc UWE5621（板载，含 sprdwl_ng）
+force CONFIG_WLAN_UWE5622 m        # Unisoc UWE5622（香橙派 4 LTS 实际板载芯片）
+force CONFIG_SPRDWL_NG m           # Spreadtrum WLAN 主驱动
+force CONFIG_RK_WIFI_DEVICE_UWE5621 y
 
 # ── 其他嵌入式不需要的 ───────────────────────────────────────────────────
 
