@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, use, useState, useEffect, useMemo } from 'react';
 import { AdminService } from '@/src/generated/client';
 import { sessionApi } from './openapi-session';
 import type { AdminUser } from './domain-types';
@@ -31,8 +31,10 @@ export function CurrentUserProvider({ children }: { children: React.ReactNode })
       .finally(() => setLoading(false));
   }, []);
 
+  const value = useMemo(() => ({ user, loading }), [user, loading]);
+
   return (
-    <CurrentUserContext.Provider value={{ user, loading }}>
+    <CurrentUserContext.Provider value={value}>
       {children}
     </CurrentUserContext.Provider>
   );
@@ -44,7 +46,7 @@ export function CurrentUserProvider({ children }: { children: React.ReactNode })
  * Outside the provider (unit tests), falls back to a standalone fetch.
  */
 export function useCurrentUser(): CurrentUserContextValue {
-  const ctx = useContext(CurrentUserContext);
+  const ctx = use(CurrentUserContext);
 
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
