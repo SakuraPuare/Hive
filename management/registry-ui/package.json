@@ -7,7 +7,7 @@
     "gen-api": "node ./scripts/gen-api.mjs",
     "verify": "node ./scripts/verify-local.mjs",
     "export": "echo 'Static export is generated during `next build` (output: export).' && exit 0",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
     "doctor": "react-doctor",
     "test": "vitest run",
