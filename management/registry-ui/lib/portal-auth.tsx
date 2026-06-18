@@ -32,8 +32,13 @@ export function CustomerProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  const value = useMemo(
+    () => ({ customer, subscriptions, loading }),
+    [customer, subscriptions, loading]
+  );
+
   return (
-    <CustomerContext.Provider value={{ customer, subscriptions, loading }}>
+    <CustomerContext.Provider value={value}>
       {children}
     </CustomerContext.Provider>
   );
