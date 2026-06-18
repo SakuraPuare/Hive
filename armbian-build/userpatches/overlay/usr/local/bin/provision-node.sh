@@ -260,6 +260,13 @@ systemctl enable --now xray-exporter || echo ">>> xray-exporter failed (non-fata
 # EasyTier：start-easytier.sh 从 node-info 读取 --ipv4 参数
 systemctl enable --now easytier
 
+# WiFi 热点：检测无线网卡 → 自动开热点（SSID/密码由 MAC 确定性派生）。
+# hive-hotspot.sh 会把 WIFI_SSID/WIFI_PSK/WIFI_IFACE 追加进 node-info。
+# 无网卡时脚本自行 exit 0，不影响 provision。
+echo ">>> Setting up WiFi hotspot (auto-detect wireless NIC)..."
+systemctl enable hive-hotspot.service >/dev/null 2>&1 || true
+/usr/local/bin/hive-hotspot.sh || echo ">>> hive-hotspot setup skipped/failed (non-fatal)"
+
 # 安全加固：防火墙 + 入侵防护（非致命，不中止 provision）
 systemctl enable --now hive-firewall || echo ">>> hive-firewall failed (non-fatal)"
 systemctl enable --now hive-fail2ban || echo ">>> hive-fail2ban failed (non-fatal)"
