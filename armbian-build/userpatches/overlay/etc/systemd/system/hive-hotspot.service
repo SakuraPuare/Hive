@@ -1,0 +1,19 @@
+[Unit]
+Description=Hive Auto WiFi Hotspot (detect wireless NIC → open AP)
+Documentation=https://github.com/SakuraPuare/hive
+# NetworkManager 必须先就绪（AP 模式与 ipv4 shared 都依赖 NM）。
+# 不依赖 network-online.target：开热点不需要外网，且避免无人 pull 该 target 时死等。
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/usr/local/bin/hive-hotspot.sh
+# 无网卡时脚本 exit 0，不影响启动链
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

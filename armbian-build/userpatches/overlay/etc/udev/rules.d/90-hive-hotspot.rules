@@ -1,0 +1,5 @@
+# /etc/udev/rules.d/90-hive-hotspot.rules
+# 无线网卡热插拔时自动（重新）评估并开启热点。
+# 仅在新增无线网卡(DEVTYPE=wlan)时触发；--no-block 避免阻塞 udev 事件处理。
+# hive-hotspot.sh 自带单实例锁与幂等逻辑，反复触发安全。
+SUBSYSTEM=="net", ACTION=="add", ENV{DEVTYPE}=="wlan", RUN+="/bin/systemctl --no-block restart hive-hotspot.service"
