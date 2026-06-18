@@ -24,6 +24,7 @@ export default defineConfig({
         text: '日常运维',
         items: [
           { text: '节点操作', link: '/NODE-OPERATIONS' },
+          { text: 'WiFi 热点（自动）', link: '/HOTSPOT' },
           { text: '故障排查', link: '/TROUBLESHOOTING' },
         ],
       },
