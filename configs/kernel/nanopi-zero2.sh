@@ -66,6 +66,21 @@ disable CONFIG_BRCMSMAC    # Broadcom SoftMAC — PCIe 老卡
 
 # Intel iwlwifi 保留 — AX210 网卡需要 (iwlwifi + iwlmvm)
 
+# ── WiFi 热点（AP 模式）驱动保活 ──────────────────────────────────────────
+# Zero2 是唯一可外接 USB 无线网卡的板子，需支持"插卡自动开热点"：
+#   - MT AX5400 (MediaTek MT7921AU) → mt7921u；mt76 AP 模式成熟可靠（首选）
+#   - AX210NGW  (Intel AX210)       → iwlwifi+iwlmvm；AP 模式较弱（次选）
+# 基线 linux-rk35xx-vendor.config 已含这些符号(=m)，此处显式 force 兜底，
+# 防止将来 base config 变动或 olddefconfig 级联裁剪悄悄丢掉热点能力。
+# force 会先删除旧行再追加，幂等；若某符号在该内核不存在，olddefconfig 自动忽略。
+force CONFIG_CFG80211 m            # 80211 配置层（mac80211/驱动依赖）
+force CONFIG_MAC80211 m            # 软 MAC 层（AP/hostapd 模式在此实现）
+force CONFIG_WLAN_VENDOR_MEDIATEK y
+force CONFIG_MT7921U m             # MT7921 USB（AX5400），自动 select mt76 connac 链
+force CONFIG_WLAN_VENDOR_INTEL y
+force CONFIG_IWLWIFI m             # Intel 无线核心
+force CONFIG_IWLMVM m              # AX210 走 mvm op-mode
+
 # Marvell（老旧 SDIO/USB WiFi）
 disable CONFIG_MWIFIEX     # Marvell WiFiEx 主驱动
 disable CONFIG_MWIFIEX_SDIO
