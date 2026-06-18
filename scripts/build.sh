@@ -45,6 +45,14 @@ KERNEL_OPTIMIZE_SCRIPT="${ROOT_DIR}/configs/kernel/${PROFILE}.sh"
 RELEASE="trixie"
 export KERNEL_EXTRA_CFLAGS="${EXTRA_CFLAGS}"
 
+# U-Boot / 内核版本探测会去 raw.githubusercontent.com 拉 Makefile 解析版本号，
+# 该域名走 Fastly CDN，在大陆间歇性被墙/限速。Armbian 对探测结果做 memoize 缓存，
+# 但默认 TTL 仅 1 小时，两次构建间隔超 1 小时缓存即失效、被迫重新联网，撞墙即失败。
+# 拉长到 30 天：版本号本就由 BOOTBRANCH/KERNELBRANCH 的 tag 钉死，长期复用无副作用。
+# 注意：必须作为命令行 KEY=value 传给 compile.sh —— Armbian Docker 只透传白名单环境
+# 变量，build.sh 里 export 进不去容器；命令行参数则由 parse_cmdline_params 注入容器环境。
+# GIT_CACHE_TTL_SECONDS="${GIT_CACHE_TTL_SECONDS:-2592000}"
+
 echo "🚀 Hive Armbian 构建脚本"
 echo "=============================="
 echo "Profile: ${PROFILE}"
@@ -274,6 +282,8 @@ time ./compile.sh build \
     USE_CCACHE=yes \
     COMPRESS_OUTPUTIMAGE=sha,xz \
     PATCHES_TO_GIT=yes \
+    UBOOT_GIT_CACHE_TTL="${GIT_CACHE_TTL_SECONDS}" \
+    KERNEL_GIT_CACHE_TTL="${GIT_CACHE_TTL_SECONDS}" \
     UBOOT_MIRROR="${UBOOT_MIRROR}" \
     GITHUB_MIRROR="${GITHUB_MIRROR}" \
     GHCR_MIRROR="${GHCR_MIRROR}" \
