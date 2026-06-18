@@ -154,6 +154,17 @@ if [[ -f /etc/hive/node-info ]]; then
         VLESS_LINK="vless://${XRAY_UUID}@${CF_HOST}:443?type=ws&security=tls&path=%2Fray#${HOSTNAME:-hive}"
         printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "Xray (VLESS)" "${VLESS_LINK}"
     fi
+
+    # WiFi 热点（双频，仅展示已开启的频段）
+    if [[ -n "${WIFI_SSID_2G:-}" ]]; then
+        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "WiFi 2.4G (WPA2)" "${WIFI_SSID_2G}"
+    fi
+    if [[ -n "${WIFI_SSID_5G:-}" ]]; then
+        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "WiFi 5G (WPA3)" "${WIFI_SSID_5G}"
+    fi
+    if [[ -n "${WIFI_PSK:-}" && ( -n "${WIFI_SSID_2G:-}" || -n "${WIFI_SSID_5G:-}" ) ]]; then
+        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "WiFi Password" "${WIFI_PSK}"
+    fi
 fi
 
 echo ""

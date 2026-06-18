@@ -155,7 +155,30 @@ else
     fail "fail2ban" "service not active"
 fi
 
-# ── 11. SSH Host Key 确定性验证 ───────────────────────────────────────────
+# ── 11. WiFi 热点（仅当存在无线网卡时检测，否则跳过）─────────────────────
+WLAN_PRESENT=0
+for d in /sys/class/net/*/phy80211; do [ -e "$d" ] && WLAN_PRESENT=1 && break; done
+if [ "$WLAN_PRESENT" = "1" ]; then
+    check_ap() {  # $1=conn_id $2=频段标签 $3=期望SSID
+        local conn="$1" label="$2" ssid="$3"
+        nmcli -t -f NAME connection show 2>/dev/null | grep -qx "$conn" || return 1
+        if nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx "$conn"; then
+            local ifc ip
+            ifc=$(nmcli -t -f GENERAL.DEVICES connection show "$conn" 2>/dev/null | cut -d: -f2)
+            ip=$(ip -4 addr show "$ifc" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1)
+            pass "wifi-${label}" "SSID=${ssid:-?} on ${ifc:-?} @ ${ip:-no-ip}"
+        else
+            warn "wifi-${label}" "$conn configured but not active"
+        fi
+        return 0
+    }
+    GOT=0
+    check_ap "hive-hotspot-2g" "2.4g" "${WIFI_SSID_2G}" && GOT=1
+    check_ap "hive-hotspot-5g" "5g"   "${WIFI_SSID_5G}" && GOT=1
+    [ "$GOT" = "1" ] || warn "wifi-hotspot" "wireless NIC present but no hotspot connection (try: hive-hotspot.sh)"
+fi
+
+# ── 12. SSH Host Key 确定性验证 ───────────────────────────────────────────
 if [ -f /etc/ssh/ssh_host_ed25519_key.pub ]; then
     FP=$(ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | awk '{print $2}')
     pass "ssh-hostkey" "Ed25519 ${FP}"
