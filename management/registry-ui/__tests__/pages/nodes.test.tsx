@@ -17,10 +17,6 @@ vi.mock('@/lib/openapi-session', () => ({
   sessionApi: (p: Promise<any>) => p,
 }));
 
-vi.mock('@/components/nodes/NodeEditDialog', () => ({
-  NodeEditDialog: () => <div data-testid="node-edit-dialog" />,
-}));
-
 import Nodes from '@/pages/nodes';
 
 const mockNodes = [
