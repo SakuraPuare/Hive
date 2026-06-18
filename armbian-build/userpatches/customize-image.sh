@@ -18,6 +18,7 @@ if [ -d "/tmp/overlay" ]; then
     # cp -a 保留构建主机的 UID/GID（kent:kent），只修正 overlay 涉及的目录
     chown -R root:root /etc/hive /etc/xray /etc/frp /etc/cloudflared \
         /etc/systemd/system /etc/nginx /etc/update-motd.d \
+        /etc/NetworkManager /etc/udev/rules.d \
         /usr/local/bin 2>/dev/null || true
     chmod +x /etc/update-motd.d/* 2>/dev/null || true
     echo ">>> Overlay files copied to root directory"
@@ -114,8 +115,18 @@ apt-get install -y --no-install-recommends \
     zsh \
     net-tools \
     vim \
+    wpasupplicant \
+    dnsmasq-base \
+    iw \
     tailscale \
     cloudflare-warp
+
+# WiFi 热点固件（AX210 需 iwlwifi-ty-*，MT7921 需 mediatek/*）。
+# 非致命：基础镜像通常已带 armbian-firmware；缺失则尝试补装，失败不中止构建。
+echo ">>> Installing WiFi firmware for hotspot (non-fatal)..."
+apt-get install -y --no-install-recommends armbian-firmware-full 2>/dev/null \
+    || apt-get install -y --no-install-recommends firmware-iwlwifi firmware-misc-nonfree 2>/dev/null \
+    || echo ">>> WiFi firmware pkg not installed via apt (base armbian-firmware may suffice)"
 
 # 清理 apt 缓存，减少镜像体积
 apt-get clean
@@ -139,6 +150,16 @@ done
 if [ -f "/usr/local/bin/hive-xray-sync" ]; then
     chmod +x /usr/local/bin/hive-xray-sync
     echo ">>> hive-xray-sync: OK"
+fi
+
+# WiFi 热点：脚本可执行 + NM dispatcher 可执行（NM 只跑可执行的 dispatcher）
+if [ -f "/usr/local/bin/hive-hotspot.sh" ]; then
+    chmod +x /usr/local/bin/hive-hotspot.sh
+    echo ">>> hive-hotspot.sh: OK"
+fi
+if [ -f "/etc/NetworkManager/dispatcher.d/90-hive-hotspot" ]; then
+    chmod 755 /etc/NetworkManager/dispatcher.d/90-hive-hotspot
+    echo ">>> NM dispatcher 90-hive-hotspot: OK"
 fi
 
 if [ -f "/usr/local/bin/provision-node.sh" ]; then
@@ -244,6 +265,12 @@ systemctl enable hive-firewall.service  # 启动时自动配置防火墙
 systemctl enable hive-fail2ban.service  # 启动时自动配置入侵防护
 systemctl enable auditd.service        # 系统审计日志
 systemctl enable unattended-upgrades.service  # 自动安全更新
+
+# WiFi 热点：开机自动检测无线网卡并开热点（无卡则脚本自行退出，无副作用）
+if [ -f "/etc/systemd/system/hive-hotspot.service" ]; then
+    systemctl enable hive-hotspot.service
+    echo ">>> hive-hotspot.service enabled"
+fi
 
 # ─────────────────────────────────────────────
 # 7. apt 源：多镜像冗余（国内源容易 403，多列几个互为 fallback）
