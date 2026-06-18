@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, use, useState, useEffect, useMemo } from 'react';
 import { PortalAuthService, PortalService } from '@/src/generated/client';
 import type { handler_PortalMeResponse } from '@/src/generated/client';
 import type { model_CustomerSubscription } from '@/src/generated/client/models/model_CustomerSubscription';
@@ -45,7 +45,7 @@ export function CustomerProvider({ children }: { children: React.ReactNode }) {
  * Outside the provider (unit tests), falls back to a standalone fetch.
  */
 export function useCustomer(): CustomerContextValue {
-  const ctx = useContext(CustomerContext);
+  const ctx = use(CustomerContext);
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [subscriptions, setSubscriptions] = useState<CustomerSubscription[]>([]);

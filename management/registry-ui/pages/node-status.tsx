@@ -20,6 +20,11 @@ function formatUptime(sec: number | null | undefined): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+function statusDot(s: string | undefined) {
+  const cls = s === 'online' ? 'bg-green-500' : s === 'offline' ? 'bg-red-500' : 'bg-gray-400';
+  return <span className={`inline-block h-2 w-2 rounded-full ${cls}`} />;
+}
+
 function pct(v: number | null | undefined): string {
   if (v == null) return '—';
   return `${v.toFixed(1)}%`;
@@ -58,11 +63,6 @@ export default function NodeStatusPage() {
     if (filter === 'all') return data;
     return data.filter((n) => n.status === filter);
   }, [data, filter]);
-
-  const statusDot = (s: string | undefined) => {
-    const cls = s === 'online' ? 'bg-green-500' : s === 'offline' ? 'bg-red-500' : 'bg-gray-400';
-    return <span className={`inline-block h-2 w-2 rounded-full ${cls}`} />;
-  };
 
   const onlineCount = data.filter((n) => n.status === 'online').length;
   const offlineCount = data.filter((n) => n.status === 'offline').length;

@@ -17,6 +17,18 @@ function trafficGB(bytes: number) {
   return (bytes / (1024 ** 3)).toFixed(2);
 }
 
+function copyToClipboard(text: string, setter: (v: boolean) => void) {
+  navigator.clipboard.writeText(text);
+  setter(true);
+  setTimeout(() => setter(false), 2000);
+}
+
+const SUB_CARD_GRADIENTS = [
+  'from-blue-500/10 to-indigo-500/10 dark:from-blue-500/20 dark:to-indigo-500/20',
+  'from-purple-500/10 to-pink-500/10 dark:from-purple-500/20 dark:to-pink-500/20',
+  'from-emerald-500/10 to-teal-500/10 dark:from-emerald-500/20 dark:to-teal-500/20',
+];
+
 function SubscriptionCard({ sub, index }: { sub: SubWithPlan; index: number }) {
   const t = useTranslations('portal');
   const [copiedClash, setCopiedClash] = useState(false);
@@ -33,17 +45,7 @@ function SubscriptionCard({ sub, index }: { sub: SubWithPlan; index: number }) {
   const clashLink = `${origin}/c/${sub.token}`;
   const vlessLink = `${origin}/c/${sub.token}/vless`;
 
-  function copyToClipboard(text: string, setter: (v: boolean) => void) {
-    navigator.clipboard.writeText(text);
-    setter(true);
-    setTimeout(() => setter(false), 2000);
-  }
-
-  const gradients = [
-    'from-blue-500/10 to-indigo-500/10 dark:from-blue-500/20 dark:to-indigo-500/20',
-    'from-purple-500/10 to-pink-500/10 dark:from-purple-500/20 dark:to-pink-500/20',
-    'from-emerald-500/10 to-teal-500/10 dark:from-emerald-500/20 dark:to-teal-500/20',
-  ];
+  const gradients = SUB_CARD_GRADIENTS;
 
   return (
     <Card className="overflow-hidden animate-slide-up" style={{ animationDelay: `${index * 80}ms` }}>
@@ -191,6 +193,7 @@ export default function PortalDashboardPage() {
               <div>
                 <p className="font-semibold">{ann.title}</p>
                 {ann.content && (
+                  // react-doctor-disable-next-line react-doctor/no-danger -- content is sanitized with DOMPurify before injection
                   <p className="mt-1 text-sm opacity-80" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(ann.content.replace(/\n/g, '<br/>')) }} />
                 )}
               </div>

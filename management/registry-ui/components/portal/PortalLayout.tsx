@@ -8,6 +8,11 @@ import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { CustomerProvider, useCustomer, portalLogout } from '@/lib/portal-auth';
 import { useLocale, type Locale } from '@/lib/locale';
 
+async function handleLogout() {
+  await portalLogout();
+  window.location.href = '/portal/login';
+}
+
 function PortalLayoutInner({ children }: { children: React.ReactNode }) {
   const t = useTranslations('portal');
   const router = useRouter();
@@ -22,11 +27,6 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/portal/orders', label: t('navOrders'), icon: ShoppingCart },
     { href: '/portal/tickets', label: t('navTickets'), icon: MessageSquare },
   ];
-
-  async function handleLogout() {
-    await portalLogout();
-    window.location.href = '/portal/login';
-  }
 
   const isActive = (href: string) =>
     router.pathname === href || router.pathname.startsWith(href + '/');

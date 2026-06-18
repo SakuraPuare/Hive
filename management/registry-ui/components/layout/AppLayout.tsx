@@ -25,16 +25,16 @@ interface AppLayoutProps {
   children: React.ReactNode;
 }
 
+async function handleLogout() {
+  try {
+    await sessionApi(AdminService.adminLogout());
+  } finally {
+    window.location.href = '/login';
+  }
+}
+
 export function AppLayout({ children }: AppLayoutProps) {
   const tCommon = useTranslations('common');
-
-  async function handleLogout() {
-    try {
-      await sessionApi(AdminService.adminLogout());
-    } finally {
-      window.location.href = '/login';
-    }
-  }
 
   return (
     <CurrentUserProvider>
