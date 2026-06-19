@@ -164,6 +164,29 @@ disable CONFIG_LIBERTAS_SPI
 disable CONFIG_WLAN_UWE5621      # Unisoc WiFi — 不相关
 disable CONFIG_WLAN_UWE5622
 
+# ── 透明代理网关栈保活 ───────────────────────────────────────────────────
+# Zero2 单网口，但网关默认全启用：Mihomo(Clash.Meta) 的 TUN + auto-redirect
+# 接管 WiFi 热点等下游的转发流量，依赖完整 netfilter+TPROXY+策略路由栈。
+# 以下符号在 rk35xx-vendor 基线通常已有(=m/=y)，此处 force 兜底，
+# 防止将来 base config 变动或 olddefconfig 级联裁剪悄悄丢掉透明代理能力。
+force CONFIG_TUN m                          # TUN/TAP 设备，Mihomo TUN 模式的核心
+force CONFIG_NF_TABLES m                      # nftables 框架（auto-redirect 用 nft 下发规则）
+force CONFIG_NFT_CT m                          # nft conntrack 匹配
+force CONFIG_NFT_FIB_IPV4 m                    # nft fib 查路由 IPv4（分流判断）
+force CONFIG_NFT_FIB_IPV6 m                    # nft fib 查路由 IPv6（分流判断）
+force CONFIG_NFT_TPROXY m                      # nft tproxy 表达式（透明代理重定向核心）
+force CONFIG_NFT_SOCKET m                      # nft socket 匹配（tproxy 配套）
+force CONFIG_NETFILTER_XT_TARGET_TPROXY m      # xt TPROXY target（兼容 iptables-legacy 路径）
+force CONFIG_NETFILTER_XT_MATCH_SOCKET m       # xt socket 匹配
+force CONFIG_NETFILTER_XT_MATCH_MARK m         # xt mark 匹配
+force CONFIG_NF_TPROXY_IPV4 m                  # tproxy 核心实现 IPv4
+force CONFIG_NF_TPROXY_IPV6 m                  # tproxy 核心实现 IPv6
+force CONFIG_IP_NF_MANGLE m                    # IPv4 mangle 表（打 fwmark）
+force CONFIG_IP6_NF_MANGLE m                   # IPv6 mangle 表（打 fwmark）
+force CONFIG_NETFILTER_XT_MARK m               # 设置 fwmark target
+force CONFIG_IP_ADVANCED_ROUTER y              # 策略路由总开关（fwmark→路由表，tproxy 必需）
+force CONFIG_IP_MULTIPLE_TABLES y              # 多路由表支持（策略路由，tproxy 必需）
+
 # ── 其他嵌入式不需要的总线/外设子系统 ──────────────────────────────────────
 
 disable CONFIG_CAN               # CAN 总线 — 车载/工业现场总线，路由器不需要
