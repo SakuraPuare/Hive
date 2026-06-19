@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# hive-clash-sync —— 从 registry 拉取本节点的 Mihomo(Clash.Meta) 网关配置并热重载
+#
+# 工作原理：
+#   1. 从 registry 拉取本机 MAC 对应的完整 Mihomo YAML（含 TUN/auto-redirect/fake-ip DNS）
+#   2. 基本校验后与 /etc/mihomo/config.yaml 比对；无变化则跳过
+#   3. 有变化：原子替换（备份旧配置为 .bak），再热重载
+#   4. 热重载优先走 Mihomo RESTful API（PUT /configs?force=true，运行时生效不断流），
+#      失败兜底 systemctl reload/restart hive-mihomo
+#
+# 由 hive-clash-sync.timer 每 ~1 分钟触发。所有失败都不致命（下轮重试）。
+set -uo pipefail
+
+CONFIG_ENV="/etc/hive/config.env"
+NODE_INFO="/etc/hive/node-info"
+MIHOMO_DIR="/etc/mihomo"
+CONFIG_FILE="${MIHOMO_DIR}/config.yaml"
+TMP_FILE="/tmp/mihomo-config.new"
+DASHBOARD_PORT="${GATEWAY_DASHBOARD_PORT:-9090}"
+
+log() { echo "[hive-clash-sync] $*"; logger -t "hive-clash-sync" "$*" 2>/dev/null || true; }
+
+[ -f "${CONFIG_ENV}" ] && source "${CONFIG_ENV}" 2>/dev/null
+[ -f "${NODE_INFO}" ]  && source "${NODE_INFO}"  2>/dev/null
+
+# DASHBOARD_PORT 可能在 config.env 里被 GATEWAY_DASHBOARD_PORT 覆盖，重新取一次
+DASHBOARD_PORT="${GATEWAY_DASHBOARD_PORT:-9090}"
+
+# ── 0. 门控 ────────────────────────────────────────────────────────────
+GW_ENABLED="${GATEWAY_ENABLED:-on}"
+case "$(echo "${GW_ENABLED}" | tr 'A-Z' 'a-z')" in
+    off|0|false|no) log "GATEWAY_ENABLED=${GW_ENABLED}，网关功能已禁用，跳过"; exit 0 ;;
+esac
+if [ -z "${NODE_REGISTRY_URL:-}" ]; then
+    log "NODE_REGISTRY_URL 未配置，跳过"; exit 0
+fi
+if [ -z "${MAC:-}" ]; then
+    log "MAC 未知（node-info 缺失），跳过"; exit 0
+fi
+# registry 端 MAC 为无冒号小写 12 位
+MAC_NORM=$(echo "${MAC}" | tr 'A-F' 'a-f' | tr -cd 'a-f0-9')
+MAC_NORM="${MAC_NORM: -12}"
+
+# ── 1. 拉取配置到临时文件 ──────────────────────────────────────────────
+if ! curl -sf --max-time 15 \
+        ${NODE_REGISTRY_API_SECRET:+-H "Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"} \
+        "${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/clash-config" -o "${TMP_FILE}" 2>/dev/null; then
+    log "拉取 Mihomo 配置失败（registry 不可达？），保持现状"
+    rm -f "${TMP_FILE}"
+    exit 0
+fi
+
+# ── 2. 基本校验：非空 + 含 proxy-groups 或 rules（防把错误响应写进去）──
+if [ ! -s "${TMP_FILE}" ]; then
+    log "拉到的配置为空，保持现状"; rm -f "${TMP_FILE}"; exit 0
+fi
+if ! grep -qE '^(proxy-groups|rules):' "${TMP_FILE}"; then
+    log "配置缺少 proxy-groups/rules 字段（疑似错误响应），保持现状: $(head -c 200 "${TMP_FILE}")"
+    rm -f "${TMP_FILE}"; exit 0
+fi
+
+# ── 3. 与现有配置比对 ──────────────────────────────────────────────────
+if [ -f "${CONFIG_FILE}" ] && cmp -s "${TMP_FILE}" "${CONFIG_FILE}"; then
+    log "配置无变化"; rm -f "${TMP_FILE}"; exit 0
+fi
+
+# ── 4. 原子替换（备份旧配置为 .bak）────────────────────────────────────
+mkdir -p "${MIHOMO_DIR}"
+if [ -f "${CONFIG_FILE}" ]; then
+    cp -f "${CONFIG_FILE}" "${CONFIG_FILE}.bak" 2>/dev/null || true
+fi
+# 落到目标目录的临时文件再 mv，保证 mv 是同分区原子操作
+STAGE="${CONFIG_FILE}.new"
+cp -f "${TMP_FILE}" "${STAGE}" && mv -f "${STAGE}" "${CONFIG_FILE}" || {
+    log "写入 ${CONFIG_FILE} 失败，保持现状"; rm -f "${TMP_FILE}" "${STAGE}"; exit 0
+}
+rm -f "${TMP_FILE}"
+log "配置已更新 -> ${CONFIG_FILE}"
+
+# ── 5. 热重载：优先 Mihomo RESTful API，失败兜底 systemctl ──────────────
+# secret 从刚写入的配置里解析（external-controller 鉴权用）
+SECRET=$(grep -E '^secret:' "${CONFIG_FILE}" 2>/dev/null | head -1 | sed -E 's/^secret:[[:space:]]*//; s/^"//; s/"$//' | tr -d "'\r")
+
+reloaded=0
+if command -v curl >/dev/null 2>&1; then
+    if curl -sf --max-time 10 -X PUT \
+            ${SECRET:+-H "Authorization: Bearer ${SECRET}"} \
+            -H "Content-Type: application/json" \
+            -d "{\"path\":\"${CONFIG_FILE}\"}" \
+            "http://127.0.0.1:${DASHBOARD_PORT}/configs?force=true" >/dev/null 2>&1; then
+        log "已通过 Mihomo API 热重载配置（不断流）"
+        reloaded=1
+    fi
+fi
+if [ "${reloaded}" = "0" ]; then
+    if systemctl reload hive-mihomo >/dev/null 2>&1; then
+        log "已通过 systemctl reload 重载 hive-mihomo"
+    else
+        systemctl restart hive-mihomo >/dev/null 2>&1 \
+            && log "已重启 hive-mihomo 应用新配置" \
+            || log "重载/重启 hive-mihomo 失败（下轮重试）"
+    fi
+fi
+
+exit 0
