@@ -9,9 +9,14 @@ CLOUDFLARED_VER="${CLOUDFLARED_VER:-latest}" # e.g. 2026.2.0 或 latest
 FRP_VER="${FRP_VER:-0.69.1}"
 EASYTIER_VER="${EASYTIER_VER:-v2.6.4}"
 XRAY_EXPORTER_VER="${XRAY_EXPORTER_VER:-v0.2.0}" # compassvpn/xray-exporter
+MIHOMO_VER="${MIHOMO_VER:-v1.19.27}"             # MetaCubeX/mihomo（Clash.Meta 内核，透明代理网关）
+METACUBEXD_VER="${METACUBEXD_VER:-v1.256.0}"     # MetaCubeX/metacubexd（Clash API Web 面板）
 
 DEST="armbian-build/userpatches/overlay/usr/local/bin"
 mkdir -p "$DEST"
+
+# metacubexd 静态 Web 面板部署目录（由 nginx 托管）
+WWW_METACUBEXD="armbian-build/userpatches/overlay/var/www/metacubexd"
 
 # ── xray-core ──────────────────────────────────────────────────────────
 echo ">>> Downloading xray ${XRAY_VER}..."
@@ -55,6 +60,26 @@ chmod +x "${DEST}/easytier-core"
 rm /tmp/easytier.zip
 echo "    easytier-core: OK"
 
+# ── mihomo ─────────────────────────────────────────────────────────────
+# https://github.com/MetaCubeX/mihomo
+# Clash.Meta 内核，做透明代理网关；arm64 资产为 gzip 单文件
+echo ">>> Downloading mihomo ${MIHOMO_VER}..."
+curl -L "https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VER}/mihomo-linux-arm64-${MIHOMO_VER}.gz" \
+    -o /tmp/mihomo.gz
+gunzip -f /tmp/mihomo.gz
+mv /tmp/mihomo "${DEST}/mihomo"
+chmod +x "${DEST}/mihomo"
+echo "    mihomo: OK"
+
+# ── metacubexd ─────────────────────────────────────────────────────────
+# https://github.com/MetaCubeX/metacubexd
+# Clash API 的 Web 仪表盘（静态资源），解压到 var/www，由 nginx 托管
+echo ">>> Downloading metacubexd ${METACUBEXD_VER}..."
+mkdir -p "${WWW_METACUBEXD}"
+curl -L "https://github.com/MetaCubeX/metacubexd/releases/download/${METACUBEXD_VER}/compressed-dist.tgz" \
+    | tar xz -C "${WWW_METACUBEXD}"
+echo "    metacubexd: OK"
+
 # ── xray-exporter ──────────────────────────────────────────────────────
 # https://github.com/compassvpn/xray-exporter
 # 读取 Xray StatsService(gRPC) 并暴露 per-user Prometheus 指标，供计费使用
@@ -67,3 +92,5 @@ echo "    xray-exporter: OK"
 echo ""
 echo ">>> All binaries downloaded:"
 ls -lh "${DEST}"
+echo ""
+echo ">>> metacubexd 面板已部署到: ${WWW_METACUBEXD}"
