@@ -25,6 +25,7 @@ export default defineConfig({
         items: [
           { text: '节点操作', link: '/NODE-OPERATIONS' },
           { text: 'WiFi 热点（自动）', link: '/HOTSPOT' },
+          { text: '透明代理网关（路由器）', link: '/GATEWAY' },
           { text: '故障排查', link: '/TROUBLESHOOTING' },
         ],
       },
