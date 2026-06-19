@@ -37,3 +37,12 @@ CAMOUFLAGE_URL=${CAMOUFLAGE_URL}
 HOTSPOT_COUNTRY=${HOTSPOT_COUNTRY}            # 5GHz 国家码，默认 CN（36-48 免 DFS）
 HOTSPOT_5G_CHANNEL=${HOTSPOT_5G_CHANNEL}      # 5G 信道，默认 36（免 DFS）
 HOTSPOT_PREFER_BAND=${HOTSPOT_PREFER_BAND}    # 单卡偏好频段：5 或 2.4，默认 5（优先 5G WPA3）
+
+# ===== 透明代理网关（路由器角色，LAN/WiFi 设备连上即自动走代理）=====
+# 双网口设备（如 NanoPi R3S）自动 WAN/LAN 分口：WAN 接上游路由器走 DHCP，
+# LAN 给下游设备发 DHCP 并由 Mihomo 做透明代理。单网口设备也会启用 Mihomo，
+# 接管 WiFi 热点等转发流量。分流方向/上游节点由 registry 面板动态下发。
+GATEWAY_ENABLED=${GATEWAY_ENABLED}            # on/off，默认 on（无下游也不占流量）
+GATEWAY_WAN_IFACE=${GATEWAY_WAN_IFACE}        # WAN 口名，留空自动探测（有默认路由的口）
+GATEWAY_LAN_IFACE=${GATEWAY_LAN_IFACE}        # LAN 口名，留空自动（WAN 之外的有线口）
+GATEWAY_DASHBOARD_PORT=${GATEWAY_DASHBOARD_PORT}  # 可视化面板端口，默认 9090（http://<lan-ip>:9090/ui）

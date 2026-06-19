@@ -178,7 +178,39 @@ if [ "$WLAN_PRESENT" = "1" ]; then
     [ "$GOT" = "1" ] || warn "wifi-hotspot" "wireless NIC present but no hotspot connection (try: hive-hotspot.sh)"
 fi
 
-# ── 12. SSH Host Key 确定性验证 ───────────────────────────────────────────
+# ── 12. 透明代理网关（Mihomo）─────────────────────────────────────────────
+if [ "${GATEWAY_ENABLED:-on}" = "off" ] || [ "${GATEWAY_ENABLED:-on}" = "0" ]; then
+    warn "gateway" "GATEWAY_ENABLED=off, 透明代理网关已禁用"
+else
+    # mihomo 服务
+    if systemctl is-active --quiet hive-mihomo 2>/dev/null; then
+        pass "gateway-mihomo" "hive-mihomo active"
+    else
+        warn "gateway-mihomo" "hive-mihomo not active (try: systemctl status hive-mihomo)"
+    fi
+    # TUN 设备（auto-route 接管转发流量的核心）
+    if ip link show 2>/dev/null | grep -qiE 'Meta|utun|tun[0-9]'; then
+        pass "gateway-tun" "TUN device present"
+    else
+        warn "gateway-tun" "no TUN device (mihomo TUN 未起？)"
+    fi
+    # external-controller 面板可达
+    SECRET=$(grep -E '^secret:' /etc/mihomo/config.yaml 2>/dev/null | head -1 | sed 's/^secret:[[:space:]]*//; s/^"//; s/"$//')
+    if curl -sf --max-time 3 ${SECRET:+-H "Authorization: Bearer ${SECRET}"} \
+        "http://127.0.0.1:9090/version" >/dev/null 2>&1; then
+        pass "gateway-panel" "Clash API @ :9090 (面板: http://${GATEWAY_LAN_IP:-<lan-ip>}:9090/ui)"
+    else
+        warn "gateway-panel" "Clash API :9090 unreachable"
+    fi
+    # WAN/LAN 拓扑（仅双网口设备配置；单口设备此处为空属正常）
+    if [ -n "${GATEWAY_LAN_IFACES:-}" ]; then
+        pass "gateway-topo" "WAN=${GATEWAY_WAN_IFACE:-?} LAN=${GATEWAY_LAN_IFACES}"
+    else
+        warn "gateway-topo" "no WAN/LAN split (单网口设备正常；Mihomo 仍接管转发流量)"
+    fi
+fi
+
+# ── 13. SSH Host Key 确定性验证 ───────────────────────────────────────────
 if [ -f /etc/ssh/ssh_host_ed25519_key.pub ]; then
     FP=$(ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | awk '{print $2}')
     pass "ssh-hostkey" "Ed25519 ${FP}"

@@ -18,8 +18,8 @@ if [ -d "/tmp/overlay" ]; then
     # cp -a 保留构建主机的 UID/GID（kent:kent），只修正 overlay 涉及的目录
     chown -R root:root /etc/hive /etc/xray /etc/frp /etc/cloudflared \
         /etc/systemd/system /etc/nginx /etc/update-motd.d \
-        /etc/NetworkManager /etc/udev/rules.d \
-        /usr/local/bin 2>/dev/null || true
+        /etc/NetworkManager /etc/udev/rules.d /etc/mihomo \
+        /usr/local/bin /var/www 2>/dev/null || true
     chmod +x /etc/update-motd.d/* 2>/dev/null || true
     echo ">>> Overlay files copied to root directory"
 else
@@ -118,6 +118,7 @@ apt-get install -y --no-install-recommends \
     wpasupplicant \
     dnsmasq-base \
     iw \
+    nftables \
     tailscale \
     cloudflare-warp
 
@@ -150,6 +151,20 @@ done
 if [ -f "/usr/local/bin/hive-xray-sync" ]; then
     chmod +x /usr/local/bin/hive-xray-sync
     echo ">>> hive-xray-sync: OK"
+fi
+
+# 透明代理网关：拓扑配置脚本 + Mihomo 配置同步脚本
+if [ -f "/usr/local/bin/hive-gateway.sh" ]; then
+    chmod +x /usr/local/bin/hive-gateway.sh
+    echo ">>> hive-gateway.sh: OK"
+fi
+if [ -f "/usr/local/bin/hive-clash-sync" ]; then
+    chmod +x /usr/local/bin/hive-clash-sync
+    echo ">>> hive-clash-sync: OK"
+fi
+if [ -f "/usr/local/bin/mihomo" ]; then
+    chmod +x /usr/local/bin/mihomo
+    echo ">>> mihomo: OK"
 fi
 
 # WiFi 热点：脚本可执行 + NM dispatcher 可执行（NM 只跑可执行的 dispatcher）
@@ -270,6 +285,26 @@ systemctl enable unattended-upgrades.service  # 自动安全更新
 if [ -f "/etc/systemd/system/hive-hotspot.service" ]; then
     systemctl enable hive-hotspot.service
     echo ">>> hive-hotspot.service enabled"
+fi
+
+# 透明代理网关：开机配 WAN/LAN 拓扑 + 启 Mihomo + 周期同步配置（单网口设备自退）
+if [ -f "/etc/systemd/system/hive-gateway.service" ]; then
+    systemctl enable hive-gateway.service
+    echo ">>> hive-gateway.service enabled"
+fi
+if [ -f "/etc/systemd/system/hive-mihomo.service" ]; then
+    systemctl enable hive-mihomo.service
+    echo ">>> hive-mihomo.service enabled"
+fi
+if [ -f "/etc/systemd/system/hive-clash-sync.timer" ]; then
+    systemctl enable hive-clash-sync.timer
+    echo ">>> hive-clash-sync.timer enabled"
+fi
+# MetaCubeXD 面板静态资源校验（由 download-binaries.sh 预置，Mihomo external-ui 托管）
+if [ -d "/var/www/metacubexd" ] && [ -n "$(ls -A /var/www/metacubexd 2>/dev/null)" ]; then
+    echo ">>> metacubexd panel: OK"
+else
+    echo ">>> WARNING: /var/www/metacubexd empty (run download-binaries.sh first; panel UI 将不可用)"
 fi
 
 # ─────────────────────────────────────────────

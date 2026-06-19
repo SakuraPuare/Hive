@@ -165,6 +165,14 @@ if [[ -f /etc/hive/node-info ]]; then
     if [[ -n "${WIFI_PSK:-}" && ( -n "${WIFI_SSID_2G:-}" || -n "${WIFI_SSID_5G:-}" ) ]]; then
         printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "WiFi Password" "${WIFI_PSK}"
     fi
+
+    # 透明代理网关（仅在配置了 WAN/LAN 拓扑时展示）
+    if [[ -n "${GATEWAY_WAN_IFACE:-}" || -n "${GATEWAY_LAN_IFACES:-}" ]]; then
+        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "Gateway WAN/LAN" "${GATEWAY_WAN_IFACE:-?} → ${GATEWAY_LAN_IFACES:-?}"
+        if [[ -n "${GATEWAY_LAN_IP:-}" ]]; then
+            printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "Proxy Dashboard" "http://${GATEWAY_LAN_IP}:9090/ui"
+        fi
+    fi
 fi
 
 echo ""
