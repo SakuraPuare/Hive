@@ -2938,6 +2938,96 @@ paths:
       summary: Update a node
       tags:
         - admin
+  "/nodes/{mac}/clash-config":
+    get:
+      description: >-
+        Returns the full Mihomo (Clash.Meta) YAML config for this node's
+
+        transparent-proxy gateway role. The upstream proxy pool is every
+
+        enabled exit node in the cluster EXCEPT this node itself (no
+
+        self-routing loop); the CN split-routing rule is flipped according
+
+        to the node's gateway_direction. Device-authenticated (Bearer API_SECRET).
+      operationId: NodeClashConfig
+      parameters:
+        - description: node MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Mihomo YAML
+          content:
+            text/plain:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Gateway Mihomo config for a node
+      tags:
+        - nodes
+  "/nodes/{mac}/xray-users":
+    get:
+      description: >-
+        Returns the set of VLESS clients (uuid + email) that should be active
+
+        on this node's Xray inbound: all valid (active, non-expired, under-quota)
+
+        customer subscriptions whose plan grants access to a line containing this node.
+      operationId: NodeXrayUsers
+      parameters:
+        - description: node MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.NodeXrayUsersResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List Xray users for a node
+      tags:
+        - nodes
   /nodes/heartbeat:
     post:
       operationId: NodeHeartbeat
@@ -4003,6 +4093,15 @@ components:
           example: 10
           type: integer
       type: object
+    handler.NodeXrayUsersResponse:
+      properties:
+        mac:
+          type: string
+        users:
+          items:
+            $ref: "#/components/schemas/handler.XrayUser"
+          type: array
+      type: object
     handler.OrderListResponse:
       properties:
         items:
@@ -4192,6 +4291,8 @@ components:
         traffic_used:
           type: integer
         updated_at:
+          type: string
+        xray_uuid:
           type: string
       type: object
     handler.PortalTicketDetail:
@@ -4464,6 +4565,13 @@ components:
           example: admin
           type: string
       type: object
+    handler.XrayUser:
+      properties:
+        email:
+          type: string
+        uuid:
+          type: string
+      type: object
     model.Announcement:
       properties:
         content:
@@ -4541,6 +4649,8 @@ components:
           type: integer
         updated_at:
           type: string
+        xray_uuid:
+          type: string
       type: object
     model.HeartbeatRequest:
       properties:
@@ -4588,6 +4698,21 @@ components:
           type: boolean
         frp_port:
           type: integer
+        gateway_direction:
+          description: 分流方向：domestic（境内,墙外走代理）/ overseas（境外,墙内走代理）/ global（全走代理）/
+            direct（全直连）
+          type: string
+        gateway_enabled:
+          description: |-
+            ── 透明代理网关角色（gateway）──────────────────────────────────────
+            节点作为"梯子入口"：LAN/WiFi 设备连上后流量经本机 Mihomo 透明代理。
+          type: boolean
+        gateway_upstream_mode:
+          description: 上游选择：auto（url-test 自动选最快）/ manual（手选）
+          type: string
+        gateway_upstream_nodes:
+          description: manual 模式下选定的上游节点 MAC，逗号分隔
+          type: string
         hostname:
           type: string
         last_seen:

@@ -34,6 +34,7 @@
     "lines": "Lines",
     "plans": "Plans",
     "nodeStatus": "Node Status",
+    "gateway": "Gateway",
     "users": "User Management",
     "roles": "Role Management",
     "auditLogs": "Audit Logs",
@@ -506,8 +507,6 @@
     "submitFailed": "Failed to submit",
     "colId": "ID",
     "colSubject": "Subject",
-    "colStatus": "Status",
-    "colCreatedAt": "Created At",
     "statusOpen": "Open",
     "statusReplied": "Replied",
     "statusClosed": "Closed",
@@ -561,5 +560,36 @@
     "deleteConfirm": "Delete this announcement?",
     "deleteFailed": "Delete failed",
     "noData": "No announcements yet."
+  },
+  "gateway": {
+    "subtitle": "Turn a node into a transparent proxy gateway so LAN/WiFi devices get proxied with zero config",
+    "introTitle": "What is the gateway role",
+    "introWhat": "Once enabled, the node acts as a proxy entrypoint: traffic from devices on its LAN or WiFi is automatically forwarded through the local Mihomo transparent proxy, with no configuration needed on the devices.",
+    "introDirection": "Direction: pick \"Domestic\" for in-China nodes (only blocked traffic is proxied); pick \"Overseas\" for outside-China nodes (only China-bound traffic is proxied). You can also choose \"Global proxy\" or \"All direct\".",
+    "introPanel": "Panel access: open \"node LAN IP:9090/ui\" in a device browser to view and manage proxy status.",
+    "readOnly": "You have read-only access and cannot change gateway settings (node:write required).",
+    "noNodes": "No nodes yet.",
+    "noOtherNodes": "No other nodes available.",
+    "loadFailed": "Failed to load nodes",
+    "saveFailed": "Save failed",
+    "saved": "Saved",
+    "colHostname": "Hostname",
+    "colLocation": "Location",
+    "colEnabled": "Gateway",
+    "colDirection": "Direction",
+    "colMode": "Upstream mode",
+    "colUpstreams": "Upstream nodes",
+    "selectUpstreams": "Select upstream nodes…",
+    "autoUpstream": "Auto-selected",
+    "direction": {
+      "domestic": "Domestic",
+      "overseas": "Overseas",
+      "global": "Global proxy",
+      "direct": "All direct"
+    },
+    "mode": {
+      "auto": "Auto",
+      "manual": "Manual"
+    }
   }
 }

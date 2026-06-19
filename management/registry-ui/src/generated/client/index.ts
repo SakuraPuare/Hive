@@ -33,6 +33,7 @@ export type { handler_MeResponse } from './models/handler_MeResponse';
 export type { handler_NodeRegisterRequest } from './models/handler_NodeRegisterRequest';
 export type { handler_NodeRegisterResponse } from './models/handler_NodeRegisterResponse';
 export type { handler_NodeUpdateRequest } from './models/handler_NodeUpdateRequest';
+export type { handler_NodeXrayUsersResponse } from './models/handler_NodeXrayUsersResponse';
 export type { handler_OrderListResponse } from './models/handler_OrderListResponse';
 export type { handler_PermissionItem } from './models/handler_PermissionItem';
 export type { handler_PortalCreateOrderRequest } from './models/handler_PortalCreateOrderRequest';
@@ -76,6 +77,7 @@ export type { handler_UpdatePromoCodeRequest } from './models/handler_UpdateProm
 export type { handler_UpdateReferralRequest } from './models/handler_UpdateReferralRequest';
 export type { handler_UpdateSubscriptionRequest } from './models/handler_UpdateSubscriptionRequest';
 export type { handler_UserWithRoles } from './models/handler_UserWithRoles';
+export type { handler_XrayUser } from './models/handler_XrayUser';
 export type { model_Announcement } from './models/model_Announcement';
 export type { model_AuditLog } from './models/model_AuditLog';
 export type { model_Customer } from './models/model_Customer';

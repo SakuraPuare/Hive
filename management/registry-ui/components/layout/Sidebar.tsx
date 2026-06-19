@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { LayoutDashboard, Server, Download, Route, Package, Users, ScrollText, ShieldCheck, Activity, UserCheck, ShoppingCart, Tag, MessageSquare, Megaphone, Globe } from 'lucide-react';
+import { LayoutDashboard, Server, Download, Route, Package, Users, ScrollText, ShieldCheck, Activity, UserCheck, ShoppingCart, Tag, MessageSquare, Megaphone, Globe, Waypoints } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -19,6 +19,7 @@ export function Sidebar() {
     { href: '/dashboard', label: tNav('dashboard'), icon: LayoutDashboard, perm: null },
     { href: '/nodes', label: tNav('nodes'), icon: Server, perm: null },
     { href: '/node-status', label: tNav('nodeStatus'), icon: Activity, perm: null },
+    { href: '/gateway', label: tNav('gateway'), icon: Waypoints, perm: 'node:read' },
     { href: '/subscriptions', label: tNav('subscriptions'), icon: Download, perm: null },
     { href: '/lines', label: tNav('lines'), icon: Route, perm: 'line:read' },
     { href: '/plans', label: tNav('plans'), icon: Package, perm: 'subscription:read' },

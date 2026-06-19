@@ -16,5 +16,6 @@ export type model_CustomerSubscription = {
     traffic_reset_at?: string;
     traffic_used?: number;
     updated_at?: string;
+    xray_uuid?: string;
 };
 

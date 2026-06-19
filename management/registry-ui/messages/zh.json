@@ -34,6 +34,7 @@
     "lines": "线路",
     "plans": "套餐管理",
     "nodeStatus": "节点状态",
+    "gateway": "网关",
     "users": "用户管理",
     "roles": "角色管理",
     "auditLogs": "审计日志",
@@ -506,8 +507,6 @@
     "submitFailed": "提交失败",
     "colId": "ID",
     "colSubject": "主题",
-    "colStatus": "状态",
-    "colCreatedAt": "创建时间",
     "statusOpen": "待处理",
     "statusReplied": "已回复",
     "statusClosed": "已关闭",
@@ -561,5 +560,36 @@
     "deleteConfirm": "确认删除此公告？",
     "deleteFailed": "删除失败",
     "noData": "暂无公告。"
+  },
+  "gateway": {
+    "subtitle": "把节点变成透明代理网关，让 LAN/WiFi 设备免配置直接科学上网",
+    "introTitle": "什么是网关角色",
+    "introWhat": "启用网关后，节点作为「梯子入口」：接入该节点 LAN 或 WiFi 的设备，流量会自动经本机 Mihomo 透明代理转发，无需在设备上做任何配置。",
+    "introDirection": "分流方向：境内节点选「境内分流」（仅墙外流量走代理）；境外节点选「境外分流」（仅墙内流量走代理）；也可选「全局代理」或「全部直连」。",
+    "introPanel": "面板访问：在设备浏览器打开「节点 LAN IP:9090/ui」即可查看与管理代理状态。",
+    "readOnly": "你只有只读权限，无法修改网关配置（需要 node:write 权限）。",
+    "noNodes": "暂无节点。",
+    "noOtherNodes": "没有其它可选节点。",
+    "loadFailed": "加载节点失败",
+    "saveFailed": "保存失败",
+    "saved": "已保存",
+    "colHostname": "主机名",
+    "colLocation": "位置",
+    "colEnabled": "网关开关",
+    "colDirection": "分流方向",
+    "colMode": "上游模式",
+    "colUpstreams": "上游节点",
+    "selectUpstreams": "选择上游节点…",
+    "autoUpstream": "自动选择",
+    "direction": {
+      "domestic": "境内分流",
+      "overseas": "境外分流",
+      "global": "全局代理",
+      "direct": "全部直连"
+    },
+    "mode": {
+      "auto": "自动",
+      "manual": "手动"
+    }
   }
 }

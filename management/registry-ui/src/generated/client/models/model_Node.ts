@@ -7,6 +7,23 @@ export type model_Node = {
     easytier_ip?: string;
     enabled?: boolean;
     frp_port?: number;
+    /**
+     * 分流方向：domestic（境内,墙外走代理）/ overseas（境外,墙内走代理）/ global（全走代理）/ direct（全直连）
+     */
+    gateway_direction?: string;
+    /**
+     * ── 透明代理网关角色（gateway）──────────────────────────────────────
+     * 节点作为"梯子入口"：LAN/WiFi 设备连上后流量经本机 Mihomo 透明代理。
+     */
+    gateway_enabled?: boolean;
+    /**
+     * 上游选择：auto（url-test 自动选最快）/ manual（手选）
+     */
+    gateway_upstream_mode?: string;
+    /**
+     * manual 模式下选定的上游节点 MAC，逗号分隔
+     */
+    gateway_upstream_nodes?: string;
     hostname?: string;
     last_seen?: string;
     location?: string;
