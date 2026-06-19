@@ -206,6 +206,8 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		"location": true, "note": true, "tailscale_ip": true, "easytier_ip": true,
 		"frp_port": true, "enabled": true, "status": true, "weight": true,
 		"region": true, "mesh_tunnel_id": true, "mesh_ip": true,
+		"gateway_enabled": true, "gateway_direction": true,
+		"gateway_upstream_mode": true, "gateway_upstream_nodes": true,
 	}
 	updates := make(map[string]any)
 	for k, v := range body {
