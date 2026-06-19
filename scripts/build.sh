@@ -16,8 +16,14 @@ shift 2>/dev/null || true  # 剩余参数透传给 compile.sh
 case "${PROFILE}" in
   nanopi-zero2)
     BOARD="nanopi-zero2"
-    BRANCH="vendor"
-    BASE_KERNEL_CONFIG="linux-rk35xx-vendor"
+    # current(6.18 mainline)而非 vendor(6.1 BSP)：vendor 用 radxa u-boot
+    # (next-dev-v2024.10)只保证在 Ubuntu Jammy 编译，本机 noble 容器编出空 DTB 的
+    # itb（FIT /images/fdt data-size=0）导致 U-Boot 启动 "No valid device tree"。
+    # current 配合 board csc 的 mainline u-boot hook（tag:v2026.07-rc4 +
+    # nanopi-zero2-rk3528_defconfig）规避该问题，且 RK3528 mainline u-boot/内核已就绪。
+    BRANCH="current"
+    BASE_KERNEL_CONFIG="linux-rockchip64-current"
+    # RK3528：4×Cortex-A53，ARMv8.0-A，无 crypto 扩展（不能照搬 R3S 的 +crc+crypto）
     EXTRA_CFLAGS="-O2 -march=armv8-a -mtune=cortex-a53 -fomit-frame-pointer"
     ;;
   nanopi-r3s)
