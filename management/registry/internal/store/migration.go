@@ -434,6 +434,16 @@ UPDATE customer_subscriptions SET xray_uuid = LOWER(CONCAT(
 CREATE INDEX idx_sub_xray_uuid ON customer_subscriptions (xray_uuid);
 `,
 	},
+	{
+		version: 16,
+		desc:    "nodes: add transparent-proxy gateway role fields",
+		up: `
+ALTER TABLE nodes ADD COLUMN gateway_enabled        TINYINT(1)  NOT NULL DEFAULT 1        COMMENT '启用网关角色（LAN/WiFi 透明代理）';
+ALTER TABLE nodes ADD COLUMN gateway_direction      VARCHAR(16) NOT NULL DEFAULT 'domestic' COMMENT '分流方向: domestic/overseas/global/direct';
+ALTER TABLE nodes ADD COLUMN gateway_upstream_mode  VARCHAR(8)  NOT NULL DEFAULT 'auto'    COMMENT '上游选择: auto(url-test)/manual';
+ALTER TABLE nodes ADD COLUMN gateway_upstream_nodes VARCHAR(2048) NOT NULL DEFAULT ''      COMMENT 'manual 模式选定的上游节点 MAC, 逗号分隔';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

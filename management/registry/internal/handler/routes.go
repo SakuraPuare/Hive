@@ -25,6 +25,8 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("POST /nodes/heartbeat", h.HandleHeartbeat)
 	// 节点拉取本机应下发的 Xray 用户列表（设备端调用，Bearer token 认证）
 	mux.HandleFunc("GET /nodes/{mac}/xray-users", h.HandleNodeXrayUsers)
+	// 节点拉取本机网关角色的 Mihomo 配置（设备端调用，Bearer token 认证）
+	mux.HandleFunc("GET /nodes/{mac}/clash-config", h.HandleNodeClashConfig)
 
 	// ── 节点查询 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /nodes", perm("node:read")(h.HandleListNodes))

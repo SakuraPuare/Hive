@@ -27,13 +27,20 @@ type Node struct {
 	Weight       int    `json:"weight"`
 	Region       string `json:"region"`
 	ProbeStatus  string `json:"probe_status"`
+
+	// ── 透明代理网关角色（gateway）──────────────────────────────────────
+	// 节点作为"梯子入口"：LAN/WiFi 设备连上后流量经本机 Mihomo 透明代理。
+	GatewayEnabled       bool   `json:"gateway_enabled"`        // 是否启用网关角色（默认 true）
+	GatewayDirection     string `json:"gateway_direction"`      // 分流方向：domestic（境内,墙外走代理）/ overseas（境外,墙内走代理）/ global（全走代理）/ direct（全直连）
+	GatewayUpstreamMode  string `json:"gateway_upstream_mode"`  // 上游选择：auto（url-test 自动选最快）/ manual（手选）
+	GatewayUpstreamNodes string `json:"gateway_upstream_nodes"` // manual 模式下选定的上游节点 MAC，逗号分隔
 }
 
 // NodeCols SELECT 列顺序，用于 LEFT JOIN 查询
-const NodeCols = "n.mac, n.mac6, n.hostname, n.cf_url, n.tunnel_id, n.tailscale_ip, n.easytier_ip, n.frp_port, n.xray_uuid, n.mesh_tunnel_id, n.mesh_ip, n.location, n.note, n.registered_at, n.last_seen, n.enabled, n.status, n.weight, n.region, COALESCE(nsc.status, 'unknown') AS probe_status"
+const NodeCols = "n.mac, n.mac6, n.hostname, n.cf_url, n.tunnel_id, n.tailscale_ip, n.easytier_ip, n.frp_port, n.xray_uuid, n.mesh_tunnel_id, n.mesh_ip, n.location, n.note, n.registered_at, n.last_seen, n.enabled, n.status, n.weight, n.region, n.gateway_enabled, n.gateway_direction, n.gateway_upstream_mode, n.gateway_upstream_nodes, COALESCE(nsc.status, 'unknown') AS probe_status"
 
 // NodeColsPlain 用于不需要 JOIN 的场景
-const NodeColsPlain = "mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, mesh_tunnel_id, mesh_ip, location, note, registered_at, last_seen, enabled, status, weight, region"
+const NodeColsPlain = "mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, mesh_tunnel_id, mesh_ip, location, note, registered_at, last_seen, enabled, status, weight, region, gateway_enabled, gateway_direction, gateway_upstream_mode, gateway_upstream_nodes"
 
 // ── User & Auth ──────────────────────────────────────────────────────────────
 
