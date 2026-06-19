@@ -297,6 +297,27 @@ time ./compile.sh build \
     "$@"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 出厂门禁：校验本次产出的 u-boot 非空 DTB
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 拦截 "u-boot.itb 的 FIT /images/fdt data-size=0" 这类坏件（radxa BSP u-boot 在
+# 非 Jammy 宿主编出空设备树，烧录后启动 "No valid device tree ... Please RESET"）。
+# 校验当前 BOARD 最新产出的 u-boot deb；不通过则红灯退出，绝不放行砖头镜像。
+echo ""
+echo "🔒 出厂门禁：校验 u-boot 设备树..."
+UBOOT_DEB="$(ls -t "${ARMBIAN_DIR}/output/debs/linux-u-boot-${BOARD}-"*.deb 2>/dev/null | head -1)"
+if [ -z "${UBOOT_DEB}" ]; then
+  echo "❌ 门禁：未找到 ${BOARD} 的 u-boot deb，构建可能异常"
+  exit 1
+fi
+if ! python3 "${SCRIPT_DIR}/verify-uboot.py" "${UBOOT_DEB}"; then
+  echo ""
+  echo "🛑 出厂门禁拦截：u-boot 产物含空 DTB，已阻止放行。"
+  echo "   坏件: ${UBOOT_DEB}"
+  echo "   该镜像若烧录将无法启动，请勿使用 output/images 下本次产物。"
+  exit 1
+fi
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 构建完成统计
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
