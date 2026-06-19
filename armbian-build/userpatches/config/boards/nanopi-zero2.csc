@@ -39,3 +39,31 @@ function post_family_config__hive_nanopi_zero2_mainline_uboot() {
 		dd if="$1/u-boot-rockchip.bin" of="$2" seek=64 conv=notrunc status=none
 	}
 }
+
+# 修复 RK3528 mainline u-boot 的 SD 冷扫描首次失败：autoboot 前预热 mmc 控制器。
+# 现象：默认 BOOTCOMMAND="bootflow scan -lb" 扫描时 SD（mmc@ffc30000=mmc1）尚未
+# 成功 probe（dw_mmc 冷初始化首次 -110，且 efi_mgr 全局 bootmeth 先跑污染状态），
+# bootflow 在 SD 上拿不到候选 → 静默跳过 → fallback 网络 PXE。串口实测：手动
+# `mmc dev 1; mmc rescan` 预热后 `bootflow scan -lb` 立即在 SD 找到 /boot.scr 进内核。
+# 该 u-boot 是 ENV_IS_NOWHERE+ENV_IS_DEFAULT，环境不持久化，只能编译期改默认值。
+# 落点：官方 hook post_config_uboot_target（.config 生成后、olddefconfig 前），
+# 用 sed 整行替换 .config 改 BOOTCOMMAND，改完 olddefconfig 自动固化。
+function post_config_uboot_target__hive_nanopi_zero2_sd_warmup() {
+	[[ "$BRANCH" == "vendor" ]] && return 0
+	[[ "$BOOTCONFIG" == "nanopi-zero2-rk3528_defconfig" ]] || return 0
+
+	# mmc dev 0(空 eMMC，-110 无害且不中断) → mmc dev 1(SD，触发初始化) →
+	# mmc rescan(再刷确保 ready) → bootflow scan -lb(同上游默认，仅前置预热)
+	#
+	# 用 sed 整行替换 .config，不用 scripts/config：后者第 8 行 CONFIG_="${CONFIG_-CONFIG_}"
+	# 会读外部 CONFIG_ 环境变量，Armbian 容器内该变量被污染导致 "variable CONFIG_ to the
+	# prefix" 报错。sed 直接改 .config 是 uboot.sh 老版本的 fallback 做法，稳。
+	# 改完紧随的 olddefconfig（uboot.sh:209）会消化固化。
+	local _bootcmd='mmc dev 0; mmc dev 1; mmc rescan; bootflow scan -lb'
+	if [[ -f .config ]]; then
+		sed -i "s|^CONFIG_BOOTCOMMAND=.*|CONFIG_BOOTCOMMAND=\"${_bootcmd}\"|" .config
+		display_alert "$BOARD" "HIVE: BOOTCOMMAND => ${_bootcmd}" "info"
+	else
+		display_alert "$BOARD" "HIVE: .config 不存在，跳过 BOOTCOMMAND 预热" "wrn"
+	fi
+}
