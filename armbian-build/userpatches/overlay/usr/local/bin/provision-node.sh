@@ -267,6 +267,15 @@ echo ">>> Setting up WiFi hotspot (auto-detect wireless NIC)..."
 systemctl enable hive-hotspot.service >/dev/null 2>&1 || true
 /usr/local/bin/hive-hotspot.sh || echo ">>> hive-hotspot setup skipped/failed (non-fatal)"
 
+# 透明代理网关：双网口设备自动当路由器（WAN DHCP + LAN shared），Mihomo 做透明代理。
+# hive-gateway.sh 探测有线拓扑（单网口设备自行 exit 0）；Mihomo 加载 registry 下发的配置；
+# hive-clash-sync.timer 周期拉取并热重载配置。全部非致命。
+echo ">>> Setting up transparent proxy gateway (Mihomo)..."
+systemctl enable hive-gateway.service >/dev/null 2>&1 || true
+/usr/local/bin/hive-gateway.sh || echo ">>> hive-gateway setup skipped/failed (non-fatal)"
+systemctl enable --now hive-mihomo.service || echo ">>> hive-mihomo failed (non-fatal)"
+systemctl enable --now hive-clash-sync.timer || echo ">>> hive-clash-sync.timer failed (non-fatal)"
+
 # 安全加固：防火墙 + 入侵防护（非致命，不中止 provision）
 systemctl enable --now hive-firewall || echo ">>> hive-firewall failed (non-fatal)"
 systemctl enable --now hive-fail2ban || echo ">>> hive-fail2ban failed (non-fatal)"
