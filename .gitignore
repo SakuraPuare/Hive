@@ -20,6 +20,10 @@ armbian-build/userpatches/overlay/usr/local/bin/xray-exporter
 armbian-build/userpatches/overlay/usr/local/bin/cloudflared
 armbian-build/userpatches/overlay/usr/local/bin/frpc
 armbian-build/userpatches/overlay/usr/local/bin/easytier-core
+armbian-build/userpatches/overlay/usr/local/bin/mihomo
+
+# metacubexd Web 面板静态资源（由 scripts/download-binaries.sh 下载，不入库）
+armbian-build/userpatches/overlay/var/www/metacubexd/
 
 # 镜像文件
 *.img
