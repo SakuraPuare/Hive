@@ -1,0 +1,5 @@
+# /etc/udev/rules.d/90-hive-gateway.rules
+# 有线网卡热插拔/网线插拔时自动（重新）评估 WAN/LAN 拓扑。
+# 仅在新增有线网口时触发；--no-block 避免阻塞 udev 事件处理。
+# hive-gateway.sh 自带单实例锁与幂等逻辑，反复触发安全；单网口设备会干净退出。
+SUBSYSTEM=="net", ACTION=="add", ENV{DEVTYPE}!="wlan", ENV{INTERFACE}=="e*", RUN+="/bin/systemctl --no-block restart hive-gateway.service"

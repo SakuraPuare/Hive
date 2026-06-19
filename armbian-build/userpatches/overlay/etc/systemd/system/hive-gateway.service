@@ -1,0 +1,19 @@
+[Unit]
+Description=Hive Auto Gateway (detect wired NICs -> configure WAN/LAN router)
+Documentation=https://github.com/SakuraPuare/hive
+# NetworkManager 必须先就绪（WAN auto 与 LAN ipv4 shared 都依赖 NM）。
+# 不依赖 network-online.target：配 LAN 不需要外网，且避免死等。
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/usr/local/bin/hive-gateway.sh
+# 单网口设备脚本 exit 0，不影响启动链
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Hive Mihomo config sync (pull gateway config from registry -> hot reload)
+After=network-online.target hive-mihomo.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hive-clash-sync
+# 失败不影响代理本身，下个 timer 周期会重试
+SuccessExitStatus=0
+Nice=10

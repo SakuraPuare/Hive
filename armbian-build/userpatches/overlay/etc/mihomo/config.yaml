@@ -1,0 +1,57 @@
+# Hive Gateway (透明代理网关) - 内置兜底配置
+# 作用：hive-clash-sync 还没从 registry 拉到真配置前，Mihomo 也能启动不崩。
+# 一旦同步成功，本文件会被 registry 下发的完整配置整体覆盖。请勿手改。
+
+mixed-port: 7890
+allow-lan: true
+mode: Rule
+log-level: info
+ipv6: true
+unified-delay: true
+tcp-concurrent: true
+
+# 局域网可视化面板（MetaCubeXD）：external-controller 监听全网段。
+# 兜底 secret 占位，真配置下发后由节点 MAC 派生覆盖。
+external-controller: 0.0.0.0:9090
+secret: "hive-gateway"
+external-ui: "/var/www/metacubexd"
+external-ui-name: metacubexd
+
+profile:
+  store-selected: true
+  store-fake-ip: true
+
+# TUN + auto-redirect：接管转发流量（下游 LAN/WiFi 设备经本机的包）
+tun:
+  enable: true
+  stack: mixed
+  auto-route: true
+  auto-redirect: true
+  auto-detect-interface: true
+  dns-hijack:
+    - any:53
+    - tcp://any:53
+
+dns:
+  enable: true
+  listen: 0.0.0.0:1053
+  ipv6: true
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  nameserver:
+    - https://223.5.5.5/dns-query
+    - https://223.6.6.6/dns-query
+
+proxies:
+  - name: "直连"
+    type: direct
+    udp: true
+
+proxy-groups:
+  - name: 代理
+    type: select
+    proxies: [直连]
+
+# 兜底阶段全部直连，等真配置下发后再按规则分流
+rules:
+  - MATCH,直连
