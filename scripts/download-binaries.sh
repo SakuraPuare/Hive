@@ -25,7 +25,7 @@ if [ "$XRAY_VER" = "latest" ]; then
 else
   XRAY_URL="https://github.com/XTLS/Xray-core/releases/download/${XRAY_VER}/Xray-linux-arm64-v8a.zip"
 fi
-curl -L "$XRAY_URL" -o /tmp/xray.zip
+curl -fL "$XRAY_URL" -o /tmp/xray.zip
 unzip -jo /tmp/xray.zip "xray" -d "${DEST}"
 chmod +x "${DEST}/xray"
 rm /tmp/xray.zip
@@ -38,14 +38,14 @@ if [ "$CLOUDFLARED_VER" = "latest" ]; then
 else
   CLOUDFLARED_URL="https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VER}/cloudflared-linux-arm64"
 fi
-curl -L "$CLOUDFLARED_URL" -o "${DEST}/cloudflared"
+curl -fL "$CLOUDFLARED_URL" -o "${DEST}/cloudflared"
 chmod +x "${DEST}/cloudflared"
 echo "    cloudflared: OK"
 
 # ── frpc ───────────────────────────────────────────────────────────────
 # https://github.com/fatedier/frp/
 echo ">>> Downloading frpc ${FRP_VER}..."
-curl -L "https://github.com/fatedier/frp/releases/download/v${FRP_VER}/frp_${FRP_VER}_linux_arm64.tar.gz" \
+curl -fL "https://github.com/fatedier/frp/releases/download/v${FRP_VER}/frp_${FRP_VER}_linux_arm64.tar.gz" \
     | tar xz --strip-components=1 -C "${DEST}" "frp_${FRP_VER}_linux_arm64/frpc"
 chmod +x "${DEST}/frpc"
 echo "    frpc: OK"
@@ -53,7 +53,7 @@ echo "    frpc: OK"
 # ── easytier-core ──────────────────────────────────────────────────────
 # https://github.com/EasyTier/EasyTier
 echo ">>> Downloading easytier ${EASYTIER_VER}..."
-curl -L "https://github.com/EasyTier/EasyTier/releases/download/${EASYTIER_VER}/easytier-linux-aarch64-${EASYTIER_VER}.zip" \
+curl -fL "https://github.com/EasyTier/EasyTier/releases/download/${EASYTIER_VER}/easytier-linux-aarch64-${EASYTIER_VER}.zip" \
     -o /tmp/easytier.zip
 unzip -jo /tmp/easytier.zip "*/easytier-core" -d "${DEST}"
 chmod +x "${DEST}/easytier-core"
@@ -64,7 +64,7 @@ echo "    easytier-core: OK"
 # https://github.com/MetaCubeX/mihomo
 # Clash.Meta 内核，做透明代理网关；arm64 资产为 gzip 单文件
 echo ">>> Downloading mihomo ${MIHOMO_VER}..."
-curl -L "https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VER}/mihomo-linux-arm64-${MIHOMO_VER}.gz" \
+curl -fL "https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VER}/mihomo-linux-arm64-${MIHOMO_VER}.gz" \
     -o /tmp/mihomo.gz
 gunzip -f /tmp/mihomo.gz
 mv /tmp/mihomo "${DEST}/mihomo"
@@ -76,7 +76,7 @@ echo "    mihomo: OK"
 # Clash API 的 Web 仪表盘（静态资源），解压到 var/www，由 nginx 托管
 echo ">>> Downloading metacubexd ${METACUBEXD_VER}..."
 mkdir -p "${WWW_METACUBEXD}"
-curl -L "https://github.com/MetaCubeX/metacubexd/releases/download/${METACUBEXD_VER}/compressed-dist.tgz" \
+curl -fL "https://github.com/MetaCubeX/metacubexd/releases/download/${METACUBEXD_VER}/compressed-dist.tgz" \
     | tar xz -C "${WWW_METACUBEXD}"
 echo "    metacubexd: OK"
 
@@ -84,7 +84,7 @@ echo "    metacubexd: OK"
 # https://github.com/compassvpn/xray-exporter
 # 读取 Xray StatsService(gRPC) 并暴露 per-user Prometheus 指标，供计费使用
 echo ">>> Downloading xray-exporter ${XRAY_EXPORTER_VER}..."
-curl -L "https://github.com/compassvpn/xray-exporter/releases/download/${XRAY_EXPORTER_VER}/xray-exporter-linux-arm64" \
+curl -fL "https://github.com/compassvpn/xray-exporter/releases/download/${XRAY_EXPORTER_VER}/xray-exporter-linux-arm64" \
     -o "${DEST}/xray-exporter"
 chmod +x "${DEST}/xray-exporter"
 echo "    xray-exporter: OK"
