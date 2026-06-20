@@ -334,31 +334,53 @@ tailscale up \
 MESH_NAME="hive-${MAC6}"
 echo ">>> Setting up Cloudflare Mesh node: ${MESH_NAME}"
 
-# 查找已存在的同名 WARP Connector（幂等）
-EXISTING_MESH=$(curl -s -G \
+# 1) 查未删除的同名 WARP Connector，存在则直接复用（幂等）
+MESH_TUNNEL_ID=$(curl -s -G \
     "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector" \
     -H "Authorization: Bearer ${CF_API_TOKEN}" \
     --data-urlencode "name=${MESH_NAME}" \
-    --data-urlencode "is_deleted=false")
+    --data-urlencode "is_deleted=false" | jq -r '.result[0].id // empty')
 
-MESH_TUNNEL_ID=$(echo "$EXISTING_MESH" | jq -r '.result[0].id // empty')
+if [ -n "$MESH_TUNNEL_ID" ]; then
+    echo ">>> Mesh node already exists: ${MESH_TUNNEL_ID}, reusing."
+else
+    # 2) WARP Connector 软删除后名字仍被占用，直接 POST 会撞 code 1013。
+    #    先查出已删除的同名残留并硬删，释放名字（CF Tunnel 段同款幂等思路）。
+    STALE_MESH_IDS=$(curl -s -G \
+        "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector" \
+        -H "Authorization: Bearer ${CF_API_TOKEN}" \
+        --data-urlencode "name=${MESH_NAME}" \
+        --data-urlencode "is_deleted=true" | jq -r '.result[]?.id')
+    for SID in $STALE_MESH_IDS; do
+        echo ">>> Deleting soft-deleted Mesh connector holding the name: ${SID}"
+        curl -s -X DELETE \
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector/${SID}" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" >/dev/null
+    done
 
-if [ -z "$MESH_TUNNEL_ID" ]; then
+    # 3) 创建新的 Mesh node
     echo ">>> Creating new Mesh node..."
     MESH_CREATE_RES=$(curl -s -X POST \
         "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector" \
         -H "Authorization: Bearer ${CF_API_TOKEN}" \
         -H "Content-Type: application/json" \
         -d "{\"name\":\"${MESH_NAME}\"}")
-
     MESH_TUNNEL_ID=$(echo "$MESH_CREATE_RES" | jq -r '.result.id // empty')
+
+    # 4) 仍因撞名失败（残留未能清理等）→ 兜底再查一次未删除列表复用其 ID
+    if [ -z "$MESH_TUNNEL_ID" ] && echo "$MESH_CREATE_RES" | grep -q '"code":1013'; then
+        echo ">>> Name still taken, re-querying non-deleted connectors to reuse..."
+        MESH_TUNNEL_ID=$(curl -s -G \
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            --data-urlencode "name=${MESH_NAME}" \
+            --data-urlencode "is_deleted=false" | jq -r '.result[0].id // empty')
+    fi
 
     if [ -z "$MESH_TUNNEL_ID" ]; then
         echo "!!! Mesh node creation failed (non-fatal):"
         echo "$MESH_CREATE_RES"
     fi
-else
-    echo ">>> Mesh node already exists: ${MESH_TUNNEL_ID}"
 fi
 
 if [ -n "$MESH_TUNNEL_ID" ]; then
