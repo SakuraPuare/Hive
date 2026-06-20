@@ -197,6 +197,10 @@ if [ -f "/usr/local/bin/hive-hotspot.sh" ]; then
     chmod +x /usr/local/bin/hive-hotspot.sh
     echo ">>> hive-hotspot.sh: OK"
 fi
+if [ -f "/usr/local/bin/hive-test.sh" ]; then
+    chmod +x /usr/local/bin/hive-test.sh
+    echo ">>> hive-test.sh: OK"
+fi
 if [ -f "/etc/NetworkManager/dispatcher.d/90-hive-hotspot" ]; then
     chmod 755 /etc/NetworkManager/dispatcher.d/90-hive-hotspot
     echo ">>> NM dispatcher 90-hive-hotspot: OK"
