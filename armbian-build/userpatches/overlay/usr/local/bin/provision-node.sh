@@ -34,7 +34,12 @@ HOSTNAME="hive-${MAC6}"
 
 echo ">>> Device: ${HOSTNAME}  MAC: ${MAC}  IFACE: ${IFACE}"
 
-hostnamectl set-hostname "$HOSTNAME"
+# 设主机名：直接写文件最可靠。systemd-hostnamed 跑在 sandbox 里，在精简内核上
+# 可能把 /etc 误判为只读并返回非零，绝不能让它触发 set -e 拖垮整个 provision。
+echo "$HOSTNAME" > /etc/hostname 2>/dev/null || true
+hostnamectl set-hostname "$HOSTNAME" 2>/dev/null \
+    || hostnamectl --transient set-hostname "$HOSTNAME" 2>/dev/null \
+    || hostname "$HOSTNAME" 2>/dev/null || true
 grep -q "$HOSTNAME" /etc/hosts || echo "127.0.1.1 $HOSTNAME" >> /etc/hosts
 systemd-machine-id-setup --commit
 
