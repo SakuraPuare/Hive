@@ -4,7 +4,7 @@
 #
 # 设计（与全仓库"一切从 MAC 确定性派生"一致）：
 #   SSID(2.4G) = Hive-<节点身份MAC>        WPA2-PSK
-#   SSID(5G)   = Hive-<节点身份MAC>-5G     WPA3-SAE (pmf=2)
+#   SSID(5G)   = Hive-<节点身份MAC>-5G     WPA3-SAE (pmf=required)
 #   密码       = sha256("hive-wifi-psk:"+MAC) 前 16 位十六进制（两频共用，每台唯一、重刷不变）
 #
 # 硬件约束：单 radio 网卡同一时刻只能工作在一个频段，无法同时 2.4G+5G。
@@ -38,7 +38,11 @@ have_iw=0; command -v iw >/dev/null 2>&1 && have_iw=1
 # ── 配置（可在 /etc/hive/config.env 覆盖）─────────────────────────────
 [ -f /etc/hive/config.env ] && . /etc/hive/config.env 2>/dev/null
 COUNTRY="${HOTSPOT_COUNTRY:-CN}"        # 5GHz AP 必需的国家码
-CH5G="${HOTSPOT_5G_CHANNEL:-36}"        # 5G 信道（36/40/44/48 免 DFS）
+# 5G AP 信道：默认 149（U-NII-3，5745MHz）。CN 监管域下 ch36-48(5150-5350) 整段是 DFS+RADAR，
+# wpa_supplicant 不做 DFS CAC，会拒绝在其上开 AP（实测 "Frequency 5180 not allowed for AP
+# mode, RADAR"）。ch149/153/157/161/165 在 CN 为非 DFS、允许 AP 主动发射，是唯一可靠选择。
+# （FCC 域下 ch36 才免 DFS——旧默认 36 的注释是按美国域写的，对 CN 不成立。）
+CH5G="${HOTSPOT_5G_CHANNEL:-149}"       # 5G 信道（CN 非 DFS：149/153/157/161/165）
 PREFER="${HOTSPOT_PREFER_BAND:-5}"      # 单 radio 卡只能开一频时的偏好：5 或 2.4，默认 5（优先 5G WPA3）
 
 # ── 1. 取节点身份 MAC（与 hostname/SSH 同源：第一块非 lo 有线网卡）────────
@@ -195,8 +199,11 @@ write_kf() {
 }
 
 SEC_WPA2=$'[wifi-security]\nkey-mgmt=wpa-psk\nproto=rsn\npairwise=ccmp\ngroup=ccmp\npsk='"$PSK"
-# WPA3-SAE：key-mgmt=sae + pmf=2（管理帧保护强制，SAE 必需）
-SEC_WPA3=$'[wifi-security]\nkey-mgmt=sae\npmf=2\npairwise=ccmp\ngroup=ccmp\npsk='"$PSK"
+# WPA3-SAE：key-mgmt=sae + pmf=required（管理帧保护强制，SAE 必需）
+# 注意：keyfile(.nmconnection) 里 pmf 只接受字符串 default/required/optional/disabled，
+#       不接受数字（数字 1/2 仅 nmcli 命令行用）。写 pmf=2 会被 NM 判非法、拒绝加载整个连接，
+#       导致 `nmcli up` 报 "unknown connection"、AP 起不来（2026-06-20 实测 MT7922 定位）。
+SEC_WPA3=$'[wifi-security]\nkey-mgmt=sae\nproto=rsn\npmf=required\npairwise=ccmp\ngroup=ccmp\npsk='"$PSK"
 
 DONE_2G=""; DONE_5G=""
 if [ "$i2" -ge 0 ]; then
