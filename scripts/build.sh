@@ -103,6 +103,35 @@ IS_LOCAL=true
 
 CACHE_DIR="${ARMBIAN_DIR}/cache"
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ccache 配置（三机型共享缓存的关键）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 背景：默认 ccache.conf（max_size=5G / sloppiness 空 / hash_dir=true / compiler_check=mtime）
+# 下，内核编译命中率实测 0%——Kbuild 注入 KBUILD_BUILD_TIMESTAMP 等时间宏，ccache 默认判定
+# 全部 uncacheable；且 5G 装不下单个 rockchip64 内核全量对象（≈5G），三机型互相淘汰。
+#
+# 为何写配置文件而非传环境变量：Armbian 的 kernel-make.sh / uboot.sh 用 `env -i` 干净环境
+# 跑 make，只透传 CCACHE_DIR 白名单，CCACHE_MAXSIZE/SLOPPINESS 等在 build.sh export 进不去；
+# 而 ccache 永远读 $CCACHE_DIR/ccache.conf，不受 env -i 影响。Armbian 的 ccache.sh 只读不写
+# 该文件（仅 --zero-stats / --show-config），不会覆盖我们的配置，故此处每次构建前落盘。
+# 该文件位于 armbian-build/build/cache/（被 .gitignore），所以配置随 build.sh 入库、克隆即生效。
+#
+# 各项含义：
+#   max_size=30G        —— 容纳三机型内核全量对象（单机型 ≈5-8G），不再互相淘汰
+#   sloppiness=...       —— time_macros 让带时间戳的编译单元可缓存；file_macro/include_*
+#                           忽略 __FILE__ 与头文件 mtime/ctime 差异，跨 worktree 复用
+#   hash_dir=false       —— 不把绝对路径算进哈希；配合 Armbian 已设的 CCACHE_BASEDIR，
+#                           让不同 worktree 路径下的相同源码命中同一缓存
+#   compiler_check=content —— 按编译器内容而非 mtime 判定，工具链更新/重装后仍稳定命中
+mkdir -p "${CACHE_DIR}/ccache"
+cat > "${CACHE_DIR}/ccache/ccache.conf" <<'CCACHE_CONF'
+max_size = 30G
+sloppiness = time_macros,include_file_mtime,include_file_ctime,file_macro,locale
+hash_dir = false
+compiler_check = content
+CCACHE_CONF
+echo "  ccache 配置: max_size=30G, sloppiness=time_macros, hash_dir=false（跨机型复用）"
+
 if $IS_LOCAL; then
   # ── btrfs CoW 优化 ──────────────────────────────────────────────────
   # 编译产生海量随机写，btrfs 的 Copy-on-Write 会产生额外开销
