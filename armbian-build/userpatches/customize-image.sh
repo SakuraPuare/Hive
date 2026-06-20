@@ -122,12 +122,37 @@ apt-get install -y --no-install-recommends \
     tailscale \
     cloudflare-warp
 
-# WiFi 热点固件（AX210 需 iwlwifi-ty-*，MT7921 需 mediatek/*）。
+# WiFi 热点固件（AX210 需 iwlwifi-ty-*，MT7921/MT7922 需 mediatek/WIFI_*MT79*）。
 # 非致命：基础镜像通常已带 armbian-firmware；缺失则尝试补装，失败不中止构建。
+# 注意：必须独立逐包尝试——armbian-firmware-full 即便装上也未必含 MT7922 固件，
+#       故无论它成功与否都再补装 Debian 的 firmware-mediatek（非 non-free 源装不到时跳过）。
 echo ">>> Installing WiFi firmware for hotspot (non-fatal)..."
+# 确保 Debian non-free-firmware 组件启用，否则 firmware-mediatek/iwlwifi 装不到。
+# Armbian minimal 镜像的 .sources 可能只含 main。deb822 与 one-line 两种格式都处理。
+for sf in /etc/apt/sources.list.d/*.sources; do
+    [ -f "$sf" ] || continue
+    if grep -q "debian" "$sf" 2>/dev/null && ! grep -qi "non-free-firmware" "$sf"; then
+        sed -i '/^Components:/ s/$/ contrib non-free non-free-firmware/' "$sf"
+    fi
+done
+if [ -f /etc/apt/sources.list ] && grep -qE "^deb .*debian" /etc/apt/sources.list 2>/dev/null \
+        && ! grep -qi "non-free-firmware" /etc/apt/sources.list; then
+    sed -i '/^deb .*debian/ s/ main\( .*\)\?$/ main contrib non-free non-free-firmware/' /etc/apt/sources.list
+fi
+apt-get update -q 2>/dev/null || true
 apt-get install -y --no-install-recommends armbian-firmware-full 2>/dev/null \
-    || apt-get install -y --no-install-recommends firmware-iwlwifi firmware-misc-nonfree 2>/dev/null \
-    || echo ">>> WiFi firmware pkg not installed via apt (base armbian-firmware may suffice)"
+    || echo ">>> armbian-firmware-full not available, will rely on Debian firmware-* pkgs"
+for fw in firmware-mediatek firmware-iwlwifi firmware-misc-nonfree firmware-realtek; do
+    apt-get install -y --no-install-recommends "$fw" 2>/dev/null \
+        && echo ">>> firmware pkg installed: $fw" \
+        || echo ">>> firmware pkg skipped (unavailable): $fw"
+done
+# 校验关键固件是否就位（MT7922 是当前实测用卡），缺失仅告警不中止
+if ls /lib/firmware/mediatek/WIFI_*MT7922* >/dev/null 2>&1; then
+    echo ">>> MT7922 firmware present: OK"
+else
+    echo ">>> WARNING: MT7922 firmware missing — MT7921/7922 WiFi/热点将无法启用"
+fi
 
 # 清理 apt 缓存，减少镜像体积
 apt-get clean
