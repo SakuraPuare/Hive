@@ -148,6 +148,23 @@ ufw allow from 100.96.0.0/12 comment 'Cloudflare Mesh - Inbound'
 ufw allow out to 100.96.0.0/12 comment 'Cloudflare Mesh - Outbound'
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 透明代理网关 TUN 口（Mihomo Meta）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Mihomo TUN 用 system 内核栈（吞吐最高）：转发流量经内核 INPUT/FORWARD 链投递到
+# Mihomo 监听口，默认 deny incoming/forward 会拦掉致握手失败（SYN 反复重传）。
+# TUN 口（Meta）上的流量全部由 Mihomo 受控（dns-hijack + 规则分流），整口放行安全：
+#   - in  on Meta：放行转发 TCP/UDP 投递到本机监听口（INPUT）
+#   - out on Meta：放行 Mihomo 把回包/代理流量写回 TUN（OUTPUT）
+#   - routed on Meta：放行下游设备经 TUN 的转发（FORWARD，绕过 default deny forward）
+# 接口此刻可能尚未创建，ufw 仍会按接口名落规则，待 Meta 出现即生效。
+GATEWAY_TUN_IFACE="${GATEWAY_TUN_IFACE:-Meta}"
+echo "配置透明网关 TUN 口（${GATEWAY_TUN_IFACE}）放行..."
+ufw allow in on "$GATEWAY_TUN_IFACE" comment 'Mihomo TUN - in'
+ufw allow out on "$GATEWAY_TUN_IFACE" comment 'Mihomo TUN - out'
+ufw route allow in on "$GATEWAY_TUN_IFACE" comment 'Mihomo TUN - forward in'
+ufw route allow out on "$GATEWAY_TUN_IFACE" comment 'Mihomo TUN - forward out'
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 安全加固
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -175,6 +192,7 @@ echo ""
 echo "📋 开放的端口："
 echo "  - SSH (22): 本地网络 + Tailscale"
 echo "  - Node Exporter (9100): 仅 Tailscale"
+echo "  - 透明网关 TUN 口 (Meta): in/out/forward 放行（system 栈转发投递）"
 echo "  - 出站: DNS, NTP, HTTPS, CF Tunnel(7844,443), CF WARP(2408,1701), Tailscale, FRP($FRP_PORT)"
 echo ""
 echo "🔐 安全特性："
