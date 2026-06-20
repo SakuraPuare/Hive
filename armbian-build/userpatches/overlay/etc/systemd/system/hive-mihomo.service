@@ -9,6 +9,9 @@ Type=simple
 # 首次启动若还没拉到真配置，先用内置兜底/触发一次同步，保证有 config.yaml 可加载
 ExecStartPre=/bin/sh -c 'test -f /etc/mihomo/config.yaml || /usr/local/bin/hive-clash-sync || true'
 ExecStart=/usr/local/bin/mihomo -d /etc/mihomo
+# external-ui 指向 /var/www/metacubexd（nginx 同源托管），但 mihomo 仅信任
+# 工作目录 /etc/mihomo；用官方 SAFE_PATHS 白名单放行该目录，否则启动 fatal。
+Environment="SAFE_PATHS=/var/www/metacubexd"
 # Mihomo 主要靠 RESTful API 热重载；HUP 作为兜底信号
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
