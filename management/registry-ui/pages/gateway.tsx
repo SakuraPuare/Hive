@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { AdminService } from '@/src/generated/client';
 import type { model_Node, handler_NodeUpdateRequest } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
@@ -47,6 +47,7 @@ function UpstreamMultiSelect({
   searchableLabel: (n: model_Node) => string;
 }) {
   const [open, setOpen] = useState(false);
+  const listboxId = useId();
 
   function toggle(mac: string) {
     onChange(selected.includes(mac) ? selected.filter((m) => m !== mac) : [...selected, mac]);
@@ -68,6 +69,8 @@ function UpstreamMultiSelect({
           size="sm"
           role="combobox"
           aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-controls={listboxId}
           disabled={disabled}
           className="w-full max-w-[240px] justify-between font-normal"
         >
@@ -76,25 +79,27 @@ function UpstreamMultiSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[260px] p-2" align="start">
-        {candidates.length === 0 ? (
-          <p className="px-2 py-3 text-sm text-muted-foreground">{emptyLabel}</p>
-        ) : (
-          <div className="max-h-64 space-y-1 overflow-y-auto">
-            {candidates.map((n) => {
+        <div id={listboxId} role="listbox" aria-multiselectable className="max-h-64 space-y-1 overflow-y-auto">
+          {candidates.length === 0 ? (
+            <p className="px-2 py-3 text-sm text-muted-foreground">{emptyLabel}</p>
+          ) : (
+            candidates.map((n) => {
               const mac = n.mac ?? '';
               const checked = selected.includes(mac);
               return (
                 <label
                   key={mac}
+                  role="option"
+                  aria-selected={checked}
                   className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
                 >
                   <Checkbox checked={checked} onCheckedChange={() => toggle(mac)} />
                   <span className="truncate">{searchableLabel(n)}</span>
                 </label>
               );
-            })}
-          </div>
-        )}
+            })
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   );
