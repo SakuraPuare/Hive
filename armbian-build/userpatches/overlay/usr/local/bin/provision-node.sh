@@ -39,34 +39,15 @@ grep -q "$HOSTNAME" /etc/hosts || echo "127.0.1.1 $HOSTNAME" >> /etc/hosts
 systemd-machine-id-setup --commit
 
 # ── 确定性 SSH Host Key（基于 MAC，重刷镜像不改 fingerprint）────────
-echo ">>> Generating deterministic SSH host keys from MAC..."
-rm -f /etc/ssh/ssh_host_*
-
-# SHA-256(domain:MAC) → 32 字节 Ed25519 seed
-SEED_HEX=$(printf 'hive-ssh-ed25519:%s' "${MAC}" | sha256sum | awk '{print $1}')
-
-# 构造 PKCS8 DER（固定前缀 + 32 字节 seed），转成 PEM
-# PKCS8 Ed25519 DER 前缀：302e020100300506032b657004220420
-PKCS8_B64=$(python3 -c "
-import base64
-der = bytes.fromhex('302e020100300506032b657004220420' + '${SEED_HEX}')
-b64 = base64.b64encode(der).decode()
-print('\n'.join(b64[i:i+64] for i in range(0, len(b64), 64)))
-")
-
-(umask 077; printf -- '-----BEGIN PRIVATE KEY-----\n%s\n-----END PRIVATE KEY-----\n' \
-    "${PKCS8_B64}" > /etc/ssh/ssh_host_ed25519_key)
-
-# 转成 OpenSSH 私钥格式（sshd 标准格式）
-ssh-keygen -P "" -N "" -p -f /etc/ssh/ssh_host_ed25519_key
-
-# 导出公钥
-ssh-keygen -y -f /etc/ssh/ssh_host_ed25519_key > /etc/ssh/ssh_host_ed25519_key.pub
-chmod 644 /etc/ssh/ssh_host_ed25519_key.pub
-
-# RSA / ECDSA 仍随机生成（兼容旧客户端，fingerprint 不关键）
-ssh-keygen -q -t rsa -b 3072 -N "" -f /etc/ssh/ssh_host_rsa_key
-ssh-keygen -q -t ecdsa -N "" -f /etc/ssh/ssh_host_ecdsa_key
+# 已由 hive-regen-hostkeys.service 在 sshd 之前重建（不依赖网络）。此处兜底：
+# 若该服务因故未生成 ed25519 key，则现场补一次；并确保 sshd 已用上 key。
+if [ ! -s /etc/ssh/ssh_host_ed25519_key ] && [ -x /usr/local/bin/hive-regen-hostkeys.sh ]; then
+    echo ">>> SSH host key missing, regenerating via hive-regen-hostkeys.sh..."
+    /usr/local/bin/hive-regen-hostkeys.sh || ssh-keygen -A
+fi
+# sshd 可能在 host key 就绪前已尝试启动并失败，复位失败计数并拉起
+systemctl reset-failed ssh.service ssh.socket 2>/dev/null || true
+systemctl restart ssh.service 2>/dev/null || systemctl restart ssh 2>/dev/null || true
 # ──────────────────────────────────────────────────────────────────────
 
 echo ">>> Identity set. Ed25519 fingerprint bound to MAC ${MAC}"
