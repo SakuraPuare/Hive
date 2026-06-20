@@ -75,8 +75,16 @@ ufw allow from 100.0.0.0/8 to any port 9550 comment 'Xray Exporter - Tailscale O
 # ufw allow from YOUR_MONITORING_IP to any port 9100 comment 'Node Exporter - Monitoring'
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# EasyTier（纯客户端模式，无 --listeners）
+# EasyTier（监听 P2P 端口，支持对端直连）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# EasyTier 默认监听 11010(tcp/udp) + 11011(udp/ws) + 11012(wss/tcp) 等待对端直连(P2P)。
+# 不放行时 LAN 邻居与公网对端的直连 SYN 被 UFW BLOCK，只能退回走 relay（延迟/带宽差）。
+# 放行后可建直连。EasyTier 有 network-secret 加密鉴权，对端无密钥无法入网，故放行全网段。
+echo "配置 EasyTier P2P 监听端口直连放行..."
+ufw allow proto tcp to any port 11010:11012 comment 'EasyTier P2P - TCP/WS/WSS'
+ufw allow proto udp to any port 11010:11011 comment 'EasyTier P2P - UDP'
+
+# 中继回包放行：
 # 问题：EasyTier 发出 UDP 时源端口随机（如 43232→relay:11010），
 #       中继 STUN 回包源端口不同（如 relay:40836→43232），
 #       conntrack 无法识别为 ESTABLISHED，UFW 直接 BLOCK。
@@ -192,6 +200,7 @@ echo ""
 echo "📋 开放的端口："
 echo "  - SSH (22): 本地网络 + Tailscale"
 echo "  - Node Exporter (9100): 仅 Tailscale"
+echo "  - EasyTier P2P (11010-11012 tcp, 11010-11011 udp): 全网段直连"
 echo "  - 透明网关 TUN 口 (Meta): in/out/forward 放行（system 栈转发投递）"
 echo "  - 出站: DNS, NTP, HTTPS, CF Tunnel(7844,443), CF WARP(2408,1701), Tailscale, FRP($FRP_PORT)"
 echo ""
