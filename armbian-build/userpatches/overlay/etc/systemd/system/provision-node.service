@@ -1,6 +1,11 @@
 [Unit]
 Description=First Boot Node Provisioning
-After=network-online.target
+# 必须等首启那一锅并发干完再跑，否则会撞进 remount r/w / 在线 resize 的窗口：
+#   - systemd-remount-fs：根分区由 ro 转 r/w（约 boot+4s），早于此 /etc 不可写
+#   - armbian-resize-filesystem：首启在线扩容根分区（约 boot+12s）
+#   - systemd-hostnamed：设主机名走它的沙箱，FS 没稳定时它会误报 read-only
+# 这些 oneshot 跑完即退/自禁用，After 不会拖慢非首启的正常启动。
+After=network-online.target systemd-remount-fs.service armbian-resize-filesystem.service systemd-hostnamed.service
 Wants=network-online.target
 # 已跑过则标记文件存在，ConditionPathExists 取反确保不重复执行
 ConditionPathExists=!/etc/hive/provisioned
