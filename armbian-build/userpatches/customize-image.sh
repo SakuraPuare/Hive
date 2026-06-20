@@ -185,6 +185,14 @@ else
     MISSING_BINARIES="${MISSING_BINARIES} provision-node.sh"
 fi
 
+if [ -f "/usr/local/bin/hive-regen-hostkeys.sh" ]; then
+    chmod +x /usr/local/bin/hive-regen-hostkeys.sh
+    echo ">>> hive-regen-hostkeys.sh: OK"
+else
+    echo ">>> WARNING: /usr/local/bin/hive-regen-hostkeys.sh not found"
+    MISSING_BINARIES="${MISSING_BINARIES} hive-regen-hostkeys.sh"
+fi
+
 if [ -n "$MISSING_BINARIES" ]; then
     echo ">>> ERROR: Missing binaries:$MISSING_BINARIES"
     echo ">>> Please run: ./scripts/download-binaries.sh"
@@ -266,6 +274,15 @@ if [ -f "/etc/systemd/system/provision-node.service" ]; then
     echo ">>> provision-node.service enabled"
 else
     echo ">>> ERROR: provision-node.service not found"
+    exit 1
+fi
+
+# host key 首启重建：必须在 sshd 之前、不依赖网络，否则镜像清洗删 key 后 sshd 永久失败
+if [ -f "/etc/systemd/system/hive-regen-hostkeys.service" ]; then
+    systemctl enable hive-regen-hostkeys.service
+    echo ">>> hive-regen-hostkeys.service enabled"
+else
+    echo ">>> ERROR: hive-regen-hostkeys.service not found"
     exit 1
 fi
 

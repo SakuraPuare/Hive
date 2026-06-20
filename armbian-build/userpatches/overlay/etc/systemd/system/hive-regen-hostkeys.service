@@ -1,0 +1,20 @@
+[Unit]
+Description=Hive: regenerate SSH host keys on first boot (before sshd)
+Documentation=man:ssh-keygen(1)
+# 镜像清洗删除了 host key，首启需在 sshd 之前重建，否则 sshd "no hostkeys available" 永久失败
+Before=ssh.service ssh.socket sshd.service
+# 已有 ed25519 host key 则跳过（幂等：仅首启或被清洗后执行一次）
+ConditionPathExists=!/etc/ssh/ssh_host_ed25519_key
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hive-regen-hostkeys.sh
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target
+# sshd 启动前确保本单元已就绪
+RequiredBy=ssh.service ssh.socket
