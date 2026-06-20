@@ -27,13 +27,17 @@ profile:
   store-selected: true
   store-fake-ip: true
 
-# TUN + auto-redirect：只接管"转发流量"（下游 LAN/WiFi 设备经本机的包），
-# 本机自身 OUTPUT 不进 TUN，配合下方 PROCESS-NAME 直连，杜绝出口 Xray 回环。
+# TUN（system 内核栈 + auto-route，不开 auto-redirect）：
+# stack 用 system —— 转发 TCP 走内核协议栈零拷贝，吞吐最高（边缘节点也可能扛大流量，
+# 不预设上限）。代价是转发流量要经内核 INPUT/FORWARD 链投递到 Mihomo 监听口，
+# 需在防火墙放行 TUN 口（见 setup-firewall.sh 对 Meta 的 allow）。
+# 不开 auto-redirect：它把转发 TCP DNAT 到 loopback，与 auto-route 在 RK vendor 内核互撞致 martian。
+# 本机自身出站靠下方 PROCESS-NAME 直连规则防回环。
 tun:
   enable: true
-  stack: mixed
+  stack: system
   auto-route: true
-  auto-redirect: true
+  auto-redirect: false
   auto-detect-interface: true
   dns-hijack:
     - any:53
