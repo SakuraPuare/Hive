@@ -89,6 +89,10 @@ check_service "fail2ban"                  "Intrusion Prevention" '[[ "${_SVC_ACT
     check_service "frpc"        "FRP Client"        '[[ -n "${FRP_SERVER_ADDR}" ]]'
 [[ -n "${_SVC_ENABLED[easytier.service]:-}" ]] && \
     check_service "easytier"    "EasyTier P2P"      '[[ -n "${EASYTIER_NETWORK_NAME}" ]]'
+[[ -n "${_SVC_ENABLED[hive-mihomo.service]:-}" ]] && \
+    check_service "hive-mihomo" "Mihomo Gateway"    '[[ "${GATEWAY_ENABLED:-on}" != "off" ]]'
+[[ -n "${_SVC_ENABLED[hive-hotspot.service]:-}" ]] && \
+    check_service "hive-hotspot" "WiFi Hotspot"     'ls /sys/class/net/wl* >/dev/null 2>&1'
 
 # ── 等后台网络检测完成 ────────────────────────────────────
 echo ""
