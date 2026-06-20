@@ -89,6 +89,16 @@ force CONFIG_I2C y
 
 disable CONFIG_MEDIA_SUPPORT
 
+# ── 核心文件系统保活（systemd 硬依赖，绝不能被级联裁掉）──────────────────
+# CONFIG_TMPFS 提供真正的 tmpfs 实现；缺它时内核把 tmpfs 退化成 ramfs，
+# 不接受 mode=/size= 挂载选项。systemd 开机挂 /dev/shm、/run 时即报
+# "tmpfs: Unknown parameter 'mode'" → 挂载失败 → systemd Freezing execution → 卡死。
+# 实测（Zero2）：关闭 SOUND/DRM 等子系统后，olddefconfig 连锁重算会把基线本为 y 的
+# CONFIG_TMPFS 翻成 n（SHMEM 仍为 y 也救不回来）。故此处显式 force 兜底。
+force CONFIG_TMPFS y                # tmpfs 实现（/dev/shm、/run、/tmp 全靠它）
+force CONFIG_TMPFS_POSIX_ACL y      # tmpfs POSIX ACL（依赖 TMPFS，基线已 y，一并钉死）
+force CONFIG_TMPFS_XATTR y          # tmpfs 扩展属性（systemd/容器需要）
+
 # ── 过时/罕见文件系统（只保留 ext4、btrfs、xfs、f2fs）────────────────────
 
 disable CONFIG_JFS_FS            # JFS — IBM 的老文件系统
