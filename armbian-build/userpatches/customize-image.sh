@@ -380,6 +380,33 @@ fi
 echo ">>> apt sources: multi-mirror configured (tuna/ustc/aliyun/official)"
 
 # ─────────────────────────────────────────────
+# 7.5 串口全 log（出厂默认：所有镜像启动即把内核 log 全打出来）
+# ─────────────────────────────────────────────
+# 目的：批量部署的边缘节点出问题时，插串口即可看到从内核入口起的完整 log，
+#       无需再手动改卡。earlycon 让 8250 串口 probe 完成前的早期 log（DTB/SMP/
+#       时钟/initramfs）也可见，曾据此定位 Zero2 的 CONFIG_TMPFS 缺失卡死。
+# 机制：boot-rk35xx.cmd 等 bootscript 读 armbianEnv.txt：earlycon=on → cmdline 加
+#       裸 earlycon（由 DTB stdout-path 推导地址）；verbosity 即 loglevel。
+# 幂等：存在则改值，不存在则追加。chroot 内 /boot 即 boot 分区，会进最终镜像。
+echo ">>> Enabling full serial boot log (earlycon + verbosity=7)..."
+ENVF=/boot/armbianEnv.txt
+if [ -f "$ENVF" ]; then
+    set_env_kv() {
+        local k="$1" v="$2"
+        if grep -qE "^${k}=" "$ENVF"; then
+            sed -i "s|^${k}=.*|${k}=${v}|" "$ENVF"
+        else
+            echo "${k}=${v}" >> "$ENVF"
+        fi
+    }
+    set_env_kv verbosity 7
+    set_env_kv earlycon on
+    echo ">>> armbianEnv.txt: verbosity=7 earlycon=on"
+else
+    echo ">>> WARNING: $ENVF not found, skip full-log setup"
+fi
+
+# ─────────────────────────────────────────────
 # 8. 镜像清洗（移除唯一标识，供批量烧录）
 # ─────────────────────────────────────────────
 echo ">>> Sanitizing image for mass deployment..."
