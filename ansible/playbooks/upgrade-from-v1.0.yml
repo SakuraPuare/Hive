@@ -52,6 +52,12 @@
           net.ipv4.conf.all.rp_filter = 1
           net.ipv4.conf.default.rp_filter = 1
 
+          # 透明网关必需：允许把转发流量 DNAT/重定向到 127.0.0.1（Mihomo TUN auto-redirect
+          # 的 redirect 监听口落在 loopback）。默认 0 会把这些包在 Meta 口判为 martian 丢弃，
+          # 既打断经本机的透明代理 TCP 转发，又刷爆 log_martians 日志。
+          # 安全边界：WAN 入站由 UFW 默认拒绝 + rp_filter 兜底，外部无法借此触达本机 loopback 服务。
+          net.ipv4.conf.all.route_localnet = 1
+
           # 禁止 ICMP 重定向
           net.ipv4.conf.all.accept_redirects = 0
           net.ipv4.conf.default.accept_redirects = 0
