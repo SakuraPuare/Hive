@@ -438,7 +438,7 @@ func (h *Handler) HandlePortalCreateOrder(w http.ResponseWriter, r *http.Request
 		var promo model.PromoCode
 		now := time.Now().UTC().Format(model.TimeLayout)
 		if err := h.DB.Raw(
-			"SELECT * FROM promo_codes WHERE code = ? AND enabled = 1 AND (valid_from = '' OR valid_from <= ?) AND (valid_to = '' OR valid_to >= ?) AND (max_uses = 0 OR used_count < max_uses)",
+			"SELECT * FROM promo_codes WHERE code = ? AND enabled = 1 AND valid_from <= ? AND valid_to >= ? AND (max_uses = 0 OR used_count < max_uses)",
 			req.PromoCode, now, now,
 		).Scan(&promo).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
