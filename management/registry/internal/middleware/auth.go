@@ -23,11 +23,19 @@ type Auth struct {
 	DB     *gorm.DB
 }
 
+// hmacKey derives a domain-separated signing key from the configured secret.
+// Admin and customer cookies are signed with distinct keys so a token minted
+// for one audience can never be replayed against the other, even if the two
+// payload formats were ever to align.
+func (a *Auth) hmacKey(domain string) []byte {
+	return []byte(a.Config.AdminSessionSecret + "\x00" + domain)
+}
+
 // MakeSessionValue generates a signed cookie value: {expUnix}.{username}.{role}.{sig}
 func (a *Auth) MakeSessionValue(exp int64, username, role string) string {
 	expStr := strconv.FormatInt(exp, 10)
 	payload := expStr + "." + username + "." + role
-	mac := hmac.New(sha256.New, []byte(a.Config.AdminSessionSecret))
+	mac := hmac.New(sha256.New, a.hmacKey("admin"))
 	_, _ = mac.Write([]byte(payload))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return payload + "." + sig
@@ -49,7 +57,7 @@ func (a *Auth) ParseSession(r *http.Request) (username, role string, valid bool)
 	payload := c.Value[:lastDot]
 	gotSig := c.Value[lastDot+1:]
 
-	mac := hmac.New(sha256.New, []byte(a.Config.AdminSessionSecret))
+	mac := hmac.New(sha256.New, a.hmacKey("admin"))
 	_, _ = mac.Write([]byte(payload))
 	wantSig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	if subtle.ConstantTimeCompare([]byte(gotSig), []byte(wantSig)) != 1 {
@@ -105,7 +113,7 @@ func (a *Auth) MakeCustomerSessionValue(exp int64, customerID uint) string {
 	expStr := strconv.FormatInt(exp, 10)
 	cidStr := strconv.FormatUint(uint64(customerID), 10)
 	payload := expStr + "." + cidStr
-	mac := hmac.New(sha256.New, []byte(a.Config.AdminSessionSecret))
+	mac := hmac.New(sha256.New, a.hmacKey("customer"))
 	_, _ = mac.Write([]byte(payload))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return payload + "." + sig
@@ -127,7 +135,7 @@ func (a *Auth) ParseCustomerSession(r *http.Request) (customerID uint, valid boo
 	payload := c.Value[:lastDot]
 	gotSig := c.Value[lastDot+1:]
 
-	mac := hmac.New(sha256.New, []byte(a.Config.AdminSessionSecret))
+	mac := hmac.New(sha256.New, a.hmacKey("customer"))
 	_, _ = mac.Write([]byte(payload))
 	wantSig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	if subtle.ConstantTimeCompare([]byte(gotSig), []byte(wantSig)) != 1 {

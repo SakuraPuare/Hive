@@ -73,6 +73,39 @@ func (h *Handler) hasPermission(userID uint, perm string) bool {
 	return false
 }
 
+// superadminRoleName is the privileged role that may be neither granted nor
+// modified by non-superadmins.
+const superadminRoleName = "superadmin"
+
+// userIsSuperadmin reports whether the user with the given id holds the
+// superadmin role.
+func (h *Handler) userIsSuperadmin(uid uint) bool {
+	if uid == 0 {
+		return false
+	}
+	for _, name := range h.getUserRoleNames(uid) {
+		if name == superadminRoleName {
+			return true
+		}
+	}
+	return false
+}
+
+// actorIsSuperadmin resolves the requesting user from the session cookie and
+// reports whether they hold the superadmin role. Requests authenticated via the
+// API secret (no session) are treated as non-superadmin for these checks.
+func (h *Handler) actorIsSuperadmin(r *http.Request) bool {
+	actor, _, ok := h.Auth.ParseSession(r)
+	if !ok || actor == "" {
+		return false
+	}
+	var uid uint
+	if err := h.DB.Raw("SELECT id FROM users WHERE username = ?", actor).Scan(&uid).Error; err != nil {
+		return false
+	}
+	return h.userIsSuperadmin(uid)
+}
+
 // HandleListUsers godoc
 // @Summary      获取用户列表
 // @ID           AdminListUsers
@@ -218,6 +251,11 @@ func (h *Handler) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusBadRequest, "cannot delete yourself")
 		return
 	}
+	// Only a superadmin may delete another superadmin.
+	if h.userIsSuperadmin(uint(id)) && !h.actorIsSuperadmin(r) {
+		h.jsonErr(w, http.StatusForbidden, "forbidden: only a superadmin can delete a superadmin")
+		return
+	}
 	result := h.DB.Exec("DELETE FROM users WHERE id=?", id)
 	if result.Error != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+result.Error.Error())
@@ -256,6 +294,12 @@ func (h *Handler) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
 		}
 		if !h.hasPermission(actorUID, "user:write") {
 			h.jsonErr(w, http.StatusForbidden, "forbidden: can only change your own password")
+			return
+		}
+		// A superadmin's password may only be reset by another superadmin,
+		// otherwise any user:write holder could take over the account.
+		if h.userIsSuperadmin(uint(id)) && !h.userIsSuperadmin(actorUID) {
+			h.jsonErr(w, http.StatusForbidden, "forbidden: only a superadmin can change a superadmin's password")
 			return
 		}
 	}
@@ -354,6 +398,22 @@ func (h *Handler) HandleSetUserRoles(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusBadRequest, "roles must not be empty")
 		return
 	}
+
+	// Only a superadmin may grant the superadmin role or alter the roles of an
+	// existing superadmin. This prevents privilege escalation by a user who
+	// merely holds user:write.
+	grantsSuperadmin := false
+	for _, name := range req.Roles {
+		if name == superadminRoleName {
+			grantsSuperadmin = true
+			break
+		}
+	}
+	if (grantsSuperadmin || h.userIsSuperadmin(uint(uid))) && !h.actorIsSuperadmin(r) {
+		h.jsonErr(w, http.StatusForbidden, "forbidden: only a superadmin can assign or modify the superadmin role")
+		return
+	}
+
 	for _, name := range req.Roles {
 		var cnt int64
 		if err := h.DB.Model(&model.RoleModel{}).Where("name = ?", name).Count(&cnt).Error; err != nil {
