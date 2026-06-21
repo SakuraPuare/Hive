@@ -2,7 +2,8 @@
 # Hive Node Registry — Go service (management plane)
 # Build context: management/registry  (see homelab CI build-template `context` param)
 
-FROM golang:1.25-alpine AS build
+# mirror.gcr.io: Google's pull-through Docker Hub cache (avoids CI rate limits)
+FROM mirror.gcr.io/library/golang:1.25-alpine AS build
 WORKDIR /src
 # Cache modules first
 COPY go.mod go.sum ./
