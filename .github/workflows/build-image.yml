@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: develop   # self-hosted Gitea act_runner (host mode) on PVE .3
     timeout-minutes: 360  # Armbian 首次构建最长约 90 分钟
     strategy:
       fail-fast: false
@@ -17,7 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── 释放磁盘空间（runner 默认约 14GB，Armbian 需要 50GB+）───────────
+      # ── 释放磁盘空间（GitHub hosted runner 默认约 14GB，Armbian 需要 50GB+）─
+      # On the self-hosted `develop` VM the disk is 100GB and these hosted-only
+      # paths/tools don't exist, so each cleanup is best-effort (|| true).
       - name: Free disk space
         run: |
           sudo rm -rf \
@@ -26,8 +28,8 @@ jobs:
             /opt/ghc \
             /opt/hostedtoolcache/CodeQL \
             /usr/local/share/boost \
-            "$AGENT_TOOLSDIRECTORY"
-          sudo docker system prune -af
+            "${AGENT_TOOLSDIRECTORY:-}" 2>/dev/null || true
+          command -v docker >/dev/null 2>&1 && sudo docker system prune -af || true
           df -h
 
       # ── 构建依赖 ─────────────────────────────────────────────────────────
