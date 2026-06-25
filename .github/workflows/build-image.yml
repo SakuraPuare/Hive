@@ -3,41 +3,16 @@ name: Build Image
 on:
   release:
     types: [published]  # 发布新版本时编译全部三块板
-  workflow_dispatch:
-    inputs:
-      profile:
-        description: "要编译的板子（all = 三块全编）"
-        type: choice
-        default: all
-        options:
-          - all
-          - nanopi-zero2
-          - nanopi-r3s
-          - orangepi4-lts
+  workflow_dispatch:     # 手动触发（Actions 页 "Run workflow" 按钮）
 
 jobs:
-  # 根据触发方式 / 手动选择计算构建矩阵
-  setup:
-    runs-on: develop
-    outputs:
-      matrix: ${{ steps.m.outputs.matrix }}
-    steps:
-      - id: m
-        run: |
-          sel="${{ github.event.inputs.profile }}"
-          if [ -z "$sel" ] || [ "$sel" = "all" ]; then
-            echo 'matrix={"profile":["nanopi-zero2","nanopi-r3s","orangepi4-lts"]}' >> "$GITHUB_OUTPUT"
-          else
-            echo "matrix={\"profile\":[\"$sel\"]}" >> "$GITHUB_OUTPUT"
-          fi
-
   build:
-    needs: setup
     runs-on: develop   # self-hosted Gitea act_runner (host mode) on PVE .3
     timeout-minutes: 360  # Armbian 首次构建最长约 90 分钟
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+      matrix:
+        profile: [nanopi-zero2, nanopi-r3s, orangepi4-lts]
 
     steps:
       - uses: actions/checkout@v4
