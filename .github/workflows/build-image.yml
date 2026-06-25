@@ -33,14 +33,23 @@ jobs:
           df -h
 
       # ── 构建依赖 ─────────────────────────────────────────────────────────
+      # qemu-user-static is a real package on Ubuntu ≤25.04 but a VIRTUAL one on
+      # 25.10/26.04 (provided by qemu-user-binfmt). Install whichever exists so
+      # this works on both GitHub-hosted runners and the self-hosted 26.04 VM.
       - name: Install build dependencies
         run: |
           sudo apt-get update -q
+          if apt-cache show qemu-user-static 2>/dev/null | grep -q '^Filename:'; then
+            QEMU_PKG=qemu-user-static
+          else
+            QEMU_PKG=qemu-user-binfmt
+          fi
+          echo "Using qemu package: $QEMU_PKG"
           sudo apt-get install -y \
             git curl wget jq \
             build-essential python3 \
             ccache unzip zip \
-            qemu-user-static binfmt-support \
+            "$QEMU_PKG" binfmt-support \
             debootstrap
 
       # ── ccache 持久化（命中后构建时间从 60 分钟降至 10 分钟）────────────
