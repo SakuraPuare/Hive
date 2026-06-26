@@ -16,32 +16,21 @@ on:
           - all   # 手动也想三块全编时选 all
 
 jobs:
-  # ── 决定 matrix：release 或手动选 all → 三块；手动选单块 → 只编那块 ──────
-  setup:
-    runs-on: develop
-    outputs:
-      profiles: ${{ steps.pick.outputs.profiles }}
-    steps:
-      - name: Pick profiles
-        id: pick
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
-             && [ "${{ inputs.board }}" != "all" ]; then
-            profiles='["${{ inputs.board }}"]'
-          else
-            profiles='["nanopi-zero2","nanopi-r3s","orangepi4-lts"]'
-          fi
-          echo "profiles=${profiles}" >> "$GITHUB_OUTPUT"
-          echo "本次构建板子: ${profiles}"
-
   build:
-    needs: setup
     runs-on: develop   # self-hosted Gitea act_runner (host mode) on PVE .3
     timeout-minutes: 360  # Armbian 首次构建最长约 90 分钟
     strategy:
       fail-fast: false
       matrix:
-        profile: ${{ fromJSON(needs.setup.outputs.profiles) }}
+        profile: [nanopi-zero2, nanopi-r3s, orangepi4-lts]
+    # release 触发 → 三块全编；手动触发 → 只编选中的那块（选 all 则三块）。
+    # 用静态 matrix + job 级 if 跳过，不用 fromJSON 动态 matrix——Gitea act_runner
+    # 对 fromJSON(needs.*.outputs.*) 动态 matrix 有 bug（matrix 维度生成了，但
+    # matrix.profile 绑成空值，build.sh 收到空 profile 报错），run #8 已踩过并回退。
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.board == 'all' ||
+      github.event.inputs.board == matrix.profile
 
     steps:
       # 持久 runner：保留 gitignore 的 armbian-build/（框架+ccache+已下载二进制）
