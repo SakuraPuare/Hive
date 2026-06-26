@@ -76,14 +76,21 @@ echo "  CPU: $CPU_CORES 核心"
 echo "  内存: ${TOTAL_RAM_GB}GB"
 
 # 智能并行编译配置
-if [ $CPU_CORES -le 4 ]; then
+# MAKE_JOBS 可由环境变量覆盖（CI 静音档传 MAKE_JOBS=22 限核降噪）；不传则按核数自适应。
+# 注意：大核机（>8 核）此前用 核数×1.5 超订，本意是用多余 job 填 I/O 空隙提吞吐，
+# 但在 44 核上 I/O 空隙早被填满，超订只换来满核狂转 + 上下文切换抖动（风扇拉满、
+# 总时长几乎不变甚至更慢）。故大核机改为 = 核数，去掉超订：安静、不发热、速度不降。
+if [ -n "${MAKE_JOBS:-}" ]; then
+  PARALLEL_DOWNLOADS=$([ "$MAKE_JOBS" -le 8 ] && echo 8 || echo 16)
+  echo "  （MAKE_JOBS=${MAKE_JOBS} 由环境变量指定）"
+elif [ $CPU_CORES -le 4 ]; then
   MAKE_JOBS=$((CPU_CORES + 1))
   PARALLEL_DOWNLOADS=6
 elif [ $CPU_CORES -le 8 ]; then
   MAKE_JOBS=$((CPU_CORES * 2))
   PARALLEL_DOWNLOADS=12
 else
-  MAKE_JOBS=$((CPU_CORES + CPU_CORES / 2))
+  MAKE_JOBS=$CPU_CORES
   PARALLEL_DOWNLOADS=16
 fi
 

@@ -4,33 +4,52 @@ on:
   release:
     types: [published]  # 发布新版本时编译全部三块板
   workflow_dispatch:     # 手动触发（Actions 页 "Run workflow" 按钮）
+    inputs:
+      board:
+        description: "手动构建的板子（release 触发时忽略此项，仍编全部三块）"
+        type: choice
+        default: nanopi-zero2
+        options:
+          - nanopi-zero2
+          - nanopi-r3s
+          - orangepi4-lts
+          - all   # 手动也想三块全编时选 all
 
 jobs:
+  # ── 决定 matrix：release 或手动选 all → 三块；手动选单块 → 只编那块 ──────
+  setup:
+    runs-on: develop
+    outputs:
+      profiles: ${{ steps.pick.outputs.profiles }}
+    steps:
+      - name: Pick profiles
+        id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             && [ "${{ inputs.board }}" != "all" ]; then
+            profiles='["${{ inputs.board }}"]'
+          else
+            profiles='["nanopi-zero2","nanopi-r3s","orangepi4-lts"]'
+          fi
+          echo "profiles=${profiles}" >> "$GITHUB_OUTPUT"
+          echo "本次构建板子: ${profiles}"
+
   build:
+    needs: setup
     runs-on: develop   # self-hosted Gitea act_runner (host mode) on PVE .3
     timeout-minutes: 360  # Armbian 首次构建最长约 90 分钟
     strategy:
       fail-fast: false
       matrix:
-        profile: [nanopi-zero2, nanopi-r3s, orangepi4-lts]
+        profile: ${{ fromJSON(needs.setup.outputs.profiles) }}
 
     steps:
+      # 持久 runner：保留 gitignore 的 armbian-build/（框架+ccache+已下载二进制）
+      # 跨 run 复用。默认 clean=true 会 git clean -ffdx 把它们全删、每次重头来，
+      # 那正是下面不再需要 actions/cache 还原 ccache 的原因。
       - uses: actions/checkout@v4
-
-      # ── 释放磁盘空间（GitHub hosted runner 默认约 14GB，Armbian 需要 50GB+）─
-      # On the self-hosted `develop` VM the disk is 100GB and these hosted-only
-      # paths/tools don't exist, so each cleanup is best-effort (|| true).
-      - name: Free disk space
-        run: |
-          sudo rm -rf \
-            /usr/share/dotnet \
-            /usr/local/lib/android \
-            /opt/ghc \
-            /opt/hostedtoolcache/CodeQL \
-            /usr/local/share/boost \
-            "${AGENT_TOOLSDIRECTORY:-}" 2>/dev/null || true
-          command -v docker >/dev/null 2>&1 && sudo docker system prune -af || true
-          df -h
+        with:
+          clean: false
 
       # ── 构建依赖 ─────────────────────────────────────────────────────────
       # qemu-user-static is a real package on Ubuntu ≤25.04 but a VIRTUAL one on
@@ -51,16 +70,6 @@ jobs:
             ccache unzip zip \
             "$QEMU_PKG" binfmt-support \
             debootstrap
-
-      # ── ccache 持久化（命中后构建时间从 60 分钟降至 10 分钟）────────────
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: armbian-build/build/cache/ccache
-          key: armbian-ccache-${{ matrix.profile }}-${{ github.ref_name }}-${{ github.sha }}
-          restore-keys: |
-            armbian-ccache-${{ matrix.profile }}-${{ github.ref_name }}-
-            armbian-ccache-${{ matrix.profile }}-
 
       # ── Armbian 框架 ─────────────────────────────────────────────────────
       - name: Setup Armbian framework
@@ -105,9 +114,33 @@ jobs:
           printf 'REGISTRY_API_SECRET=%s\n'     "$REGISTRY_API_SECRET"     >> .env
           printf 'CAMOUFLAGE_URL=%s\n'          "$CAMOUFLAGE_URL"          >> .env
 
+      # ── 按时间决定档位（避免半夜扰民）────────────────────────────────────
+      # UTC+8 20:00–10:00 → 静音档（限核 + 低优先级，风扇基本不起）
+      # 其余时段（白天 10:00–20:00）→ 全速档（满核，build.sh 自适应=核数）
+      # 注意：判断只在构建「开始」那一刻做一次；单块编译最长约 90 分钟，
+      # 跨过窗口边界不会中途变速（renice 运行中的进程脆弱，不做）。
+      - name: Decide build speed
+        id: speed
+        run: |
+          utc_h=$((10#$(date -u +%H)))
+          hour=$(( (utc_h + 8) % 24 ))      # 换算到 UTC+8
+          if [ "$hour" -ge 20 ] || [ "$hour" -lt 10 ]; then
+            echo "mode=quiet" >> "$GITHUB_OUTPUT"
+            echo "🌙 UTC+8 ${hour} 时 → 静音档（MAKE_JOBS=22 + nice 15）"
+          else
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "☀️ UTC+8 ${hour} 时 → 全速档（满核）"
+          fi
+
       # ── 构建镜像 ─────────────────────────────────────────────────────────
       - name: Build image
-        run: ./scripts/build.sh ${{ matrix.profile }} NO_HOST_RELEASE_CHECK=yes EXPERT=yes
+        run: |
+          if [ "${{ steps.speed.outputs.mode }}" = "quiet" ]; then
+            nice -n 15 env MAKE_JOBS=22 \
+              ./scripts/build.sh ${{ matrix.profile }} NO_HOST_RELEASE_CHECK=yes EXPERT=yes
+          else
+            ./scripts/build.sh ${{ matrix.profile }} NO_HOST_RELEASE_CHECK=yes EXPERT=yes
+          fi
 
       # ── 定位产物 ──────────────────────────────────────────────────────────
       - name: Locate output image
