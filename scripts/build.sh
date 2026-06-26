@@ -139,6 +139,24 @@ compiler_check = content
 CCACHE_CONF
 echo "  ccache 配置: max_size=30G, sloppiness=time_macros, hash_dir=false（跨机型复用）"
 
+# ── 关键修正：同一份配置写进 root 实际使用的 ccache 目录 ──────────────────
+# Armbian 的 compile.sh 会自我提权用 sudo/root 跑内核/u-boot 的 make，root 的
+# ccache 默认读 $HOME/.cache/ccache（= /root/.cache/ccache），根本不读上面那份
+# dev 用户、软链到 persist 的 cache/ccache/ccache.conf。后果（实测 run #11）：
+# root ccache 用全默认（max_size=5G、无 sloppiness），内核的 KBUILD_BUILD_TIMESTAMP
+# 等时间宏被判 100% uncacheable（Uncacheable 2668/2668），命中率恒 0%、每次冷编
+# ~66min，且 5G 默认上限早被撑满。故此处用 sudo 把同一份配置落到 root 的 ccache 目录。
+# /root/.cache/ccache 在本 VM 跨 run 持久（非 workspace），配置一次后历次构建复用。
+ROOT_CCACHE_DIR="$(sudo sh -c 'echo "${CCACHE_DIR:-$HOME/.cache/ccache}"')"
+sudo mkdir -p "${ROOT_CCACHE_DIR}"
+sudo tee "${ROOT_CCACHE_DIR}/ccache.conf" >/dev/null <<'CCACHE_CONF'
+max_size = 30G
+sloppiness = time_macros,include_file_mtime,include_file_ctime,file_macro,locale
+hash_dir = false
+compiler_check = content
+CCACHE_CONF
+echo "  root ccache 配置已写入: ${ROOT_CCACHE_DIR}/ccache.conf（内核可缓存的关键）"
+
 if $IS_LOCAL; then
   # ── btrfs CoW 优化 ──────────────────────────────────────────────────
   # 编译产生海量随机写，btrfs 的 Copy-on-Write 会产生额外开销
