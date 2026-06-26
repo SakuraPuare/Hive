@@ -33,12 +33,7 @@ jobs:
       github.event.inputs.board == matrix.profile
 
     steps:
-      # 持久 runner：保留 gitignore 的 armbian-build/（框架+ccache+已下载二进制）
-      # 跨 run 复用。默认 clean=true 会 git clean -ffdx 把它们全删、每次重头来，
-      # 那正是下面不再需要 actions/cache 还原 ccache 的原因。
       - uses: actions/checkout@v4
-        with:
-          clean: false
 
       # ── 构建依赖 ─────────────────────────────────────────────────────────
       # qemu-user-static is a real package on Ubuntu ≤25.04 but a VIRTUAL one on
@@ -63,6 +58,21 @@ jobs:
       # ── Armbian 框架 ─────────────────────────────────────────────────────
       - name: Setup Armbian framework
         run: ./scripts/setup-armbian.sh
+
+      # ── 持久 ccache：软链到工作目录外的固定目录 ──────────────────────────
+      # act_runner 每个 run 用全新哈希的 hostexecutor 工作目录（实测 run9≠run10），
+      # 所以 workspace 内的 ccache 每次全冷（实测 run #10 ccache=0G、冷编 66min）。
+      # 把框架的 build/cache 软链到 $HOME/armbian-persist-cache，让 ccache/toolchain/
+      # sources 跨 run 真正留存。必须在 setup-armbian（git clone）之后建，否则
+      # clone 目标目录非空会失败。纯文件系统层，不依赖 Armbian 任何变量。
+      - name: Link persistent build cache
+        run: |
+          PERSIST="$HOME/armbian-persist-cache"
+          mkdir -p "$PERSIST"
+          rm -rf armbian-build/build/cache
+          ln -sfn "$PERSIST" armbian-build/build/cache
+          echo "ccache 等持久缓存 → $PERSIST"
+          du -sh "$PERSIST" 2>/dev/null || true
 
       # ── 下载 arm64 二进制 ────────────────────────────────────────────────
       - name: Download binaries
@@ -138,11 +148,16 @@ jobs:
           echo "=== output/images 目录内容 ==="
           ls -lh armbian-build/build/output/images/ 2>/dev/null || echo "(空目录)"
           # 按优先级匹配：xz > zst > gz > 未压缩 img
-          path=$(ls armbian-build/build/output/images/*.img.xz \
-                    armbian-build/build/output/images/*.img.zst \
-                    armbian-build/build/output/images/*.img.gz \
-                    armbian-build/build/output/images/*.img \
-                 2>/dev/null | head -1)
+          # 注意：多个 glob 里只要有一个不匹配，ls 就返回非零退出码，配合 Gitea 的
+          # `bash -e -o pipefail` 会误判整步失败（镜像其实已生成）。故逐个扩展名探测、
+          # 命中即停，全程不让非零退出码逃逸到 set -e。
+          path=""
+          for ext in img.xz img.zst img.gz img; do
+            for f in armbian-build/build/output/images/*.${ext}; do
+              [ -e "$f" ] && { path="$f"; break; }
+            done
+            [ -n "$path" ] && break
+          done
           if [ -z "$path" ]; then
             echo "ERROR: 未找到任何 .img* 文件" >&2
             exit 1
@@ -165,3 +180,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.image.outputs.path }}
+
+      # ── 收尾：把工作目录交还 dev，让 act_runner 能清理回收 ────────────────
+      # Armbian 用 sudo 构建，留下大量 root 拥有的文件；act_runner 以 dev 用户
+      # 清理时删不掉 → job 报错且工作目录孤立堆积（实测堆到 71G、撑爆磁盘）。
+      # 收尾 chown 回 dev，让 act 的清理成功。always() 确保失败时也跑。
+      # 注意：持久 ccache 已软链到 workspace 外，不在 chown/清理范围内，不受影响。
+      - name: Reclaim workspace ownership
+        if: always()
+        run: |
+          sudo chown -R dev:dev "$GITHUB_WORKSPACE" 2>/dev/null || true
+          echo "工作区已交还 dev，act_runner 可正常回收"
