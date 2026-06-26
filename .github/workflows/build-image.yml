@@ -113,9 +113,12 @@ jobs:
           printf 'REGISTRY_API_SECRET=%s\n'     "$REGISTRY_API_SECRET"     >> .env
           printf 'CAMOUFLAGE_URL=%s\n'          "$CAMOUFLAGE_URL"          >> .env
 
-      # ── 按时间决定档位（避免半夜扰民）────────────────────────────────────
-      # UTC+8 20:00–10:00 → 静音档（限核 + 低优先级，风扇基本不起）
-      # 其余时段（白天 10:00–20:00）→ 全速档（满核，build.sh 自适应=核数）
+      # ── 按时间决定档位 ───────────────────────────────────────────────────
+      # UTC+8 20:00–10:00 → 夜间档：只加 nice 15（调度礼让，VM 上有别的活时自动让路）。
+      # 实测大核机满核「不超订」即安静不发热（见 build.sh 注释），夜间限核 22 当初
+      # 是为降噪——但实测 22 核与满核噪音相同，限核只白白拖慢夜间构建，故去掉限核，
+      # 夜间也走 build.sh 的 nproc 自适应（与白天满速档同核数，现 64，升核自动跟）。
+      # 其余时段（白天 10:00–20:00）→ 全速档（满核，build.sh 自适应=nproc）。
       # 注意：判断只在构建「开始」那一刻做一次；单块编译最长约 90 分钟，
       # 跨过窗口边界不会中途变速（renice 运行中的进程脆弱，不做）。
       - name: Decide build speed
@@ -125,7 +128,7 @@ jobs:
           hour=$(( (utc_h + 8) % 24 ))      # 换算到 UTC+8
           if [ "$hour" -ge 20 ] || [ "$hour" -lt 10 ]; then
             echo "mode=quiet" >> "$GITHUB_OUTPUT"
-            echo "🌙 UTC+8 ${hour} 时 → 静音档（MAKE_JOBS=22 + nice 15）"
+            echo "🌙 UTC+8 ${hour} 时 → 夜间档（满核 + nice 15，与白天同核数）"
           else
             echo "mode=full" >> "$GITHUB_OUTPUT"
             echo "☀️ UTC+8 ${hour} 时 → 全速档（满核）"
@@ -135,7 +138,7 @@ jobs:
       - name: Build image
         run: |
           if [ "${{ steps.speed.outputs.mode }}" = "quiet" ]; then
-            nice -n 15 env MAKE_JOBS=22 \
+            nice -n 15 \
               ./scripts/build.sh ${{ matrix.profile }} NO_HOST_RELEASE_CHECK=yes EXPERT=yes
           else
             ./scripts/build.sh ${{ matrix.profile }} NO_HOST_RELEASE_CHECK=yes EXPERT=yes
