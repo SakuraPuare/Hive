@@ -24,29 +24,47 @@ jobs:
       matrix:
         profile: [nanopi-zero2, nanopi-r3s, orangepi4-lts]
     # release 触发 → 三块全编；手动触发 → 只编选中的那块（选 all 则三块）。
-    # 用静态 matrix + job 级 if 跳过，不用 fromJSON 动态 matrix——Gitea act_runner
-    # 对 fromJSON(needs.*.outputs.*) 动态 matrix 有 bug（matrix 维度生成了，但
-    # matrix.profile 绑成空值，build.sh 收到空 profile 报错），run #8 已踩过并回退。
+    # 用静态 matrix（不用 fromJSON 动态 matrix——Gitea act_runner 对
+    # fromJSON(needs.*.outputs.*) 有 bug：matrix 维度生成了但 matrix.profile 绑成
+    # 空值，build.sh 收到空 profile 报错，run #8 已踩过并回退）。
+    #
+    # 板子选择不能放 job 级 if：GitHub 的 job 级 if 禁止引用 matrix 上下文
+    # （报 "Unrecognized named-value: 'matrix'"，使整个 workflow 文件 Invalid——
+    # 这正是 GitHub 侧 build-image 一直红叉的真因）。Gitea 宽松接受，GitHub 严格拒绝。
+    # 故 job 级 if 只放「平台门控」（不含 matrix，两边都合法），板子选择下沉到下面的
+    # gate step（step 级表达式里 matrix 可用）。
     #
     # 平台门控（github.server_url != github.com → 仅 Gitea 跑）：本仓库 Gitea 为主、
     # push-mirror 到 GitHub，两边同一份文件。镜像构建依赖自托管 `develop` runner +
-    # Gitea 旧版 artifact API，GitHub 上既无该 runner 也跑不了，每次 push 都被 GitHub
-    # 记一个 0-job「workflow 文件问题」失败（红叉）。加此判据后 GitHub 上整个 job 直接
-    # skipped，红叉消失；Gitea 行为不变（仍 release/手动触发构建）。
-    if: >-
-      github.server_url != 'https://github.com' &&
-      (github.event_name != 'workflow_dispatch' ||
-       github.event.inputs.board == 'all' ||
-       github.event.inputs.board == matrix.profile)
+    # Gitea 旧版 artifact API，GitHub 上既无该 runner 也跑不了。门控后 GitHub 上整个
+    # job skipped，红叉消失；Gitea 行为不变。
+    if: github.server_url != 'https://github.com'
 
     steps:
       - uses: actions/checkout@v4
+
+      # ── 板子选择 gate（替代 job 级 if 里的 matrix 判据，见上方说明）──────────
+      # release 或 dispatch+all → 全编；dispatch+单块 → 只有选中那块 build=true。
+      # 非选中的 matrix 分支：build=false，后续实质 step 全部 if 跳过（job 秒过）。
+      - name: Gate — 本 profile 是否需要构建
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             && [ "${{ github.event.inputs.board }}" != "all" ] \
+             && [ "${{ github.event.inputs.board }}" != "${{ matrix.profile }}" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "⏭ ${{ matrix.profile }} 非本次手动选中（board=${{ github.event.inputs.board }}），跳过"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "▶ ${{ matrix.profile }} 需要构建"
+          fi
 
       # ── 构建依赖 ─────────────────────────────────────────────────────────
       # qemu-user-static is a real package on Ubuntu ≤25.04 but a VIRTUAL one on
       # 25.10/26.04 (provided by qemu-user-binfmt). Install whichever exists so
       # this works on both GitHub-hosted runners and the self-hosted 26.04 VM.
       - name: Install build dependencies
+        if: steps.gate.outputs.build == 'true'
         run: |
           sudo apt-get update -q
           if apt-cache show qemu-user-static 2>/dev/null | grep -q '^Filename:'; then
@@ -64,6 +82,7 @@ jobs:
 
       # ── Armbian 框架 ─────────────────────────────────────────────────────
       - name: Setup Armbian framework
+        if: steps.gate.outputs.build == 'true'
         run: ./scripts/setup-armbian.sh
 
       # ── 持久 ccache：软链到工作目录外的固定目录 ──────────────────────────
@@ -73,6 +92,7 @@ jobs:
       # sources 跨 run 真正留存。必须在 setup-armbian（git clone）之后建，否则
       # clone 目标目录非空会失败。纯文件系统层，不依赖 Armbian 任何变量。
       - name: Link persistent build cache
+        if: steps.gate.outputs.build == 'true'
         run: |
           PERSIST="$HOME/armbian-persist-cache"
           mkdir -p "$PERSIST"
@@ -83,10 +103,12 @@ jobs:
 
       # ── 下载 arm64 二进制 ────────────────────────────────────────────────
       - name: Download binaries
+        if: steps.gate.outputs.build == 'true'
         run: ./scripts/download-binaries.sh
 
       # ── 从 secrets 生成 .env ─────────────────────────────────────────────
       - name: Create .env
+        if: steps.gate.outputs.build == 'true'
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
@@ -130,6 +152,7 @@ jobs:
       # 跨过窗口边界不会中途变速（renice 运行中的进程脆弱，不做）。
       - name: Decide build speed
         id: speed
+        if: steps.gate.outputs.build == 'true'
         run: |
           utc_h=$((10#$(date -u +%H)))
           hour=$(( (utc_h + 8) % 24 ))      # 换算到 UTC+8
@@ -143,6 +166,7 @@ jobs:
 
       # ── 构建镜像 ─────────────────────────────────────────────────────────
       - name: Build image
+        if: steps.gate.outputs.build == 'true'
         run: |
           if [ "${{ steps.speed.outputs.mode }}" = "quiet" ]; then
             nice -n 15 \
@@ -154,6 +178,7 @@ jobs:
       # ── 定位产物 ──────────────────────────────────────────────────────────
       - name: Locate output image
         id: image
+        if: steps.gate.outputs.build == 'true'
         run: |
           echo "=== output/images 目录内容 ==="
           ls -lh armbian-build/build/output/images/ 2>/dev/null || echo "(空目录)"
@@ -181,7 +206,7 @@ jobs:
       # 报 "v2.0.0+ ... not currently supported on GHES" 而失败）。Gitea 实现的是旧版
       # artifact API，必须用 @v3。GitHub 上 v3 同样可用。
       - name: Upload artifact
-        if: github.event_name == 'workflow_dispatch'
+        if: steps.gate.outputs.build == 'true' && github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.profile }}-${{ steps.image.outputs.name }}
@@ -189,7 +214,7 @@ jobs:
 
       # ── release 触发：附加到对应的 GitHub Release ────────────────────────
       - name: Upload to release
-        if: github.event_name == 'release'
+        if: steps.gate.outputs.build == 'true' && github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.image.outputs.path }}
