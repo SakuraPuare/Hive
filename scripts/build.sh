@@ -332,6 +332,17 @@ cd "${ARMBIAN_DIR}"
 #   - 不传 KERNEL_CONFIGURE → 弹"是否查看内核配置"菜单（所有板）
 #   - 不传 BUILD_DESKTOP    → 有 HDMI 的板（如香橙派 Pi 4 LTS HAS_VIDEO_OUTPUT=yes）
 #     会弹"是否编译桌面版"菜单；headless 边缘节点一律 no
+#
+# 压缩提速（保留 xz —— balenaEtcher / rpi-imager 不支持 zstd，只认 xz/gz/bz2/zip；
+# 且 Armbian 的 COMPRESS_OUTPUTIMAGE 只识别 xz/zst/sha，gz 不处理，故 xz 是唯一
+# 「能烧录工具直读 + Armbian 能产出」的交集）：
+# 慢的根因不是 xz 本身，是默认 -9 档——xz 按 ~192MB 块切（每块 -9 需 674MB 内存），
+# 小镜像切不出几块，64 核只跑得起 ~16 线程、压缩段 3/4 的核空转。两个旋钮治本：
+#   IMAGE_XZ_COMPRESSION_RATIO=6 —— 降到 -6（块 24MB，切块数 ×8 → 线程数大涨），
+#       压缩比仍接近 -9（镜像略大几十 MB），换压缩段大幅缩短；
+#   COMPRESS_MAX_THREADS — 解除默认 16 线程上限，按本机核数吃满（-6 每线程 ~94MB，
+#       64 线程约 6GB，在 xz 10GiB memlimit 内安全）。
+COMPRESS_THREADS="${COMPRESS_THREADS:-$(nproc)}"
 time ./compile.sh build \
     BOARD="${BOARD}" \
     BRANCH="${BRANCH}" \
@@ -341,6 +352,8 @@ time ./compile.sh build \
     KERNEL_CONFIGURE=no \
     USE_CCACHE=yes \
     COMPRESS_OUTPUTIMAGE=sha,xz \
+    IMAGE_XZ_COMPRESSION_RATIO=6 \
+    COMPRESS_MAX_THREADS="${COMPRESS_THREADS}" \
     PATCHES_TO_GIT=yes \
     UBOOT_GIT_CACHE_TTL="${GIT_CACHE_TTL_SECONDS}" \
     KERNEL_GIT_CACHE_TTL="${GIT_CACHE_TTL_SECONDS}" \

@@ -197,7 +197,7 @@ echo "所有 SD 卡烧录完成"
 | 路径 | 内容 |
 |------|------|
 | `output/images/*.img` | 可直接烧录的完整系统镜像 |
-| `output/images/*.img.xz` | 压缩版（如开启 `COMPRESS_OUTPUTIMAGE=yes`） |
+| `output/images/*.img.xz` | 压缩版（CI 默认 `COMPRESS_OUTPUTIMAGE=sha,xz`，balenaEtcher / rpi-imager 可直接烧录，无需解压）|
 | `output/debs/` | 构建过程中产生的 .deb 包（含内核、驱动） |
 
 ---
