@@ -11,9 +11,13 @@ on:
 
 jobs:
   # ── Cloudflare Pages ─────────────────────────────────────────
+  # 仅 GitHub 跑：文档部署是轻量活，丢给 GitHub 免费 runner，让本地自托管 develop
+  # runner（capacity=1）专心干镜像构建重活、不被占用排队。CF Pages 只依赖 CF token，
+  # 与平台无关，放 GitHub 即可。
   deploy-cloudflare:
     name: Cloudflare Pages
     runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
     permissions:
       contents: read
       deployments: write
@@ -40,9 +44,13 @@ jobs:
           DOCS_PROJECT_NAME: ${{ vars.DOCS_PROJECT_NAME || 'hive-docs' }}
 
   # ── GitHub Pages ─────────────────────────────────────────────
+  # 仅 GitHub 跑：configure-pages / upload-pages-artifact / deploy-pages 是 GitHub
+  # 专有 action，在 Gitea 上必失败（之前 Gitea 侧每次都红一个 GitHub Pages job）。
+  # 门控到只在 GitHub 一侧后，Gitea 上此 job 直接 skipped。
   deploy-github:
     name: GitHub Pages
     runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
     permissions:
       contents: read
       pages: write

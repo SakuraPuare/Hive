@@ -27,10 +27,17 @@ jobs:
     # 用静态 matrix + job 级 if 跳过，不用 fromJSON 动态 matrix——Gitea act_runner
     # 对 fromJSON(needs.*.outputs.*) 动态 matrix 有 bug（matrix 维度生成了，但
     # matrix.profile 绑成空值，build.sh 收到空 profile 报错），run #8 已踩过并回退。
+    #
+    # 平台门控（github.server_url != github.com → 仅 Gitea 跑）：本仓库 Gitea 为主、
+    # push-mirror 到 GitHub，两边同一份文件。镜像构建依赖自托管 `develop` runner +
+    # Gitea 旧版 artifact API，GitHub 上既无该 runner 也跑不了，每次 push 都被 GitHub
+    # 记一个 0-job「workflow 文件问题」失败（红叉）。加此判据后 GitHub 上整个 job 直接
+    # skipped，红叉消失；Gitea 行为不变（仍 release/手动触发构建）。
     if: >-
-      github.event_name != 'workflow_dispatch' ||
-      github.event.inputs.board == 'all' ||
-      github.event.inputs.board == matrix.profile
+      github.server_url != 'https://github.com' &&
+      (github.event_name != 'workflow_dispatch' ||
+       github.event.inputs.board == 'all' ||
+       github.event.inputs.board == matrix.profile)
 
     steps:
       - uses: actions/checkout@v4
