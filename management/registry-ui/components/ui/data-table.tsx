@@ -162,15 +162,15 @@ export function DataTable<TData>({
     <div className="space-y-4">
       {/* Toolbar row */}
       <div className="flex flex-wrap items-center gap-3">
-        {/* Search */}
+        {/* Search — M3 search field on a tonal surface */}
         {onSearchChange && (
           <div className="relative flex-1 min-w-[200px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-md-on-surface-variant" />
             <Input
               placeholder={searchPlaceholder}
               value={searchValue ?? ''}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="pl-9 h-9"
+              className="h-10 pl-10 rounded-full border-transparent bg-md-surface-container-high text-foreground placeholder:text-md-on-surface-variant focus-visible:border-md-primary"
             />
           </div>
         )}
@@ -181,13 +181,13 @@ export function DataTable<TData>({
         {toggleableColumns.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 ml-auto">
+              <Button variant="outline" size="sm" className="h-10 ml-auto rounded-full state-layer">
                 <Settings2 className="h-4 w-4 mr-1.5" />
                 Columns
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[200px] max-h-[400px] overflow-y-auto">
-              <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-[200px] max-h-[400px] overflow-y-auto rounded-xl elevation-2">
+              <DropdownMenuLabel className="font-display">Toggle columns</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {toggleableColumns.map((col) => (
                 <DropdownMenuCheckboxItem
@@ -205,8 +205,8 @@ export function DataTable<TData>({
 
       {/* Batch actions bar */}
       {selectedCount > 0 && batchActions && (
-        <div className="flex items-center gap-3 rounded-lg border bg-muted/50 px-4 py-2.5 animate-fade-in">
-          <Badge variant="outline" className="font-medium">
+        <div className="flex items-center gap-3 rounded-xl bg-md-primary-container text-md-on-primary-container px-4 py-2.5 animate-slide-up">
+          <Badge variant="outline" className="rounded-full border-md-on-primary-container/30 bg-transparent text-md-on-primary-container font-display font-600">
             {selectedCount} selected
           </Badge>
           <div className="flex gap-2 ml-auto">
@@ -216,12 +216,12 @@ export function DataTable<TData>({
       )}
 
       {/* Table */}
-      <Card>
+      <Card className="rounded-xl overflow-hidden">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               {table.getHeaderGroups().map((hg) => (
-                <TableRow key={hg.id} className="hover:bg-transparent">
+                <TableRow key={hg.id} className="border-b border-md-outline-variant bg-md-surface-container-high/50 hover:bg-md-surface-container-high/50">
                   {hg.headers.map((header) => {
                     const canSort = header.column.getCanSort();
                     const sorted = header.column.getIsSorted();
@@ -229,13 +229,13 @@ export function DataTable<TData>({
                       <TableHead
                         key={header.id}
                         onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                        className={canSort ? 'cursor-pointer select-none' : ''}
+                        className={`text-xs font-600 uppercase tracking-wide text-md-on-surface-variant ${canSort ? 'cursor-pointer select-none transition-colors hover:text-foreground' : ''}`}
                       >
                         <span className="inline-flex items-center gap-1 whitespace-nowrap">
                           {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                           {canSort && (
-                            sorted === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> :
-                            sorted === 'desc' ? <ArrowDown className="h-3.5 w-3.5 text-primary" /> :
+                            sorted === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-md-primary" /> :
+                            sorted === 'desc' ? <ArrowDown className="h-3.5 w-3.5 text-md-primary" /> :
                             <ArrowUpDown className="h-3.5 w-3.5 opacity-30" />
                           )}
                         </span>
@@ -247,25 +247,26 @@ export function DataTable<TData>({
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={colCount} className="text-center py-16">
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={colCount} className="text-center py-20">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="h-7 w-7 rounded-full border-[3px] border-md-primary/25 border-t-md-primary animate-spin" />
                     </div>
                   </TableCell>
                 </TableRow>
               ) : table.getRowModel().rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={colCount} className="text-center py-16 text-muted-foreground">
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={colCount} className="text-center py-20 text-md-on-surface-variant">
                     {(searchValue?.trim() ? emptyFilteredMessage : null) ?? emptyMessage}
                   </TableCell>
                 </TableRow>
               ) : (
-                table.getRowModel().rows.map((row) => (
+                table.getRowModel().rows.map((row, i) => (
                   <TableRow
                     key={row.id}
                     data-state={row.getIsSelected() && 'selected'}
-                    className={onRowClick ? 'cursor-pointer' : ''}
+                    className={`border-b border-md-outline-variant/60 transition-colors hover:bg-md-on-surface/[0.04] data-[state=selected]:bg-md-primary-container/40 animate-slide-up ${onRowClick ? 'cursor-pointer' : ''}`}
+                    style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
                     onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                   >
                     {row.getVisibleCells().map((cell) => {
@@ -273,6 +274,7 @@ export function DataTable<TData>({
                       return (
                         <TableCell
                           key={cell.id}
+                          className="py-3"
                           onClick={isInteractive ? (e) => e.stopPropagation() : undefined}
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -290,26 +292,26 @@ export function DataTable<TData>({
       {/* Pagination */}
       {table.getPageCount() > 1 && (
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">
+          <span className="text-md-on-surface-variant">
             {data.length} rows
           </span>
           <div className="flex items-center gap-1.5">
-            <Button variant="outline" size="icon" className="h-8 w-8"
+            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full state-layer"
               onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()}>
               <ChevronsLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8"
+            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full state-layer"
               onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="px-2 font-medium">
+            <span className="px-3 font-display font-600 text-foreground tabular-nums">
               {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
             </span>
-            <Button variant="outline" size="icon" className="h-8 w-8"
+            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full state-layer"
               onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8"
+            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full state-layer"
               onClick={() => table.setPageIndex(table.getPageCount() - 1)} disabled={!table.getCanNextPage()}>
               <ChevronsRight className="h-4 w-4" />
             </Button>
