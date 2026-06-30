@@ -52,11 +52,20 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  active: 'bg-green-100 text-green-800',
-  suspended: 'bg-yellow-100 text-yellow-800',
-  banned: 'bg-red-100 text-red-800',
-  expired: 'bg-gray-100 text-gray-800',
+// M3 status chip classes per §10
+const STATUS_CHIP: Record<string, string> = {
+  active:    'bg-md-tertiary-container text-md-on-tertiary-container',
+  suspended: 'bg-[hsl(43_96%_50%/0.15)] text-[hsl(38_92%_30%)] dark:text-[hsl(43_96%_70%)]',
+  banned:    'bg-md-error-container text-md-on-error-container',
+  expired:   'bg-muted text-muted-foreground',
+};
+
+// M3 status dot classes per §10
+const STATUS_DOT: Record<string, string> = {
+  active:    'bg-md-tertiary',
+  suspended: 'bg-[hsl(43_96%_50%)]',
+  banned:    'bg-md-error',
+  expired:   'bg-md-outline',
 };
 
 export default function CustomerDetail() {
@@ -205,117 +214,227 @@ export default function CustomerDetail() {
   const statusLabel = (s: string) =>
     ({ active: t('active'), suspended: t('suspended'), banned: t('banned'), expired: t('expired') }[s] ?? s);
 
-  if (authLoading || loading) return null;
+  // M3 circular loading indicator
+  if (authLoading || loading) {
+    return (
+      <div className="flex h-48 items-center justify-center">
+        <span
+          className="block size-10 rounded-full border-4 border-md-primary-container border-t-md-primary animate-spin"
+          style={{ animationDuration: '800ms', animationTimingFunction: 'var(--ease-standard)' }}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <Button variant="ghost" size="sm" onClick={() => router.push('/customers')}>
-        <ArrowLeft className="mr-1 h-4 w-4" />{tCommon('back')}
-      </Button>
+    <div className="space-y-6 animate-fade-in">
+      {/* Back button */}
+      <button
+        onClick={() => router.push('/customers')}
+        className="state-layer ripple inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5
+          text-sm font-500 text-md-on-surface-variant
+          hover:bg-md-surface-container-high
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+          transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        <span>{tCommon('back')}</span>
+      </button>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {/* Error banner */}
+      {error && (
+        <div className="flex items-center gap-3 rounded-xl border border-md-error-container bg-md-error-container px-4 py-3 animate-slide-up">
+          <span className="size-2 shrink-0 rounded-full bg-md-error" />
+          <p className="text-sm text-md-on-error-container">{error}</p>
+        </div>
+      )}
 
       {customer && (
         <>
-          {/* Customer Info Card */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-base">{t('customerInfo')}</CardTitle>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => { setNewPwd(''); setPwdOpen(true); }}>
-                  <KeyRound className="mr-1 h-3.5 w-3.5" />{t('resetPassword')}
-                </Button>
-                <Button variant="outline" size="sm" onClick={openEdit}>
-                  {tCommon('edit')}
-                </Button>
+          {/* ── Customer Info Card ── */}
+          <Card className="rounded-xl border bg-card animate-slide-up" style={{ animationDelay: '40ms' }}>
+            <CardHeader className="flex flex-row items-start justify-between gap-4 pb-4">
+              <div className="space-y-1">
+                <p className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
+                  {t('customerInfo')}
+                </p>
+                <CardTitle className="font-display text-xl font-600 text-foreground">
+                  {customer.nickname || customer.email}
+                </CardTitle>
+                {/* Status chip inline with title */}
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${STATUS_CHIP[customer.status ?? ''] ?? 'bg-muted text-muted-foreground'}`}>
+                  <span className={`size-1.5 rounded-full ${STATUS_DOT[customer.status ?? ''] ?? 'bg-md-outline'}`} />
+                  {statusLabel(customer.status ?? '')}
+                </span>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  onClick={() => { setNewPwd(''); setPwdOpen(true); }}
+                  className="state-layer ripple inline-flex items-center gap-1.5 rounded-lg px-3 py-2
+                    text-sm font-500 border border-border bg-card text-foreground
+                    hover:bg-md-surface-container-high
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+                    transition-colors"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  <span>{t('resetPassword')}</span>
+                </button>
+                <button
+                  onClick={openEdit}
+                  className="state-layer ripple inline-flex items-center gap-1.5 rounded-lg px-3 py-2
+                    text-sm font-500 border border-border bg-card text-foreground
+                    hover:bg-md-surface-container-high
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+                    transition-colors"
+                >
+                  <span>{tCommon('edit')}</span>
+                </button>
               </div>
             </CardHeader>
+
             <CardContent>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-xs text-muted-foreground">{t('email')}</span>
-                  <p>{customer.email}</p>
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">{t('nickname')}</span>
-                  <p>{customer.nickname || '—'}</p>
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">{t('status')}</span>
-                  <p><Badge className={STATUS_COLORS[customer.status ?? '']}>{statusLabel(customer.status ?? '')}</Badge></p>
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">{t('colCreatedAt')}</span>
-                  <p>{formatDate(customer.created_at)}</p>
-                </div>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-4">
+                {[
+                  { label: t('email'), value: customer.email },
+                  { label: t('nickname'), value: customer.nickname || '—' },
+                  { label: t('colCreatedAt'), value: formatDate(customer.created_at) },
+                  { label: 'ID', value: String(customer.id ?? '—') },
+                ].map((item, i) => (
+                  <div key={i} className="animate-slide-up" style={{ animationDelay: `${60 + i * 40}ms` }}>
+                    <p className="text-xs font-500 text-muted-foreground mb-1">{item.label}</p>
+                    <p className="text-sm font-500 text-foreground break-all">{item.value}</p>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
 
-          {/* Subscriptions */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-base">{t('subscriptions')}</CardTitle>
-              <Button size="sm" onClick={() => setSubOpen(true)}>
-                <Plus className="mr-1 h-4 w-4" />{t('createSubscription')}
-              </Button>
+          {/* ── Subscriptions Card ── */}
+          <Card className="rounded-xl border bg-card animate-slide-up" style={{ animationDelay: '80ms' }}>
+            <CardHeader className="flex flex-row items-center justify-between pb-4">
+              <div className="space-y-0.5">
+                <p className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
+                  {t('subscriptions')}
+                </p>
+                <CardTitle className="font-display text-xl font-600 text-foreground">
+                  {subscriptions.length > 0 && (
+                    <span className="font-display text-3xl font-700 text-foreground mr-1">
+                      {subscriptions.length}
+                    </span>
+                  )}
+                  {t('subscriptions')}
+                </CardTitle>
+              </div>
+              <button
+                onClick={() => setSubOpen(true)}
+                className="state-layer ripple inline-flex items-center gap-2 rounded-lg px-4 py-2
+                  text-sm font-500 bg-md-primary text-md-on-primary elevation-1
+                  hover:elevation-2
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+                  transition-shadow"
+              >
+                <Plus className="h-4 w-4" />
+                <span>{t('createSubscription')}</span>
+              </button>
             </CardHeader>
-            <CardContent>
+
+            <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('planName')}</TableHead>
-                    <TableHead>{t('token')}</TableHead>
-                    <TableHead>{t('trafficUsed')}</TableHead>
-                    <TableHead>{t('expiresAt')}</TableHead>
-                    <TableHead>{t('colStatus')}</TableHead>
-                    <TableHead className="text-right">{t('colActions')}</TableHead>
+                  <TableRow className="border-b border-border hover:bg-transparent">
+                    <TableHead className="text-xs font-500 text-muted-foreground pl-6">{t('planName')}</TableHead>
+                    <TableHead className="text-xs font-500 text-muted-foreground">{t('token')}</TableHead>
+                    <TableHead className="text-xs font-500 text-muted-foreground">{t('trafficUsed')}</TableHead>
+                    <TableHead className="text-xs font-500 text-muted-foreground">{t('expiresAt')}</TableHead>
+                    <TableHead className="text-xs font-500 text-muted-foreground">{t('colStatus')}</TableHead>
+                    <TableHead className="text-xs font-500 text-muted-foreground text-right pr-6">{t('colActions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {subscriptions.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
-                        {t('noSubscriptions')}
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={6} className="py-16 text-center">
+                        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                          <div className="flex size-12 items-center justify-center rounded-full bg-md-surface-container-high">
+                            <Plus className="h-5 w-5 text-md-on-surface-variant" />
+                          </div>
+                          <p className="text-sm">{t('noSubscriptions')}</p>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )}
-                  {subscriptions.map((sub) => {
+                  {subscriptions.map((sub, i) => {
                     const pct = (sub.traffic_limit ?? 0) > 0 ? Math.min(100, ((sub.traffic_used ?? 0) / (sub.traffic_limit ?? 1)) * 100) : 0;
                     return (
-                      <TableRow key={sub.id}>
-                        <TableCell>{sub.plan_name}</TableCell>
+                      <TableRow
+                        key={sub.id}
+                        className="hover-state border-b border-border last:border-0 animate-slide-up"
+                        style={{ animationDelay: `${100 + i * 40}ms` }}
+                      >
+                        <TableCell className="pl-6 font-500 text-sm text-foreground">{sub.plan_name}</TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1">
-                            <code className="text-xs max-w-[120px] truncate">{sub.token}</code>
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyToken(sub)}>
+                          <div className="flex items-center gap-1.5">
+                            <code className="rounded-md bg-md-surface-container-high px-2 py-0.5 text-xs text-muted-foreground max-w-[120px] truncate">
+                              {sub.token}
+                            </code>
+                            <button
+                              onClick={() => copyToken(sub)}
+                              className="state-layer inline-flex size-6 items-center justify-center rounded-md
+                                text-muted-foreground hover:text-foreground
+                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary
+                                transition-colors"
+                              title="Copy token"
+                            >
                               <Copy className="h-3 w-3" />
-                            </Button>
-                            {copiedId === sub.id && <span className="text-xs text-green-600">{t('copied')}</span>}
+                            </button>
+                            {copiedId === sub.id && (
+                              <span className="text-xs font-500 text-md-tertiary animate-fade-in">
+                                {t('copied')}
+                              </span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-24 rounded-full bg-muted overflow-hidden">
-                              <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                          <div className="flex items-center gap-2.5">
+                            <div className="h-1.5 w-24 overflow-hidden rounded-full bg-md-surface-container-highest">
+                              <div
+                                className="h-full rounded-full bg-md-primary transition-all"
+                                style={{ width: `${pct}%` }}
+                              />
                             </div>
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">
                               {formatBytes(sub.traffic_used ?? 0)} / {formatBytes(sub.traffic_limit ?? 0)}
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell>{formatDate(sub.expires_at)}</TableCell>
+                        <TableCell className="text-sm text-foreground">{formatDate(sub.expires_at)}</TableCell>
                         <TableCell>
-                          <Badge className={STATUS_COLORS[sub.status ?? '']}>{statusLabel(sub.status ?? '')}</Badge>
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${STATUS_CHIP[sub.status ?? ''] ?? 'bg-muted text-muted-foreground'}`}>
+                            <span className={`size-1.5 rounded-full ${STATUS_DOT[sub.status ?? ''] ?? 'bg-md-outline'}`} />
+                            {statusLabel(sub.status ?? '')}
+                          </span>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right pr-6">
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleResetToken(sub.id!)} title={t('resetToken')}>
+                            <button
+                              onClick={() => handleResetToken(sub.id!)}
+                              title={t('resetToken')}
+                              className="state-layer inline-flex size-7 items-center justify-center rounded-md
+                                text-muted-foreground hover:text-foreground
+                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary
+                                transition-colors"
+                            >
                               <RefreshCw className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteSub(sub.id!)}>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSub(sub.id!)}
+                              className="state-layer inline-flex size-7 items-center justify-center rounded-md
+                                text-md-error hover:bg-md-error-container
+                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error
+                                transition-colors"
+                            >
                               <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            </button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -328,22 +447,30 @@ export default function CustomerDetail() {
         </>
       )}
 
-      {/* Edit Customer Dialog */}
+      {/* ── Edit Customer Dialog ── */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('editCustomer')}</DialogTitle>
+        <DialogContent className="rounded-2xl border bg-popover elevation-3 animate-scale-in sm:max-w-md">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="font-display text-lg font-600 text-foreground">
+              {t('editCustomer')}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <Label>{t('nickname')}</Label>
-              <Input value={editNickname} onChange={(e) => setEditNickname(e.target.value)} />
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground">{t('nickname')}</Label>
+              <Input
+                value={editNickname}
+                onChange={(e) => setEditNickname(e.target.value)}
+                className="rounded-lg border-border bg-md-surface-container-high focus-visible:ring-md-primary"
+              />
             </div>
-            <div>
-              <Label>{t('status')}</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground">{t('status')}</Label>
               <Select value={editStatus} onValueChange={setEditStatus}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectTrigger className="rounded-lg border-border bg-md-surface-container-high focus:ring-md-primary">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border bg-popover elevation-2">
                   <SelectItem value="active">{t('active')}</SelectItem>
                   <SelectItem value="suspended">{t('suspended')}</SelectItem>
                   <SelectItem value="banned">{t('banned')}</SelectItem>
@@ -351,56 +478,121 @@ export default function CustomerDetail() {
               </Select>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>{tCommon('cancel')}</Button>
-            <Button onClick={handleEdit} disabled={saving}>
+          <DialogFooter className="gap-2 pt-2">
+            <button
+              onClick={() => setEditOpen(false)}
+              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-4 py-2
+                text-sm font-500 border border-border bg-card text-foreground
+                hover:bg-md-surface-container-high
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+                transition-colors"
+            >
+              {tCommon('cancel')}
+            </button>
+            <button
+              onClick={handleEdit}
+              disabled={saving}
+              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-5 py-2
+                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
+                disabled:opacity-50 disabled:cursor-not-allowed
+                hover:elevation-2
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+                transition-shadow"
+            >
               {saving ? tCommon('saving') : tCommon('save')}
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Reset Password Dialog */}
+      {/* ── Reset Password Dialog ── */}
       <Dialog open={pwdOpen} onOpenChange={setPwdOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('resetPassword')}</DialogTitle>
+        <DialogContent className="rounded-2xl border bg-popover elevation-3 animate-scale-in sm:max-w-md">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="font-display text-lg font-600 text-foreground">
+              {t('resetPassword')}
+            </DialogTitle>
           </DialogHeader>
-          <div className="py-2">
-            <Label>{t('newPassword')}</Label>
-            <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
+          <div className="py-2 space-y-1.5">
+            <Label className="text-xs font-500 text-muted-foreground">{t('newPassword')}</Label>
+            <Input
+              type="password"
+              value={newPwd}
+              onChange={(e) => setNewPwd(e.target.value)}
+              className="rounded-lg border-border bg-md-surface-container-high focus-visible:ring-md-primary"
+            />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPwdOpen(false)}>{tCommon('cancel')}</Button>
-            <Button onClick={handleResetPassword} disabled={savingPwd || !newPwd}>
+          <DialogFooter className="gap-2 pt-2">
+            <button
+              onClick={() => setPwdOpen(false)}
+              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-4 py-2
+                text-sm font-500 border border-border bg-card text-foreground
+                hover:bg-md-surface-container-high
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+                transition-colors"
+            >
+              {tCommon('cancel')}
+            </button>
+            <button
+              onClick={handleResetPassword}
+              disabled={savingPwd || !newPwd}
+              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-5 py-2
+                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
+                disabled:opacity-50 disabled:cursor-not-allowed
+                hover:elevation-2
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+                transition-shadow"
+            >
               {savingPwd ? tCommon('saving') : tCommon('save')}
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Create Subscription Dialog */}
+      {/* ── Create Subscription Dialog ── */}
       <Dialog open={subOpen} onOpenChange={setSubOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('createSubscription')}</DialogTitle>
+        <DialogContent className="rounded-2xl border bg-popover elevation-3 animate-scale-in sm:max-w-md">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="font-display text-lg font-600 text-foreground">
+              {t('createSubscription')}
+            </DialogTitle>
           </DialogHeader>
-          <div className="py-2">
-            <Label>{t('selectPlan')}</Label>
+          <div className="py-2 space-y-1.5">
+            <Label className="text-xs font-500 text-muted-foreground">{t('selectPlan')}</Label>
             <Select value={selectedPlan} onValueChange={setSelectedPlan}>
-              <SelectTrigger><SelectValue placeholder={t('selectPlan')} /></SelectTrigger>
-              <SelectContent>
+              <SelectTrigger className="rounded-lg border-border bg-md-surface-container-high focus:ring-md-primary">
+                <SelectValue placeholder={t('selectPlan')} />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border bg-popover elevation-2">
                 {plans.map((p) => (
                   <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSubOpen(false)}>{tCommon('cancel')}</Button>
-            <Button onClick={handleCreateSub} disabled={creatingSub || !selectedPlan}>
+          <DialogFooter className="gap-2 pt-2">
+            <button
+              onClick={() => setSubOpen(false)}
+              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-4 py-2
+                text-sm font-500 border border-border bg-card text-foreground
+                hover:bg-md-surface-container-high
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+                transition-colors"
+            >
+              {tCommon('cancel')}
+            </button>
+            <button
+              onClick={handleCreateSub}
+              disabled={creatingSub || !selectedPlan}
+              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2
+                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
+                disabled:opacity-50 disabled:cursor-not-allowed
+                hover:elevation-2
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+                transition-shadow"
+            >
               {creatingSub ? tCommon('saving') : tCommon('save')}
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

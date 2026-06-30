@@ -19,17 +19,24 @@ export default function Login() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="absolute inset-0 gradient-brand-subtle" />
-      <div className="relative w-full max-w-[400px] animate-fade-in">
+      <div className="relative w-full max-w-[420px] animate-slide-up">
+        {/* Header: icon + title */}
         <div className="flex flex-col items-center mb-8">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl gradient-brand mb-4 shadow-lg shadow-primary/25">
-            <Shield className="h-7 w-7 text-white" />
+          <div
+            className="flex h-16 w-16 items-center justify-center rounded-2xl
+              bg-md-primary-container text-md-on-primary-container mb-5
+              elevation-1"
+          >
+            <Shield className="h-8 w-8" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('hiveRegistry')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('adminLogin')}</p>
+          <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">
+            {t('hiveRegistry')}
+          </h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">{t('adminLogin')}</p>
         </div>
 
-        <div className="rounded-2xl border bg-card p-6 shadow-xs">
+        {/* Card */}
+        <div className="rounded-2xl border bg-card p-8 elevation-1">
           {/* react-doctor-disable-next-line react-doctor/no-prevent-default -- static-export SPA against a Go API; server actions are not available */}
           <form
             onSubmit={async (e) => {
@@ -48,20 +55,32 @@ export default function Login() {
               }
             }}
           >
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="username">{t('username')}</Label>
+            <div className="space-y-5">
+              <div className="space-y-1.5" style={{ animationDelay: '60ms' }}>
+                <Label
+                  htmlFor="username"
+                  className="text-xs font-500 text-muted-foreground uppercase tracking-wide"
+                >
+                  {t('username')}
+                </Label>
                 <Input
                   id="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"
                   required
-                  className="h-11"
+                  className="h-11 rounded-lg bg-md-surface-container-high border-0
+                    focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0
+                    text-foreground placeholder:text-muted-foreground"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">{t('password')}</Label>
+              <div className="space-y-1.5" style={{ animationDelay: '100ms' }}>
+                <Label
+                  htmlFor="password"
+                  className="text-xs font-500 text-muted-foreground uppercase tracking-wide"
+                >
+                  {t('password')}
+                </Label>
                 <Input
                   id="password"
                   type="password"
@@ -69,15 +88,34 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
                   required
-                  className="h-11"
+                  className="h-11 rounded-lg bg-md-surface-container-high border-0
+                    focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0
+                    text-foreground placeholder:text-muted-foreground"
                 />
               </div>
+
               {error && (
-                <div className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                <div
+                  className="flex items-start gap-3 rounded-xl
+                    bg-md-error-container text-md-on-error-container
+                    px-4 py-3 text-sm"
+                >
                   {error}
                 </div>
               )}
-              <Button type="submit" className="w-full h-11 text-base font-medium" disabled={loading}>
+
+              <Button
+                type="submit"
+                disabled={loading}
+                className="state-layer ripple w-full h-11 rounded-lg
+                  bg-md-primary text-md-on-primary
+                  text-sm font-500 elevation-1
+                  hover:elevation-2 transition-shadow
+                  focus-visible:outline-none focus-visible:ring-2
+                  focus-visible:ring-md-primary focus-visible:ring-offset-2
+                  disabled:opacity-50 disabled:pointer-events-none"
+                style={{ animationDelay: '140ms' }}
+              >
                 {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (

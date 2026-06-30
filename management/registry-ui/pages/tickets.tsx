@@ -6,14 +6,13 @@ import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, TicketIcon, InboxIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 
@@ -23,10 +22,17 @@ function formatDate(s: string) {
   return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  open: 'bg-blue-100 text-blue-800',
-  replied: 'bg-yellow-100 text-yellow-800',
-  closed: 'bg-gray-100 text-gray-600',
+// M3 §10 status chip classes — no raw Tailwind palette
+const STATUS_CHIP: Record<string, string> = {
+  open:    'bg-md-primary-container text-md-on-primary-container',
+  replied: 'bg-[hsl(43_96%_50%/0.15)] text-[hsl(38_92%_30%)] dark:text-[hsl(43_96%_70%)]',
+  closed:  'bg-muted text-muted-foreground',
+};
+
+const STATUS_DOT: Record<string, string> = {
+  open:    'bg-md-primary',
+  replied: 'bg-[hsl(43_96%_50%)]',
+  closed:  'bg-md-outline',
 };
 
 export default function TicketsPage() {
@@ -63,75 +69,162 @@ export default function TicketsPage() {
     if (!authLoading && user && !user.can('ticket:read')) router.replace('/dashboard');
   }, [authLoading, user, router]);
 
-  if (authLoading) return <p className="p-6 text-sm text-muted-foreground">{tCommon('loading')}</p>;
+  if (authLoading) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      {/* M3 circular progress placeholder */}
+      <div className="size-10 rounded-full border-4 border-md-primary-container border-t-md-primary animate-spin" />
+    </div>
+  );
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t('title')}</h1>
-        <Button variant="outline" size="sm" onClick={loadTickets} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
-          {tCommon('refresh')}
-        </Button>
-      </div>
+    <div className="bg-background min-h-screen">
+      <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
 
-      <div className="flex items-center gap-3">
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v)}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{tCommon('all')}</SelectItem>
-            <SelectItem value="open">{t('statusOpen')}</SelectItem>
-            <SelectItem value="replied">{t('statusReplied')}</SelectItem>
-            <SelectItem value="closed">{t('statusClosed')}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+        {/* ── Page header ── */}
+        <div className="flex items-start justify-between gap-4 animate-slide-up">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center size-10 rounded-xl bg-md-primary-container text-md-on-primary-container">
+              <TicketIcon className="size-5" />
+            </div>
+            <div>
+              <h1 className="font-display text-2xl font-600 text-foreground tracking-tight">
+                {t('title')}
+              </h1>
+            </div>
+          </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadTickets}
+            disabled={loading}
+            className="state-layer ripple flex items-center gap-1.5 rounded-lg border
+              bg-md-surface-container-low text-foreground hover:bg-md-surface-container
+              focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+              transition-colors"
+          >
+            <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
+            <span>{tCommon('refresh')}</span>
+          </Button>
+        </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-16">{t('colId')}</TableHead>
-              <TableHead>{t('colCustomer')}</TableHead>
-              <TableHead>{t('colSubject')}</TableHead>
-              <TableHead>{t('colStatus')}</TableHead>
-              <TableHead>{t('colCreatedAt')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">{tCommon('loading')}</TableCell>
+        {/* ── Toolbar — status filter ── */}
+        <div
+          className="flex items-center gap-3 animate-slide-up"
+          style={{ animationDelay: '40ms' }}
+        >
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v)}>
+            <SelectTrigger className="w-40 rounded-lg border bg-md-surface-container-low
+              text-foreground focus:ring-2 focus:ring-md-primary">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl bg-popover border elevation-2">
+              <SelectItem value="all">{tCommon('all')}</SelectItem>
+              <SelectItem value="open">{t('statusOpen')}</SelectItem>
+              <SelectItem value="replied">{t('statusReplied')}</SelectItem>
+              <SelectItem value="closed">{t('statusClosed')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* ── Error banner ── */}
+        {error && (
+          <div className="flex items-center gap-2 rounded-xl px-4 py-3
+            bg-md-error-container text-md-on-error-container text-sm animate-fade-in">
+            <span className="size-1.5 rounded-full bg-md-error flex-shrink-0" />
+            {error}
+          </div>
+        )}
+
+        {/* ── Tickets table surface ── */}
+        <div
+          className="bg-card border rounded-xl overflow-hidden animate-slide-up"
+          style={{ animationDelay: '80ms' }}
+        >
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-md-surface-container-high hover:bg-md-surface-container-high">
+                <TableHead className="w-16 text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                  {t('colId')}
+                </TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                  {t('colCustomer')}
+                </TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                  {t('colSubject')}
+                </TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                  {t('colStatus')}
+                </TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                  {t('colCreatedAt')}
+                </TableHead>
               </TableRow>
-            ) : tickets.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">{t('noTickets')}</TableCell>
-              </TableRow>
-            ) : (
-              tickets.map((ticket) => (
-                <TableRow
-                  key={ticket.id}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => router.push(`/tickets/${ticket.id}`)}
-                >
-                  <TableCell className="text-muted-foreground">#{ticket.id}</TableCell>
-                  <TableCell>{ticket.customer_email ?? ''}</TableCell>
-                  <TableCell className="font-medium">{ticket.subject ?? ''}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={STATUS_COLORS[ticket.status ?? ''] ?? ''}>
-                      {ticket.status ? t(`status${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}`) : ''}
-                    </Badge>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                /* ── Loading state — M3 circular progress ── */
+                <TableRow>
+                  <TableCell colSpan={5} className="py-16">
+                    <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                      <div className="size-8 rounded-full border-4
+                        border-md-primary-container border-t-md-primary animate-spin" />
+                      <span className="text-sm">{tCommon('loading')}</span>
+                    </div>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{ticket.created_at ? formatDate(ticket.created_at) : ''}</TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : tickets.length === 0 ? (
+                /* ── Empty state ── */
+                <TableRow>
+                  <TableCell colSpan={5} className="py-16">
+                    <div className="flex flex-col items-center gap-3 text-muted-foreground animate-fade-in">
+                      <div className="flex items-center justify-center size-12 rounded-full
+                        bg-md-surface-container-high">
+                        <InboxIcon className="size-6 text-md-on-surface-variant" />
+                      </div>
+                      <p className="text-sm">{t('noTickets')}</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                tickets.map((ticket, i) => (
+                  <TableRow
+                    key={ticket.id}
+                    className="hover-state cursor-pointer border-b border-border/60 last:border-0
+                      transition-colors"
+                    style={{ animationDelay: `${i * 30}ms` }}
+                    onClick={() => router.push(`/tickets/${ticket.id}`)}
+                  >
+                    <TableCell className="font-display text-sm font-500 text-muted-foreground">
+                      #{ticket.id}
+                    </TableCell>
+                    <TableCell className="text-sm text-foreground">
+                      {ticket.customer_email ?? ''}
+                    </TableCell>
+                    <TableCell className="text-sm font-500 text-foreground">
+                      {ticket.subject ?? ''}
+                    </TableCell>
+                    <TableCell>
+                      {ticket.status ? (
+                        <span className={`inline-flex items-center gap-1.5 rounded-full
+                          px-2.5 py-0.5 text-xs font-500
+                          ${STATUS_CHIP[ticket.status] ?? 'bg-muted text-muted-foreground'}`}>
+                          <span className={`size-1.5 rounded-full flex-shrink-0
+                            ${STATUS_DOT[ticket.status] ?? 'bg-md-outline'}`} />
+                          {t(`status${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}`)}
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {ticket.created_at ? formatDate(ticket.created_at) : ''}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
       </div>
     </div>
   );

@@ -9,24 +9,37 @@ import { Server, Wifi, WifiOff, CalendarPlus, Globe, Activity } from 'lucide-rea
 import { useTranslations } from 'next-intl';
 import { useLocale } from '@/lib/locale';
 
+// M3 token recipes per card variant — no raw palette colors
+type CardVariant = 'total' | 'online' | 'offline' | 'new';
+const CARD_VARIANT_STYLES: Record<CardVariant, { iconBg: string; iconColor: string }> = {
+  total:   { iconBg: 'bg-md-primary-container',  iconColor: 'text-md-on-primary-container' },
+  online:  { iconBg: 'bg-md-tertiary-container', iconColor: 'text-md-on-tertiary-container' },
+  offline: { iconBg: 'bg-md-error-container',    iconColor: 'text-md-on-error-container' },
+  new:     { iconBg: 'bg-md-secondary-container',iconColor: 'text-md-on-secondary-container' },
+};
+
 interface StatsCardProps {
   title: string;
   value: number;
   icon: React.ElementType;
-  color: string;
-  bgColor: string;
+  variant: CardVariant;
+  delay?: number;
 }
 
-function StatsCard({ title, value, icon: Icon, color, bgColor }: StatsCardProps) {
+function StatsCard({ title, value, icon: Icon, variant, delay = 0 }: StatsCardProps) {
+  const { iconBg, iconColor } = CARD_VARIANT_STYLES[variant];
   return (
-    <Card className="animate-slide-up">
+    <Card
+      className="animate-slide-up bg-card border rounded-xl"
+      style={{ animationDelay: `${delay}ms` }}
+    >
       <CardContent className="flex items-center gap-4 py-5">
-        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${bgColor}`}>
-          <Icon className={`h-6 w-6 ${color}`} />
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+          <Icon className={`h-6 w-6 ${iconColor}`} />
         </div>
         <div>
-          <p className="text-sm text-muted-foreground">{title}</p>
-          <p className="text-2xl font-bold tracking-tight">{value}</p>
+          <p className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{title}</p>
+          <p className="font-display text-2xl font-700 text-foreground mt-0.5">{value}</p>
         </div>
       </CardContent>
     </Card>
@@ -44,12 +57,25 @@ function formatDate(s: string | undefined | null, locale: string, noData: string
   });
 }
 
+// §10 status color recipes — M3 token roles only, no raw palette
 function getStatusBadge(probeStatus: string | undefined) {
   if (probeStatus === 'online')
-    return <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0 gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Online</Badge>;
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-md-tertiary-container text-md-on-tertiary-container">
+        <span className="size-1.5 rounded-full bg-md-tertiary" />Online
+      </span>
+    );
   if (probeStatus === 'offline')
-    return <Badge className="bg-red-500/10 text-red-600 dark:text-red-400 border-0 gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-500" />Offline</Badge>;
-  return <Badge variant="outline" className="text-muted-foreground gap-1"><span className="h-1.5 w-1.5 rounded-full bg-gray-400" />Unknown</Badge>;
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-md-error-container text-md-on-error-container">
+        <span className="size-1.5 rounded-full bg-md-error" />Offline
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-muted text-muted-foreground">
+      <span className="size-1.5 rounded-full bg-md-outline" />Unknown
+    </span>
+  );
 }
 
 export default function Dashboard() {
@@ -97,102 +123,145 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{tNav('dashboard')}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{t('subtitle') || 'Node fleet overview'}</p>
+      {/* Page header */}
+      <div className="space-y-1">
+        <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">
+          {tNav('dashboard')}
+        </h1>
+        <p className="text-sm text-muted-foreground">{t('subtitle') || 'Node fleet overview'}</p>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        /* M3 circular loading indicator */
+        <div className="flex items-center justify-center py-24">
+          <div
+            className="h-10 w-10 rounded-full border-[3px] border-md-primary-container border-t-md-primary animate-spin"
+            style={{ animationTimingFunction: 'var(--ease-standard)' }}
+          />
         </div>
       ) : (
         <>
+          {/* Stat cards — staggered entrance */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatsCard
               title={t('totalNodes')}
               value={nodes.length}
               icon={Server}
-              color="text-blue-600 dark:text-blue-400"
-              bgColor="bg-blue-500/10"
+              variant="total"
+              delay={0}
             />
             <StatsCard
               title={t('onlineNodes')}
               value={onlineCount}
               icon={Wifi}
-              color="text-emerald-600 dark:text-emerald-400"
-              bgColor="bg-emerald-500/10"
+              variant="online"
+              delay={60}
             />
             <StatsCard
               title={t('offlineNodes')}
               value={offlineCount}
               icon={WifiOff}
-              color="text-red-600 dark:text-red-400"
-              bgColor="bg-red-500/10"
+              variant="offline"
+              delay={120}
             />
             <StatsCard
               title={t('newThisWeek')}
               value={recentNodes.length}
               icon={CalendarPlus}
-              color="text-purple-600 dark:text-purple-400"
-              bgColor="bg-purple-500/10"
+              variant="new"
+              delay={180}
             />
           </div>
 
-          {/* Online rate bar */}
+          {/* Online rate — tonal surface card, tertiary fill for success signal */}
           {nodes.length > 0 && (
-            <Card>
+            <Card
+              className="bg-card border rounded-xl animate-slide-up"
+              style={{ animationDelay: '220ms' }}
+            >
               <CardContent className="py-5">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">{t('onlineRate') || 'Online Rate'}</span>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Activity className="h-4 w-4" />
+                    <span className="text-sm font-500">{t('onlineRate') || 'Online Rate'}</span>
                   </div>
-                  <span className="text-sm font-bold text-primary">
+                  <span className="font-display text-sm font-600 text-md-tertiary">
                     {nodes.length > 0 ? ((onlineCount / nodes.length) * 100).toFixed(1) : 0}%
                   </span>
                 </div>
-                <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                <div className="h-2 rounded-full bg-md-surface-container-high overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-primary transition-all duration-700"
-                    style={{ width: `${nodes.length > 0 ? (onlineCount / nodes.length) * 100 : 0}%` }}
+                    className="h-full rounded-full bg-md-tertiary transition-all duration-700"
+                    style={{
+                      width: `${nodes.length > 0 ? (onlineCount / nodes.length) * 100 : 0}%`,
+                      transitionTimingFunction: 'var(--ease-emphasized)',
+                    }}
                   />
                 </div>
               </CardContent>
             </Card>
           )}
 
-          <Card>
+          {/* Recently registered nodes */}
+          <Card
+            className="bg-card border rounded-xl animate-slide-up"
+            style={{ animationDelay: '260ms' }}
+          >
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">{t('recentlyRegistered')}</CardTitle>
+              <CardTitle className="font-display text-base font-600 text-foreground">
+                {t('recentlyRegistered')}
+              </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               {recentNodes.length === 0 ? (
-                <p className="px-6 pb-6 text-sm text-muted-foreground">{t('noNodesThisWeek')}</p>
+                <div className="px-6 pb-8 pt-4 flex flex-col items-center gap-2 text-center">
+                  <Server className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">{t('noNodesThisWeek')}</p>
+                </div>
               ) : (
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>{tNodes('colHostname')}</TableHead>
-                      <TableHead>{tNodes('colLocation')}</TableHead>
-                      <TableHead>{tNodes('colStatus') || 'Status'}</TableHead>
-                      <TableHead>{tNodes('colTailscaleIp')}</TableHead>
-                      <TableHead>{tNodes('colRegisteredAt')}</TableHead>
+                    <TableRow className="border-b border-border">
+                      <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
+                        {tNodes('colHostname')}
+                      </TableHead>
+                      <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
+                        {tNodes('colLocation')}
+                      </TableHead>
+                      <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
+                        {tNodes('colStatus') || 'Status'}
+                      </TableHead>
+                      <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
+                        {tNodes('colTailscaleIp')}
+                      </TableHead>
+                      <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
+                        {tNodes('colRegisteredAt')}
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {recentNodes.map((n) => (
-                      <TableRow key={n.mac}>
-                        <TableCell className="font-medium">{n.hostname || tCommon('noData')}</TableCell>
+                    {recentNodes.map((n, i) => (
+                      <TableRow
+                        key={n.mac}
+                        className="hover-state border-b border-border/60 last:border-0 animate-slide-up"
+                        style={{ animationDelay: `${300 + i * 40}ms` }}
+                      >
+                        <TableCell className="font-500 text-foreground">
+                          {n.hostname || tCommon('noData')}
+                        </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1.5">
-                            <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                            {n.location || tCommon('noData')}
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Globe className="h-3.5 w-3.5" />
+                            <span className="text-sm">{n.location || tCommon('noData')}</span>
                           </div>
                         </TableCell>
                         <TableCell>{getStatusBadge(n.probe_status)}</TableCell>
-                        <TableCell className="font-mono text-xs">{n.tailscale_ip || tCommon('noData')}</TableCell>
-                        <TableCell className="text-muted-foreground">{formatDate(n.registered_at, locale, tCommon('noData'))}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {n.tailscale_ip || tCommon('noData')}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {formatDate(n.registered_at, locale, tCommon('noData'))}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   RefreshCw, Trash2, Download, MoreHorizontal, Power, PowerOff,
+  Server, Wifi, WifiOff, HelpCircle,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -39,19 +40,66 @@ function getProbeStatus(n: model_Node): ProbeStatus {
   return 'unknown';
 }
 
+// M3-compliant status config — §10 recipes
 const statusConfig = {
-  online:  { label: 'Online',  dot: 'bg-emerald-500', cls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
-  offline: { label: 'Offline', dot: 'bg-red-500',     cls: 'bg-red-500/10 text-red-700 dark:text-red-400' },
-  unknown: { label: 'Unknown', dot: 'bg-gray-400',    cls: 'bg-muted text-muted-foreground' },
+  online: {
+    label: 'Online',
+    dot: 'bg-md-tertiary',
+    cls: 'bg-md-tertiary-container text-md-on-tertiary-container',
+  },
+  offline: {
+    label: 'Offline',
+    dot: 'bg-md-error',
+    cls: 'bg-md-error-container text-md-on-error-container',
+  },
+  unknown: {
+    label: 'Unknown',
+    dot: 'bg-md-outline',
+    cls: 'bg-muted text-muted-foreground',
+  },
 };
 
 function StatusBadge({ status }: { status: ProbeStatus }) {
   const c = statusConfig[status];
   return (
-    <Badge variant="outline" className={`gap-1.5 border-0 font-medium ${c.cls}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${c.cls}`}>
+      <span className={`size-1.5 rounded-full shrink-0 ${c.dot}`} />
       {c.label}
-    </Badge>
+    </span>
+  );
+}
+
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+
+interface StatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  accent?: 'primary' | 'tertiary' | 'error' | 'neutral';
+  delay?: number;
+}
+
+function StatCard({ icon, label, value, accent = 'neutral', delay = 0 }: StatCardProps) {
+  const iconCls = {
+    primary: 'text-md-primary bg-md-primary-container',
+    tertiary: 'text-md-tertiary bg-md-tertiary-container',
+    error: 'text-destructive bg-md-error-container',
+    neutral: 'text-muted-foreground bg-muted',
+  }[accent];
+
+  return (
+    <div
+      className="bg-card border rounded-xl p-5 flex items-center gap-4 animate-slide-up"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <div className={`flex items-center justify-center size-10 rounded-full shrink-0 ${iconCls}`}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs font-500 text-muted-foreground uppercase tracking-wide leading-none mb-1">{label}</p>
+        <p className="font-display text-2xl font-700 text-foreground leading-none">{value}</p>
+      </div>
+    </div>
   );
 }
 
@@ -152,51 +200,55 @@ export default function NodesPage() {
     col.display({ id: 'probe_status', header: t('colStatus'),
       cell: ({ row }) => <StatusBadge status={getProbeStatus(row.original)} />, enableSorting: false }),
     col.accessor('note', { header: t('colName'),
-      cell: i => <span className="font-medium">{i.getValue() || '—'}</span> }),
+      cell: i => <span className="font-display font-600 text-foreground">{i.getValue() || '—'}</span> }),
     col.accessor('hostname', { header: t('colHostname'),
-      cell: i => <span className="font-medium">{i.getValue() || '—'}</span> }),
-    col.accessor('location', { header: t('colLocation'), cell: i => i.getValue() || '—' }),
+      cell: i => <span className="font-medium text-foreground">{i.getValue() || '—'}</span> }),
+    col.accessor('location', { header: t('colLocation'), cell: i => <span className="text-muted-foreground">{i.getValue() || '—'}</span> }),
     col.accessor('tailscale_ip', { header: t('colTailscaleIp'),
       cell: i => <span className="font-mono text-xs text-muted-foreground">{i.getValue() || '—'}</span> }),
     col.accessor('easytier_ip', { header: t('colEasytierIp'),
       cell: i => <span className="font-mono text-xs text-muted-foreground">{i.getValue() || '—'}</span> }),
     col.accessor('frp_port', { header: t('colFrpPort'),
-      cell: i => <span className="font-mono text-xs">{i.getValue() || '—'}</span>, enableSorting: false }),
+      cell: i => <span className="font-mono text-xs text-muted-foreground">{i.getValue() || '—'}</span>, enableSorting: false }),
     col.accessor('mac', { header: t('colMac'),
       cell: i => <span className="font-mono text-xs text-muted-foreground">{formatMac(i.getValue())}</span>, enableSorting: false }),
     col.accessor('mac6', { header: t('colMac6'),
-      cell: i => <span className="font-mono text-xs">{i.getValue() || '—'}</span>, enableSorting: false }),
+      cell: i => <span className="font-mono text-xs text-muted-foreground">{i.getValue() || '—'}</span>, enableSorting: false }),
     col.accessor('last_seen', { header: t('colLastSeen'),
       cell: i => <span className="text-muted-foreground">{formatDate(i.getValue())}</span>, sortingFn: 'datetime' }),
     col.accessor('registered_at', { header: t('colRegisteredAt'),
       cell: i => <span className="text-muted-foreground">{formatDate(i.getValue())}</span>, sortingFn: 'datetime' }),
     col.accessor('cf_url', { header: t('colCfUrl'),
-      cell: i => { const v = i.getValue(); return v ? <span className="max-w-[140px] truncate block text-xs" title={v}>{v}</span> : '—'; },
+      cell: i => { const v = i.getValue(); return v ? <span className="max-w-[140px] truncate block text-xs text-muted-foreground" title={v}>{v}</span> : '—'; },
       enableSorting: false }),
     col.accessor('tunnel_id', { header: t('colTunnelId'),
-      cell: i => { const v = i.getValue(); return v ? <span className="max-w-[80px] truncate block font-mono text-xs" title={v}>{v}</span> : '—'; },
+      cell: i => { const v = i.getValue(); return v ? <span className="max-w-[80px] truncate block font-mono text-xs text-muted-foreground" title={v}>{v}</span> : '—'; },
       enableSorting: false }),
     col.accessor('enabled', { header: t('colEnabled'),
       cell: i => i.getValue()
-        ? <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-0 text-[10px]">ON</Badge>
-        : <Badge className="bg-red-500/10 text-red-700 dark:text-red-400 border-0 text-[10px]">OFF</Badge>,
+        ? <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-600 bg-md-tertiary-container text-md-on-tertiary-container">ON</span>
+        : <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-600 bg-md-error-container text-md-on-error-container">OFF</span>,
       enableSorting: false }),
-    col.accessor('weight', { header: t('colWeight'), cell: i => i.getValue() ?? '—' }),
-    col.accessor('region', { header: t('colRegion'), cell: i => i.getValue() || '—', enableSorting: false }),
+    col.accessor('weight', { header: t('colWeight'), cell: i => <span className="text-muted-foreground">{i.getValue() ?? '—'}</span> }),
+    col.accessor('region', { header: t('colRegion'), cell: i => <span className="text-muted-foreground">{i.getValue() || '—'}</span>, enableSorting: false }),
     col.display({ id: 'actions', header: () => null, enableSorting: false, enableHiding: false,
       cell: ({ row }) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+            <Button variant="ghost" size="sm"
+              className="h-8 w-8 p-0 state-layer rounded-lg focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => router.push('/nodes/detail?mac=' + encodeURIComponent(row.original.mac!))}>
+          <DropdownMenuContent align="end" className="rounded-xl bg-popover border elevation-2 animate-scale-in">
+            <DropdownMenuItem
+              className="rounded-lg hover-state cursor-pointer"
+              onClick={() => router.push('/nodes/detail?mac=' + encodeURIComponent(row.original.mac!))}>
               {tCommon('edit')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive focus:text-destructive"
+            <DropdownMenuItem
+              className="rounded-lg text-destructive focus:text-destructive hover-state cursor-pointer"
               onClick={() => handleDelete(row.original.mac!)}>
               {tCommon('delete')}
             </DropdownMenuItem>
@@ -218,27 +270,81 @@ export default function NodesPage() {
   };
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 animate-fade-in">
+      {/* ── Page header ────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{tNav('nodes')}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {counts.all} total · {counts.online} online · {counts.offline} offline · {counts.unknown} unknown
+          <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">
+            {tNav('nodes')}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {counts.all}&nbsp;{t('colStatus').toLowerCase()} &middot;&nbsp;
+            <span className="text-md-tertiary">{counts.online} online</span>
+            &nbsp;&middot;&nbsp;
+            <span className="text-destructive">{counts.offline} offline</span>
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={exportCSV}>
-            <Download className="h-4 w-4 mr-1.5" />{t('exportCsv')}
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportCSV}
+            className="state-layer rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
+            <Download className="h-4 w-4" />
+            {t('exportCsv')}
           </Button>
-          <Button variant="outline" size="sm" onClick={loadNodes} disabled={loading}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadNodes}
+            disabled={loading}
+            className="state-layer rounded-lg size-9 p-0 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
 
-      {error && <div className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
+      {/* ── Stat cards ─────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard
+          icon={<Server className="size-4.5" />}
+          label="Total"
+          value={counts.all}
+          accent="primary"
+          delay={0}
+        />
+        <StatCard
+          icon={<Wifi className="size-4.5" />}
+          label="Online"
+          value={counts.online}
+          accent="tertiary"
+          delay={40}
+        />
+        <StatCard
+          icon={<WifiOff className="size-4.5" />}
+          label="Offline"
+          value={counts.offline}
+          accent="error"
+          delay={80}
+        />
+        <StatCard
+          icon={<HelpCircle className="size-4.5" />}
+          label="Unknown"
+          value={counts.unknown}
+          accent="neutral"
+          delay={120}
+        />
+      </div>
 
+      {/* ── Error banner ───────────────────────────────────────────────────── */}
+      {error && (
+        <div className="rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container border border-md-error/20 animate-slide-up">
+          {error}
+        </div>
+      )}
+
+      {/* ── Data table ─────────────────────────────────────────────────────── */}
       <DataTable
         columns={columns}
         data={filteredNodes}
@@ -256,33 +362,58 @@ export default function NodesPage() {
         onRowClick={(row) => router.push('/nodes/detail?mac=' + encodeURIComponent(row.mac!))}
         defaultSorting={[{ id: 'last_seen', desc: true }]}
         toolbar={
-          <>
-            {/* Status filter tabs */}
-            <div className="flex items-center rounded-lg bg-muted p-0.5">
-              {(['all', 'online', 'offline', 'unknown'] as StatusFilter[]).map(s => (
-                <button type="button" key={s} onClick={() => setStatusFilter(s)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                    statusFilter === s ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
-                  }`}>
-                  {s === 'all' ? `${t('filterAll')} (${counts.all})`
-                    : s === 'online' ? `${t('filterOnline')} (${counts.online})`
-                    : s === 'offline' ? `${t('filterOffline')} (${counts.offline})`
-                    : `${t('statusUnknown')} (${counts.unknown})`}
+          /* Status filter tab strip — M3 tonal pill style */
+          <div className="flex items-center rounded-xl bg-muted p-0.5 gap-0.5">
+            {(['all', 'online', 'offline', 'unknown'] as StatusFilter[]).map(s => {
+              const isActive = statusFilter === s;
+              const activeExtra =
+                s === 'online'  ? 'bg-md-tertiary-container text-md-on-tertiary-container' :
+                s === 'offline' ? 'bg-md-error-container text-md-on-error-container' :
+                s === 'unknown' ? 'bg-md-surface-container-highest text-foreground' :
+                'bg-background text-foreground elevation-1';
+              return (
+                <button
+                  type="button"
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-500 transition-all duration-150
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1
+                    ${isActive ? activeExtra : 'text-muted-foreground hover:text-foreground hover:bg-md-surface-container-high'}`}
+                >
+                  {s === 'all'     ? `${t('filterAll')} (${counts.all})`
+                  : s === 'online'  ? `${t('filterOnline')} (${counts.online})`
+                  : s === 'offline' ? `${t('filterOffline')} (${counts.offline})`
+                  :                   `${t('statusUnknown')} (${counts.unknown})`}
                 </button>
-              ))}
-            </div>
-          </>
+              );
+            })}
+          </div>
         }
         batchActions={
           <>
-            <Button size="sm" variant="outline" onClick={() => batchAction('enable')}>
-              <Power className="h-3.5 w-3.5 mr-1.5" />{t('batchEnable')}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => batchAction('enable')}
+              className="state-layer rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
+              <Power className="h-3.5 w-3.5" />
+              {t('batchEnable')}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => batchAction('disable')}>
-              <PowerOff className="h-3.5 w-3.5 mr-1.5" />{t('batchDisable')}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => batchAction('disable')}
+              className="state-layer rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
+              <PowerOff className="h-3.5 w-3.5" />
+              {t('batchDisable')}
             </Button>
-            <Button size="sm" variant="destructive" onClick={() => batchAction('delete')}>
-              <Trash2 className="h-3.5 w-3.5 mr-1.5" />{t('batchDelete')}
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => batchAction('delete')}
+              className="state-layer ripple rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-1">
+              <Trash2 className="h-3.5 w-3.5" />
+              {t('batchDelete')}
             </Button>
           </>
         }

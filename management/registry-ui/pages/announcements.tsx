@@ -20,7 +20,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { RefreshCw, Plus, Pencil, Trash2 } from 'lucide-react';
+import { RefreshCw, Plus, Pencil, Trash2, Megaphone, AlertTriangle, Info, AlertCircle, Pin, Globe } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 function formatDate(s: string) {
@@ -29,10 +29,27 @@ function formatDate(s: string) {
   return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
 }
 
-const LEVEL_COLORS: Record<string, string> = {
-  info: 'bg-blue-100 text-blue-800',
-  warning: 'bg-yellow-100 text-yellow-800',
-  critical: 'bg-red-100 text-red-800',
+// M3-compliant level styling using §10 status token recipes
+const LEVEL_CONFIG: Record<string, {
+  containerClass: string;
+  icon: React.ElementType;
+  dotClass: string;
+}> = {
+  info: {
+    containerClass: 'bg-md-primary-container text-md-on-primary-container',
+    icon: Info,
+    dotClass: 'bg-md-primary',
+  },
+  warning: {
+    containerClass: 'bg-[hsl(43_96%_50%/0.15)] text-[hsl(38_92%_30%)] dark:text-[hsl(43_96%_70%)]',
+    icon: AlertTriangle,
+    dotClass: 'bg-[hsl(43_96%_50%)]',
+  },
+  critical: {
+    containerClass: 'bg-md-error-container text-md-on-error-container',
+    icon: AlertCircle,
+    dotClass: 'bg-md-error',
+  },
 };
 
 export default function AnnouncementsPage() {
@@ -115,71 +132,184 @@ export default function AnnouncementsPage() {
     }
   }
 
-  if (authLoading) return <p className="p-6 text-sm text-muted-foreground">{tCommon('loading')}</p>;
+  if (authLoading) return (
+    <div className="flex items-center justify-center min-h-[40vh]">
+      <div className="flex flex-col items-center gap-4 animate-fade-in">
+        {/* M3 circular progress indicator */}
+        <div className="relative size-12">
+          <svg className="size-12 animate-spin" viewBox="0 0 48 48" fill="none" style={{ animationDuration: '1.2s' }}>
+            <circle
+              cx="24" cy="24" r="20"
+              stroke="hsl(var(--md-surface-container-highest))"
+              strokeWidth="4"
+            />
+            <circle
+              cx="24" cy="24" r="20"
+              stroke="hsl(var(--md-primary))"
+              strokeWidth="4"
+              strokeLinecap="round"
+              strokeDasharray="94"
+              strokeDashoffset="62"
+            />
+          </svg>
+        </div>
+        <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t('title')}</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
-            {tCommon('refresh')}
-          </Button>
-          <Button size="sm" onClick={openCreate}>
-            <Plus className="h-4 w-4 mr-1" />
-            {t('create')}
-          </Button>
+    <div className="p-6 space-y-6">
+      {/* Page header — surface container, M3 title area */}
+      <div className="animate-slide-up">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center size-10 rounded-2xl bg-md-primary-container text-md-on-primary-container">
+              <Megaphone className="size-5" />
+            </div>
+            <div>
+              <h1 className="font-display text-xl font-600 text-foreground">{t('title')}</h1>
+              <p className="text-xs text-muted-foreground mt-0.5 font-500 uppercase tracking-wide">
+                {items.length > 0 ? `${items.length} ${t('colTitle')}` : ''}
+              </p>
+            </div>
+          </div>
+
+          {/* Toolbar */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadData}
+              disabled={loading}
+              className="state-layer ripple inline-flex items-center gap-2 rounded-lg px-3 py-2
+                text-sm font-500 text-foreground bg-md-surface-container-high border border-transparent
+                disabled:opacity-50 disabled:pointer-events-none
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
+              <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
+              <span>{tCommon('refresh')}</span>
+            </button>
+            <button
+              onClick={openCreate}
+              className="state-layer ripple inline-flex items-center gap-2 rounded-lg px-4 py-2
+                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
+              <Plus className="size-4" />
+              <span>{t('create')}</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {/* Error banner */}
+      {error && (
+        <div className="flex items-center gap-3 rounded-xl px-4 py-3 bg-md-error-container text-md-on-error-container text-sm animate-slide-up">
+          <AlertCircle className="size-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
-      <div className="rounded-md border">
+      {/* Table card */}
+      <div className="bg-card border rounded-xl overflow-hidden animate-slide-up" style={{ animationDelay: '40ms' }}>
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>{t('colTitle')}</TableHead>
-              <TableHead className="w-24">{t('colLevel')}</TableHead>
-              <TableHead className="w-20">{t('colPinned')}</TableHead>
-              <TableHead className="w-20">{t('colPublished')}</TableHead>
-              <TableHead className="w-40">{t('colCreatedAt')}</TableHead>
-              <TableHead className="w-24">{t('colActions')}</TableHead>
+            <TableRow className="border-b border-border bg-md-surface-container-high/50">
+              <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colTitle')}</TableHead>
+              <TableHead className="w-28 text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colLevel')}</TableHead>
+              <TableHead className="w-24 text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colPinned')}</TableHead>
+              <TableHead className="w-24 text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colPublished')}</TableHead>
+              <TableHead className="w-40 text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colCreatedAt')}</TableHead>
+              <TableHead className="w-24 text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colActions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">{tCommon('loading')}</TableCell>
+                <TableCell colSpan={6} className="py-16">
+                  <div className="flex flex-col items-center justify-center gap-4">
+                    {/* M3 circular progress */}
+                    <div className="relative size-10">
+                      <svg className="size-10 animate-spin" viewBox="0 0 48 48" fill="none" style={{ animationDuration: '1.2s' }}>
+                        <circle cx="24" cy="24" r="20" stroke="hsl(var(--md-surface-container-highest))" strokeWidth="4" />
+                        <circle cx="24" cy="24" r="20" stroke="hsl(var(--md-primary))" strokeWidth="4" strokeLinecap="round" strokeDasharray="94" strokeDashoffset="62" />
+                      </svg>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
+                  </div>
+                </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">{t('noData')}</TableCell>
+                <TableCell colSpan={6} className="py-20">
+                  <div className="flex flex-col items-center justify-center gap-3 text-center">
+                    <div className="flex items-center justify-center size-14 rounded-full bg-md-surface-container-highest">
+                      <Megaphone className="size-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-500 text-muted-foreground">{t('noData')}</p>
+                  </div>
+                </TableCell>
               </TableRow>
             ) : (
-              items.map((ann) => (
-                <TableRow key={ann.id}>
-                  <TableCell className="font-medium">{ann.title}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={LEVEL_COLORS[ann.level ?? ''] ?? ''}>
-                      {t(`level${(ann.level ?? '').charAt(0).toUpperCase() + (ann.level ?? '').slice(1)}`)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{ann.pinned ? '✓' : ''}</TableCell>
-                  <TableCell>{ann.published ? '✓' : ''}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(ann.created_at ?? '')}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(ann)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(ann.id!)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+              items.map((ann, i) => {
+                const levelCfg = LEVEL_CONFIG[ann.level ?? ''] ?? LEVEL_CONFIG.info;
+                const LevelIcon = levelCfg.icon;
+                return (
+                  <TableRow
+                    key={ann.id}
+                    className="hover-state border-b border-border/60 last:border-0"
+                    style={{ animationDelay: `${i * 30}ms` }}
+                  >
+                    <TableCell className="font-500 text-foreground py-3">{ann.title}</TableCell>
+                    <TableCell className="py-3">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${levelCfg.containerClass}`}>
+                        <LevelIcon className="size-3" />
+                        {t(`level${(ann.level ?? '').charAt(0).toUpperCase() + (ann.level ?? '').slice(1)}`)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="py-3">
+                      {ann.pinned ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-md-primary font-500">
+                          <Pin className="size-3" />
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/40 text-xs">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="py-3">
+                      {ann.published ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-md-tertiary font-500">
+                          <Globe className="size-3" />
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/40 text-xs">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground py-3 tabular-nums">{formatDate(ann.created_at ?? '')}</TableCell>
+                    <TableCell className="py-3">
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => openEdit(ann)}
+                          className="state-layer inline-flex items-center justify-center size-8 rounded-lg
+                            text-muted-foreground hover:text-foreground
+                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
+                          aria-label={t('editTitle')}
+                        >
+                          <Pencil className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(ann.id!)}
+                          className="state-layer inline-flex items-center justify-center size-8 rounded-lg
+                            text-muted-foreground hover:text-destructive
+                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-1"
+                          aria-label={tCommon('delete') ?? 'Delete'}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -187,58 +317,119 @@ export default function AnnouncementsPage() {
 
       {/* Create / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editing ? t('editTitle') : t('create')}</DialogTitle>
+        <DialogContent className="sm:max-w-lg rounded-2xl bg-card border animate-scale-in">
+          <DialogHeader className="pb-2">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center size-9 rounded-xl bg-md-primary-container text-md-on-primary-container">
+                <Megaphone className="size-4" />
+              </div>
+              <DialogTitle className="font-display text-lg font-600">
+                {editing ? t('editTitle') : t('create')}
+              </DialogTitle>
+            </div>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>{t('colTitle')}</Label>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colTitle')}</Label>
               <Input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 placeholder={t('titlePlaceholder')}
+                className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
-            <div className="space-y-2">
-              <Label>{t('colLevel')}</Label>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colLevel')}</Label>
               <Select value={form.level} onValueChange={(v) => setForm({ ...form, level: v })}>
-                <SelectTrigger>
+                <SelectTrigger className="rounded-lg bg-md-surface-container-high/50 border-border">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="info">{t('levelInfo')}</SelectItem>
-                  <SelectItem value="warning">{t('levelWarning')}</SelectItem>
-                  <SelectItem value="critical">{t('levelCritical')}</SelectItem>
+                <SelectContent className="rounded-xl bg-popover border elevation-2">
+                  <SelectItem value="info">
+                    <span className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-md-primary" />
+                      {t('levelInfo')}
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="warning">
+                    <span className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-[hsl(43_96%_50%)]" />
+                      {t('levelWarning')}
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="critical">
+                    <span className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-md-error" />
+                      {t('levelCritical')}
+                    </span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Content</Label>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">Content</Label>
               <Textarea
                 value={form.content}
                 onChange={(e) => setForm({ ...form, content: e.target.value })}
                 placeholder={t('contentPlaceholder')}
                 rows={6}
+                className="rounded-lg bg-md-surface-container-high/50 border-border resize-none focus-visible:ring-md-primary"
               />
             </div>
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
+
+            <div className="flex items-center gap-6 pt-1">
+              <div className="flex items-center gap-2.5">
                 <Switch checked={form.pinned} onCheckedChange={(v) => setForm({ ...form, pinned: v })} />
-                <Label>{t('pinned')}</Label>
+                <Label className="text-sm font-500 flex items-center gap-1.5">
+                  <Pin className="size-3.5 text-muted-foreground" />
+                  {t('pinned')}
+                </Label>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <Switch checked={form.published} onCheckedChange={(v) => setForm({ ...form, published: v })} />
-                <Label>{t('published')}</Label>
+                <Label className="text-sm font-500 flex items-center gap-1.5">
+                  <Globe className="size-3.5 text-muted-foreground" />
+                  {t('published')}
+                </Label>
               </div>
             </div>
-            {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+
+            {saveError && (
+              <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 bg-md-error-container text-md-on-error-container text-sm">
+                <AlertCircle className="size-4 shrink-0" />
+                <span>{saveError}</span>
+              </div>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>{tCommon('cancel')}</Button>
-            <Button onClick={handleSave} disabled={saving || !form.title}>
+
+          <DialogFooter className="gap-2 pt-2">
+            <button
+              onClick={() => setDialogOpen(false)}
+              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-4 py-2
+                text-sm font-500 text-foreground bg-md-surface-container-high border border-border
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
+              {tCommon('cancel')}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !form.title}
+              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2
+                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
+                disabled:opacity-50 disabled:pointer-events-none
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
+              {saving && (
+                <svg className="size-4 animate-spin" viewBox="0 0 48 48" fill="none" style={{ animationDuration: '1s' }}>
+                  <circle cx="24" cy="24" r="20" stroke="hsl(var(--md-on-primary)/0.3)" strokeWidth="4" />
+                  <circle cx="24" cy="24" r="20" stroke="hsl(var(--md-on-primary))" strokeWidth="4" strokeLinecap="round" strokeDasharray="94" strokeDashoffset="62" />
+                </svg>
+              )}
               {saving ? tCommon('saving') : tCommon('save')}
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

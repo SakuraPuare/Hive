@@ -235,107 +235,235 @@ export default function LinesPage() {
   // ── Render ──────────────────────────────────────────────────────────
   if (authLoading) return null;
 
+  // derived stats for the header area
+  const totalLines = lines.length;
+  const enabledLines = lines.filter((l) => l.enabled).length;
+  const totalNodes = lines.reduce((acc, l) => acc + (l.node_count ?? 0), 0);
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('lineManagement')}</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={loadLines}>
+    <div className="space-y-8 animate-fade-in">
+
+      {/* ── Page header ── */}
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">
+            {t('lineManagement')}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {totalLines > 0
+              ? `${totalLines} ${t('colName').toLowerCase()} · ${enabledLines} ${t('enabled').toLowerCase()} · ${totalNodes} ${t('colNodeCount').toLowerCase()}`
+              : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 mt-3 sm:mt-0">
+          <button
+            onClick={loadLines}
+            className="state-layer inline-flex items-center justify-center gap-2 rounded-lg
+              px-4 py-2 text-sm font-500
+              bg-md-surface-container-high text-foreground border border-border
+              transition-colors
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+          >
+            <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+              <path d="M21 3v5h-5"/>
+              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+              <path d="M3 21v-5h5"/>
+            </svg>
             {tCommon('refresh')}
-          </Button>
+          </button>
           {canWrite && (
-            <Button size="sm" onClick={() => setShowCreate(true)}>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg
+                px-4 py-2 text-sm font-500
+                bg-md-primary text-md-on-primary elevation-1
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
+              <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
               {t('createLine')}
-            </Button>
+            </button>
           )}
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {/* ── Error banner ── */}
+      {error && (
+        <div className="flex items-center gap-3 rounded-xl px-4 py-3
+          bg-md-error-container text-md-on-error-container text-sm animate-slide-up">
+          <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          {error}
+        </div>
+      )}
 
-      <Card>
+      {/* ── Lines table ── */}
+      <Card className="bg-card border rounded-xl overflow-hidden">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>{t('colName')}</TableHead>
-                <TableHead>{t('colRegion')}</TableHead>
-                <TableHead className="text-center">{t('colOrder')}</TableHead>
-                <TableHead className="text-center">{t('colStatus')}</TableHead>
-                <TableHead className="text-center">{t('colNodeCount')}</TableHead>
-                <TableHead>{t('colSubLink')}</TableHead>
-                {canWrite && <TableHead>{t('colActions')}</TableHead>}
+              <TableRow className="bg-md-surface-container-high/60 border-b border-border">
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide py-3 pl-6">{t('colName')}</TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide py-3">{t('colRegion')}</TableHead>
+                <TableHead className="text-center text-xs font-500 text-muted-foreground uppercase tracking-wide py-3">{t('colOrder')}</TableHead>
+                <TableHead className="text-center text-xs font-500 text-muted-foreground uppercase tracking-wide py-3">{t('colStatus')}</TableHead>
+                <TableHead className="text-center text-xs font-500 text-muted-foreground uppercase tracking-wide py-3">{t('colNodeCount')}</TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide py-3">{t('colSubLink')}</TableHead>
+                {canWrite && <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide py-3 pr-6">{t('colActions')}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={canWrite ? 7 : 6} className="text-center py-8">
-                    {tCommon('loading')}
+                  <TableCell colSpan={canWrite ? 7 : 6} className="py-16 text-center">
+                    <div className="flex flex-col items-center gap-4">
+                      {/* M3 circular progress indicator */}
+                      <svg
+                        className="size-10 animate-spin text-md-primary"
+                        viewBox="0 0 48 48"
+                        fill="none"
+                        aria-label={tCommon('loading')}
+                      >
+                        <circle
+                          cx="24" cy="24" r="20"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          strokeLinecap="round"
+                          strokeDasharray="100 28"
+                          className="opacity-90"
+                        />
+                      </svg>
+                      <span className="text-sm text-muted-foreground">{tCommon('loading')}</span>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : lines.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={canWrite ? 7 : 6} className="text-center py-8">
-                    {t('noLines')}
+                  <TableCell colSpan={canWrite ? 7 : 6} className="py-16 text-center">
+                    <div className="flex flex-col items-center gap-3 animate-slide-up">
+                      <span className="flex size-12 items-center justify-center rounded-full bg-md-surface-container-high">
+                        <svg className="size-6 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M21 10H3M16 2v4M8 2v4M3 6h18a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z"/>
+                        </svg>
+                      </span>
+                      <p className="text-sm text-muted-foreground">{t('noLines')}</p>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                lines.map((line) => (
-                  <TableRow key={line.id}>
-                    <TableCell className="font-medium">
-                      {line.name}
+                lines.map((line, i) => (
+                  <TableRow
+                    key={line.id}
+                    className="hover-state border-b border-border/60 last:border-0 animate-slide-up"
+                    style={{ animationDelay: `${i * 35}ms` }}
+                  >
+                    <TableCell className="py-4 pl-6">
+                      <span className="font-500 text-foreground">{line.name}</span>
                       {line.note && (
                         <span className="ml-2 text-xs text-muted-foreground">{line.note}</span>
                       )}
                     </TableCell>
-                    <TableCell>
-                      {line.region && <Badge variant="outline">{line.region}</Badge>}
+                    <TableCell className="py-4">
+                      {line.region && (
+                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-500
+                          bg-md-secondary-container text-md-on-secondary-container">
+                          {line.region}
+                        </span>
+                      )}
                     </TableCell>
-                    <TableCell className="text-center">{line.display_order}</TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant={line.enabled ? 'default' : 'secondary'}>
-                        {line.enabled ? t('enabled') : t('disabled')}
-                      </Badge>
+                    <TableCell className="py-4 text-center">
+                      <span className="font-display text-sm font-600 text-foreground">{line.display_order}</span>
                     </TableCell>
-                    <TableCell className="text-center">{line.node_count}</TableCell>
-                    <TableCell>
+                    <TableCell className="py-4 text-center">
+                      {line.enabled ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500
+                          bg-md-tertiary-container text-md-on-tertiary-container">
+                          <span className="size-1.5 rounded-full bg-md-tertiary" />
+                          {t('enabled')}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500
+                          bg-muted text-muted-foreground">
+                          <span className="size-1.5 rounded-full bg-md-outline" />
+                          {t('disabled')}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="py-4 text-center">
+                      <span className="font-display text-sm font-600 text-foreground">{line.node_count}</span>
+                    </TableCell>
+                    <TableCell className="py-4">
                       <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                        <button
                           onClick={() => copyLink(line)}
+                          className="state-layer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-500
+                            transition-colors
+                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
+                          style={copiedId === line.id
+                            ? { '--state-color': 'hsl(var(--md-tertiary))' } as React.CSSProperties
+                            : { '--state-color': 'hsl(var(--md-on-surface))' } as React.CSSProperties
+                          }
                         >
-                          {copiedId === line.id ? t('copied') : t('copyLink')}
-                        </Button>
+                          {copiedId === line.id ? (
+                            <>
+                              <svg className="size-3 text-md-tertiary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                              <span className="text-md-tertiary">{t('copied')}</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                              </svg>
+                              {t('copyLink')}
+                            </>
+                          )}
+                        </button>
                         {canWrite && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
+                          <button
                             onClick={() => handleResetToken(line)}
+                            className="state-layer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-500 text-muted-foreground
+                              transition-colors
+                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
                           >
+                            <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                              <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                            </svg>
                             {t('resetToken')}
-                          </Button>
+                          </button>
                         )}
                       </div>
                     </TableCell>
                     {canWrite && (
-                      <TableCell>
+                      <TableCell className="py-4 pr-6">
                         <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => openEdit(line)}>
+                          <button
+                            onClick={() => openEdit(line)}
+                            className="state-layer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-500 text-foreground
+                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
+                          >
                             {tCommon('edit')}
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => openNodeEdit(line)}>
+                          </button>
+                          <button
+                            onClick={() => openNodeEdit(line)}
+                            className="state-layer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-500 text-md-primary
+                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
+                          >
                             {t('editLineNodes')}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
+                          </button>
+                          <button
                             onClick={() => handleDelete(line)}
+                            className="state-layer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-500 text-destructive
+                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-1"
+                            style={{ '--state-color': 'hsl(var(--md-error))' } as React.CSSProperties}
                           >
                             {tCommon('delete')}
-                          </Button>
+                          </button>
                         </div>
                       </TableCell>
                     )}
@@ -347,160 +475,265 @@ export default function LinesPage() {
         </CardContent>
       </Card>
 
-      {/* Create dialog */}
+      {/* ── Create dialog ── */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('createLine')}</DialogTitle>
+        <DialogContent className="rounded-2xl border border-border bg-card elevation-3 max-w-md">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="font-display text-xl font-600 text-foreground">
+              {t('createLine')}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>{t('lineName')}</Label>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('lineName')}
+              </Label>
               <Input
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
                 placeholder={t('lineNamePlaceholder')}
+                className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
-            <div>
-              <Label>{t('region')}</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('region')}
+              </Label>
               <Input
                 value={createRegion}
                 onChange={(e) => setCreateRegion(e.target.value)}
                 placeholder={t('regionPlaceholder')}
+                className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
-            <div>
-              <Label>{t('displayOrder')}</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('displayOrder')}
+              </Label>
               <Input
                 type="number"
                 value={createOrder}
                 onChange={(e) => setCreateOrder(e.target.value)}
                 placeholder={t('displayOrderPlaceholder')}
+                className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
-            <div>
-              <Label>{t('note')}</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('note')}
+              </Label>
               <Input
                 value={createNote}
                 onChange={(e) => setCreateNote(e.target.value)}
                 placeholder={t('notePlaceholder')}
+                className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
-            {createError && <p className="text-sm text-destructive">{createError}</p>}
+            {createError && (
+              <p className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
+                bg-md-error-container text-md-on-error-container">
+                {createError}
+              </p>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>
+          <DialogFooter className="gap-2 pt-2">
+            <button
+              onClick={() => setShowCreate(false)}
+              className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
+                bg-md-surface-container-high text-foreground border border-border
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
               {tCommon('cancel')}
-            </Button>
-            <Button onClick={handleCreate} disabled={creating || !createName.trim()}>
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={creating || !createName.trim()}
+              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
+                bg-md-primary text-md-on-primary elevation-1
+                disabled:opacity-50 disabled:pointer-events-none
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
               {creating ? tCommon('saving') : tCommon('save')}
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Edit dialog */}
+      {/* ── Edit dialog ── */}
       <Dialog open={!!editLine} onOpenChange={(open) => !open && setEditLine(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('editLine')}</DialogTitle>
+        <DialogContent className="rounded-2xl border border-border bg-card elevation-3 max-w-md">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="font-display text-xl font-600 text-foreground">
+              {t('editLine')}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>{t('lineName')}</Label>
-              <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('lineName')}
+              </Label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
+              />
             </div>
-            <div>
-              <Label>{t('region')}</Label>
-              <Input value={editRegion} onChange={(e) => setEditRegion(e.target.value)} />
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('region')}
+              </Label>
+              <Input
+                value={editRegion}
+                onChange={(e) => setEditRegion(e.target.value)}
+                className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
+              />
             </div>
-            <div>
-              <Label>{t('displayOrder')}</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('displayOrder')}
+              </Label>
               <Input
                 type="number"
                 value={editOrder}
                 onChange={(e) => setEditOrder(e.target.value)}
+                className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
-            <div>
-              <Label>{t('note')}</Label>
-              <Input value={editNote} onChange={(e) => setEditNote(e.target.value)} />
+            <div className="space-y-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('note')}
+              </Label>
+              <Input
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
+                className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
+              />
             </div>
-            <div className="flex items-center gap-2">
-              <Label>{t('colStatus')}</Label>
-              <Button
-                variant={editEnabled ? 'default' : 'secondary'}
-                size="sm"
+            <div className="flex items-center justify-between rounded-xl px-4 py-3 bg-md-surface-container-high/50 border border-border">
+              <Label className="text-sm font-500 text-foreground">{t('colStatus')}</Label>
+              <button
                 onClick={() => setEditEnabled(!editEnabled)}
+                className={[
+                  'state-layer inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-500 transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1',
+                  editEnabled
+                    ? 'bg-md-tertiary-container text-md-on-tertiary-container'
+                    : 'bg-muted text-muted-foreground',
+                ].join(' ')}
               >
+                <span className={['size-1.5 rounded-full', editEnabled ? 'bg-md-tertiary' : 'bg-md-outline'].join(' ')} />
                 {editEnabled ? t('enabled') : t('disabled')}
-              </Button>
+              </button>
             </div>
-            {editError && <p className="text-sm text-destructive">{editError}</p>}
+            {editError && (
+              <p className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
+                bg-md-error-container text-md-on-error-container">
+                {editError}
+              </p>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditLine(null)}>
+          <DialogFooter className="gap-2 pt-2">
+            <button
+              onClick={() => setEditLine(null)}
+              className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
+                bg-md-surface-container-high text-foreground border border-border
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
               {tCommon('cancel')}
-            </Button>
-            <Button onClick={handleUpdate} disabled={editing}>
+            </button>
+            <button
+              onClick={handleUpdate}
+              disabled={editing}
+              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
+                bg-md-primary text-md-on-primary elevation-1
+                disabled:opacity-50 disabled:pointer-events-none
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
               {editing ? tCommon('saving') : tCommon('save')}
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Node edit dialog */}
+      {/* ── Node edit dialog ── */}
       <Dialog open={!!nodeEditLine} onOpenChange={(open) => !open && setNodeEditLine(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {t('editLineNodes')} — {nodeEditLine?.name}
+        <DialogContent className="rounded-2xl border border-border bg-card elevation-3 max-w-lg">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="font-display text-xl font-600 text-foreground">
+              {t('editLineNodes')}
+              {nodeEditLine?.name && (
+                <span className="ml-2 text-base font-400 text-muted-foreground">
+                  — {nodeEditLine.name}
+                </span>
+              )}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-3 py-2">
             <Input
               value={nodeSearch}
               onChange={(e) => setNodeSearch(e.target.value)}
               placeholder={t('searchNodes')}
+              className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
             />
-            <div className="max-h-72 overflow-y-auto space-y-1 rounded-md border p-2">
+            <div className="max-h-72 overflow-y-auto rounded-xl border border-border
+              bg-md-surface-container-lowest divide-y divide-border/60">
               {filteredNodes.length === 0 ? (
-                <p className="text-sm text-muted-foreground px-2 py-1">
+                <p className="text-sm text-muted-foreground px-4 py-3">
                   {tNodes('noMatchingNodes')}
                 </p>
               ) : (
                 filteredNodes.map((n) => (
                   <label
                     key={n.mac}
-                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-muted/50"
+                    className="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover-state transition-colors"
                   >
                     <input
                       type="checkbox"
                       checked={selectedMacs.has(n.mac ?? '')}
                       onChange={() => toggleMac(n.mac ?? '')}
-                      className="h-4 w-4"
+                      className="h-4 w-4 rounded accent-md-primary"
                     />
-                    <span className="text-sm">
-                      {n.location ? `【${n.location}】` : ''}
+                    <span className="text-sm text-foreground">
+                      {n.location && (
+                        <span className="mr-1.5 text-xs text-muted-foreground">[{n.location}]</span>
+                      )}
                       {n.hostname}
                     </span>
                   </label>
                 ))
               )}
             </div>
-            {saveNodesError && <p className="text-sm text-destructive">{saveNodesError}</p>}
+            {saveNodesError && (
+              <p className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
+                bg-md-error-container text-md-on-error-container">
+                {saveNodesError}
+              </p>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNodeEditLine(null)}>
+          <DialogFooter className="gap-2 pt-2">
+            <button
+              onClick={() => setNodeEditLine(null)}
+              className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
+                bg-md-surface-container-high text-foreground border border-border
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
               {tCommon('cancel')}
-            </Button>
-            <Button onClick={handleSaveNodes} disabled={savingNodes}>
+            </button>
+            <button
+              onClick={handleSaveNodes}
+              disabled={savingNodes}
+              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
+                bg-md-primary text-md-on-primary elevation-1
+                disabled:opacity-50 disabled:pointer-events-none
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
               {savingNodes ? tCommon('saving') : tCommon('save')}
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }
+

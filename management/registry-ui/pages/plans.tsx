@@ -3,7 +3,6 @@ import { AdminService } from '@/src/generated/client';
 import type { model_Plan, model_Line } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
@@ -22,7 +21,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { useTranslations } from 'next-intl';
 import { useCurrentUser } from '@/lib/auth';
 import { useRouter } from 'next/router';
@@ -202,115 +200,239 @@ export default function PlansPage() {
   // ── Form dialog content ───────────────────────────────────────────
   const formDialog = (open: boolean, onClose: () => void, title: string) => (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
-        <div className="grid gap-4 py-2">
-          <div className="grid gap-2">
-            <Label>{t('planName')}</Label>
-            <Input value={formName} onChange={(e) => setFormName(e.target.value)} />
+      <DialogContent className="rounded-2xl border border-border bg-popover p-0 gap-0 overflow-hidden animate-scale-in">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+          <DialogTitle className="font-display text-xl font-600 text-foreground">{title}</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-5 px-6 py-5">
+          <div className="grid gap-1.5">
+            <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('planName')}</Label>
+            <Input
+              value={formName}
+              onChange={(e) => setFormName(e.target.value)}
+              className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary"
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label>{t('trafficLimit')} ({t('gb')})</Label>
-              <Input type="number" min="0" step="0.1" value={formTraffic} onChange={(e) => setFormTraffic(e.target.value)} />
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('trafficLimit')} ({t('gb')})</Label>
+              <Input type="number" min="0" step="0.1" value={formTraffic} onChange={(e) => setFormTraffic(e.target.value)}
+                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
             </div>
-            <div className="grid gap-2">
-              <Label>{t('speedLimit')} ({t('mbps')})</Label>
-              <Input type="number" min="0" value={formSpeed} onChange={(e) => setFormSpeed(e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label>{t('deviceLimit')}</Label>
-              <Input type="number" min="1" value={formDevices} onChange={(e) => setFormDevices(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label>{t('durationDays')}</Label>
-              <Input type="number" min="1" value={formDuration} onChange={(e) => setFormDuration(e.target.value)} />
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('speedLimit')} ({t('mbps')})</Label>
+              <Input type="number" min="0" value={formSpeed} onChange={(e) => setFormSpeed(e.target.value)}
+                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label>{t('price')} ({t('yuan')})</Label>
-              <Input type="number" min="0" step="0.01" value={formPrice} onChange={(e) => setFormPrice(e.target.value)} />
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('deviceLimit')}</Label>
+              <Input type="number" min="1" value={formDevices} onChange={(e) => setFormDevices(e.target.value)}
+                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
             </div>
-            <div className="grid gap-2">
-              <Label>{t('sortOrder')}</Label>
-              <Input type="number" value={formOrder} onChange={(e) => setFormOrder(e.target.value)} />
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('durationDays')}</Label>
+              <Input type="number" min="1" value={formDuration} onChange={(e) => setFormDuration(e.target.value)}
+                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Label>{t('colStatus')}</Label>
-            <Button
-              type="button" variant="outline" size="sm"
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('price')} ({t('yuan')})</Label>
+              <Input type="number" min="0" step="0.01" value={formPrice} onChange={(e) => setFormPrice(e.target.value)}
+                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('sortOrder')}</Label>
+              <Input type="number" value={formOrder} onChange={(e) => setFormOrder(e.target.value)}
+                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colStatus')}</Label>
+            <button
+              type="button"
               onClick={() => setFormEnabled(!formEnabled)}
+              className={[
+                'state-layer inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-500 transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2',
+                formEnabled
+                  ? 'bg-md-tertiary-container text-md-on-tertiary-container'
+                  : 'bg-muted text-muted-foreground',
+              ].join(' ')}
             >
+              <span className={['size-1.5 rounded-full', formEnabled ? 'bg-md-tertiary' : 'bg-md-outline'].join(' ')} />
               {formEnabled ? t('enabled') : t('disabled')}
-            </Button>
+            </button>
           </div>
-          {formError && <p className="text-sm text-destructive">{formError}</p>}
+          {formError && (
+            <p className="flex items-center gap-1.5 rounded-lg bg-md-error-container px-3 py-2 text-sm text-md-on-error-container">
+              {formError}
+            </p>
+          )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>{tCommon('cancel')}</Button>
-          <Button onClick={handleSave} disabled={saving || !formName.trim()}>
-            {saving ? tCommon('saving') : tCommon('save')}
-          </Button>
+        <DialogFooter className="px-6 py-4 border-t border-border flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500 border border-border bg-transparent text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+          >
+            {tCommon('cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !formName.trim()}
+            className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 transition-shadow hover:elevation-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none"
+          >
+            {saving ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin size-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+                {tCommon('saving')}
+              </span>
+            ) : tCommon('save')}
+          </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 
+  const totalPlans = plans.length;
+  const enabledPlans = plans.filter((p) => p.enabled).length;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('title')}</h1>
-        {canWrite && <Button onClick={openCreate}>{t('createPlan')}</Button>}
+    <div className="space-y-6 animate-fade-in">
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">{t('title')}</h1>
+          {!loading && totalPlans > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {totalPlans} {t('title').toLowerCase()} &middot; {enabledPlans} {t('enabled').toLowerCase()}
+            </p>
+          )}
+        </div>
+        {canWrite && (
+          <button
+            type="button"
+            onClick={openCreate}
+            className="state-layer ripple inline-flex shrink-0 items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 transition-shadow hover:elevation-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+          >
+            <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            {t('createPlan')}
+          </button>
+        )}
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {/* ── Error banner ── */}
+      {error && (
+        <div className="flex items-center gap-2.5 rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container animate-slide-up">
+          <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
+          </svg>
+          {error}
+        </div>
+      )}
 
-      <Card>
+      {/* ── Plans table ── */}
+      <Card className="bg-card border border-border rounded-xl overflow-hidden p-0">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>{t('colName')}</TableHead>
-                <TableHead>{t('colTraffic')}</TableHead>
-                <TableHead>{t('colSpeed')}</TableHead>
-                <TableHead>{t('colDevices')}</TableHead>
-                <TableHead>{t('colDuration')}</TableHead>
-                <TableHead>{t('colPrice')}</TableHead>
-                <TableHead>{t('colStatus')}</TableHead>
-                <TableHead>{t('colOrder')}</TableHead>
-                {canWrite && <TableHead>{t('colActions')}</TableHead>}
+              <TableRow className="bg-md-surface-container-high border-b border-border hover:bg-md-surface-container-high">
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide px-4 py-3">{t('colName')}</TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide px-4 py-3">{t('colTraffic')}</TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide px-4 py-3">{t('colSpeed')}</TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide px-4 py-3">{t('colDevices')}</TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide px-4 py-3">{t('colDuration')}</TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide px-4 py-3">{t('colPrice')}</TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide px-4 py-3">{t('colStatus')}</TableHead>
+                <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide px-4 py-3">{t('colOrder')}</TableHead>
+                {canWrite && <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide px-4 py-3">{t('colActions')}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={canWrite ? 9 : 8} className="text-center py-8 text-muted-foreground">{tCommon('loading')}</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={canWrite ? 9 : 8} className="py-16 text-center">
+                    <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                      <svg className="animate-spin size-8 text-md-primary" viewBox="0 0 50 50" fill="none">
+                        <circle cx="25" cy="25" r="20" stroke="currentColor" strokeWidth="4" strokeLinecap="round"
+                          strokeDasharray="100 28" className="opacity-25" />
+                        <path d="M25 5a20 20 0 0 1 20 20" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+                      </svg>
+                      <span className="text-sm">{tCommon('loading')}</span>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ) : plans.length === 0 ? (
-                <TableRow><TableCell colSpan={canWrite ? 9 : 8} className="text-center py-8 text-muted-foreground">{t('noPlans')}</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={canWrite ? 9 : 8} className="py-16 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="flex size-14 items-center justify-center rounded-2xl bg-md-surface-container-high">
+                        <svg className="size-7 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="5" width="18" height="14" rx="2" /><path d="M8 10h8M8 14h4" />
+                        </svg>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{t('noPlans')}</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ) : (
-                plans.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell>{formatTraffic(p.traffic_limit ?? 0, t)}</TableCell>
-                    <TableCell>{p.speed_limit ?? 0} {t('mbps')}</TableCell>
-                    <TableCell>{p.device_limit ?? 0}</TableCell>
-                    <TableCell>{p.duration_days ?? 0} {t('days')}</TableCell>
-                    <TableCell>{formatPrice(p.price ?? 0, t)}</TableCell>
-                    <TableCell>
-                      <Badge variant={p.enabled ? 'default' : 'secondary'}>
+                plans.map((p, i) => (
+                  <TableRow
+                    key={p.id}
+                    className="hover-state border-b border-border last:border-0 animate-slide-up"
+                    style={{ animationDelay: `${i * 35}ms` }}
+                  >
+                    <TableCell className="px-4 py-3 font-display text-base font-600 text-foreground">{p.name}</TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-foreground">{formatTraffic(p.traffic_limit ?? 0, t)}</TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-foreground">{p.speed_limit ?? 0} {t('mbps')}</TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-foreground">{p.device_limit ?? 0}</TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-foreground">{p.duration_days ?? 0} {t('days')}</TableCell>
+                    <TableCell className="px-4 py-3 font-display text-base font-600 text-foreground">{formatPrice(p.price ?? 0, t)}</TableCell>
+                    <TableCell className="px-4 py-3">
+                      <span className={[
+                        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500',
+                        p.enabled
+                          ? 'bg-md-tertiary-container text-md-on-tertiary-container'
+                          : 'bg-muted text-muted-foreground',
+                      ].join(' ')}>
+                        <span className={['size-1.5 rounded-full', p.enabled ? 'bg-md-tertiary' : 'bg-md-outline'].join(' ')} />
                         {p.enabled ? t('enabled') : t('disabled')}
-                      </Badge>
+                      </span>
                     </TableCell>
-                    <TableCell>{p.sort_order ?? 0}</TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-muted-foreground">{p.sort_order ?? 0}</TableCell>
                     {canWrite && (
-                      <TableCell>
+                      <TableCell className="px-4 py-3">
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>{tCommon('edit')}</Button>
-                          <Button variant="ghost" size="sm" onClick={() => openLineEdit(p)}>{t('editLines')}</Button>
-                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeletePlan(p)}>{tCommon('delete')}</Button>
+                          <button
+                            type="button"
+                            onClick={() => openEdit(p)}
+                            className="state-layer inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-500 text-md-primary bg-md-primary-container/50 hover:bg-md-primary-container transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
+                          >
+                            {tCommon('edit')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openLineEdit(p)}
+                            className="state-layer inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-500 text-foreground bg-muted/50 hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
+                          >
+                            {t('editLines')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletePlan(p)}
+                            className="state-layer inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-500 text-destructive bg-md-error-container/40 hover:bg-md-error-container transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-1"
+                          >
+                            {tCommon('delete')}
+                          </button>
                         </div>
                       </TableCell>
                     )}
@@ -330,57 +452,113 @@ export default function PlansPage() {
 
       {/* Delete confirm */}
       <Dialog open={!!deletePlan} onOpenChange={(v) => { if (!v) setDeletePlan(null); }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{t('deletePlan')}</DialogTitle></DialogHeader>
-          <p>{deletePlan && t('deleteConfirm', { name: deletePlan.name ?? '' })}</p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeletePlan(null)}>{tCommon('cancel')}</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? tCommon('loading') : tCommon('delete')}
-            </Button>
+        <DialogContent className="rounded-2xl border border-border bg-popover p-0 gap-0 overflow-hidden animate-scale-in">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+            <DialogTitle className="font-display text-xl font-600 text-foreground">{t('deletePlan')}</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 py-5">
+            <p className="text-sm text-foreground leading-relaxed">
+              {deletePlan && t('deleteConfirm', { name: deletePlan.name ?? '' })}
+            </p>
+          </div>
+          <DialogFooter className="px-6 py-4 border-t border-border flex gap-2">
+            <button
+              type="button"
+              onClick={() => setDeletePlan(null)}
+              className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500 border border-border bg-transparent text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
+              {tCommon('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-500 bg-md-error text-md-on-error elevation-1 transition-shadow hover:elevation-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {deleting ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin size-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  {tCommon('loading')}
+                </span>
+              ) : tCommon('delete')}
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Lines dialog */}
       <Dialog open={!!lineEditPlan} onOpenChange={(v) => { if (!v) setLineEditPlan(null); }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{t('editLines')}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
+        <DialogContent className="rounded-2xl border border-border bg-popover p-0 gap-0 overflow-hidden animate-scale-in">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+            <DialogTitle className="font-display text-xl font-600 text-foreground">{t('editLines')}</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 py-5 space-y-3">
             <Input
               placeholder={tCommon('search')}
               value={lineSearch}
               onChange={(e) => setLineSearch(e.target.value)}
+              className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary"
             />
-            <div className="max-h-64 overflow-y-auto space-y-1">
+            <div className="max-h-64 overflow-y-auto rounded-xl bg-md-surface-container-lowest border border-border space-y-0.5 p-1">
               {filteredLines.length === 0 ? (
-                <p className="text-sm text-muted-foreground px-2 py-1">{tCommon('noData')}</p>
+                <p className="text-sm text-muted-foreground px-3 py-4 text-center">{tCommon('noData')}</p>
               ) : (
                 filteredLines.map((l) => (
                   <label
                     key={l.id!}
-                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-muted/50"
+                    className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 hover:bg-md-surface-container-high transition-colors"
                   >
                     <input
                       type="checkbox"
                       checked={selectedLineIds.has(l.id!)}
                       onChange={() => toggleLine(l.id!)}
-                      className="h-4 w-4"
+                      className="h-4 w-4 accent-md-primary rounded"
                     />
-                    <span className="text-sm">
-                      {l.region ? `【${l.region}】` : ''}{l.name}
+                    <span className="text-sm text-foreground leading-snug">
+                      {l.region && (
+                        <span className="mr-1 rounded-md bg-md-secondary-container px-1.5 py-0.5 text-xs font-500 text-md-on-secondary-container">
+                          {l.region}
+                        </span>
+                      )}
+                      {l.name}
                     </span>
                   </label>
                 ))
               )}
             </div>
-            {saveLinesError && <p className="text-sm text-destructive">{saveLinesError}</p>}
+            {saveLinesError && (
+              <p className="flex items-center gap-1.5 rounded-lg bg-md-error-container px-3 py-2 text-sm text-md-on-error-container">
+                {saveLinesError}
+              </p>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLineEditPlan(null)}>{tCommon('cancel')}</Button>
-            <Button onClick={handleSaveLines} disabled={savingLines}>
-              {savingLines ? tCommon('saving') : tCommon('save')}
-            </Button>
+          <DialogFooter className="px-6 py-4 border-t border-border flex gap-2">
+            <button
+              type="button"
+              onClick={() => setLineEditPlan(null)}
+              className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500 border border-border bg-transparent text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
+              {tCommon('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveLines}
+              disabled={savingLines}
+              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 transition-shadow hover:elevation-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {savingLines ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin size-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  {tCommon('saving')}
+                </span>
+              ) : tCommon('save')}
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

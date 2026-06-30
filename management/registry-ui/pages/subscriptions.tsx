@@ -192,59 +192,116 @@ export default function Subscriptions() {
   });
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">{tNav('subscriptions')}</h1>
+    <div className="space-y-8">
+      {/* Page header */}
+      <div className="animate-slide-up">
+        <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">
+          {tNav('subscriptions')}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t('vlessDesc')}</p>
+      </div>
 
+      {/* Subscription format cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('vless')}</CardTitle>
-            <CardDescription>{t('vlessDesc')}</CardDescription>
+        <Card
+          className="bg-card border rounded-xl animate-slide-up"
+          style={{ animationDelay: '40ms' }}
+        >
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-md-primary-container">
+                <Download className="h-4 w-4 text-md-on-primary-container" />
+              </div>
+              <div>
+                <CardTitle className="font-display text-base font-600">{t('vless')}</CardTitle>
+                <CardDescription className="text-xs">{t('vlessDesc')}</CardDescription>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent className="flex gap-2">
-            <Button variant="outline" asChild>
+          <CardContent className="flex gap-2 pt-0">
+            <Button
+              variant="outline"
+              className="state-layer rounded-lg text-sm font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+              asChild
+            >
               <a href={apiPath('/subscription')} target="_blank" rel="noopener noreferrer">
                 <Download className="mr-2 h-4 w-4" />
                 {tCommon('download')}
               </a>
             </Button>
-            <Button variant="secondary" onClick={previewVless} disabled={loading}>
+            <Button
+              variant="secondary"
+              className="state-layer rounded-lg text-sm font-500 bg-md-secondary-container text-md-on-secondary-container hover:bg-md-secondary-container focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+              onClick={previewVless}
+              disabled={loading}
+            >
               {tCommon('preview')}
             </Button>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('clashMihomo')}</CardTitle>
-            <CardDescription>{t('clashDesc')}</CardDescription>
+        <Card
+          className="bg-card border rounded-xl animate-slide-up"
+          style={{ animationDelay: '80ms' }}
+        >
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-md-tertiary-container">
+                <Download className="h-4 w-4 text-md-on-tertiary-container" />
+              </div>
+              <div>
+                <CardTitle className="font-display text-base font-600">{t('clashMihomo')}</CardTitle>
+                <CardDescription className="text-xs">{t('clashDesc')}</CardDescription>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent className="flex gap-2">
-            <Button variant="outline" asChild>
+          <CardContent className="flex gap-2 pt-0">
+            <Button
+              variant="outline"
+              className="state-layer rounded-lg text-sm font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+              asChild
+            >
               <a href={apiPath('/subscription/clash')} target="_blank" rel="noopener noreferrer">
                 <Download className="mr-2 h-4 w-4" />
                 {tCommon('download')}
               </a>
             </Button>
-            <Button variant="secondary" onClick={previewClash} disabled={loading}>
+            <Button
+              variant="secondary"
+              className="state-layer rounded-lg text-sm font-500 bg-md-secondary-container text-md-on-secondary-container hover:bg-md-secondary-container focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+              onClick={previewClash}
+              disabled={loading}
+            >
               {tCommon('preview')}
             </Button>
           </CardContent>
         </Card>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <div className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-4 py-3 animate-fade-in">
+          <span className="size-1.5 rounded-full bg-md-error shrink-0" />
+          <p className="text-sm text-md-on-error-container">{error}</p>
+        </div>
+      )}
 
       {preview && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">{t('previewLabel', { type: previewType })}</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => setPreview('')}>
+        <Card className="bg-card border rounded-xl animate-scale-in">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="font-display text-base font-600">
+              {t('previewLabel', { type: previewType })}
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="state-layer h-8 rounded-lg px-3 text-xs font-500 text-muted-foreground focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+              onClick={() => setPreview('')}
+            >
               {tCommon('clear')}
             </Button>
           </CardHeader>
           <CardContent>
-            <pre className="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs whitespace-pre-wrap break-all">
+            <pre className="max-h-96 overflow-auto rounded-xl bg-md-surface-container-high p-4 text-xs whitespace-pre-wrap break-all text-foreground">
               {preview}
             </pre>
           </CardContent>
@@ -252,52 +309,112 @@ export default function Subscriptions() {
       )}
 
       {user?.can('subscription:read') && (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-slide-up" style={{ animationDelay: '120ms' }}>
+          {/* Section toolbar */}
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">{t('subscriptionGroups')}</h2>
+            <h2 className="font-display text-xl font-600 text-foreground">{t('subscriptionGroups')}</h2>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={loadGroups} disabled={groupsLoading}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="state-layer h-8 rounded-lg px-3 text-xs font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+                onClick={loadGroups}
+                disabled={groupsLoading}
+              >
                 {tCommon('refresh')}
               </Button>
               {canWrite && (
-                <Button size="sm" onClick={() => { setNewName(''); setCreateError(''); setCreateOpen(true); }}>
+                <Button
+                  size="sm"
+                  className="state-layer ripple h-8 rounded-lg px-3 text-xs font-500 bg-md-primary text-md-on-primary elevation-1 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+                  onClick={() => { setNewName(''); setCreateError(''); setCreateOpen(true); }}
+                >
                   {t('createGroup')}
                 </Button>
               )}
             </div>
           </div>
 
-          {groupsError && <p className="text-sm text-destructive">{groupsError}</p>}
+          {groupsError && (
+            <div className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-4 py-3">
+              <span className="size-1.5 rounded-full bg-md-error shrink-0" />
+              <p className="text-sm text-md-on-error-container">{groupsError}</p>
+            </div>
+          )}
 
           {groupsLoading ? (
-            <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
+            <div className="flex items-center justify-center py-16">
+              <div className="flex flex-col items-center gap-4">
+                {/* M3 circular progress indicator */}
+                <div className="relative h-10 w-10">
+                  <svg
+                    className="h-10 w-10 animate-spin"
+                    viewBox="0 0 40 40"
+                    fill="none"
+                    style={{ animationDuration: '1.2s', animationTimingFunction: 'var(--ease-standard)' }}
+                  >
+                    <circle
+                      cx="20" cy="20" r="16"
+                      stroke="hsl(var(--md-outline-variant))"
+                      strokeWidth="4"
+                    />
+                    <circle
+                      cx="20" cy="20" r="16"
+                      stroke="hsl(var(--md-primary))"
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                      strokeDasharray="60 40"
+                      strokeDashoffset="0"
+                    />
+                  </svg>
+                </div>
+                <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
+              </div>
+            </div>
           ) : groups.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{tCommon('noData')}</p>
+            <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-16 gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-md-surface-container-high">
+                <Download className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-500 text-muted-foreground">{tCommon('noData')}</p>
+            </div>
           ) : (
-            <div className="rounded-md border">
+            <div className="rounded-xl border overflow-hidden bg-card">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="px-4 py-2 text-left font-medium">{t('groupName')}</th>
-                    <th className="px-4 py-2 text-left font-medium">{t('colNodeCount')}</th>
-                    <th className="px-4 py-2 text-left font-medium">{t('colSubLink')}</th>
-                    {canWrite && <th className="px-4 py-2 text-left font-medium">{tNodes('colActions')}</th>}
+                  <tr className="border-b bg-md-surface-container-high">
+                    <th className="px-4 py-3 text-left text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('groupName')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colNodeCount')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colSubLink')}</th>
+                    {canWrite && <th className="px-4 py-3 text-left text-xs font-500 text-muted-foreground uppercase tracking-wide">{tNodes('colActions')}</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {groups.map((g) => (
-                    <tr key={g.id} className="border-b last:border-0 hover:bg-muted/30">
-                      <td className="px-4 py-2 font-medium">{g.name}</td>
-                      <td className="px-4 py-2 text-muted-foreground">{g.node_count}</td>
-                      <td className="px-4 py-2">
+                  {groups.map((g, i) => (
+                    <tr
+                      key={g.id}
+                      className="border-b last:border-0 hover-state animate-slide-up"
+                      style={{ animationDelay: `${i * 30}ms` }}
+                    >
+                      <td className="px-4 py-3 font-display font-600 text-sm text-foreground">{g.name}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-md-primary-container text-md-on-primary-container">
+                          {g.node_count}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <code className="max-w-[200px] truncate rounded bg-muted px-1 py-0.5 text-xs">
+                          <code className="max-w-[200px] truncate rounded-lg bg-md-surface-container-high px-2 py-1 text-xs text-foreground font-mono">
                             {apiPath('/s/' + g.token)}
                           </code>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 px-2 text-xs"
+                            className={`state-layer h-6 px-2 rounded-lg text-xs font-500 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1 ${
+                              copiedId === g.id
+                                ? 'bg-md-tertiary-container text-md-on-tertiary-container'
+                                : 'text-muted-foreground'
+                            }`}
                             onClick={() => copyLink(g)}
                           >
                             {copiedId === g.id ? t('copied') : t('copyLink')}
@@ -305,12 +422,12 @@ export default function Subscriptions() {
                         </div>
                       </td>
                       {canWrite && (
-                        <td className="px-4 py-2">
-                          <div className="flex gap-1">
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1.5">
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-7 text-xs"
+                              className="state-layer h-7 rounded-lg px-2.5 text-xs font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
                               onClick={() => openEditNodes(g)}
                             >
                               {t('editGroupNodes')}
@@ -318,7 +435,7 @@ export default function Subscriptions() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-7 text-xs"
+                              className="state-layer h-7 rounded-lg px-2.5 text-xs font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
                               onClick={() => handleResetToken(g)}
                             >
                               {t('resetToken')}
@@ -326,7 +443,7 @@ export default function Subscriptions() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-7 text-xs text-destructive hover:text-destructive"
+                              className="state-layer h-7 rounded-lg px-2.5 text-xs font-500 border border-md-error-container text-destructive hover:bg-md-error-container/30 focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-1"
                               onClick={() => handleDelete(g)}
                             >
                               {tCommon('delete')}
@@ -344,25 +461,41 @@ export default function Subscriptions() {
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className="rounded-2xl elevation-3 bg-md-surface-container-low border">
           <DialogHeader>
-            <DialogTitle>{t('createGroup')}</DialogTitle>
+            <DialogTitle className="font-display text-xl font-600">{t('createGroup')}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1">
-              <Label>{t('groupName')}</Label>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('groupName')}</Label>
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder={t('groupNamePlaceholder')}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                className="rounded-lg border bg-md-surface-container-high focus-visible:ring-2 focus-visible:ring-md-primary"
               />
             </div>
-            {createError && <p className="text-sm text-destructive">{createError}</p>}
+            {createError && (
+              <div className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-3 py-2">
+                <span className="size-1.5 rounded-full bg-md-error shrink-0" />
+                <p className="text-sm text-md-on-error-container">{createError}</p>
+              </div>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>{tCommon('cancel')}</Button>
-            <Button onClick={handleCreate} disabled={creating || !newName.trim()}>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              className="state-layer rounded-lg px-4 text-sm font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+              onClick={() => setCreateOpen(false)}
+            >
+              {tCommon('cancel')}
+            </Button>
+            <Button
+              className="state-layer ripple rounded-lg px-4 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+              onClick={handleCreate}
+              disabled={creating || !newName.trim()}
+            >
               {creating ? tCommon('saving') : t('createGroup')}
             </Button>
           </DialogFooter>
@@ -370,43 +503,72 @@ export default function Subscriptions() {
       </Dialog>
 
       <Dialog open={!!editGroup} onOpenChange={(open) => { if (!open) setEditGroup(null); }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg rounded-2xl elevation-3 bg-md-surface-container-low border">
           <DialogHeader>
-            <DialogTitle>{t('editGroupNodes')}{editGroup ? `：${editGroup.name}` : ''}</DialogTitle>
+            <DialogTitle className="font-display text-xl font-600">
+              {t('editGroupNodes')}{editGroup ? `：${editGroup.name}` : ''}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <Input
               value={nodeSearch}
               onChange={(e) => setNodeSearch(e.target.value)}
               placeholder={t('searchNodes')}
+              className="rounded-lg border bg-md-surface-container-high focus-visible:ring-2 focus-visible:ring-md-primary"
             />
-            <div className="max-h-72 overflow-y-auto space-y-1 rounded-md border p-2">
+            <div className="max-h-72 overflow-y-auto space-y-0.5 rounded-xl border bg-md-surface-container p-2">
               {filteredNodes.length === 0 ? (
-                <p className="text-sm text-muted-foreground px-2 py-1">{tNodes('noMatchingNodes')}</p>
+                <p className="text-sm text-muted-foreground px-2 py-3 text-center">{tNodes('noMatchingNodes')}</p>
               ) : (
-                filteredNodes.map((n) => (
+                filteredNodes.map((n, i) => (
                   <label
                     key={n.mac}
-                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-muted/50"
+                    className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover-state animate-slide-up"
+                    style={{ animationDelay: `${i * 20}ms` }}
                   >
                     <input
                       type="checkbox"
                       checked={selectedMacs.has(n.mac ?? '')}
                       onChange={() => toggleMac(n.mac ?? '')}
-                      className="h-4 w-4"
+                      className="h-4 w-4 rounded accent-[hsl(var(--md-primary))]"
                     />
-                    <span className="text-sm">
-                      {n.location ? `【${n.location}】` : ''}{n.hostname}
-                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm font-500 text-foreground truncate">
+                        {n.hostname}
+                      </span>
+                      {n.location && (
+                        <span className="text-xs text-muted-foreground">{n.location}</span>
+                      )}
+                    </div>
+                    {selectedMacs.has(n.mac ?? '') && (
+                      <span className="ml-auto shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-500 bg-md-primary-container text-md-on-primary-container">
+                        ✓
+                      </span>
+                    )}
                   </label>
                 ))
               )}
             </div>
-            {saveNodesError && <p className="text-sm text-destructive">{saveNodesError}</p>}
+            {saveNodesError && (
+              <div className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-3 py-2">
+                <span className="size-1.5 rounded-full bg-md-error shrink-0" />
+                <p className="text-sm text-md-on-error-container">{saveNodesError}</p>
+              </div>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditGroup(null)}>{tCommon('cancel')}</Button>
-            <Button onClick={handleSaveNodes} disabled={savingNodes}>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              className="state-layer rounded-lg px-4 text-sm font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+              onClick={() => setEditGroup(null)}
+            >
+              {tCommon('cancel')}
+            </Button>
+            <Button
+              className="state-layer ripple rounded-lg px-4 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+              onClick={handleSaveNodes}
+              disabled={savingNodes}
+            >
               {savingNodes ? tCommon('saving') : tCommon('save')}
             </Button>
           </DialogFooter>
