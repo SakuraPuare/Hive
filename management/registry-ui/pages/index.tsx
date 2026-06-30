@@ -1,16 +1,13 @@
 import React, { useEffect } from 'react';
-import { getHealth } from '@/lib/openapi-session';
 import { useTranslations } from 'next-intl';
 
 export default function Home() {
   const tAuth = useTranslations('auth');
 
+  // 站点首页面向顾客：默认进入公开门户落地页。
+  // 管理员入口在落地页页脚 → /login。
   useEffect(() => {
-    (async () => {
-      const h = await getHealth();
-      if (h) window.location.href = '/dashboard';
-      else window.location.href = '/login';
-    })();
+    window.location.href = '/portal';
   }, []);
 
   return (

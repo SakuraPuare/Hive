@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import type { AppProps } from 'next/app';
 import { useRouter } from 'next/router';
+import { Roboto_Flex, Lexend } from 'next/font/google';
 import { ThemeProvider } from 'next-themes';
 import { NextIntlClientProvider } from 'next-intl';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -10,6 +11,21 @@ import '@/styles/globals.css';
 import zhMessages from '../messages/zh.json';
 import enMessages from '../messages/en.json';
 
+// Material 3 typography: Roboto Flex (body) + Lexend (display/headings).
+// Exposed as CSS variables consumed by globals.css (--font-sans / --font-display).
+const robotoFlex = Roboto_Flex({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-roboto-flex',
+});
+
+const lexend = Lexend({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  display: 'swap',
+  variable: '--font-lexend',
+});
+
 // 同步加载所有语言包，避免 SSR 阶段 MISSING_MESSAGE 警告
 const allMessages: Record<Locale, Record<string, unknown>> = {
   zh: zhMessages,
@@ -17,7 +33,7 @@ const allMessages: Record<Locale, Record<string, unknown>> = {
 };
 
 const NO_LAYOUT_PATHS = ['/', '/login'];
-const PORTAL_NO_LAYOUT_PATHS = ['/portal/login', '/portal/register'];
+const PORTAL_NO_LAYOUT_PATHS = ['/portal', '/portal/login', '/portal/register', '/portal/forgot-password', '/portal/reset-password'];
 
 function IntlWrapper({ children }: { children: React.ReactNode }) {
   const { locale } = useLocale();
@@ -49,7 +65,9 @@ export default function App({ Component, pageProps }: AppProps) {
     <LocaleProvider>
       <IntlWrapper>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {content}
+          <div className={`${robotoFlex.variable} ${lexend.variable}`}>
+            {content}
+          </div>
         </ThemeProvider>
       </IntlWrapper>
     </LocaleProvider>
