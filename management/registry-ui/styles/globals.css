@@ -2,7 +2,21 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* =========================================================================
+   Material 3 / Material You design system — Google Blue seed
+   --------------------------------------------------------------------------
+   Architecture:
+   - M3 color roles live as `H S% L%` triplets in :root / .dark  (--md-*).
+   - shadcn aliases (--background, --card, --primary ...) simply *reference*
+     the md roles via var(), so all 27 existing pages keep working unchanged
+     and automatically follow the active theme.
+   - @theme exposes BOTH the shadcn colors (legacy) AND the md roles
+     (--color-md-*) so new primitives can use `bg-md-primary-container` etc.
+   All color tokens are HSL triplets consumed through hsl(); never hex here.
+   ========================================================================= */
+
 @theme {
+  /* ---- shadcn alias colors (legacy, do not remove) ---- */
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
@@ -30,120 +44,419 @@
   --color-popover: hsl(var(--popover));
   --color-popover-foreground: hsl(var(--popover-foreground));
 
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  /* ---- Material 3 native roles (preferred for new primitives) ---- */
+  --color-md-primary: hsl(var(--md-primary));
+  --color-md-on-primary: hsl(var(--md-on-primary));
+  --color-md-primary-container: hsl(var(--md-primary-container));
+  --color-md-on-primary-container: hsl(var(--md-on-primary-container));
+
+  --color-md-secondary: hsl(var(--md-secondary));
+  --color-md-on-secondary: hsl(var(--md-on-secondary));
+  --color-md-secondary-container: hsl(var(--md-secondary-container));
+  --color-md-on-secondary-container: hsl(var(--md-on-secondary-container));
+
+  --color-md-tertiary: hsl(var(--md-tertiary));
+  --color-md-on-tertiary: hsl(var(--md-on-tertiary));
+  --color-md-tertiary-container: hsl(var(--md-tertiary-container));
+  --color-md-on-tertiary-container: hsl(var(--md-on-tertiary-container));
+
+  --color-md-error: hsl(var(--md-error));
+  --color-md-on-error: hsl(var(--md-on-error));
+  --color-md-error-container: hsl(var(--md-error-container));
+  --color-md-on-error-container: hsl(var(--md-on-error-container));
+
+  --color-md-surface: hsl(var(--md-surface));
+  --color-md-surface-dim: hsl(var(--md-surface-dim));
+  --color-md-surface-bright: hsl(var(--md-surface-bright));
+  --color-md-surface-container-lowest: hsl(var(--md-surface-container-lowest));
+  --color-md-surface-container-low: hsl(var(--md-surface-container-low));
+  --color-md-surface-container: hsl(var(--md-surface-container));
+  --color-md-surface-container-high: hsl(var(--md-surface-container-high));
+  --color-md-surface-container-highest: hsl(var(--md-surface-container-highest));
+  --color-md-on-surface: hsl(var(--md-on-surface));
+  --color-md-on-surface-variant: hsl(var(--md-on-surface-variant));
+  --color-md-outline: hsl(var(--md-outline));
+  --color-md-outline-variant: hsl(var(--md-outline-variant));
+  --color-md-inverse-surface: hsl(var(--md-inverse-surface));
+  --color-md-inverse-on-surface: hsl(var(--md-inverse-on-surface));
+  --color-md-inverse-primary: hsl(var(--md-inverse-primary));
+  --color-md-scrim: hsl(var(--md-scrim));
+
+  /* ---- Shape scale (M3) ---- */
   --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-xl: calc(var(--radius) + 8px);
+  --radius-2xl: calc(var(--radius) + 16px);
+
+  /* ---- Typography ---- */
+  --font-sans: var(--font-roboto-flex), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: var(--font-lexend), var(--font-roboto-flex), ui-sans-serif, system-ui, sans-serif;
+
+  /* ---- M3 motion easing (cubic-bezier) ---- */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-standard-decelerate: cubic-bezier(0, 0, 0, 1);
+  --ease-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  --ease-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
 }
 
-/*
-  The default border color has changed to `currentcolor` in Tailwind CSS v4,
-  so we've added these compatibility styles to make sure everything still
-  looks the same as it did with Tailwind CSS v3.
+/* =========================================================================
+   LIGHT THEME — M3 color roles (Google Blue seed)
+   surface = near-white with a faint blue-grey tint; containers step up tone.
+   ========================================================================= */
+@layer base {
+  :root {
+    /* primary */
+    --md-primary: 224 71% 45%;
+    --md-on-primary: 0 0% 100%;
+    --md-primary-container: 222 100% 92%;
+    --md-on-primary-container: 224 76% 18%;
+    /* secondary (desaturated blue-grey) */
+    --md-secondary: 222 20% 42%;
+    --md-on-secondary: 0 0% 100%;
+    --md-secondary-container: 220 44% 90%;
+    --md-on-secondary-container: 222 30% 20%;
+    /* tertiary (Google teal-green, warm layer) */
+    --md-tertiary: 174 62% 31%;
+    --md-on-tertiary: 0 0% 100%;
+    --md-tertiary-container: 172 62% 86%;
+    --md-on-tertiary-container: 175 82% 11%;
+    /* error (Google red) */
+    --md-error: 0 73% 45%;
+    --md-on-error: 0 0% 100%;
+    --md-error-container: 6 100% 93%;
+    --md-on-error-container: 358 75% 17%;
+    /* neutral surfaces */
+    --md-surface: 220 33% 99%;
+    --md-surface-dim: 220 20% 90%;
+    --md-surface-bright: 220 33% 99%;
+    --md-surface-container-lowest: 0 0% 100%;
+    --md-surface-container-low: 220 33% 97%;
+    --md-surface-container: 220 26% 95%;
+    --md-surface-container-high: 220 22% 92%;
+    --md-surface-container-highest: 220 20% 90%;
+    --md-on-surface: 222 32% 12%;
+    --md-on-surface-variant: 220 13% 38%;
+    --md-outline: 220 10% 55%;
+    --md-outline-variant: 220 17% 86%;
+    --md-inverse-surface: 222 22% 18%;
+    --md-inverse-on-surface: 220 30% 96%;
+    --md-inverse-primary: 222 92% 80%;
+    --md-scrim: 0 0% 0%;
+    --md-shadow: 222 47% 11%;
+  }
+}
 
-  If we ever want to remove these styles, we need to add an explicit border
-  color utility to any element that depends on these defaults.
-*/
+/* =========================================================================
+   DARK THEME — M3 color roles
+   surface = deep neutral with blue tint (never pure black); primary brighter
+   tone for AA contrast; containers step up in lightness.
+   ========================================================================= */
+@layer base {
+  .dark {
+    /* primary — brighter tone in dark */
+    --md-primary: 222 92% 80%;
+    --md-on-primary: 224 80% 20%;
+    --md-primary-container: 224 55% 33%;
+    --md-on-primary-container: 222 100% 92%;
+    /* secondary */
+    --md-secondary: 220 38% 80%;
+    --md-on-secondary: 222 26% 22%;
+    --md-secondary-container: 222 22% 34%;
+    --md-on-secondary-container: 220 44% 90%;
+    /* tertiary */
+    --md-tertiary: 172 55% 65%;
+    --md-on-tertiary: 175 80% 12%;
+    --md-tertiary-container: 174 50% 24%;
+    --md-on-tertiary-container: 172 62% 86%;
+    /* error */
+    --md-error: 4 100% 84%;
+    --md-on-error: 358 80% 20%;
+    --md-error-container: 358 60% 36%;
+    --md-on-error-container: 6 100% 93%;
+    /* neutral surfaces — dark M3 tonal ladder */
+    --md-surface: 222 26% 9%;
+    --md-surface-dim: 222 26% 9%;
+    --md-surface-bright: 221 16% 22%;
+    --md-surface-container-lowest: 223 30% 6%;
+    --md-surface-container-low: 222 23% 12%;
+    --md-surface-container: 222 21% 14%;
+    --md-surface-container-high: 221 18% 17%;
+    --md-surface-container-highest: 220 15% 22%;
+    --md-on-surface: 220 30% 92%;
+    --md-on-surface-variant: 220 14% 72%;
+    --md-outline: 220 10% 52%;
+    --md-outline-variant: 221 14% 28%;
+    --md-inverse-surface: 220 30% 92%;
+    --md-inverse-on-surface: 222 26% 16%;
+    --md-inverse-primary: 224 71% 45%;
+    --md-scrim: 0 0% 0%;
+    --md-shadow: 0 0% 0%;
+  }
+}
+
+/* =========================================================================
+   shadcn ALIAS LAYER — maps every legacy token to an M3 role.
+   These are HSL triplets (var references), consumed by @theme via hsl().
+   Theme-independent: each alias points at an md role that already swaps
+   between light/.dark, so we only declare the mapping once.
+   ========================================================================= */
+@layer base {
+  :root,
+  .dark {
+    --background: var(--md-surface);
+    --foreground: var(--md-on-surface);
+
+    --card: var(--md-surface-container-low);
+    --card-foreground: var(--md-on-surface);
+
+    --popover: var(--md-surface-container);
+    --popover-foreground: var(--md-on-surface);
+
+    --primary: var(--md-primary);
+    --primary-foreground: var(--md-on-primary);
+
+    --secondary: var(--md-surface-container-high);
+    --secondary-foreground: var(--md-on-surface);
+
+    --muted: var(--md-surface-container-high);
+    --muted-foreground: var(--md-on-surface-variant);
+
+    --accent: var(--md-secondary-container);
+    --accent-foreground: var(--md-on-secondary-container);
+
+    --destructive: var(--md-error);
+    --destructive-foreground: var(--md-on-error);
+
+    --border: var(--md-outline-variant);
+    --input: var(--md-outline-variant);
+    --ring: var(--md-primary);
+
+    --radius: 0.75rem;
+
+    /* charts: Google four-color + tertiary */
+    --chart-1: var(--md-primary);
+    --chart-2: var(--md-tertiary);
+    --chart-3: 43 96% 50%;
+    --chart-4: 16 90% 55%;
+    --chart-5: var(--md-secondary);
+  }
+}
+
+/* =========================================================================
+   Tailwind v4 border-color compat (default changed to currentcolor in v4)
+   ========================================================================= */
 @layer base {
   *,
   ::after,
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--color-gray-200, currentcolor);
+    border-color: var(--color-border, currentcolor);
   }
 }
 
+/* =========================================================================
+   M3 ELEVATION — two-layer shadow (key + ambient). Tuned per theme.
+   ========================================================================= */
+@utility elevation-1 {
+  box-shadow:
+    0 1px 2px 0 hsl(var(--md-shadow) / 0.3),
+    0 1px 3px 1px hsl(var(--md-shadow) / 0.15);
+}
+@utility elevation-2 {
+  box-shadow:
+    0 1px 2px 0 hsl(var(--md-shadow) / 0.3),
+    0 2px 6px 2px hsl(var(--md-shadow) / 0.15);
+}
+@utility elevation-3 {
+  box-shadow:
+    0 4px 8px 3px hsl(var(--md-shadow) / 0.15),
+    0 1px 3px 0 hsl(var(--md-shadow) / 0.3);
+}
+.dark .elevation-1 {
+  box-shadow:
+    0 1px 2px 0 hsl(var(--md-shadow) / 0.6),
+    0 1px 3px 1px hsl(var(--md-shadow) / 0.4);
+}
+.dark .elevation-2 {
+  box-shadow:
+    0 1px 2px 0 hsl(var(--md-shadow) / 0.6),
+    0 2px 6px 2px hsl(var(--md-shadow) / 0.45);
+}
+.dark .elevation-3 {
+  box-shadow:
+    0 4px 8px 3px hsl(var(--md-shadow) / 0.5),
+    0 1px 3px 0 hsl(var(--md-shadow) / 0.65);
+}
+
+/* =========================================================================
+   M3 STATE LAYER — translucent on-color overlay for hover/focus/press.
+   Apply `state-layer` to an interactive element; it paints an ::after
+   overlay that intensifies on interaction (M3: hover 8%, focus 10%, press 12%).
+   The tint color follows currentColor by default; override with
+   `--state-color` for a custom on-color.
+   ========================================================================= */
+@utility state-layer {
+  position: relative;
+  isolation: isolate;
+}
+.state-layer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--state-color, currentColor);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms var(--ease-standard);
+  z-index: 0;
+}
+.state-layer > * {
+  position: relative;
+  z-index: 1;
+}
+.state-layer:hover::after { opacity: 0.08; }
+.state-layer:focus-visible::after { opacity: 0.1; }
+.state-layer:active::after { opacity: 0.12; }
+
+/* Convenience hover-tint utilities (no ::after; for elements that already
+   manage their own children, e.g. table rows / list items). */
+@utility hover-state {
+  transition: background-color 150ms var(--ease-standard);
+}
+.hover-state:hover {
+  background-color: hsl(var(--md-on-surface) / 0.08);
+}
+
+/* =========================================================================
+   RIPPLE — pure-CSS press feedback via a radial gradient that scales out.
+   Add `ripple` to a positioned, overflow-hidden element. On :active a
+   centered ripple expands; on release it fades. Pairs well with state-layer.
+   ========================================================================= */
+@utility ripple {
+  position: relative;
+  overflow: hidden;
+}
+.ripple::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.ripple:active::before {
+  width: 250%;
+  aspect-ratio: 1;
+  opacity: 0.12;
+  transition: width 0s, opacity 0s;
+}
+.ripple::before {
+  transition: opacity 450ms var(--ease-standard);
+}
+
+/* =========================================================================
+   LEGACY UTILITIES — kept so the 27 existing pages don't break, but the
+   AI-slop blue/indigo/purple gradients are RE-SKINNED to a restrained M3
+   tonal expression (primary → tertiary). Downstream agents should migrate
+   off these toward M3 surface/container styling.
+   ========================================================================= */
 @utility glass {
-  @apply backdrop-blur-xl bg-white/70 dark:bg-white/5 border border-white/20 dark:border-white/10;
+  background-color: hsl(var(--md-surface) / 0.72);
+  backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid hsl(var(--md-outline-variant) / 0.6);
+}
+.dark .glass {
+  background-color: hsl(var(--md-surface-container) / 0.6);
+  border-color: hsl(var(--md-outline-variant) / 0.5);
 }
 
 @utility gradient-brand {
-  @apply bg-linear-to-br from-blue-600 via-indigo-600 to-purple-700;
+  background-image: linear-gradient(
+    135deg,
+    hsl(var(--md-primary)),
+    hsl(var(--md-tertiary))
+  );
 }
 
 @utility gradient-brand-subtle {
-  @apply bg-linear-to-br from-blue-500/10 via-indigo-500/5 to-purple-500/10;
+  background-image: linear-gradient(
+    135deg,
+    hsl(var(--md-primary-container) / 0.6),
+    hsl(var(--md-tertiary-container) / 0.5)
+  );
 }
 
 @utility gradient-border {
-  background: linear-gradient(135deg, hsl(225 75% 57%), hsl(280 65% 60%));
+  background-image: linear-gradient(
+    135deg,
+    hsl(var(--md-primary)),
+    hsl(var(--md-tertiary))
+  );
 }
 
 @utility text-gradient {
-  @apply bg-clip-text text-transparent bg-linear-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400;
+  background-image: linear-gradient(
+    90deg,
+    hsl(var(--md-primary)),
+    hsl(var(--md-tertiary))
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
 }
 
+/* =========================================================================
+   MOTION — load-in animations. Use staggered reveal by applying
+   `animate-slide-up` with an inline `animation-delay` step (e.g. 40ms * i)
+   for list/grid entrance. Easing follows M3 emphasized-decelerate.
+   ========================================================================= */
 @utility animate-fade-in {
-  animation: fade-in 0.3s ease-out;
+  animation: fade-in 0.3s var(--ease-standard);
 }
 
 @utility animate-slide-up {
-  animation: slide-up 0.4s ease-out;
+  animation: slide-up 0.4s var(--ease-emphasized);
+  animation-fill-mode: both;
 }
 
-@layer base {
-  :root {
-    --background: 210 20% 98%;
-    --foreground: 224 71% 4%;
-    --card: 0 0% 100%;
-    --card-foreground: 224 71% 4%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --primary: 225 75% 57%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 14.3% 95.9%;
-    --secondary-foreground: 220.9 39.3% 11%;
-    --muted: 220 14.3% 95.9%;
-    --muted-foreground: 220 8.9% 46.1%;
-    --accent: 225 75% 95%;
-    --accent-foreground: 225 75% 40%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 225 75% 57%;
-    --radius: 0.625rem;
-    --popover: 0 0% 100%;
-    --popover-foreground: 224 71% 4%;
-    --chart-1: 225 75% 57%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 43 96% 56%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 0 84% 60%;
-  }
-
-  .dark {
-    --background: 224 71% 4%;
-    --foreground: 210 20% 98%;
-    --card: 224 50% 7.5%;
-    --card-foreground: 210 20% 98%;
-    --border: 224 20% 14%;
-    --input: 224 20% 14%;
-    --primary: 225 75% 60%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 224 20% 12%;
-    --secondary-foreground: 210 20% 98%;
-    --muted: 224 20% 12%;
-    --muted-foreground: 218 11% 55%;
-    --accent: 225 50% 15%;
-    --accent-foreground: 225 75% 70%;
-    --destructive: 0 62.8% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 225 75% 60%;
-    --popover: 224 50% 7.5%;
-    --popover-foreground: 210 20% 98%;
-    --chart-1: 225 75% 60%;
-    --chart-2: 173 58% 49%;
-    --chart-3: 43 96% 66%;
-    --chart-4: 280 65% 70%;
-    --chart-5: 0 84% 65%;
-  }
+@utility animate-scale-in {
+  animation: scale-in 0.2s var(--ease-emphasized);
+  animation-fill-mode: both;
 }
 
+@utility font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* =========================================================================
+   BASE
+   ========================================================================= */
 @layer base {
   * {
     @apply border-border;
   }
   body {
     @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
   }
 }
 
@@ -155,4 +468,9 @@
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }
