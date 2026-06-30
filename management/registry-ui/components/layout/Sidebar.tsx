@@ -4,7 +4,6 @@ import { useRouter } from 'next/router';
 import { LayoutDashboard, Server, Download, Route, Package, Users, ScrollText, ShieldCheck, Activity, UserCheck, ShoppingCart, Tag, MessageSquare, Megaphone, Globe, Waypoints } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
-import { Separator } from '@/components/ui/separator';
 import { useCurrentUser } from '@/lib/auth';
 import { useLocale, type Locale } from '@/lib/locale';
 
@@ -39,68 +38,58 @@ export function Sidebar() {
   const mainItems = baseNavItems.filter(({ perm }) => !perm || user?.can(perm));
   const adminItems = adminNavItems.filter(({ perm }) => perm && user?.can(perm));
 
+  const renderNavItem = (
+    { href, label, icon: Icon }: { href: string; label: string; icon: typeof LayoutDashboard },
+    index: number,
+  ) => {
+    const isActive =
+      router.pathname === href || router.pathname.startsWith(href + '/');
+    return (
+      <Link
+        key={href}
+        href={href}
+        aria-current={isActive ? 'page' : undefined}
+        style={{ animationDelay: `${Math.min(index, 8) * 30}ms` }}
+        className={cn(
+          'state-layer animate-slide-up group relative flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+          isActive
+            ? 'bg-md-secondary-container text-md-on-secondary-container'
+            : 'text-md-on-surface-variant hover:text-md-on-surface'
+        )}
+      >
+        <Icon className="h-5 w-5 shrink-0" />
+        <span className="truncate">{label}</span>
+      </Link>
+    );
+  };
+
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r bg-card">
-      <div className="flex h-16 items-center gap-2.5 px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-brand">
-          <Globe className="h-4 w-4 text-white" />
+      <div className="flex h-16 items-center gap-3 px-5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-md-primary text-md-on-primary elevation-1">
+          <Globe className="h-[18px] w-[18px]" />
         </div>
-        <span className="text-base font-bold tracking-tight">{tAuth('hiveRegistry')}</span>
+        <span className="font-display text-base font-600 tracking-tight text-foreground">
+          {tAuth('hiveRegistry')}
+        </span>
       </div>
-      <Separator />
-      <nav aria-label="主导航" className="flex-1 overflow-y-auto p-3 space-y-1">
-        {mainItems.map(({ href, label, icon: Icon }) => {
-          const isActive =
-            router.pathname === href || router.pathname.startsWith(href + '/');
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-              )}
-            >
-              <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />
-              {label}
-            </Link>
-          );
-        })}
+      <nav aria-label="主导航" className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+        {mainItems.map(renderNavItem)}
 
         {adminItems.length > 0 && (
           <>
-            <div className="pt-3 pb-1 px-3">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+            <div className="px-4 pt-5 pb-2">
+              <span className="text-[11px] font-600 uppercase tracking-wider text-md-on-surface-variant/70">
                 {tNav('admin') || 'Admin'}
               </span>
             </div>
-            {adminItems.map(({ href, label, icon: Icon }) => {
-              const isActive =
-                router.pathname === href || router.pathname.startsWith(href + '/');
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all',
-                    isActive
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                >
-                  <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />
-                  {label}
-                </Link>
-              );
-            })}
+            {adminItems.map((item, i) => renderNavItem(item, mainItems.length + i))}
           </>
         )}
       </nav>
-      <Separator />
-      <div className="flex items-center justify-center gap-0.5 p-3">
-        <div className="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+      <div className="p-3">
+        <div className="flex items-center gap-1 rounded-full bg-md-surface-container-high p-1">
           {(['zh', 'en'] as Locale[]).map((l) => (
             <button type="button"
               key={l}
@@ -108,10 +97,11 @@ export function Sidebar() {
               aria-label={l === 'zh' ? '切换到中文' : 'Switch to English'}
               aria-pressed={locale === l}
               className={cn(
-                'rounded-md px-3 py-1 text-xs font-medium transition-all',
+                'state-layer flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card',
                 locale === l
-                  ? 'bg-background text-foreground shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground'
+                  ? 'bg-md-secondary-container text-md-on-secondary-container'
+                  : 'text-md-on-surface-variant hover:text-md-on-surface'
               )}
             >
               {l === 'zh' ? '中文' : 'EN'}
