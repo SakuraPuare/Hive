@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
-import { Menu, X, LayoutDashboard, Package, MessageSquare, ShoppingCart, LogOut, ChevronDown, Globe } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Package, MessageSquare, ShoppingCart, LogOut, ChevronDown, Globe, Gift, Megaphone, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { CustomerProvider, useCustomer, portalLogout } from '@/lib/portal-auth';
@@ -26,6 +26,8 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/portal/plans', label: t('navPlans'), icon: Package },
     { href: '/portal/orders', label: t('navOrders'), icon: ShoppingCart },
     { href: '/portal/tickets', label: t('navTickets'), icon: MessageSquare },
+    { href: '/portal/referral', label: t('navReferral'), icon: Gift },
+    { href: '/portal/announcements', label: t('navAnnouncements'), icon: Megaphone },
   ];
 
   const isActive = (href: string) =>
@@ -105,6 +107,14 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
                         {customer.nickname && <p className="text-xs text-muted-foreground truncate">{customer.email}</p>}
                       </div>
                       <div className="h-px bg-border mx-1 my-1" />
+                      <Link
+                        href="/portal/account"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                      >
+                        <User className="h-4 w-4" />
+                        {t('navAccount')}
+                      </Link>
                       <button type="button"
                         onClick={handleLogout}
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
