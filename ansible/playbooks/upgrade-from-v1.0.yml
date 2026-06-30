@@ -37,7 +37,7 @@
           # TCP 性能
           net.ipv4.tcp_fastopen = 3
           net.ipv4.tcp_congestion_control = bbr
-      notify: reload sysctl
+      notify: Reload sysctl
 
     - name: Deploy sysctl security hardening
       tags: sysctl
@@ -72,28 +72,45 @@
 
           # ASLR（地址空间随机化）
           kernel.randomize_va_space = 2
-      notify: reload sysctl
+      notify: Reload sysctl
 
     # ── apt: 多镜像源冗余 ────────────────────────
     - name: Deploy multi-mirror apt sources (debian)
       tags: apt-sources
       ansible.builtin.shell: |
+        set -o pipefail
         f=/etc/apt/sources.list.d/debian.sources
         [ -f "$f" ] || exit 0
-        sed -i '/security/!s|^URIs:.*debian.*|URIs: http://mirrors.tuna.tsinghua.edu.cn/debian http://mirrors.ustc.edu.cn/debian http://mirrors.aliyun.com/debian http://deb.debian.org/debian|' "$f"
-        sed -i 's|^URIs:.*security.*|URIs: http://mirrors.tuna.tsinghua.edu.cn/debian-security http://mirrors.ustc.edu.cn/debian-security http://security.debian.org/|' "$f"
+        main="http://mirrors.tuna.tsinghua.edu.cn/debian"
+        main="$main http://mirrors.ustc.edu.cn/debian"
+        main="$main http://mirrors.aliyun.com/debian"
+        main="$main http://deb.debian.org/debian"
+        sec="http://mirrors.tuna.tsinghua.edu.cn/debian-security"
+        sec="$sec http://mirrors.ustc.edu.cn/debian-security"
+        sec="$sec http://security.debian.org/"
+        sed -i "/security/!s|^URIs:.*debian.*|URIs: $main|" "$f"
+        sed -i "s|^URIs:.*security.*|URIs: $sec|" "$f"
+      args:
+        executable: /bin/bash
       changed_when: true
       when: ansible_distribution == "Debian"
 
     - name: Deploy multi-mirror apt sources (armbian)
       tags: apt-sources
       ansible.builtin.shell: |
+        set -o pipefail
         f=/etc/apt/sources.list.d/armbian.sources
         [ -f "$f" ] || exit 0
-        sed -i 's|^URIs:.*|URIs: http://mirrors.tuna.tsinghua.edu.cn/armbian http://mirrors.ustc.edu.cn/armbian http://apt.armbian.com|' "$f"
+        uris="http://mirrors.tuna.tsinghua.edu.cn/armbian"
+        uris="$uris http://mirrors.ustc.edu.cn/armbian"
+        uris="$uris http://apt.armbian.com"
+        sed -i "s|^URIs:.*|URIs: $uris|" "$f"
+      args:
+        executable: /bin/bash
       changed_when: true
       failed_when: false
 
   handlers:
-    - name: reload sysctl
+    - name: Reload sysctl
       ansible.builtin.command: sysctl --system
+      changed_when: true
