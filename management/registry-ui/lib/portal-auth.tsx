@@ -88,9 +88,9 @@ export async function portalLogout() {
   await PortalAuthService.portalLogout();
 }
 
-export async function portalRegister(email: string, password: string, nickname: string) {
+export async function portalRegister(email: string, password: string, nickname: string, referralCode?: string) {
   try {
-    return await PortalAuthService.portalRegister({ requestBody: { email, password, nickname } });
+    return await PortalAuthService.portalRegister({ requestBody: { email, password, nickname, referral_code: referralCode || undefined } });
   } catch (e) {
     if (e instanceof ApiError) {
       const body: Record<string, unknown> = e.body && typeof e.body === 'object' ? e.body as Record<string, unknown> : {};

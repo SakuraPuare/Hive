@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { portalRegister } from '@/lib/portal-auth';
 import { getErrorMessage } from '@/lib/i18n';
@@ -10,11 +11,19 @@ import { Globe, ArrowRight, Loader2 } from 'lucide-react';
 
 export default function PortalRegisterPage() {
   const t = useTranslations('portal');
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // 捕获邀请链接中的推荐码 ?ref=CODE
+  useEffect(() => {
+    const ref = router.query.ref;
+    if (typeof ref === 'string' && ref) setReferralCode(ref);
+  }, [router.query.ref]);
 
   return (
     <div className="flex min-h-screen">
@@ -65,7 +74,7 @@ export default function PortalRegisterPage() {
               setLoading(true);
               setError('');
               try {
-                await portalRegister(email, password, nickname);
+                await portalRegister(email, password, nickname, referralCode);
                 window.location.href = '/portal/dashboard';
               } catch (e) {
                 setError(getErrorMessage(e, t('registerFailed')));
