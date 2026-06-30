@@ -268,7 +268,7 @@ export default function AnnouncementsPage() {
                     </TableCell>
                     <TableCell className="py-3">
                       {ann.pinned ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-md-primary font-500">
+                        <span className="inline-flex items-center gap-1 text-xs text-md-primary font-500" role="img" aria-label={t('pinned')}>
                           <Pin className="size-3" />
                         </span>
                       ) : (
@@ -277,7 +277,7 @@ export default function AnnouncementsPage() {
                     </TableCell>
                     <TableCell className="py-3">
                       {ann.published ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-md-tertiary font-500">
+                        <span className="inline-flex items-center gap-1 text-xs text-md-tertiary font-500" role="img" aria-label={t('published')}>
                           <Globe className="size-3" />
                         </span>
                       ) : (

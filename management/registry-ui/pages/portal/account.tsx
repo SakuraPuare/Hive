@@ -11,6 +11,7 @@ function initial(nickname?: string, email?: string) {
 
 export default function PortalAccountPage() {
   const t = useTranslations('portal');
+  const tCommon = useTranslations('common');
   const router = useRouter();
   const { customer, loading } = useCustomer();
 
@@ -31,7 +32,7 @@ export default function PortalAccountPage() {
           className="h-10 w-10 rounded-full border-[3px] border-md-primary-container border-t-md-primary animate-spin"
           style={{ animationDuration: '0.9s' }}
         />
-        <p className="text-sm text-muted-foreground animate-fade-in">{t('loading')}</p>
+        <p className="text-sm text-muted-foreground animate-fade-in">{tCommon('loading')}</p>
       </div>
     );
   }
