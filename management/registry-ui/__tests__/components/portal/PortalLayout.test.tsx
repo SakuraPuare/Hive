@@ -125,7 +125,7 @@ describe('PortalLayout', () => {
     // The tickets link should have the active class
     const ticketsLinks = screen.getAllByText('portal.navTickets');
     const desktopLink = ticketsLinks[0].closest('a');
-    expect(desktopLink?.className).toContain('bg-primary/10');
+    expect(desktopLink?.className).toContain('bg-md-secondary-container');
   });
 
   it('highlights active nav for nested paths', () => {
@@ -134,7 +134,7 @@ describe('PortalLayout', () => {
 
     const ticketsLinks = screen.getAllByText('portal.navTickets');
     const desktopLink = ticketsLinks[0].closest('a');
-    expect(desktopLink?.className).toContain('bg-primary/10');
+    expect(desktopLink?.className).toContain('bg-md-secondary-container');
   });
 
   it('renders children in main area', () => {

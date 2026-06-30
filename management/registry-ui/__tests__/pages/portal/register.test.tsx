@@ -45,7 +45,8 @@ describe('PortalRegisterPage', () => {
     await user.click(screen.getByRole('button', { name: 'portal.register' }));
 
     await waitFor(() => {
-      expect(mockPortalRegister).toHaveBeenCalledWith('new@example.com', 'pass123', 'NewUser');
+      // 4th arg is the optional referral code, empty when not supplied via ?ref=
+      expect(mockPortalRegister).toHaveBeenCalledWith('new@example.com', 'pass123', 'NewUser', '');
     });
     expect(window.location.href).toBe('/portal/dashboard');
   });

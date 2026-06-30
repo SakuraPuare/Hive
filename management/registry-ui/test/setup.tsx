@@ -1,6 +1,13 @@
 /// <reference types="vitest/globals" />
 import '@testing-library/jest-dom/vitest';
 
+// Mock next/font/google — return a stub font object so module-load font
+// wiring in _app.tsx (Roboto_Flex / Lexend) doesn't crash under jsdom.
+vi.mock('next/font/google', () => ({
+  Roboto_Flex: () => ({ variable: '--font-roboto-flex', className: 'font-roboto-flex', style: { fontFamily: 'Roboto Flex' } }),
+  Lexend: () => ({ variable: '--font-lexend', className: 'font-lexend', style: { fontFamily: 'Lexend' } }),
+}));
+
 // Mock next/router
 const mockRouter = {
   pathname: '/',

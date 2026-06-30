@@ -91,9 +91,10 @@ describe('Nodes page', () => {
       expect(screen.getByText('node-alpha')).toBeInTheDocument();
     });
 
-    // StatusBadge renders hardcoded English labels
-    expect(screen.getByText('Online')).toBeInTheDocument();
-    expect(screen.getByText('Offline')).toBeInTheDocument();
+    // 'Online'/'Offline' appear in both the summary stat cards and the
+    // per-row StatusBadge, so assert presence via getAllByText.
+    expect(screen.getAllByText('Online').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Offline').length).toBeGreaterThan(0);
   });
 
   it('filters nodes by search query', async () => {

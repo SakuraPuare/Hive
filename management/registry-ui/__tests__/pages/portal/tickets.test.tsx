@@ -204,7 +204,8 @@ describe('PortalTicketsPage', () => {
 
     fireEvent.click(screen.getByText('portal.newTicket'));
 
-    const submitBtn = screen.getByText('portal.submit');
+    // submit text is wrapped in a <span> (M3 state-layer); query the button
+    const submitBtn = screen.getByRole('button', { name: 'portal.submit' });
     expect(submitBtn).toBeDisabled();
   });
 

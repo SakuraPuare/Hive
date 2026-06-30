@@ -119,7 +119,7 @@ describe('AnnouncementsPage', () => {
     });
   });
 
-  it('shows checkmarks for pinned and published announcements', async () => {
+  it('shows status indicators for pinned and published announcements', async () => {
     mockAdminListAnnouncements.mockResolvedValueOnce({ total: 2, items: mockAnnouncements });
     render(<AnnouncementsPage />);
 
@@ -127,7 +127,9 @@ describe('AnnouncementsPage', () => {
       expect(screen.getByText('紧急通知')).toBeInTheDocument();
     });
 
-    // Item 1: published=true (1 ✓), Item 2: pinned+published (2 ✓) = 3 total
-    expect(screen.getAllByText('✓').length).toBe(3);
+    // Pinned/published now render as icon indicators with aria-labels.
+    // Item 1: published. Item 2: pinned + published.
+    expect(screen.getAllByLabelText('announcements.published').length).toBe(2);
+    expect(screen.getAllByLabelText('announcements.pinned').length).toBe(1);
   });
 });
