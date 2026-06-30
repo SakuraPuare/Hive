@@ -204,7 +204,6 @@ echo ">>> cloudflared config written."
 # ─────────────────────────────────────────────
 # 5. 写入节点信息汇总文件（运维查阅用）
 # ─────────────────────────────────────────────
-TAILSCALE_IP_PENDING="pending"
 cat > /etc/hive/node-info << EOF
 # 本节点访问信息（由 provision-node.sh 生成）
 HOSTNAME=${HOSTNAME}

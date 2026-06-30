@@ -52,8 +52,9 @@ get_node_mac() {
         m=$(grep -E '^MAC=' "$NODE_INFO" 2>/dev/null | head -1 | cut -d= -f2 | tr -d ' \r')
         if [ -n "$m" ]; then echo "$m"; return; fi
     fi
-    local iface
-    for iface in $(ls /sys/class/net 2>/dev/null); do
+    local iface iface_path
+    for iface_path in /sys/class/net/*; do
+        iface=$(basename "$iface_path")
         case "$iface" in
             lo|docker*|veth*|br-*|tailscale*|easytier*|warp*|cni*|virbr*|wg*) continue ;;
         esac
@@ -238,8 +239,7 @@ grep -q '^MAC=' "$NODE_INFO" 2>/dev/null || echo "MAC=${NODE_MAC}" >> "$NODE_INF
 nmcli connection reload 2>/dev/null || true
 bring_up() {  # $1=conn_id $2=iface
     [ -n "$2" ] || return
-    local t
-    for t in $(seq 1 10); do
+    for _ in $(seq 1 10); do
         nmcli -t -f DEVICE device status 2>/dev/null | grep -qx "$2" && break; sleep 1
     done
     nmcli device disconnect "$2" >/dev/null 2>&1 || true

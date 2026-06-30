@@ -45,8 +45,9 @@ get_node_mac() {
         m=$(grep -E '^MAC=' "$NODE_INFO" 2>/dev/null | head -1 | cut -d= -f2 | tr -d ' \r')
         if [ -n "$m" ]; then echo "$m"; return; fi
     fi
-    local iface
-    for iface in $(ls /sys/class/net 2>/dev/null); do
+    local iface iface_path
+    for iface_path in /sys/class/net/*; do
+        iface=$(basename "$iface_path")
         case "$iface" in
             lo|docker*|veth*|br-*|tailscale*|easytier*|warp*|cni*|virbr*|wg*) continue ;;
         esac
@@ -207,7 +208,7 @@ nmcli connection reload 2>/dev/null || true
 for iface in "${LAN_DONE[@]}"; do
     conn_id="hive-lan-${iface}"
     # 等待设备就绪（热插拔时网卡可能稍晚出现）
-    for t in $(seq 1 10); do
+    for _ in $(seq 1 10); do
         nmcli -t -f DEVICE device status 2>/dev/null | grep -qx "$iface" && break; sleep 1
     done
     if nmcli connection up "$conn_id" >/dev/null 2>&1; then

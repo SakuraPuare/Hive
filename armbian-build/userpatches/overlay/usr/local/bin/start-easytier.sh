@@ -20,7 +20,9 @@ if [ ! -f "$NODE_INFO" ]; then
     exit 1
 fi
 
+# shellcheck source=/dev/null
 source "$NODE_INFO"
+# shellcheck source=/dev/null
 source "$CONFIG_ENV"
 
 # 构造 --peers 参数：EASYTIER_PEERS 逗号分隔，单 peer 填一个即可

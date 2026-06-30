@@ -40,7 +40,7 @@ fetch_all_nodes() {
 test_node() {
     local node_json="$1"
 
-    local hostname cf_url tailscale_ip easytier_ip frp_port frp_server xray_uuid last_seen
+    local hostname cf_url tailscale_ip easytier_ip frp_port xray_uuid last_seen
     hostname=$(echo "$node_json"    | jq -r '.hostname')
     cf_url=$(echo "$node_json"      | jq -r '.cf_url // empty')
     tailscale_ip=$(echo "$node_json"| jq -r '.tailscale_ip // empty')
