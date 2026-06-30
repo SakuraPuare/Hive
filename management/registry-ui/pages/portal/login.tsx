@@ -3,10 +3,9 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { portalLogin } from '@/lib/portal-auth';
 import { getErrorMessage } from '@/lib/i18n';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Globe, ArrowRight, Loader2 } from 'lucide-react';
+import { Globe, ArrowRight } from 'lucide-react';
 
 export default function PortalLoginPage() {
   const t = useTranslations('portal');
@@ -16,42 +15,93 @@ export default function PortalLoginPage() {
   const [loading, setLoading] = useState(false);
 
   return (
-    <div className="flex min-h-screen">
-      {/* Left panel — branding */}
-      <div className="hidden lg:flex lg:w-1/2 gradient-brand relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImciIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0ibm9uZSIvPjxjaXJjbGUgY3g9IjMwIiBjeT0iMzAiIHI9IjEuNSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjEpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCBmaWxsPSJ1cmwoI2cpIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9zdmc+')] opacity-60" />
+    <div className="flex min-h-screen bg-background">
+      {/* Left panel — branding, M3 primary-container surface */}
+      <div className="hidden lg:flex lg:w-1/2 bg-md-primary-container relative overflow-hidden">
+        {/* Subtle dot pattern using on-primary-container at low opacity */}
+        <div
+          className="absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle, hsl(var(--md-on-primary-container)) 1px, transparent 1px)',
+            backgroundSize: '32px 32px',
+          }}
+        />
+        {/* Soft radial highlight bottom-right */}
+        <div className="absolute bottom-0 right-0 w-96 h-96 rounded-full bg-md-primary/20 blur-3xl" />
+
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
-              <Globe className="h-7 w-7 text-white" />
+          {/* Brand mark */}
+          <div
+            className="flex items-center gap-3 mb-10 animate-slide-up"
+            style={{ animationDelay: '0ms' }}
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-md-primary elevation-1">
+              <Globe className="h-6 w-6 text-md-on-primary" />
             </div>
-            <span className="text-2xl font-bold text-white tracking-tight">{t('brand')}</span>
+            <span className="font-display text-2xl font-600 text-md-on-primary-container tracking-tight">
+              {t('brand')}
+            </span>
           </div>
-          <h1 className="text-4xl font-bold text-white leading-tight mb-4">
+
+          {/* Hero copy */}
+          <h1
+            className="font-display text-4xl font-700 text-md-on-primary-container leading-tight mb-4 animate-slide-up"
+            style={{ animationDelay: '60ms' }}
+          >
             {t('heroTitle') || 'Secure. Fast.\nUnlimited.'}
           </h1>
-          <p className="text-lg text-blue-100/80 max-w-md">
+          <p
+            className="text-base leading-relaxed text-md-on-primary-container/70 max-w-sm animate-slide-up"
+            style={{ animationDelay: '120ms' }}
+          >
             {t('heroDesc') || 'Premium proxy service with global coverage and blazing fast connections.'}
           </p>
+
+          {/* Decorative divider */}
+          <div
+            className="mt-12 flex items-center gap-3 animate-slide-up"
+            style={{ animationDelay: '180ms' }}
+          >
+            <div className="h-px flex-1 bg-md-on-primary-container/20" />
+            <span className="text-xs font-500 text-md-on-primary-container/50 uppercase tracking-widest">
+              Hive
+            </span>
+            <div className="h-px flex-1 bg-md-on-primary-container/20" />
+          </div>
         </div>
       </div>
 
       {/* Right panel — form */}
       <div className="flex w-full lg:w-1/2 items-center justify-center p-6 bg-background">
-        <div className="w-full max-w-[400px] animate-fade-in">
+        <div className="w-full max-w-[400px]">
           {/* Mobile logo */}
-          <div className="flex items-center gap-2.5 mb-10 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-brand">
-              <Globe className="h-5 w-5 text-white" />
+          <div
+            className="flex items-center gap-2.5 mb-10 lg:hidden animate-slide-up"
+            style={{ animationDelay: '0ms' }}
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-md-primary elevation-1">
+              <Globe className="h-5 w-5 text-md-on-primary" />
             </div>
-            <span className="text-xl font-bold tracking-tight">{t('brand')}</span>
+            <span className="font-display text-xl font-600 tracking-tight text-foreground">
+              {t('brand')}
+            </span>
           </div>
 
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold tracking-tight">{t('customerLogin')}</h2>
+          {/* Heading block */}
+          <div
+            className="mb-8 animate-slide-up"
+            style={{ animationDelay: '40ms' }}
+          >
+            <h2 className="font-display text-2xl font-700 tracking-tight text-foreground">
+              {t('customerLogin')}
+            </h2>
             <p className="mt-2 text-sm text-muted-foreground">
               {t('noAccount')}{' '}
-              <Link href="/portal/register" className="font-medium text-primary hover:underline">
+              <Link
+                href="/portal/register"
+                className="font-500 text-md-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary rounded-sm"
+              >
                 {t('goRegister')}
               </Link>
             </p>
@@ -73,9 +123,15 @@ export default function PortalLoginPage() {
               }
             }}
           >
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">{t('email')}</Label>
+            <div className="space-y-5">
+              {/* Email field */}
+              <div
+                className="space-y-2 animate-slide-up"
+                style={{ animationDelay: '80ms' }}
+              >
+                <Label htmlFor="email" className="text-sm font-500 text-foreground">
+                  {t('email')}
+                </Label>
                 <Input
                   id="email"
                   type="email"
@@ -84,13 +140,23 @@ export default function PortalLoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
                   required
-                  className="h-11"
+                  className="h-11 rounded-lg bg-md-surface-container-high border-border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0 focus-visible:border-md-primary transition-colors"
                 />
               </div>
-              <div className="space-y-2">
+
+              {/* Password field */}
+              <div
+                className="space-y-2 animate-slide-up"
+                style={{ animationDelay: '120ms' }}
+              >
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="password">{t('password')}</Label>
-                  <Link href="/portal/forgot-password" className="text-xs font-medium text-primary hover:underline">
+                  <Label htmlFor="password" className="text-sm font-500 text-foreground">
+                    {t('password')}
+                  </Label>
+                  <Link
+                    href="/portal/forgot-password"
+                    className="text-xs font-500 text-md-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary rounded-sm"
+                  >
                     {t('forgotPassword')}
                   </Link>
                 </div>
@@ -101,24 +167,66 @@ export default function PortalLoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
                   required
-                  className="h-11"
+                  className="h-11 rounded-lg bg-md-surface-container-high border-border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0 focus-visible:border-md-primary transition-colors"
                 />
               </div>
+
+              {/* Error banner */}
               {error && (
-                <div className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                <div
+                  className="flex items-start gap-3 rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container animate-slide-up"
+                  style={{ animationDelay: '0ms' }}
+                >
+                  <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-md-error" />
                   {error}
                 </div>
               )}
-              <Button type="submit" className="w-full h-11 text-base font-medium" disabled={loading}>
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    {t('login')}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
+
+              {/* Submit */}
+              <div
+                className="animate-slide-up"
+                style={{ animationDelay: '160ms' }}
+              >
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="state-layer ripple w-full h-11 inline-flex items-center justify-center gap-2
+                    rounded-lg px-5 text-sm font-500
+                    bg-md-primary text-md-on-primary elevation-1
+                    transition-shadow hover:elevation-2
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+                    disabled:opacity-60 disabled:pointer-events-none"
+                >
+                  {loading ? (
+                    <>
+                      {/* M3-style circular indeterminate spinner */}
+                      <svg
+                        className="h-4 w-4 animate-spin"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12" cy="12" r="10"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                        />
+                        <path
+                          className="opacity-90"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                        />
+                      </svg>
+                    </>
+                  ) : (
+                    <>
+                      {t('login')}
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </form>
         </div>

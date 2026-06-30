@@ -7,7 +7,6 @@ import { getErrorMessage } from '@/lib/i18n';
 import { PortalService } from '@/src/generated/client';
 import type { model_Ticket } from '@/src/generated/client/models/model_Ticket';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,7 +16,7 @@ import {
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { RefreshCw, Plus } from 'lucide-react';
+import { RefreshCw, Plus, Ticket, AlertCircle, InboxIcon } from 'lucide-react';
 
 function formatDate(s: string) {
   const d = new Date(s);
@@ -25,11 +24,59 @@ function formatDate(s: string) {
   return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  open: 'bg-blue-100 text-blue-800',
-  replied: 'bg-yellow-100 text-yellow-800',
-  closed: 'bg-gray-100 text-gray-600',
-};
+/** M3 §10 status chip — open=info/primary, replied=warning, closed=idle */
+function StatusChip({ status }: { status: string }) {
+  const t = useTranslations('portal');
+  const label = t(`status${status.charAt(0).toUpperCase() + status.slice(1)}`);
+
+  if (status === 'open') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-md-primary-container text-md-on-primary-container">
+        <span className="size-1.5 rounded-full bg-md-primary" />
+        {label}
+      </span>
+    );
+  }
+  if (status === 'replied') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-[hsl(43_96%_50%/0.15)] text-[hsl(38_92%_30%)] dark:text-[hsl(43_96%_70%)]">
+        <span className="size-1.5 rounded-full bg-[hsl(43_96%_50%)]" />
+        {label}
+      </span>
+    );
+  }
+  // closed / unknown → idle
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-muted text-muted-foreground">
+      <span className="size-1.5 rounded-full bg-md-outline" />
+      {label}
+    </span>
+  );
+}
+
+/** M3 circular progress indicator (SVG, replaces old text-only loading) */
+function CircularProgress({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      className={`animate-spin ${className}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle
+        className="opacity-20"
+        cx="12" cy="12" r="10"
+        stroke="currentColor"
+        strokeWidth="3"
+      />
+      <path
+        className="opacity-80"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"
+      />
+    </svg>
+  );
+}
 
 export default function PortalTicketsPage() {
   const t = useTranslations('portal');
@@ -85,60 +132,139 @@ export default function PortalTicketsPage() {
     }
   }
 
-  if (authLoading) return <p className="p-6 text-sm text-muted-foreground">{tCommon('loading')}</p>;
+  // Auth loading — M3 surface placeholder with circular progress
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-24 animate-fade-in">
+        <div className="flex flex-col items-center gap-4 text-muted-foreground">
+          <CircularProgress className="size-8 text-md-primary" />
+          <p className="text-sm">{tCommon('loading')}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t('ticketsTitle')}</h1>
-        <div className="flex gap-2">
-          <Button size="sm" onClick={() => setShowNew(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            {t('newTicket')}
-          </Button>
-          <Button variant="outline" size="sm" onClick={loadTickets} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
-            {tCommon('refresh')}
-          </Button>
+    <div className="space-y-6 animate-fade-in">
+
+      {/* ── Page header ─────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3 animate-slide-up">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-md-primary-container text-md-on-primary-container">
+            <Ticket className="size-5" />
+          </div>
+          <div>
+            <h1 className="font-display text-xl font-600 text-foreground">{t('ticketsTitle')}</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">{t('ticketsTitle')}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 animate-slide-up" style={{ animationDelay: '40ms' }}>
+          {/* Primary action */}
+          <button
+            onClick={() => setShowNew(true)}
+            className="state-layer ripple inline-flex items-center gap-1.5 rounded-lg px-4 py-2
+              text-sm font-500 bg-md-primary text-md-on-primary elevation-1
+              transition-shadow hover:elevation-2
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+          >
+            <Plus className="size-4" />
+            <span>{t('newTicket')}</span>
+          </button>
+
+          {/* Tonal secondary action */}
+          <button
+            onClick={loadTickets}
+            disabled={loading}
+            className="state-layer inline-flex items-center gap-1.5 rounded-lg px-4 py-2
+              text-sm font-500 bg-md-secondary-container text-md-on-secondary-container
+              disabled:opacity-40 disabled:cursor-not-allowed
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+          >
+            {loading
+              ? <CircularProgress className="size-4 text-md-on-secondary-container" />
+              : <RefreshCw className="size-4" />
+            }
+            <span>{tCommon('refresh')}</span>
+          </button>
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {/* ── Error banner ─────────────────────────────────────── */}
+      {error && (
+        <div className="flex items-center gap-3 rounded-xl px-4 py-3
+          bg-md-error-container text-md-on-error-container animate-slide-up">
+          <AlertCircle className="size-4 shrink-0" />
+          <p className="text-sm">{error}</p>
+        </div>
+      )}
 
-      <div className="rounded-md border">
+      {/* ── Ticket table card ─────────────────────────────────── */}
+      <div className="bg-card border rounded-xl overflow-hidden animate-slide-up" style={{ animationDelay: '80ms' }}>
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead className="w-16">{t('colId')}</TableHead>
-              <TableHead>{t('colSubject')}</TableHead>
-              <TableHead>{t('colStatus')}</TableHead>
-              <TableHead>{t('colCreatedAt')}</TableHead>
+            <TableRow className="border-b bg-md-surface-container-high/60">
+              <TableHead className="w-16 text-xs font-500 uppercase tracking-wide text-muted-foreground">
+                {t('colId')}
+              </TableHead>
+              <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
+                {t('colSubject')}
+              </TableHead>
+              <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
+                {t('colStatus')}
+              </TableHead>
+              <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
+                {t('colCreatedAt')}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
+              /* Loading state — M3 circular progress centered */
               <TableRow>
-                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">{tCommon('loading')}</TableCell>
+                <TableCell colSpan={4} className="py-16">
+                  <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                    <CircularProgress className="size-7 text-md-primary" />
+                    <p className="text-sm">{tCommon('loading')}</p>
+                  </div>
+                </TableCell>
               </TableRow>
             ) : tickets.length === 0 ? (
+              /* Empty state */
               <TableRow>
-                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">{t('noTickets')}</TableCell>
+                <TableCell colSpan={4} className="py-16">
+                  <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                    <div className="flex size-12 items-center justify-center rounded-full bg-md-surface-container-high">
+                      <InboxIcon className="size-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm">{t('noTickets')}</p>
+                  </div>
+                </TableCell>
               </TableRow>
             ) : (
-              tickets.map((ticket) => (
+              tickets.map((ticket, i) => (
                 <TableRow
                   key={ticket.id}
-                  className="cursor-pointer hover:bg-muted/50"
+                  className="cursor-pointer hover-state border-b border-md-outline-variant/40 last:border-0
+                    focus-visible:outline-none focus-visible:bg-md-surface-container-high
+                    animate-slide-up"
+                  style={{ animationDelay: `${120 + i * 30}ms` }}
                   onClick={() => router.push(`/portal/tickets/${ticket.id}`)}
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && router.push(`/portal/tickets/${ticket.id}`)}
                 >
-                  <TableCell className="text-muted-foreground">#{ticket.id}</TableCell>
-                  <TableCell className="font-medium">{ticket.subject}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={STATUS_COLORS[ticket.status ?? ''] ?? ''}>
-                      {t(`status${(ticket.status ?? '').charAt(0).toUpperCase() + (ticket.status ?? '').slice(1)}`)}
-                    </Badge>
+                  <TableCell className="text-xs font-500 text-muted-foreground font-display">
+                    #{ticket.id}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(ticket.created_at ?? '')}</TableCell>
+                  <TableCell className="font-500 text-foreground">
+                    {ticket.subject}
+                  </TableCell>
+                  <TableCell>
+                    <StatusChip status={ticket.status ?? ''} />
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {formatDate(ticket.created_at ?? '')}
+                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -146,37 +272,69 @@ export default function PortalTicketsPage() {
         </Table>
       </div>
 
-      {/* New ticket dialog */}
+      {/* ── New ticket dialog ─────────────────────────────────── */}
       <Dialog open={showNew} onOpenChange={setShowNew}>
-        <DialogContent>
+        <DialogContent className="rounded-2xl border bg-card elevation-3 animate-scale-in sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t('newTicket')}</DialogTitle>
+            <DialogTitle className="font-display text-lg font-600 text-foreground">
+              {t('newTicket')}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+
+          <div className="space-y-5 py-1">
             <div className="space-y-1.5">
-              <Label>{t('subject')}</Label>
+              <Label className="text-sm font-500 text-foreground">{t('subject')}</Label>
               <Input
                 value={newSubject}
                 onChange={(e) => setNewSubject(e.target.value)}
                 placeholder={t('subjectPlaceholder')}
+                className="rounded-lg bg-md-surface-container-high border focus-visible:ring-md-primary"
               />
             </div>
             <div className="space-y-1.5">
-              <Label>{t('content')}</Label>
+              <Label className="text-sm font-500 text-foreground">{t('content')}</Label>
               <Textarea
                 value={newContent}
                 onChange={(e) => setNewContent(e.target.value)}
                 placeholder={t('contentPlaceholder')}
                 rows={5}
+                className="rounded-lg bg-md-surface-container-high border focus-visible:ring-md-primary resize-none"
               />
             </div>
-            {submitError && <p className="text-sm text-destructive">{submitError}</p>}
+
+            {submitError && (
+              <div className="flex items-center gap-2 rounded-lg px-3 py-2.5
+                bg-md-error-container text-md-on-error-container text-sm">
+                <AlertCircle className="size-4 shrink-0" />
+                <span>{submitError}</span>
+              </div>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNew(false)}>{tCommon('cancel')}</Button>
-            <Button onClick={handleSubmit} disabled={submitting || !newSubject.trim() || !newContent.trim()}>
-              {submitting ? t('submitting') : t('submit')}
-            </Button>
+
+          <DialogFooter className="gap-2 pt-1">
+            {/* Outlined / text cancel */}
+            <button
+              onClick={() => setShowNew(false)}
+              className="state-layer inline-flex items-center justify-center rounded-lg px-4 py-2
+                text-sm font-500 border border-md-outline-variant text-foreground
+                bg-transparent hover:bg-md-surface-container-high
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
+              {tCommon('cancel')}
+            </button>
+
+            {/* Primary submit */}
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || !newSubject.trim() || !newContent.trim()}
+              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2
+                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
+                disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+            >
+              {submitting && <CircularProgress className="size-4 text-md-on-primary" />}
+              <span>{submitting ? t('submitting') : t('submit')}</span>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

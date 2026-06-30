@@ -6,13 +6,45 @@ import type { model_Announcement } from '@/src/generated/client/models/model_Ann
 import { getErrorMessage } from '@/lib/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Megaphone, Pin } from 'lucide-react';
+import { Megaphone, Pin, AlertTriangle, Info, AlertCircle } from 'lucide-react';
 
-const BANNER_STYLES: Record<string, string> = {
-  critical: 'border-red-200 bg-red-50 text-red-900 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200',
-  warning: 'border-yellow-200 bg-yellow-50 text-yellow-900 dark:border-yellow-500/20 dark:bg-yellow-500/10 dark:text-yellow-200',
-  info: 'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200',
+/* ── M3 level styling ────────────────────────────────────────────────────── */
+const LEVEL_CONFIG: Record<
+  string,
+  {
+    card: string;
+    bar: string;
+    icon: React.ElementType;
+    iconClass: string;
+    badge: string;
+  }
+> = {
+  critical: {
+    card: 'bg-md-error-container/30 border border-md-error-container',
+    bar: 'bg-md-error',
+    icon: AlertCircle,
+    iconClass: 'text-destructive',
+    badge: 'bg-md-error-container text-md-on-error-container',
+  },
+  warning: {
+    card: 'bg-[hsl(43_96%_50%/0.08)] border border-[hsl(43_96%_50%/0.3)]',
+    bar: 'bg-[hsl(43_96%_50%)]',
+    icon: AlertTriangle,
+    iconClass: 'text-[hsl(38_92%_42%)] dark:text-[hsl(43_96%_62%)]',
+    badge:
+      'bg-[hsl(43_96%_50%/0.15)] text-[hsl(38_92%_30%)] dark:text-[hsl(43_96%_70%)]',
+  },
+  info: {
+    card: 'bg-md-primary-container/20 border border-md-primary-container/50',
+    bar: 'bg-md-primary',
+    icon: Info,
+    iconClass: 'text-md-primary',
+    badge: 'bg-md-primary-container text-md-on-primary-container',
+  },
 };
+
+const getLevelConfig = (level?: string) =>
+  LEVEL_CONFIG[level ?? 'info'] ?? LEVEL_CONFIG.info;
 
 export default function PortalAnnouncementsPage() {
   const t = useTranslations('portal');
@@ -41,52 +73,103 @@ export default function PortalAnnouncementsPage() {
   }, [t]);
 
   const sorted = useMemo(
-    () => [...announcements].sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false)),
+    () =>
+      [...announcements].sort(
+        (a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false),
+      ),
     [announcements],
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Megaphone className="h-5 w-5" />
+    <div className="space-y-8">
+      {/* ── Page header ──────────────────────────────────────────────────── */}
+      <div className="animate-slide-up flex items-center gap-3">
+        <div className="flex size-10 items-center justify-center rounded-2xl bg-md-primary-container text-md-on-primary-container">
+          <Megaphone className="size-5" />
+        </div>
+        <h1 className="font-display text-2xl font-600 text-foreground tracking-tight">
           {t('announcementsTitle')}
         </h1>
       </div>
 
+      {/* ── Error banner ─────────────────────────────────────────────────── */}
       {error && (
-        <div className="rounded-md bg-destructive/10 text-destructive px-4 py-3 text-sm">{error}</div>
+        <div className="animate-slide-up rounded-xl bg-md-error-container/40 border border-md-error-container px-4 py-3 text-sm text-md-on-error-container flex items-center gap-2">
+          <AlertCircle className="size-4 shrink-0 text-destructive" />
+          {error}
+        </div>
       )}
 
+      {/* ── Loading state — M3 circular progress ─────────────────────────── */}
       {loading ? (
-        <div className="flex justify-center py-16">
-          <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        <div className="flex flex-col items-center justify-center gap-4 py-20 animate-fade-in">
+          <div
+            className="size-10 rounded-full border-[3px] border-md-primary-container border-t-md-primary animate-spin"
+            role="progressbar"
+            aria-label={t('announcementsTitle')}
+          />
+          <p className="text-sm text-muted-foreground">{t('announcementsTitle')}</p>
         </div>
       ) : sorted.length === 0 ? (
-        <div className="py-16 text-center text-muted-foreground">{t('noAnnouncements')}</div>
+        /* ── Empty state ─────────────────────────────────────────────────── */
+        <div className="animate-slide-up flex flex-col items-center justify-center gap-4 py-20 rounded-2xl bg-card border">
+          <div className="flex size-14 items-center justify-center rounded-full bg-md-surface-container-high">
+            <Megaphone className="size-7 text-muted-foreground" />
+          </div>
+          <p className="text-base text-muted-foreground">{t('noAnnouncements')}</p>
+        </div>
       ) : (
+        /* ── Announcement list ───────────────────────────────────────────── */
         <div className="space-y-4">
-          {sorted.map((a) => {
-            const levelClass = BANNER_STYLES[a.level ?? 'info'] ?? BANNER_STYLES.info;
+          {sorted.map((a, i) => {
+            const cfg = getLevelConfig(a.level);
+            const LevelIcon = cfg.icon;
             return (
-              <Card key={a.id} className={`border-l-4 ${levelClass}`}>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <span>{a.title}</span>
+              <Card
+                key={a.id}
+                className={`relative overflow-hidden rounded-xl border-0 shadow-none animate-slide-up ${cfg.card}`}
+                style={{ animationDelay: `${i * 50}ms` }}
+              >
+                {/* left tonal accent bar */}
+                <span
+                  className={`absolute inset-y-0 left-0 w-1 rounded-l-xl ${cfg.bar}`}
+                  aria-hidden="true"
+                />
+
+                <CardHeader className="pl-6 pb-2">
+                  <CardTitle className="flex flex-wrap items-center gap-2">
+                    <LevelIcon className={`size-4 shrink-0 ${cfg.iconClass}`} />
+                    <span className="font-display text-base font-600 text-foreground">
+                      {a.title}
+                    </span>
+
                     {a.pinned && (
-                      <Badge variant="outline" className="gap-1">
-                        <Pin className="h-3 w-3" />
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-500 ${cfg.badge}`}
+                      >
+                        <Pin className="size-3" />
                         {t('pinned')}
-                      </Badge>
+                      </span>
+                    )}
+
+                    {a.level && (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-500 uppercase tracking-wide ${cfg.badge}`}
+                      >
+                        {a.level}
+                      </span>
                     )}
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  {/* react-doctor-disable-next-line react-doctor/no-danger -- content is sanitized with DOMPurify before injection */}
+
+                <CardContent className="pl-6">
+                  {/* content is sanitized with DOMPurify before injection */}
                   <p
-                    className="text-sm leading-relaxed"
+                    className="text-sm leading-relaxed text-foreground/80"
                     dangerouslySetInnerHTML={{
-                      __html: DOMPurify.sanitize((a.content ?? '').replace(/\n/g, '<br/>')),
+                      __html: DOMPurify.sanitize(
+                        (a.content ?? '').replace(/\n/g, '<br/>'),
+                      ),
                     }}
                   />
                 </CardContent>

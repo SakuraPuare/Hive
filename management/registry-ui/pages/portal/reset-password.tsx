@@ -7,7 +7,7 @@ import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Globe, ArrowRight, Loader2, KeyRound } from 'lucide-react';
+import { Globe, ArrowRight, KeyRound } from 'lucide-react';
 
 export default function PortalResetPasswordPage() {
   const t = useTranslations('portal');
@@ -25,19 +25,39 @@ export default function PortalResetPasswordPage() {
   }, [router.query.email]);
 
   return (
-    <div className="flex min-h-screen">
-      {/* Left panel — branding */}
-      <div className="hidden lg:flex lg:w-1/2 gradient-brand relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImciIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0ibm9uZSIvPjxjaXJjbGUgY3g9IjMwIiBjeT0iMzAiIHI9IjEuNSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjEpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCBmaWxsPSJ1cmwoI2cpIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9zdmc+')] opacity-60" />
+    <div className="flex min-h-screen bg-background">
+      {/* Left panel — branding (M3 surface-container, no old gradient) */}
+      <div className="hidden lg:flex lg:w-1/2 bg-md-primary-container relative overflow-hidden">
+        {/* Subtle tonal dot pattern — on-primary-container at low opacity */}
+        <div
+          className="absolute inset-0 opacity-20"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle, hsl(var(--md-on-primary-container)) 1px, transparent 1px)',
+            backgroundSize: '40px 40px',
+          }}
+        />
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
-              <Globe className="h-7 w-7 text-white" />
+          <div className="flex items-center gap-3 mb-10 animate-slide-up" style={{ animationDelay: '0ms' }}>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-md-primary/20">
+              <Globe className="h-7 w-7 text-md-on-primary-container" />
             </div>
-            <span className="text-2xl font-bold text-white tracking-tight">{t('brand')}</span>
+            <span className="font-display text-2xl font-600 text-md-on-primary-container tracking-tight">
+              {t('brand')}
+            </span>
           </div>
-          <h1 className="text-4xl font-bold text-white leading-tight mb-4">{t('heroTitle')}</h1>
-          <p className="text-lg text-blue-100/80 max-w-md">{t('heroDesc')}</p>
+          <h1
+            className="font-display text-4xl font-700 text-md-on-primary-container leading-tight mb-4 animate-slide-up"
+            style={{ animationDelay: '60ms' }}
+          >
+            {t('heroTitle')}
+          </h1>
+          <p
+            className="text-base text-md-on-primary-container/70 max-w-md leading-relaxed animate-slide-up"
+            style={{ animationDelay: '120ms' }}
+          >
+            {t('heroDesc')}
+          </p>
         </div>
       </div>
 
@@ -46,20 +66,24 @@ export default function PortalResetPasswordPage() {
         <div className="w-full max-w-[400px] animate-fade-in">
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 mb-10 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-brand">
-              <Globe className="h-5 w-5 text-white" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-md-primary-container">
+              <Globe className="h-5 w-5 text-md-on-primary-container" />
             </div>
-            <span className="text-xl font-bold tracking-tight">{t('brand')}</span>
+            <span className="font-display text-xl font-600 tracking-tight text-foreground">{t('brand')}</span>
           </div>
 
           {done ? (
-            <div className="text-center">
-              <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
-                <KeyRound className="h-7 w-7 text-primary" />
+            /* ── Success state ── */
+            <div className="text-center animate-slide-up">
+              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-md-tertiary-container">
+                <KeyRound className="h-8 w-8 text-md-on-tertiary-container" />
               </div>
-              <h2 className="text-2xl font-bold tracking-tight">{t('resetSuccess')}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">{t('resetSuccessDesc')}</p>
-              <Button asChild className="mt-8 w-full h-11 text-base font-medium">
+              <h2 className="font-display text-2xl font-600 tracking-tight text-foreground">{t('resetSuccess')}</h2>
+              <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{t('resetSuccessDesc')}</p>
+              <Button
+                asChild
+                className="mt-8 w-full h-11 text-sm font-500 state-layer ripple rounded-lg bg-md-primary text-md-on-primary elevation-1 hover:elevation-2 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 transition-shadow"
+              >
                 <Link href="/portal/login">
                   {t('goLogin')}
                   <ArrowRight className="ml-2 h-4 w-4" />
@@ -68,9 +92,10 @@ export default function PortalResetPasswordPage() {
             </div>
           ) : (
             <>
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold tracking-tight">{t('resetTitle')}</h2>
-                <p className="mt-2 text-sm text-muted-foreground">{t('resetDesc')}</p>
+              {/* ── Form header ── */}
+              <div className="mb-8 animate-slide-up" style={{ animationDelay: '0ms' }}>
+                <h2 className="font-display text-2xl font-600 tracking-tight text-foreground">{t('resetTitle')}</h2>
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{t('resetDesc')}</p>
               </div>
 
               {/* react-doctor-disable-next-line react-doctor/no-prevent-default -- static-export SPA against a Go API; server actions are not available */}
@@ -91,9 +116,12 @@ export default function PortalResetPasswordPage() {
                   }
                 }}
               >
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">{t('email')}</Label>
+                <div className="space-y-5">
+                  {/* Email field */}
+                  <div className="space-y-1.5 animate-slide-up" style={{ animationDelay: '40ms' }}>
+                    <Label htmlFor="email" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                      {t('email')}
+                    </Label>
                     <Input
                       id="email"
                       type="email"
@@ -102,11 +130,15 @@ export default function PortalResetPasswordPage() {
                       onChange={(e) => setEmail(e.target.value)}
                       autoComplete="email"
                       required
-                      className="h-11"
+                      className="h-11 rounded-lg bg-md-surface-container-high border-border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0 focus-visible:border-transparent"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="code">{t('verifyCode')}</Label>
+
+                  {/* Verify code field */}
+                  <div className="space-y-1.5 animate-slide-up" style={{ animationDelay: '80ms' }}>
+                    <Label htmlFor="code" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                      {t('verifyCode')}
+                    </Label>
                     <Input
                       id="code"
                       type="text"
@@ -114,11 +146,15 @@ export default function PortalResetPasswordPage() {
                       value={code}
                       onChange={(e) => setCode(e.target.value)}
                       required
-                      className="h-11"
+                      className="h-11 rounded-lg bg-md-surface-container-high border-border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0 focus-visible:border-transparent"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="password">{t('newPassword')}</Label>
+
+                  {/* New password field */}
+                  <div className="space-y-1.5 animate-slide-up" style={{ animationDelay: '120ms' }}>
+                    <Label htmlFor="password" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                      {t('newPassword')}
+                    </Label>
                     <Input
                       id="password"
                       type="password"
@@ -126,26 +162,44 @@ export default function PortalResetPasswordPage() {
                       onChange={(e) => setPassword(e.target.value)}
                       autoComplete="new-password"
                       required
-                      className="h-11"
+                      className="h-11 rounded-lg bg-md-surface-container-high border-border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0 focus-visible:border-transparent"
                     />
                   </div>
+
+                  {/* Error banner */}
                   {error && (
-                    <div className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    <div className="rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container animate-slide-up">
                       {error}
                     </div>
                   )}
-                  <Button type="submit" className="w-full h-11 text-base font-medium" disabled={loading}>
-                    {loading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        {t('doReset')}
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                  <p className="text-center text-sm text-muted-foreground">
-                    <Link href="/portal/login" className="font-medium text-primary hover:underline">
+
+                  {/* Submit */}
+                  <div className="animate-slide-up pt-1" style={{ animationDelay: '160ms' }}>
+                    <Button
+                      type="submit"
+                      className="w-full h-11 text-sm font-500 state-layer ripple rounded-lg bg-md-primary text-md-on-primary elevation-1 hover:elevation-2 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 transition-shadow"
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        /* M3 circular progress — thin ring spinner */
+                        <span
+                          className="inline-block h-5 w-5 rounded-full border-2 border-md-on-primary/30 border-t-md-on-primary animate-spin"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <>
+                          {t('doReset')}
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  <p className="text-center text-sm text-muted-foreground animate-slide-up" style={{ animationDelay: '200ms' }}>
+                    <Link
+                      href="/portal/login"
+                      className="font-500 text-md-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary rounded-sm"
+                    >
                       {t('backToLogin')}
                     </Link>
                   </p>
