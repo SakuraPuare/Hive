@@ -11,6 +11,8 @@ import (
 
 	"hive/registry/internal/model"
 	"hive/registry/internal/store"
+
+	"gorm.io/gorm"
 )
 
 // referralCodeAlphabet 排除易混淆字符 0OIl1
@@ -365,15 +367,7 @@ func (h *Handler) HandleListReferrals(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var rows []referralDBRow
-	q2 := h.DB.Raw(`
-		SELECT r.id, r.referrer_id, r.referee_id, r.order_id, r.commission, r.status, r.created_at,
-		       c1.email AS referrer_email, c2.email AS referee_email, o.order_no
-		FROM referrals r
-		LEFT JOIN customers c1 ON c1.id = r.referrer_id
-		LEFT JOIN customers c2 ON c2.id = r.referee_id
-		LEFT JOIN orders o ON o.id = r.order_id
-		WHERE 1=1
-	`)
+	var q2 *gorm.DB
 	if status != "" {
 		q2 = h.DB.Raw(`
 			SELECT r.id, r.referrer_id, r.referee_id, r.order_id, r.commission, r.status, r.created_at,

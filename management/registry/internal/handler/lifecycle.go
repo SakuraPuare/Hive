@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"hive/registry/internal/model"
@@ -460,14 +459,4 @@ func (h *Handler) ActivateSubscription(customerID, planID uint, orderID uint) er
 	}
 
 	return tx.Commit().Error
-}
-
-// ── helper ───────────────────────────────────────────────────────────────────
-
-func parseUintParam(r *http.Request, name string) (uint, error) {
-	v, err := strconv.ParseUint(r.PathValue(name), 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	return uint(v), nil
 }

@@ -1,10 +1,8 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"strconv"
-	"time"
 
 	"hive/registry/internal/model"
 )
@@ -69,19 +67,4 @@ func (h *Handler) HandleListRiskEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.jsonOK(w, RiskEventListResponse{Total: total, Items: events})
-}
-
-func (h *Handler) writeRiskEvent(customerID *uint, eventType, detail, ip string) {
-	now := time.Now().UTC().Format(model.TimeLayout)
-	var err error
-	if customerID != nil {
-		err = h.DB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (?,?,?,?,?)",
-			*customerID, eventType, detail, ip, now).Error
-	} else {
-		err = h.DB.Exec("INSERT INTO risk_events (customer_id, event_type, detail, ip, created_at) VALUES (NULL,?,?,?,?)",
-			eventType, detail, ip, now).Error
-	}
-	if err != nil {
-		log.Printf("writeRiskEvent: %v", err)
-	}
 }

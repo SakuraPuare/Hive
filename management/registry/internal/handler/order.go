@@ -3,7 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"time"
@@ -49,9 +49,7 @@ type OrderListResponse struct {
 
 func generateOrderNo() string {
 	ts := time.Now().UTC().Format("20060102150405")
-	b := make([]byte, 2)
-	rand.Read(b)
-	return fmt.Sprintf("HV%s%x", ts, b)
+	return fmt.Sprintf("HV%s%04x", ts, uint16(rand.UintN(1<<16)))
 }
 
 // ── handlers ──────────────────────────────────────────────────────────────────
