@@ -5,6 +5,7 @@
     "dev": "next dev",
     "build": "next build",
     "gen-api": "node ./scripts/gen-api.mjs",
+    "gen-themes": "node ./scripts/gen-themes.mjs",
     "verify": "node ./scripts/verify-local.mjs",
     "export": "echo 'Static export is generated during `next build` (output: export).' && exit 0",
     "typecheck": "next typegen && tsc --noEmit",
@@ -24,6 +25,7 @@
     "next": "^16.2.9",
     "next-intl": "^4.13.1",
     "next-themes": "^0.4.6",
+    "qrcode.react": "4.2.0",
     "radix-ui": "^1.6.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -32,6 +34,7 @@
   "devDependencies": {
     "@cerios/openapi-to-zod": "^1.7.0",
     "@eslint/eslintrc": "^3.3.5",
+    "@material/material-color-utilities": "^0.4.0",
     "@tailwindcss/postcss": "^4.3.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
