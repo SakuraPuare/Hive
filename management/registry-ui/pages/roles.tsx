@@ -21,11 +21,24 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/components/ui/toast';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 import { RefreshCw, Save, ShieldCheck, AlertCircle, KeyRound, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 /** Permissions whose removal can lock the editing user out of this page. */
 const CRITICAL_PERMS = ['role:write', 'role:read'];
+
+/** Module-level perm group config (key + prefix only; labels resolved via t() in useMemo). */
+const PERM_GROUP_CONFIG = [
+  { key: 'node',         prefix: 'node:' },
+  { key: 'user',         prefix: 'user:' },
+  { key: 'audit',        prefix: 'audit:' },
+  { key: 'subscription', prefix: 'subscription:' },
+  { key: 'label',        prefix: 'label:' },
+  { key: 'prometheus',   prefix: 'prometheus:' },
+  { key: 'role',         prefix: 'role:' },
+] as const;
 
 function setsEqual(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) return false;
@@ -48,20 +61,18 @@ export default function RolesPage() {
 
   const [editPerms, setEditPerms] = useState<Record<number, Set<string>>>({});
   const [saving, setSaving] = useState<number | null>(null);
-  // Role pending a lockout confirmation (set when a save would drop the user's
-  // own critical permission), plus the list of critical perms being removed.
+  // Role pending a lockout confirmation, plus the list of critical perms being removed.
   const [confirm, setConfirm] = useState<{ role: handler_RoleDetail; removed: string[] } | null>(null);
 
-  // 权限按资源分组（在组件内，使用翻译）
-  const PERM_GROUPS = [
-    { key: 'node', label: t('permGroup_node'), prefix: 'node:' },
-    { key: 'user', label: t('permGroup_user'), prefix: 'user:' },
-    { key: 'audit', label: t('permGroup_audit'), prefix: 'audit:' },
-    { key: 'subscription', label: t('permGroup_subscription'), prefix: 'subscription:' },
-    { key: 'label', label: t('permGroup_label'), prefix: 'label:' },
-    { key: 'prometheus', label: t('permGroup_prometheus'), prefix: 'prometheus:' },
-    { key: 'role', label: t('permGroup_role'), prefix: 'role:' },
-  ];
+  // Stable perm-group config with translated labels — only rebuilds on locale change.
+  const PERM_GROUPS = useMemo(
+    () =>
+      PERM_GROUP_CONFIG.map((g) => ({
+        ...g,
+        label: t(`permGroup_${g.key}` as Parameters<typeof t>[0]),
+      })),
+    [t],
+  );
 
   useEffect(() => {
     if (!authLoading && currentUser && !currentUser.can('role:read')) {
@@ -120,6 +131,19 @@ export default function RolesPage() {
     });
   }
 
+  /** Bulk-toggle all permissions in a group for a given role. */
+  function toggleGroup(roleId: number, groupSlugs: string[], allChecked: boolean) {
+    setEditPerms((prev) => {
+      const next = new Set(prev[roleId] ?? []);
+      if (allChecked) {
+        for (const slug of groupSlugs) next.delete(slug);
+      } else {
+        for (const slug of groupSlugs) next.add(slug);
+      }
+      return { ...prev, [roleId]: next };
+    });
+  }
+
   /** Persist a role's permissions and refresh only that role's baseline. */
   const doSave = useCallback(
     async (role: handler_RoleDetail) => {
@@ -150,10 +174,14 @@ export default function RolesPage() {
     const id = role.id!;
     const saved = savedSets[id] ?? new Set<string>();
     const next = editPerms[id] ?? new Set<string>();
-    // Lockout guard: warn before removing a critical perm the current user relies on.
-    const removed = CRITICAL_PERMS.filter(
-      (p) => saved.has(p) && !next.has(p) && (currentUser?.can(p) ?? false),
-    );
+
+    // Lockout guard: only warn when the current user's *own* role is being weakened.
+    // `currentUser.roles` contains role names (strings).
+    const userOwnsThisRole = currentUser?.roles?.includes(role.name ?? '') ?? false;
+    const removed = userOwnsThisRole
+      ? CRITICAL_PERMS.filter((p) => saved.has(p) && !next.has(p))
+      : [];
+
     if (removed.length > 0) {
       setConfirm({ role, removed });
       return;
@@ -174,36 +202,30 @@ export default function RolesPage() {
         <h1
           ref={headingRef}
           tabIndex={-1}
-          role="alert"
           className="font-display text-xl font-600 text-foreground outline-none"
         >
           {t('accessDenied')}
         </h1>
-        <p className="text-sm text-muted-foreground">{t('redirecting')}</p>
+        <p role="alert" aria-live="assertive" className="text-sm text-muted-foreground">
+          {t('redirecting')}
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
-
+    <PageContainer width="content">
       {/* ── Page header ── */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center size-10 rounded-xl bg-md-primary-container text-md-on-primary-container">
-            <ShieldCheck className="size-5" aria-hidden="true" />
-          </div>
-          <div>
-            <h1 className="font-display text-2xl font-600 text-foreground tracking-tight">
-              {t('roleManagement')}
-            </h1>
-          </div>
-        </div>
-        <Button variant="outline" onClick={loadData} disabled={loading}>
-          <RefreshCw className={loading ? 'animate-spin' : ''} aria-hidden="true" />
-          <span>{tCommon('refresh')}</span>
-        </Button>
-      </div>
+      <PageHeader
+        icon={<ShieldCheck />}
+        title={t('roleManagement')}
+        actions={
+          <Button variant="outline" onClick={loadData} disabled={loading}>
+            <RefreshCw className={loading ? 'animate-spin' : ''} aria-hidden="true" />
+            <span>{tCommon('refresh')}</span>
+          </Button>
+        }
+      />
 
       {/* ── Error banner (assertive live region + dismiss) ── */}
       {error && (
@@ -233,10 +255,10 @@ export default function RolesPage() {
           aria-live="polite"
           className="flex flex-col items-center justify-center gap-4 py-20 animate-fade-in"
         >
-          {/* M3 circular progress — CSS-only indeterminate */}
+          {/* M3 circular progress — CSS-only indeterminate, Tailwind token classes */}
           <span className="relative flex size-10">
             <svg
-              className="animate-spin"
+              className="animate-spin text-md-primary"
               style={{ animationDuration: '1.4s', animationTimingFunction: 'linear' }}
               viewBox="0 0 40 40"
               fill="none"
@@ -244,12 +266,13 @@ export default function RolesPage() {
             >
               <circle
                 cx="20" cy="20" r="16"
-                stroke="hsl(var(--md-outline-variant))"
+                className="text-md-outline-variant"
+                stroke="currentColor"
                 strokeWidth="3.5"
               />
               <circle
                 cx="20" cy="20" r="16"
-                stroke="hsl(var(--md-primary))"
+                stroke="currentColor"
                 strokeWidth="3.5"
                 strokeLinecap="round"
                 strokeDasharray="60 40"
@@ -277,9 +300,12 @@ export default function RolesPage() {
             const currentSet = editPerms[rid] ?? new Set<string>();
             const savedSet = savedSets[rid] ?? new Set<string>();
             const dirty = !setsEqual(currentSet, savedSet);
+            const roleHeadingId = `role-heading-${rid}`;
             return (
               <Card
                 key={rid}
+                role="region"
+                aria-labelledby={roleHeadingId}
                 className="gap-0 overflow-hidden py-0 animate-slide-up"
                 style={{ animationDelay: `${i * 60}ms` }}
               >
@@ -289,9 +315,13 @@ export default function RolesPage() {
                     <div className="flex items-center justify-center size-8 rounded-lg bg-md-secondary-container text-md-on-secondary-container">
                       <KeyRound className="size-4" aria-hidden="true" />
                     </div>
-                    <span className="font-display text-base font-600 text-foreground">
+                    {/* h2 for proper heading hierarchy under the page h1 */}
+                    <h2
+                      id={roleHeadingId}
+                      className="font-display text-base font-600 text-foreground"
+                    >
                       {role.name}
-                    </span>
+                    </h2>
                     <Badge variant={dirty ? 'warning' : 'default'}>
                       {dirty ? (
                         <>
@@ -329,47 +359,138 @@ export default function RolesPage() {
                 {/* Permission groups grid */}
                 <CardContent className="px-5 py-4">
                   <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {PERM_GROUPS.map((group) => {
-                      // Distinguish "nothing loaded" (drop entirely) from
-                      // "group legitimately empty" (show a muted note).
-                      if (allPerms.length === 0) return null;
-                      const groupPerms = allPerms.filter((p) => p.slug.startsWith(group.prefix));
-                      return (
-                        <div key={group.key} className="space-y-2">
-                          <p className="text-xs font-500 text-muted-foreground uppercase tracking-widest">
-                            {group.label}
-                          </p>
-                          {groupPerms.length === 0 ? (
-                            <p className="px-2 py-1.5 text-sm text-muted-foreground italic">
-                              {t('noPermsInGroup')}
-                            </p>
-                          ) : (
-                            <div className="space-y-1">
-                              {groupPerms.map((p) => {
-                                const checked = currentSet.has(p.slug);
-                                const label = p.slug.replace(group.prefix, '');
-                                return (
-                                  <label
-                                    key={p.slug}
-                                    className={`flex min-h-12 items-center gap-3 rounded-lg px-2 hover-state transition-colors ${
-                                      canWrite ? 'cursor-pointer' : 'cursor-default opacity-60'
-                                    }`}
+                    {allPerms.length > 0 && (
+                      <>
+                        {PERM_GROUPS.map((group) => {
+                          const groupPerms = allPerms.filter((p) =>
+                            p.slug.startsWith(group.prefix),
+                          );
+                          const allChecked =
+                            groupPerms.length > 0 &&
+                            groupPerms.every((p) => currentSet.has(p.slug));
+                          const groupSlugs = groupPerms.map((p) => p.slug);
+                          return (
+                            <div key={group.key} className="space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-500 text-muted-foreground uppercase tracking-widest">
+                                  {group.label}
+                                </p>
+                                {canWrite && groupPerms.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleGroup(rid, groupSlugs, allChecked)}
+                                    className="text-xs text-md-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary rounded"
+                                    aria-label={
+                                      allChecked
+                                        ? t('deselectGroupLabel', { group: group.label })
+                                        : t('selectGroupLabel', { group: group.label })
+                                    }
                                   >
-                                    <Checkbox
-                                      checked={checked}
-                                      onCheckedChange={() => canWrite && togglePerm(rid, p.slug)}
-                                      disabled={!canWrite}
-                                      aria-label={`${role.name} · ${p.slug}`}
-                                    />
-                                    <span className="text-sm text-foreground">{label}</span>
-                                  </label>
-                                );
-                              })}
+                                    {allChecked ? t('deselectAll') : t('selectAll')}
+                                  </button>
+                                )}
+                              </div>
+                              {groupPerms.length === 0 ? (
+                                <p className="px-2 py-1.5 text-sm text-muted-foreground italic">
+                                  {t('noPermsInGroup')}
+                                </p>
+                              ) : (
+                                <div className="space-y-1">
+                                  {groupPerms.map((p) => {
+                                    const checked = currentSet.has(p.slug);
+                                    const label = p.slug.replace(group.prefix, '');
+                                    const checkboxId = `perm-${rid}-${p.slug}`;
+                                    return (
+                                      <label
+                                        key={p.slug}
+                                        htmlFor={checkboxId}
+                                        className={`flex min-h-12 items-center gap-3 rounded-lg px-2 hover-state transition-colors ${
+                                          canWrite ? 'cursor-pointer' : 'cursor-default opacity-60'
+                                        }`}
+                                      >
+                                        <Checkbox
+                                          id={checkboxId}
+                                          checked={checked}
+                                          onCheckedChange={() =>
+                                            canWrite && togglePerm(rid, p.slug)
+                                          }
+                                          disabled={!canWrite}
+                                          aria-describedby={roleHeadingId}
+                                        />
+                                        <span className="text-sm text-foreground">{label}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                          );
+                        })}
+
+                        {/* Catch-all group for permissions not covered by any known prefix */}
+                        {(() => {
+                          const ungrouped = allPerms.filter(
+                            (p) => !PERM_GROUPS.some((g) => p.slug.startsWith(g.prefix)),
+                          );
+                          if (ungrouped.length === 0) return null;
+                          const ungroupedSlugs = ungrouped.map((p) => p.slug);
+                          const allChecked =
+                            ungrouped.length > 0 &&
+                            ungrouped.every((p) => currentSet.has(p.slug));
+                          return (
+                            <div key="__other" className="space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-500 text-muted-foreground uppercase tracking-widest">
+                                  {t('permGroup_other')}
+                                </p>
+                                {canWrite && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      toggleGroup(rid, ungroupedSlugs, allChecked)
+                                    }
+                                    className="text-xs text-md-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary rounded"
+                                    aria-label={
+                                      allChecked
+                                        ? t('deselectGroupLabel', { group: t('permGroup_other') })
+                                        : t('selectGroupLabel', { group: t('permGroup_other') })
+                                    }
+                                  >
+                                    {allChecked ? t('deselectAll') : t('selectAll')}
+                                  </button>
+                                )}
+                              </div>
+                              <div className="space-y-1">
+                                {ungrouped.map((p) => {
+                                  const checked = currentSet.has(p.slug);
+                                  const checkboxId = `perm-${rid}-${p.slug}`;
+                                  return (
+                                    <label
+                                      key={p.slug}
+                                      htmlFor={checkboxId}
+                                      className={`flex min-h-12 items-center gap-3 rounded-lg px-2 hover-state transition-colors ${
+                                        canWrite ? 'cursor-pointer' : 'cursor-default opacity-60'
+                                      }`}
+                                    >
+                                      <Checkbox
+                                        id={checkboxId}
+                                        checked={checked}
+                                        onCheckedChange={() =>
+                                          canWrite && togglePerm(rid, p.slug)
+                                        }
+                                        disabled={!canWrite}
+                                        aria-describedby={roleHeadingId}
+                                      />
+                                      <span className="text-sm text-foreground">{p.slug}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -412,6 +533,6 @@ export default function RolesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

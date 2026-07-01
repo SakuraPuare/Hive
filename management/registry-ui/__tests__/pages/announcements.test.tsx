@@ -49,7 +49,7 @@ describe('AnnouncementsPage', () => {
   });
 
   it('renders announcements table after loading', async () => {
-    mockAdminListAnnouncements.mockResolvedValueOnce({ total: 2, items: mockAnnouncements });
+    mockAdminListAnnouncements.mockResolvedValue({ total: 2, items: mockAnnouncements });
     render(<AnnouncementsPage />);
 
     await waitFor(() => {
@@ -59,7 +59,7 @@ describe('AnnouncementsPage', () => {
   });
 
   it('shows level badges with translated keys', async () => {
-    mockAdminListAnnouncements.mockResolvedValueOnce({ total: 2, items: mockAnnouncements });
+    mockAdminListAnnouncements.mockResolvedValue({ total: 2, items: mockAnnouncements });
     render(<AnnouncementsPage />);
 
     await waitFor(() => {
@@ -123,7 +123,7 @@ describe('AnnouncementsPage', () => {
   });
 
   it('shows status indicators for pinned and published announcements', async () => {
-    mockAdminListAnnouncements.mockResolvedValueOnce({ total: 2, items: mockAnnouncements });
+    mockAdminListAnnouncements.mockResolvedValue({ total: 2, items: mockAnnouncements });
     render(<AnnouncementsPage />);
 
     await waitFor(() => {

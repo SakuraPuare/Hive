@@ -1,11 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MoreVertical } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { MoreVertical, Network } from 'lucide-react';
 import { AdminService } from '@/src/generated/client';
 import type { model_Node, model_Line } from '@/src/generated/client';
-import { sessionApi, apiPath } from '@/lib/openapi-session';
+import { sessionApi, apiUrl } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
+import { useClipboard } from '@/lib/use-clipboard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 import {
   Dialog,
   DialogContent,
@@ -107,6 +110,11 @@ export default function LinesPage() {
   }
 
   async function handleCreate() {
+    const orderNum = parseInt(createOrder, 10);
+    if (isNaN(orderNum) || orderNum < 0) {
+      setCreateError(t('invalidOrder'));
+      return;
+    }
     setCreating(true);
     setCreateError('');
     try {
@@ -114,7 +122,7 @@ export default function LinesPage() {
         requestBody: {
           name: createName,
           region: createRegion,
-          display_order: parseInt(createOrder) || 0,
+          display_order: orderNum,
           note: createNote,
         },
       }));
@@ -151,6 +159,11 @@ export default function LinesPage() {
 
   async function handleUpdate() {
     if (!editLine) return;
+    const orderNum = parseInt(editOrder, 10);
+    if (isNaN(orderNum) || orderNum < 0) {
+      setEditError(t('invalidOrder'));
+      return;
+    }
     setEditing(true);
     setEditError('');
     try {
@@ -159,7 +172,7 @@ export default function LinesPage() {
         requestBody: {
           name: editName,
           region: editRegion,
-          display_order: parseInt(editOrder) || 0,
+          display_order: orderNum,
           note: editNote,
           enabled: editEnabled,
         },
@@ -301,21 +314,27 @@ export default function LinesPage() {
   }
 
   // ── Copy link ───────────────────────────────────────────────────────
-  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const { copied, copy } = useClipboard();
+  const [copiedLineId, setCopiedLineId] = useState<number | null>(null);
   const [copyAnnounce, setCopyAnnounce] = useState('');
-  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
 
-  function copyLink(line: model_Line) {
-    const url = `${window.location.origin}${apiPath(`/l/${line.token}`)}`;
-    navigator.clipboard.writeText(url);
-    setCopiedId(line.id!);
-    setCopyAnnounce(t('copied'));
-    if (copyTimer.current) clearTimeout(copyTimer.current);
-    copyTimer.current = setTimeout(() => {
-      setCopiedId(null);
+  // When hook's `copied` resets to false, clear the per-row id and announcement
+  useEffect(() => {
+    if (!copied) {
+      setCopiedLineId(null);
       setCopyAnnounce('');
-    }, 2000);
+    }
+  }, [copied]);
+
+  async function copyLink(line: model_Line) {
+    const url = apiUrl(`/l/${line.token}`);
+    const ok = await copy(url);
+    if (ok) {
+      setCopiedLineId(line.id!);
+      setCopyAnnounce(t('copied'));
+    } else {
+      toast.error(t('copyFailed'));
+    }
   }
 
   // ── Render ──────────────────────────────────────────────────────────
@@ -328,40 +347,37 @@ export default function LinesPage() {
   const selectedCount = filteredNodes.filter((n) => selectedMacs.has(n.mac ?? '')).length;
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <PageContainer>
 
       {/* ── Page header ── */}
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">
-            {t('lineManagement')}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {totalLines > 0
-              ? `${totalLines} ${t('colName').toLowerCase()} · ${enabledLines} ${t('enabled').toLowerCase()} · ${totalNodes} ${t('colNodeCount').toLowerCase()}`
-              : ''}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 mt-3 sm:mt-0">
-          <Button variant="ghost" onClick={loadLines} loading={loading}>
-            <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-              <path d="M21 3v5h-5"/>
-              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-              <path d="M3 21v-5h5"/>
-            </svg>
-            {tCommon('refresh')}
-          </Button>
-          {canWrite && (
-            <Button onClick={() => setShowCreate(true)}>
-              <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-                <path d="M12 5v14M5 12h14"/>
+      <PageHeader
+        icon={<Network />}
+        title={t('lineManagement')}
+        description={totalLines > 0
+          ? `${totalLines} ${t('colName').toLowerCase()} · ${enabledLines} ${t('enabled').toLowerCase()} · ${totalNodes} ${t('colNodeCount').toLowerCase()}`
+          : null}
+        actions={
+          <>
+            <Button variant="ghost" onClick={loadLines} loading={loading}>
+              <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                <path d="M21 3v5h-5"/>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                <path d="M3 21v-5h5"/>
               </svg>
-              {t('createLine')}
+              {tCommon('refresh')}
             </Button>
-          )}
-        </div>
-      </div>
+            {canWrite && (
+              <Button onClick={() => setShowCreate(true)}>
+                <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+                {t('createLine')}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* ── Error banner ── */}
       {error && (
@@ -483,44 +499,55 @@ export default function LinesPage() {
                       <span className="font-display text-sm font-600 text-foreground">{line.node_count}</span>
                     </TableCell>
                     <TableCell className="py-4">
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => copyLink(line)}
-                          className={copiedId === line.id ? 'text-md-tertiary' : 'text-muted-foreground'}
-                          aria-label={copiedId === line.id ? t('copied') : t('copyLink')}
+                      <div className="flex flex-col gap-1">
+                        <a
+                          href={apiUrl(`/l/${line.token}`)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={apiUrl(`/l/${line.token}`)}
+                          className="font-mono text-xs text-muted-foreground truncate max-w-48 hover:text-foreground transition-colors"
                         >
-                          {copiedId === line.id ? (
-                            <>
-                              <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-                                <polyline points="20 6 9 17 4 12"/>
-                              </svg>
-                              {t('copied')}
-                            </>
-                          ) : (
-                            <>
-                              <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
-                              </svg>
-                              {t('copyLink')}
-                            </>
-                          )}
-                        </Button>
-                        {canWrite && (
+                          {`/l/${line.token}`}
+                        </a>
+                        <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => { setResetError(''); setResetTarget(line); }}
-                            className="text-muted-foreground"
+                            onClick={() => copyLink(line)}
+                            className={copiedLineId === line.id ? 'text-md-tertiary' : 'text-muted-foreground'}
+                            aria-label={copiedLineId === line.id ? t('copied') : t('copyLink')}
                           >
-                            <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
-                              <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-                            </svg>
-                            {t('resetToken')}
+                            {copiedLineId === line.id ? (
+                              <>
+                                <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                                  <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                                {t('copied')}
+                              </>
+                            ) : (
+                              <>
+                                <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                                </svg>
+                                {t('copyLink')}
+                              </>
+                            )}
                           </Button>
-                        )}
+                          {canWrite && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => { setResetError(''); setResetTarget(line); }}
+                              className="text-muted-foreground"
+                            >
+                              <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                                <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                                <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                              </svg>
+                              {t('resetToken')}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     {canWrite && (
@@ -557,6 +584,12 @@ export default function LinesPage() {
                               <DropdownMenuItem size="comfortable" onSelect={() => openNodeEdit(line)}>
                                 {t('editLineNodes')}
                               </DropdownMenuItem>
+                              <DropdownMenuItem
+                                size="comfortable"
+                                onSelect={() => { setResetError(''); setResetTarget(line); }}
+                              >
+                                {t('resetToken')}
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 size="comfortable"
@@ -588,7 +621,7 @@ export default function LinesPage() {
           if (!open) resetCreateForm();
         }}
       >
-        <DialogContent className="rounded-2xl border border-border bg-card elevation-3 max-w-md">
+        <DialogContent size="md">
           <DialogHeader className="pb-2">
             <DialogTitle className="font-display text-xl font-600 text-foreground">
               {t('createLine')}
@@ -676,7 +709,7 @@ export default function LinesPage() {
 
       {/* ── Edit dialog ── */}
       <Dialog open={!!editLine} onOpenChange={(open) => !open && setEditLine(null)}>
-        <DialogContent className="rounded-2xl border border-border bg-card elevation-3 max-w-md">
+        <DialogContent size="md">
           <DialogHeader className="pb-2">
             <DialogTitle className="font-display text-xl font-600 text-foreground">
               {t('editLine')}
@@ -770,7 +803,7 @@ export default function LinesPage() {
 
       {/* ── Node edit dialog ── */}
       <Dialog open={!!nodeEditLine} onOpenChange={(open) => !open && setNodeEditLine(null)}>
-        <DialogContent className="rounded-2xl border border-border bg-card elevation-3 max-w-lg">
+        <DialogContent size="lg">
           <DialogHeader className="pb-2">
             <DialogTitle className="font-display text-xl font-600 text-foreground">
               {t('editLineNodes')}
@@ -785,7 +818,6 @@ export default function LinesPage() {
           <div className="space-y-3 py-2">
             <Input
               value={nodeSearch}
-              onChange={(e) => setNodeSearch(e.target.value)}
               onValueChange={setNodeSearch}
               debounceMs={300}
               clearable
@@ -808,25 +840,30 @@ export default function LinesPage() {
                 </Button>
               </div>
             </div>
-            <div className="max-h-72 overflow-y-auto rounded-xl border border-border
-              bg-md-surface-container-lowest divide-y divide-border/60">
+            <ul
+              role="list"
+              className="max-h-72 overflow-y-auto rounded-xl border border-border
+              bg-md-surface-container-lowest divide-y divide-border/60"
+            >
               {filteredNodes.length === 0 ? (
-                <p role="status" aria-live="polite" className="text-sm text-muted-foreground px-4 py-3">
+                <li role="status" aria-live="polite" className="text-sm text-muted-foreground px-4 py-3">
                   {tNodes('noMatchingNodes')}
-                </p>
+                </li>
               ) : (
                 filteredNodes.map((n) => {
                   const mac = n.mac ?? '';
                   const label = `${n.location ? `[${n.location}] ` : ''}${n.hostname ?? mac}`;
                   return (
-                    <label
+                    <li
                       key={mac}
                       className="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover-state transition-colors"
+                      onClick={() => toggleMac(mac)}
                     >
                       <Checkbox
                         checked={selectedMacs.has(mac)}
                         onCheckedChange={() => toggleMac(mac)}
                         aria-label={label}
+                        onClick={(e) => e.stopPropagation()}
                       />
                       <span className="text-sm text-foreground">
                         {n.location && (
@@ -834,11 +871,11 @@ export default function LinesPage() {
                         )}
                         {n.hostname}
                       </span>
-                    </label>
+                    </li>
                   );
                 })
               )}
-            </div>
+            </ul>
             {saveNodesError && (
               <p role="alert" aria-live="assertive" className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
                 bg-md-error-container text-md-on-error-container">
@@ -904,7 +941,6 @@ export default function LinesPage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={resetting}>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
-              destructive
               loading={resetting}
               loadingLabel={tCommon('saving')}
               onClick={(e) => { e.preventDefault(); confirmResetToken(); }}
@@ -915,7 +951,7 @@ export default function LinesPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-    </div>
+    </PageContainer>
   );
 }
 

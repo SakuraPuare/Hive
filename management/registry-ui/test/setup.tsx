@@ -128,6 +128,22 @@ vi.mock('@/components/layout/ThemeToggle', () => ({
   ThemeToggle: () => <div data-testid="theme-toggle" />,
 }));
 
+// Mock ThemeColorPicker — the real one uses a Radix Popover; a stub keeps
+// layout tests focused and avoids portal/pointer plumbing under jsdom.
+vi.mock('@/components/layout/ThemeColorPicker', () => ({
+  ThemeColorPicker: () => <div data-testid="theme-color-picker" />,
+}));
+
+// Mock theme-color: pass-through Provider + stub hook, mirroring the locale mock.
+vi.mock('@/lib/theme-color', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/theme-color')>('@/lib/theme-color');
+  return {
+    ...actual,
+    ThemeColorProvider: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+    useThemeColor: () => ({ themeColor: 'default' as const, setThemeColor: vi.fn() }),
+  };
+});
+
 // Mock locale
 vi.mock('@/lib/locale', () => ({
   LocaleProvider: ({ children }: any) => children,

@@ -5,8 +5,20 @@ import type { model_Order } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
+import { useFormat } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -24,15 +36,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
   RefreshCw,
   ShoppingCart,
   AlertCircle,
@@ -45,16 +48,9 @@ import { useTranslations } from 'next-intl';
 interface Order extends model_Order {
   customer_email?: string;
   plan_name?: string;
-  promo_code?: string;
 }
 
 const PAGE_SIZE = 20;
-
-function formatDate(s: string) {
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
-}
 
 function formatAmount(cents: number) {
   return `¥${(cents / 100).toFixed(2)}`;
@@ -89,12 +85,16 @@ export default function OrdersPage() {
   const tCommon = useTranslations('common');
   const router = useRouter();
   const toast = useToast();
+  const fmt = useFormat();
   const { user, loading: authLoading } = useCurrentUser();
   const canWrite = user?.can('order:write') ?? false;
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
+  // `loading` = true only on the very first load (empty-state gate).
+  // `refreshing` = true on subsequent filter/page changes while data is visible.
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   // Empty string = no status filter (show all). Radix Select can't take an
   // empty controlled value, so the trigger renders `undefined` + a clear
@@ -102,6 +102,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [initialized, setInitialized] = useState(false);
+  const hasLoadedOnce = useRef(false);
 
   // ── Restore filter + page from URL on first ready render ──
   useEffect(() => {
@@ -131,7 +132,13 @@ export default function OrdersPage() {
   }, [statusFilter, page, initialized, router]);
 
   const loadOrders = useCallback(async () => {
-    setLoading(true);
+    // Subsequent refreshes keep existing rows visible (opacity-60 overlay)
+    // while data is fetched; only the first-ever load blanks the table.
+    if (hasLoadedOnce.current) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError('');
     try {
       const data = await sessionApi(AdminService.adminListOrders({
@@ -141,10 +148,12 @@ export default function OrdersPage() {
       }));
       setOrders((data.items ?? []) as Order[]);
       setTotal(data.total ?? 0);
+      hasLoadedOnce.current = true;
     } catch (e: unknown) {
       setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [statusFilter, page, t]);
 
@@ -159,6 +168,7 @@ export default function OrdersPage() {
   function handleStatusChange(v: string) {
     setStatusFilter(v);
     setPage(1); // reset to first page when filter changes
+    setTotal(0); // clear stale total so pagination hides during refresh
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -167,13 +177,11 @@ export default function OrdersPage() {
 
   const [markPaidTarget, setMarkPaidTarget] = useState<Order | null>(null);
   const [markingPaid, setMarkingPaid] = useState(false);
-  const [markPaidError, setMarkPaidError] = useState('');
 
   async function handleMarkPaid() {
     if (!markPaidTarget) return;
     const orderNo = markPaidTarget.order_no ?? '';
     setMarkingPaid(true);
-    setMarkPaidError('');
     try {
       await sessionApi(AdminService.adminUpdateOrderStatus({
         id: markPaidTarget.id!,
@@ -181,9 +189,9 @@ export default function OrdersPage() {
       }));
       setMarkPaidTarget(null);
       toast.success(t('markPaidSuccess', { orderNo }));
-      loadOrders();
+      loadOrders().catch(() => {});
     } catch (e: unknown) {
-      setMarkPaidError(getErrorMessage(e, t('markPaidFailed')));
+      toast.error(getErrorMessage(e, t('markPaidFailed')));
     } finally {
       setMarkingPaid(false);
     }
@@ -192,66 +200,57 @@ export default function OrdersPage() {
   // Auth loading placeholder
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="flex flex-col items-center gap-4 animate-fade-in">
-          {/* M3 circular progress indicator */}
-          <svg
-            className="size-10 animate-spin text-md-primary"
-            viewBox="0 0 24 24"
-            fill="none"
-            role="status"
-            aria-label={tCommon('loading')}
-          >
-            <circle
-              className="opacity-20"
-              cx="12" cy="12" r="10"
-              stroke="currentColor"
-              strokeWidth="3"
-            />
-            <path
-              d="M12 2 a10 10 0 0 1 10 10"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-          </svg>
-          <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
+      <PageContainer>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="flex flex-col items-center gap-4 animate-fade-in">
+            {/* M3 circular progress indicator */}
+            <svg
+              className="size-10 animate-spin text-md-primary"
+              viewBox="0 0 24 24"
+              fill="none"
+              role="status"
+              aria-label={tCommon('loading')}
+            >
+              <circle
+                className="opacity-20"
+                cx="12" cy="12" r="10"
+                stroke="currentColor"
+                strokeWidth="3"
+              />
+              <path
+                d="M12 2 a10 10 0 0 1 10 10"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+            </svg>
+            <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
+          </div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   const colSpan = canWrite ? 9 : 8;
 
   return (
-    <div className="p-6 space-y-6 bg-background min-h-full">
+    <PageContainer>
 
       {/* ── Page header ── */}
-      <div
-        className="flex items-start justify-between gap-4 animate-slide-up"
-        style={{ animationDelay: '0ms' }}
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center size-10 rounded-xl bg-md-primary-container text-md-on-primary-container">
-            <ShoppingCart className="size-5" aria-hidden="true" />
-          </div>
-          <div>
-            <h1 className="font-display text-2xl font-600 text-foreground tracking-tight">
-              {t('title')}
-            </h1>
-          </div>
-        </div>
-
-        {/* Refresh is a utility action — outlined, not the fill-primary slot (M3 §). */}
-        <Button
-          variant="outline"
-          onClick={loadOrders}
-          loading={loading}
-        >
-          {!loading && <RefreshCw className="size-4" aria-hidden="true" />}
-          <span>{tCommon('refresh')}</span>
-        </Button>
-      </div>
+      <PageHeader
+        icon={<ShoppingCart />}
+        title={t('title')}
+        actions={
+          <Button
+            variant="outline"
+            onClick={loadOrders}
+            loading={loading || refreshing}
+          >
+            {!(loading || refreshing) && <RefreshCw className="size-4" aria-hidden="true" />}
+            <span>{tCommon('refresh')}</span>
+          </Button>
+        }
+      />
 
       {/* ── Toolbar: status filter ── */}
       <div
@@ -295,7 +294,7 @@ export default function OrdersPage() {
 
       {/* ── Orders table ── */}
       <div
-        className="bg-card border rounded-xl overflow-x-auto animate-slide-up"
+        className={`bg-card border rounded-xl overflow-x-auto animate-slide-up transition-opacity duration-200 ${refreshing ? 'opacity-60' : 'opacity-100'}`}
         style={{ animationDelay: '120ms' }}
       >
         <Table aria-label={t('tableCaption')}>
@@ -304,29 +303,30 @@ export default function OrdersPage() {
           </TableCaption>
           <TableHeader>
             <TableRow className="bg-md-surface-container-high border-b">
-              <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
+              <TableHead scope="col" className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
                 {t('colOrderNo')}
               </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
+              <TableHead scope="col" className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
                 {t('colCustomer')}
               </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
+              <TableHead scope="col" className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
                 {t('colPlan')}
               </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
+              <TableHead scope="col" className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
                 {t('colAmount')}
               </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
+              <TableHead scope="col" className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
                 {t('colOriginalAmount')}
               </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
+              <TableHead scope="col" className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
                 {t('colPromoCode')}
               </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
+              <TableHead scope="col" className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
                 {t('colStatus')}
               </TableHead>
               {/* Server returns newest-first; surface that as the declared default sort. */}
               <TableHead
+                scope="col"
                 aria-sort="descending"
                 className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3"
               >
@@ -337,7 +337,7 @@ export default function OrdersPage() {
                 </span>
               </TableHead>
               {canWrite && (
-                <TableHead className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
+                <TableHead scope="col" className="text-xs font-medium uppercase tracking-wide text-muted-foreground py-3">
                   {t('colActions')}
                 </TableHead>
               )}
@@ -410,10 +410,13 @@ export default function OrdersPage() {
                   <TableCell className="py-3 text-sm text-muted-foreground">
                     {formatAmount(order.original_amount ?? 0)}
                   </TableCell>
+                  {/* promo_code_id: backend model_Order only exposes the ID;
+                      a future adminListOrders response enrichment should add
+                      the human-readable code string (see backendGap). */}
                   <TableCell className="py-3 text-sm">
-                    {order.promo_code ? (
+                    {order.promo_code_id != null ? (
                       <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-md-secondary-container text-md-on-secondary-container">
-                        {order.promo_code}
+                        #{order.promo_code_id}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
@@ -426,7 +429,18 @@ export default function OrdersPage() {
                     />
                   </TableCell>
                   <TableCell className="py-3 text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDate(order.created_at ?? '')}
+                    {/* Primary: relative time; absolute in title for tooltip. */}
+                    <span title={fmt.dateTime(order.created_at)}>
+                      {fmt.relative(order.created_at)}
+                    </span>
+                    {order.paid_at && (
+                      <span
+                        className="block text-xs text-md-tertiary mt-0.5"
+                        title={fmt.dateTime(order.paid_at)}
+                      >
+                        {t('paidAt')} {fmt.dateShort(order.paid_at)}
+                      </span>
+                    )}
                   </TableCell>
                   {canWrite && (
                     <TableCell className="py-3">
@@ -450,8 +464,9 @@ export default function OrdersPage() {
         </Table>
       </div>
 
-      {/* ── Server-side pagination bar ── */}
-      {!loading && total > 0 && (
+      {/* ── Server-side pagination bar ──
+          Visible during refreshing (data still present) as well as after load. */}
+      {(refreshing || (!loading && total > 0)) && (
         <nav
           aria-label={t('paginationLabel')}
           className="flex items-center justify-between gap-4 animate-slide-up"
@@ -464,7 +479,7 @@ export default function OrdersPage() {
             <Button
               variant="outline"
               size="sm"
-              disabled={page <= 1 || loading}
+              disabled={page <= 1 || refreshing}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
               <ChevronLeft className="size-4" aria-hidden="true" />
@@ -476,7 +491,7 @@ export default function OrdersPage() {
             <Button
               variant="outline"
               size="sm"
-              disabled={page >= totalPages || loading}
+              disabled={page >= totalPages || refreshing}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             >
               <span>{t('nextPage')}</span>
@@ -486,26 +501,32 @@ export default function OrdersPage() {
         </nav>
       )}
 
-      {/* ── Mark paid confirmation dialog ── */}
-      <Dialog open={!!markPaidTarget} onOpenChange={(open) => { if (!open) setMarkPaidTarget(null); }}>
-        <DialogContent
+      {/* ── Mark paid confirmation (AlertDialog — irreversible operation) ── */}
+      <AlertDialog
+        open={!!markPaidTarget}
+        onOpenChange={(open) => { if (!open && !markingPaid) setMarkPaidTarget(null); }}
+      >
+        <AlertDialogContent
           pending={markingPaid}
-          className="rounded-2xl bg-md-surface-container elevation-3 border-0 max-w-md animate-scale-in"
-        >
-          <DialogHeader>
-            <DialogTitle className="font-display text-xl font-600 text-foreground">
-              {t('markPaid')}
-            </DialogTitle>
-            <DialogDescription className="text-sm text-foreground leading-relaxed">
+          size="sm"
+          description={
+            <>
               {t('markPaidConfirm', { orderNo: markPaidTarget?.order_no ?? '' })}
               {' '}
               {t('markPaidIrreversible')}
-            </DialogDescription>
-          </DialogHeader>
+            </>
+          }
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('markPaid')}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
 
-          <div className="py-2 space-y-3">
-            {markPaidTarget?.order_no && (
-              <div className="flex items-center gap-2 rounded-xl bg-md-surface-container-high px-4 py-3">
+          {/* Order summary card */}
+          {markPaidTarget && (
+            <div className="rounded-xl bg-md-surface-container-high px-4 py-3 space-y-1.5">
+              <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">{t('colOrderNo')}</span>
                 <span className="font-mono text-xs font-medium text-foreground">{markPaidTarget.order_no}</span>
                 {markPaidTarget.amount !== undefined && (
@@ -514,33 +535,34 @@ export default function OrdersPage() {
                   </span>
                 )}
               </div>
-            )}
-            {markPaidError && (
-              <div
-                role="alert"
-                className="flex items-start gap-2 rounded-xl bg-md-error-container text-md-on-error-container px-4 py-3 text-sm"
-              >
-                <AlertCircle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
-                <span>{markPaidError}</span>
-              </div>
-            )}
-          </div>
+              {markPaidTarget.paid_at && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{t('colPaidAt')}</span>
+                  <span className="text-xs text-foreground" title={fmt.dateTime(markPaidTarget.paid_at)}>
+                    {fmt.dateTime(markPaidTarget.paid_at)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
-          <DialogFooter className="gap-2">
-            <DialogClose asChild>
-              <Button variant="outline" disabled={markingPaid}>
-                {tCommon('cancel')}
-              </Button>
-            </DialogClose>
-            <Button
-              onClick={handleMarkPaid}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={markingPaid}>
+              {tCommon('cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
               loading={markingPaid}
+              onClick={(e) => {
+                // Prevent AlertDialog from auto-closing before async completes
+                e.preventDefault();
+                handleMarkPaid();
+              }}
             >
               {t('confirmMarkPaid')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </PageContainer>
   );
 }

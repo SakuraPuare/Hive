@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import * as React from 'react';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 const mockCustomersList = vi.fn();
 const mockCustomerCreate = vi.fn();
@@ -16,6 +18,7 @@ vi.mock('@/src/generated/client', () => ({
 
 vi.mock('@/lib/openapi-session', () => ({
   sessionApi: (p: Promise<any>) => p,
+  apiUrl: (path: string) => `/api${path}`,
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -33,6 +36,13 @@ vi.mock('@/lib/auth', () => ({
 
 import CustomersPage from '@/pages/customers';
 
+/** Wrap with TooltipProvider: the customers page uses <Tooltip> for the
+ *  refresh button, date cells, and delete buttons — Radix requires a Provider
+ *  ancestor or it throws at render time. */
+function renderWithProviders(ui: React.ReactElement) {
+  return render(<TooltipProvider>{ui}</TooltipProvider>);
+}
+
 const mockCustomers = [
   { id: 1, email: 'alice@example.com', nickname: 'Alice', status: 'active', created_at: '2024-06-01T00:00:00Z' },
   { id: 2, email: 'bob@example.com', nickname: 'Bob', status: 'suspended', created_at: '2024-06-02T00:00:00Z' },
@@ -45,7 +55,7 @@ describe('CustomersPage', () => {
   });
 
   it('renders customer table after loading', async () => {
-    render(<CustomersPage />);
+    renderWithProviders(<CustomersPage />);
 
     await waitFor(() => {
       expect(screen.getByText('alice@example.com')).toBeInTheDocument();
@@ -55,7 +65,7 @@ describe('CustomersPage', () => {
   });
 
   it('shows status badges with translated labels', async () => {
-    render(<CustomersPage />);
+    renderWithProviders(<CustomersPage />);
 
     await waitFor(() => {
       expect(screen.getByText('alice@example.com')).toBeInTheDocument();
@@ -68,7 +78,7 @@ describe('CustomersPage', () => {
 
   it('shows error message on load failure', async () => {
     mockCustomersList.mockRejectedValueOnce({ error: 'Server error' });
-    render(<CustomersPage />);
+    renderWithProviders(<CustomersPage />);
 
     await waitFor(() => {
       expect(screen.getByText('Server error')).toBeInTheDocument();
@@ -79,7 +89,7 @@ describe('CustomersPage', () => {
     mockCustomerCreate.mockResolvedValueOnce({ id: 3 });
     const user = userEvent.setup();
 
-    render(<CustomersPage />);
+    renderWithProviders(<CustomersPage />);
 
     await waitFor(() => {
       expect(screen.getByText('alice@example.com')).toBeInTheDocument();
@@ -101,7 +111,7 @@ describe('CustomersPage', () => {
     // Override the default mock to return more items
     mockCustomersList.mockReset();
     mockCustomersList.mockImplementation(() => Promise.resolve({ items: mockCustomers, total: 40 }));
-    render(<CustomersPage />);
+    renderWithProviders(<CustomersPage />);
 
     await waitFor(() => {
       expect(screen.getByText('alice@example.com')).toBeInTheDocument();
@@ -114,7 +124,7 @@ describe('CustomersPage', () => {
   });
 
   it('shows nicknames', async () => {
-    render(<CustomersPage />);
+    renderWithProviders(<CustomersPage />);
 
     await waitFor(() => {
       expect(screen.getByText('Alice')).toBeInTheDocument();
@@ -125,7 +135,7 @@ describe('CustomersPage', () => {
 
   it('shows no customers message when empty', async () => {
     mockCustomersList.mockResolvedValueOnce({ items: [], total: 0 });
-    render(<CustomersPage />);
+    renderWithProviders(<CustomersPage />);
 
     await waitFor(() => {
       expect(screen.getByText('customers.noCustomers')).toBeInTheDocument();

@@ -6,12 +6,15 @@ import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import type { AdminUser } from '@/lib/domain-types';
 import { useCurrentUser } from '@/lib/auth';
+import { useFormat } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/toast';
 import { Card, CardContent } from '@/components/ui/card';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 import {
   Dialog,
   DialogContent,
@@ -45,13 +48,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { RefreshCw, Plus, Trash2, KeyRound, UserCog, Search, X } from 'lucide-react';
+import { RefreshCw, Plus, Trash2, KeyRound, UserCog, Search, Users, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-function formatDate(s: string) {
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
+/** Shared password validation rule: ≥8 chars, contains a letter, contains a digit. */
+function validatePassword(pwd: string): boolean {
+  return pwd.length >= 8 && /[a-zA-Z]/.test(pwd) && /\d/.test(pwd);
+}
+
+/** Unicode-safe first character for avatar display. */
+function firstChar(s: string): string {
+  return ([...s][0]?.toUpperCase()) ?? '?';
 }
 
 export default function UsersPage() {
@@ -61,6 +68,7 @@ export default function UsersPage() {
   const tNodes = useTranslations('nodes');
   const tAuth = useTranslations('auth');
   const toast = useToast();
+  const fmt = useFormat();
   const { user: currentUser, loading: authLoading } = useCurrentUser();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [allRoles, setAllRoles] = useState<handler_RoleDetail[]>([]);
@@ -96,11 +104,12 @@ export default function UsersPage() {
   // ── Client-side validation helpers ──
   const usernameError =
     touchedUsername && newUsername.trim().length === 0 ? t('usernameRequired') : '';
-  const passwordRuleOk = newPassword.length >= 8 && /[a-zA-Z]/.test(newPassword) && /\d/.test(newPassword);
+  const passwordRuleOk = validatePassword(newPassword);
   const passwordError =
     touchedPassword && newPassword.length > 0 && !passwordRuleOk ? t('passwordRule') : '';
+  const newPwdRuleOk = validatePassword(newPwd);
   const newPwdError =
-    touchedNewPwd && newPwd.length > 0 && newPwd.length < 8 ? t('passwordRule') : '';
+    touchedNewPwd && newPwd.length > 0 && !newPwdRuleOk ? t('passwordRule') : '';
 
   useEffect(() => {
     if (!authLoading && currentUser && !currentUser.can('user:read')) {
@@ -202,6 +211,7 @@ export default function UsersPage() {
     setPwdTarget(u);
     setNewPwd('');
     setTouchedNewPwd(false);
+    setSavingPwd(false);
     setPwdOpen(true);
   }
 
@@ -292,40 +302,39 @@ export default function UsersPage() {
   if (authLoading) return null;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <PageContainer>
       {/* ── Page header ── */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="font-display text-2xl font-600 text-foreground tracking-tight">
-            {t('userManagement')}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {users.length > 0 ? (
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full bg-md-tertiary" aria-hidden="true" />
-                <span className="font-display font-600 text-foreground">{users.length}</span>
-                &nbsp;{t('userManagement').toLowerCase()}
-              </span>
-            ) : null}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            variant="ghost"
-            onClick={loadData}
-            loading={loading}
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
-            {tCommon('refresh')}
-          </Button>
-          {canWrite && (
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              {t('createUser')}
+      <PageHeader
+        icon={<Users />}
+        title={t('userManagement')}
+        description={
+          users.length > 0 ? (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-md-tertiary" aria-hidden="true" />
+              <span className="font-display font-600 text-foreground">{users.length}</span>
+              &nbsp;{t('usersUnit')}
+            </span>
+          ) : undefined
+        }
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              onClick={loadData}
+              loading={loading}
+            >
+              {!loading && <RefreshCw className="h-4 w-4" aria-hidden="true" />}
+              {tCommon('refresh')}
             </Button>
-          )}
-        </div>
-      </div>
+            {canWrite && (
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                {t('createUser')}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* ── Toolbar: search + role filter ── */}
       <div className="flex flex-wrap items-center gap-3">
@@ -473,7 +482,7 @@ export default function UsersPage() {
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full
                           bg-md-primary-container text-md-on-primary-container text-xs font-display font-600"
                           aria-hidden="true">
-                          {u.username.charAt(0).toUpperCase()}
+                          {firstChar(u.username)}
                         </div>
                         <span className="text-sm font-500 text-foreground">{u.username}</span>
                       </div>
@@ -496,8 +505,11 @@ export default function UsersPage() {
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground tabular-nums">
-                      {formatDate(u.created_at)}
+                    <TableCell
+                      className="text-sm text-muted-foreground tabular-nums"
+                      title={fmt.dateTime(u.created_at)}
+                    >
+                      {fmt.relative(u.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
@@ -590,6 +602,7 @@ export default function UsersPage() {
             <DialogDescription className="sr-only">{t('createUserDesc')}</DialogDescription>
           </DialogHeader>
           <form
+            id="create-user-form"
             onSubmit={(e) => { e.preventDefault(); if (newUsername && newPassword && passwordRuleOk) handleCreate(); }}
             className="space-y-4 py-2"
           >
@@ -659,7 +672,8 @@ export default function UsersPage() {
               {tCommon('cancel')}
             </Button>
             <Button
-              onClick={handleCreate}
+              type="submit"
+              form="create-user-form"
               loading={creating}
               disabled={!newUsername || !newPassword || !passwordRuleOk}
             >
@@ -670,7 +684,17 @@ export default function UsersPage() {
       </Dialog>
 
       {/* ── 修改密码弹窗 ── */}
-      <Dialog open={pwdOpen} onOpenChange={setPwdOpen}>
+      <Dialog
+        open={pwdOpen}
+        onOpenChange={(open) => {
+          if (!open && !savingPwd) {
+            setPwdOpen(false);
+            setNewPwd('');
+            setTouchedNewPwd(false);
+            setSavingPwd(false);
+          }
+        }}
+      >
         <DialogContent className="rounded-2xl border bg-card elevation-3 sm:max-w-md animate-scale-in">
           <DialogHeader className="pb-2">
             <div className="flex items-center gap-3">
@@ -686,7 +710,8 @@ export default function UsersPage() {
             </DialogDescription>
           </DialogHeader>
           <form
-            onSubmit={(e) => { e.preventDefault(); if (newPwd && newPwd.length >= 8) handleChangePassword(); }}
+            id="change-pwd-form"
+            onSubmit={(e) => { e.preventDefault(); if (newPwd && newPwdRuleOk) handleChangePassword(); }}
             className="space-y-4 py-2"
           >
             <div className="space-y-1.5">
@@ -717,9 +742,10 @@ export default function UsersPage() {
               {tCommon('cancel')}
             </Button>
             <Button
-              onClick={handleChangePassword}
+              type="submit"
+              form="change-pwd-form"
               loading={savingPwd}
-              disabled={!newPwd || newPwd.length < 8}
+              disabled={!newPwd || !newPwdRuleOk}
             >
               {tCommon('save')}
             </Button>
@@ -728,7 +754,7 @@ export default function UsersPage() {
       </Dialog>
 
       {/* ── 编辑角色弹窗 ── */}
-      <Dialog open={rolesOpen} onOpenChange={setRolesOpen}>
+      <Dialog open={rolesOpen} onOpenChange={(open) => { if (!open && !savingRoles) setRolesOpen(false); }}>
         <DialogContent className="rounded-2xl border bg-card elevation-3 sm:max-w-md animate-scale-in">
           <DialogHeader className="pb-2">
             <div className="flex items-center gap-3">
@@ -763,12 +789,13 @@ export default function UsersPage() {
                 <label
                   key={r.id}
                   htmlFor={`role-${r.id}`}
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl px-3 py-2.5
-                    transition-colors
-                    ${checked
-                      ? 'bg-md-primary-container/60 text-md-on-primary-container'
-                      : 'hover:bg-md-surface-container-high'
-                    }`}
+                  className={[
+                    'state-layer flex cursor-pointer items-start gap-3 rounded-xl px-3 py-2.5',
+                    'transition-colors',
+                    checked
+                      ? 'bg-md-primary-container/60 text-md-on-primary-container ring-1 ring-md-primary/40'
+                      : 'hover:bg-md-surface-container-high',
+                  ].join(' ')}
                 >
                   <Checkbox
                     id={`role-${r.id}`}
@@ -803,6 +830,6 @@ export default function UsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

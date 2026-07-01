@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { AdminService } from '@/src/generated/client';
@@ -6,6 +6,7 @@ import type { model_Customer } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
+import { useFormat } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,7 +37,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
@@ -47,15 +47,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 import { RefreshCw, Plus, Trash2, Users, ChevronRight, X } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { useTranslations } from 'next-intl';
-
-function formatDate(s: string) {
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
-}
 
 // M3 §10 status chip classes
 const STATUS_CHIP: Record<string, string> = {
@@ -79,6 +75,7 @@ export default function CustomersPage() {
   const tCommon = useTranslations('common');
   const router = useRouter();
   const toast = useToast();
+  const fmt = useFormat();
   const { user, loading: authLoading } = useCurrentUser();
   const canWrite = user?.can('customer:write') ?? false;
 
@@ -87,12 +84,52 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // URL-synced filter state — hydrated from query once router.isReady
   const [page, setPage] = useState(1);
-  const limit = 20;
+  const [limit, setLimit] = useState(20);
   // emailFilter is debounced by the Input primitive (debounceMs) — it only
   // updates after the user stops typing, so it is safe as a load dependency.
   const [emailFilter, setEmailFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [initialized, setInitialized] = useState(false);
+  // Tracks whether the first URL-sync cycle has run (skip it to avoid a
+  // redundant router.replace immediately after hydration).
+  const syncUrl = useRef(false);
+
+  // ── Restore filter / page / limit from URL once router.query is populated ──
+  useEffect(() => {
+    if (!router.isReady || initialized) return;
+    const q = router.query;
+    if (typeof q.email === 'string') setEmailFilter(q.email);
+    if (typeof q.status === 'string') setStatusFilter(q.status);
+    if (typeof q.page === 'string') {
+      const p = parseInt(q.page, 10);
+      if (Number.isFinite(p) && p > 0) setPage(p);
+    }
+    if (typeof q.limit === 'string') {
+      const l = parseInt(q.limit, 10);
+      if ([20, 50, 100].includes(l)) setLimit(l);
+    }
+    setInitialized(true);
+  }, [router.isReady, router.query, initialized]);
+
+  // ── Sync filter/page/limit changes to URL so the browser Back button restores state ──
+  useEffect(() => {
+    if (!initialized) return;
+    // Skip the very first sync triggered by hydration to avoid a redundant replace
+    if (!syncUrl.current) {
+      syncUrl.current = true;
+      return;
+    }
+    const query: Record<string, string | number> = {};
+    if (emailFilter) query.email = emailFilter;
+    if (statusFilter !== 'all') query.status = statusFilter;
+    if (page !== 1) query.page = page;
+    if (limit !== 20) query.limit = limit;
+    router.replace({ query }, undefined, { shallow: true });
+    // router is stable; we intentionally re-run only when filter state changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized, emailFilter, statusFilter, page, limit]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -119,7 +156,7 @@ export default function CustomersPage() {
         status: statusFilter !== 'all' ? statusFilter : undefined,
         email: emailFilter || undefined,
         page: page,
-        limit: 20,
+        limit: limit,
       }));
       setCustomers(data?.items ?? []);
       setTotal(data?.total ?? 0);
@@ -129,9 +166,12 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, emailFilter, statusFilter, t]);
+  }, [page, limit, emailFilter, statusFilter, t]);
 
-  useEffect(() => { loadCustomers(); }, [loadCustomers]);
+  useEffect(() => {
+    if (!initialized) return;
+    loadCustomers();
+  }, [loadCustomers, initialized]);
 
   function resetCreateForm() {
     setNewEmail('');
@@ -198,55 +238,45 @@ export default function CustomersPage() {
   if (authLoading) return null;
 
   return (
-    <TooltipProvider>
-    <div className="space-y-6 animate-fade-in">
+    <PageContainer>
 
       {/* ── Page header ── */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-md-primary-container text-md-on-primary-container">
-            <Users className="size-5" aria-hidden="true" />
-          </div>
-          <div>
-            <h1 className="font-display text-xl font-600 text-foreground leading-tight">
-              {t('title')}
-            </h1>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {total > 0 && t('recordCount', { count: total })}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={loadCustomers}
-                disabled={loading}
-                aria-label={tCommon('refresh')}
-              >
-                <RefreshCw className={loading ? 'size-4 animate-spin' : 'size-4'} aria-hidden="true" />
+      <PageHeader
+        icon={<Users aria-hidden="true" />}
+        title={t('title')}
+        description={total > 0 ? t('recordCount', { count: total }) : undefined}
+        actions={
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={loadCustomers}
+                  disabled={loading}
+                  aria-label={tCommon('refresh')}
+                >
+                  <RefreshCw className={loading ? 'size-4 animate-spin' : 'size-4'} aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{tCommon('refresh')}</TooltipContent>
+            </Tooltip>
+            {canWrite && (
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="size-4" aria-hidden="true" />
+                {t('createCustomer')}
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>{tCommon('refresh')}</TooltipContent>
-          </Tooltip>
-          {canWrite && (
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="size-4" aria-hidden="true" />
-              {t('createCustomer')}
-            </Button>
-          )}
-        </div>
-      </div>
+            )}
+          </>
+        }
+      />
 
       {/* ── Filters toolbar ── */}
       <div className="flex flex-wrap items-center gap-2 p-4 bg-card border rounded-xl animate-slide-up">
         <Input
           aria-label={t('searchPlaceholder')}
           placeholder={t('searchPlaceholder')}
-          defaultValue={emailFilter}
+          value={emailFilter}
           debounceMs={350}
           clearable
           clearLabel={tCommon('clear')}
@@ -340,7 +370,7 @@ export default function CustomersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {customers.length === 0 && (
+              {customers.length === 0 && !error && (
                 <TableRow className="border-0">
                   <TableCell colSpan={5} className="py-20 text-center">
                     <div className="flex flex-col items-center gap-3">
@@ -399,7 +429,14 @@ export default function CustomersPage() {
                     </span>
                   </TableCell>
                   <TableCell className="py-3.5 text-sm text-muted-foreground">
-                    {c.created_at ? formatDate(c.created_at) : '—'}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <time dateTime={c.created_at ?? ''}>
+                          {c.created_at ? fmt.relative(c.created_at) : '—'}
+                        </time>
+                      </TooltipTrigger>
+                      <TooltipContent>{c.created_at ? fmt.dateTime(c.created_at) : '—'}</TooltipContent>
+                    </Tooltip>
                   </TableCell>
                   <TableCell className="py-3.5 pr-5 text-right">
                     {canWrite && (
@@ -428,27 +465,46 @@ export default function CustomersPage() {
 
       {/* ── Pagination ── */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-end gap-3 animate-slide-up"
+        <div className="flex items-center justify-between gap-3 animate-slide-up"
           style={{ animationDelay: '120ms' }}>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
-          >
-            {t('prevPage')}
-          </Button>
-          <span className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
-            {page} / {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages}
-            onClick={() => setPage(page + 1)}
-          >
-            {t('nextPage')}
-          </Button>
+          {/* Per-page selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">{tCommon('perPage')}</span>
+            <Select
+              value={String(limit)}
+              onValueChange={(v) => { setLimit(Number(v)); setPage(1); }}
+            >
+              <SelectTrigger className="w-20 h-8 text-sm" aria-label={tCommon('perPage')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+            >
+              {t('prevPage')}
+            </Button>
+            <span className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
+              {page} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage(page + 1)}
+            >
+              {t('nextPage')}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -545,7 +601,7 @@ export default function CustomersPage() {
             <AlertDialogAction
               destructive
               loading={deleting}
-              loadingLabel={tCommon('saving')}
+              loadingLabel={tCommon('deleting')}
               onClick={(e) => { e.preventDefault(); handleDelete(); }}
             >
               {tCommon('delete')}
@@ -554,7 +610,6 @@ export default function CustomersPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-    </div>
-    </TooltipProvider>
+    </PageContainer>
   );
 }

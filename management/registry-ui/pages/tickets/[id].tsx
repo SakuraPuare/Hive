@@ -5,7 +5,8 @@ import type { handler_TicketDetailResponse } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useFormat } from '@/lib/format';
+import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,15 +20,10 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/components/ui/toast';
-import { ArrowLeft, Send } from 'lucide-react';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
+import { ArrowLeft, Send, Ticket } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-
-
-function formatDate(s: string) {
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'medium' });
-}
 
 // M3 status token map — §10 of DESIGN_SYSTEM.md
 const STATUS_CHIP: Record<string, string> = {
@@ -39,6 +35,7 @@ const STATUS_CHIP: Record<string, string> = {
 export default function TicketDetailPage() {
   const t = useTranslations('tickets');
   const tCommon = useTranslations('common');
+  const fmt = useFormat();
   const toast = useToast();
   const router = useRouter();
   const { id } = router.query;
@@ -48,6 +45,7 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const conversationRef = useRef<HTMLDivElement>(null);
   const sendErrorRef = useRef<HTMLDivElement>(null);
 
   const loadTicket = useCallback(async () => {
@@ -72,8 +70,18 @@ export default function TicketDetailPage() {
     if (!authLoading && user && !user.can('ticket:read')) router.replace('/dashboard');
   }, [authLoading, user, router]);
 
+  // Auto-scroll to bottom only when user is already near the bottom
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = conversationRef.current;
+    if (!container) {
+      bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+      return;
+    }
+    const isNearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+    if (isNearBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
   }, [ticket?.replies?.length]);
 
   // Reply
@@ -123,27 +131,55 @@ export default function TicketDetailPage() {
   // M3 circular loading indicator
   if (authLoading || loading) {
     return (
-      <div className="flex items-center justify-center min-h-[40vh] animate-fade-in">
-        <div className="flex flex-col items-center gap-4">
-          <div
-            className="size-10 rounded-full border-4 border-md-primary-container border-t-md-primary animate-spin"
-            style={{ animationDuration: '0.8s', animationTimingFunction: 'var(--ease-standard)' }}
-            aria-label={tCommon('loading')}
-          />
-          <span className="text-sm text-muted-foreground">{tCommon('loading')}</span>
+      <PageContainer width="content">
+        <div className="flex items-center justify-center min-h-[40vh] animate-fade-in">
+          <div className="flex flex-col items-center gap-4">
+            <div
+              className="size-10 rounded-full border-4 border-md-primary-container border-t-md-primary animate-spin"
+              style={{ animationDuration: '0.8s', animationTimingFunction: 'var(--ease-standard)' }}
+              aria-label={tCommon('loading')}
+            />
+            <span className="text-sm text-muted-foreground">{tCommon('loading')}</span>
+          </div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6 animate-fade-in">
-        <div role="alert" className="inline-flex items-center gap-2 rounded-xl bg-md-error-container text-md-on-error-container px-4 py-3 text-sm">
+      <PageContainer width="content" className="space-y-5">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (typeof window !== 'undefined' && window.history.length <= 2) {
+                router.replace('/tickets');
+              } else {
+                router.back();
+              }
+            }}
+            className="-ml-2 text-md-on-surface-variant"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            <span>{tCommon('back')}</span>
+          </Button>
+        </div>
+        <PageHeader icon={<Ticket />} title={t('title')} />
+        <div
+          role="alert"
+          className="inline-flex items-center gap-2 rounded-xl bg-md-error-container text-md-on-error-container px-4 py-3 text-sm"
+        >
           <span aria-hidden="true" className="size-2 rounded-full bg-md-error shrink-0" />
           {error}
         </div>
-      </div>
+        <div>
+          <Button variant="outline" onClick={loadTicket}>
+            {tCommon('retry')}
+          </Button>
+        </div>
+      </PageContainer>
     );
   }
 
@@ -153,13 +189,19 @@ export default function TicketDetailPage() {
   const statusKey = ticket.ticket?.status ?? '';
 
   return (
-    <div className="p-6 space-y-5 max-w-3xl animate-fade-in">
+    <PageContainer width="content" className="space-y-5">
       {/* Back nav */}
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => router.push('/tickets')}
+          onClick={() => {
+            if (typeof window !== 'undefined' && window.history.length <= 2) {
+              router.replace('/tickets');
+            } else {
+              router.back();
+            }
+          }}
           className="-ml-2 text-md-on-surface-variant"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -167,42 +209,47 @@ export default function TicketDetailPage() {
         </Button>
       </div>
 
-      {/* Ticket header card */}
-      <Card className="bg-card border rounded-xl elevation-1 animate-slide-up">
-        <CardHeader className="pb-4 pt-5 px-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <CardTitle className="font-display text-xl font-600 text-foreground leading-snug truncate">
-                {ticket.ticket?.subject}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1 truncate">{ticket.ticket?.customer_email}</p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 pt-0.5">
-              {/* M3 status chip */}
+      {/* Page header */}
+      <PageHeader
+        icon={<Ticket />}
+        title={ticket.ticket?.subject ?? ''}
+        description={ticket.ticket?.customer_email}
+        actions={
+          <div className="flex items-center gap-2">
+            {/* M3 status chip */}
+            <span
+              role="status"
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-500 ${STATUS_CHIP[statusKey] ?? 'bg-muted text-muted-foreground'}`}
+            >
               <span
-                role="status"
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-500 ${STATUS_CHIP[statusKey] ?? 'bg-muted text-muted-foreground'}`}
+                aria-hidden="true"
+                className={`size-1.5 rounded-full ${
+                  statusKey === 'open'
+                    ? 'bg-md-primary'
+                    : statusKey === 'replied'
+                    ? 'bg-[hsl(43_96%_50%)]'
+                    : 'bg-md-outline'
+                }`}
+              />
+              <span className="sr-only">{t('colStatus')}: </span>
+              {t(`status${statusKey.charAt(0).toUpperCase() + statusKey.slice(1)}`)}
+            </span>
+            {!isClosed && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => { setCloseError(''); setCloseOpen(true); }}
               >
-                <span aria-hidden="true" className={`size-1.5 rounded-full ${statusKey === 'open' ? 'bg-md-primary' : statusKey === 'replied' ? 'bg-[hsl(43_96%_50%)]' : 'bg-md-outline'}`} />
-                <span className="sr-only">{t('colStatus')}: </span>
-                {t(`status${statusKey.charAt(0).toUpperCase() + statusKey.slice(1)}`)}
-              </span>
-              {!isClosed && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => { setCloseError(''); setCloseOpen(true); }}
-                >
-                  {t('close')}
-                </Button>
-              )}
-            </div>
+                {t('close')}
+              </Button>
+            )}
           </div>
-        </CardHeader>
-      </Card>
+        }
+      />
 
       {/* Conversation thread */}
-      <div className="space-y-3">
+      <div ref={conversationRef} className="space-y-3 overflow-y-auto max-h-[calc(100vh-16rem)]">
+        <h2 className="sr-only">{t('replySection')}</h2>
         {(ticket.replies ?? []).length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3 animate-fade-in">
             <div className="size-12 rounded-full bg-md-surface-container-high flex items-center justify-center">
@@ -213,6 +260,9 @@ export default function TicketDetailPage() {
         ) : (
           ticket.replies!.map((reply, i) => {
             const isAdmin = reply.is_admin === true;
+            const senderLabel =
+              reply.author ||
+              (isAdmin ? t('adminSender') : ticket.ticket?.customer_email || t('customerSender'));
             return (
               <div
                 key={reply.id}
@@ -227,8 +277,13 @@ export default function TicketDetailPage() {
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-xs font-500 opacity-80">{reply.author ?? ''}</span>
-                    <span className="text-xs opacity-50">{formatDate(reply.created_at ?? '')}</span>
+                    <span className="text-xs font-500 opacity-80">{senderLabel}</span>
+                    <span
+                      className="text-xs opacity-50"
+                      title={fmt.dateTime(reply.created_at)}
+                    >
+                      {fmt.relative(reply.created_at)}
+                    </span>
                   </div>
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">{reply.content}</p>
                 </div>
@@ -311,6 +366,6 @@ export default function TicketDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

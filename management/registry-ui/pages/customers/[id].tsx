@@ -2,14 +2,18 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { model_Customer, model_CustomerSubscription, model_Plan } from '@/src/generated/client';
-import { sessionApi } from '@/lib/openapi-session';
+import { sessionApi, apiUrl } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
+import { useFormat } from '@/lib/format';
+import { useClipboard } from '@/lib/use-clipboard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/toast';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 import {
   Dialog,
   DialogContent,
@@ -38,7 +42,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
@@ -49,18 +52,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Plus, Trash2, KeyRound, Copy, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, KeyRound, Copy, Link, RefreshCw, X, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 // Backend returns plan_name via JOIN; extend the generated type locally
 type Subscription = model_CustomerSubscription & { plan_name?: string };
-
-function formatDate(s: string | null | undefined) {
-  if (!s) return '—';
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
-}
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -92,6 +88,8 @@ export default function CustomerDetail() {
   const tCommon = useTranslations('common');
   const toast = useToast();
   const { user, loading: authLoading } = useCurrentUser();
+  const fmt = useFormat();
+  const { copied, copy: copyToClipboard } = useClipboard();
 
   const [customer, setCustomer] = useState<model_Customer | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -105,16 +103,19 @@ export default function CustomerDetail() {
   const [editNickname, setEditNickname] = useState('');
   const [editStatus, setEditStatus] = useState('active');
   const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
   // Reset password dialog
   const [pwdOpen, setPwdOpen] = useState(false);
   const [newPwd, setNewPwd] = useState('');
   const [savingPwd, setSavingPwd] = useState(false);
+  const [pwdError, setPwdError] = useState('');
 
   // Create subscription dialog
   const [subOpen, setSubOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState('');
   const [creatingSub, setCreatingSub] = useState(false);
+  const [subError, setSubError] = useState('');
 
   // Destructive confirmations
   const [deletePendingSub, setDeletePendingSub] = useState<Subscription | null>(null);
@@ -122,8 +123,13 @@ export default function CustomerDetail() {
   const [resetPendingSub, setResetPendingSub] = useState<Subscription | null>(null);
   const [resettingToken, setResettingToken] = useState(false);
 
-  // Copy feedback
-  const [copiedId, setCopiedId] = useState<number | null>(null);
+  // Block-status confirmation (P2: AlertDialog for destructive status change)
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
+  const [pendingEditPayload, setPendingEditPayload] = useState<{ nickname: string; status: string } | null>(null);
+
+  // Track which subscription's token or link was last copied
+  const [lastCopiedSubId, setLastCopiedSubId] = useState<number | null>(null);
+  const [lastCopiedType, setLastCopiedType] = useState<'token' | 'link' | null>(null);
 
   useEffect(() => {
     if (!authLoading && user && !user.can('customer:read')) {
@@ -160,25 +166,41 @@ export default function CustomerDetail() {
     if (!customer) return;
     setEditNickname(customer.nickname ?? '');
     setEditStatus(customer.status ?? 'active');
+    setEditError('');
     setEditOpen(true);
   }
 
-  async function handleEdit() {
+  async function executeEdit(nickname: string, status: string) {
     if (!customer) return;
     setSaving(true);
     try {
       await sessionApi(AdminService.adminUpdateCustomer({
         id: customer.id!,
-        requestBody: { nickname: editNickname, status: editStatus },
+        requestBody: { nickname, status },
       }));
       setEditOpen(false);
+      setPendingEditPayload(null);
       toast.success(t('customerUpdated'));
       loadCustomer();
     } catch (e) {
-      setError(getErrorMessage(e, 'Update failed'));
+      setEditError(getErrorMessage(e, 'Update failed'));
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleEdit() {
+    if (!customer) return;
+    const willBlock =
+      (editStatus === 'banned' || editStatus === 'suspended') &&
+      editStatus !== (customer?.status ?? 'active');
+    if (willBlock) {
+      // Intercept: show AlertDialog for destructive status change
+      setPendingEditPayload({ nickname: editNickname, status: editStatus });
+      setBlockConfirmOpen(true);
+      return;
+    }
+    await executeEdit(editNickname, editStatus);
   }
 
   async function handleResetPassword() {
@@ -193,7 +215,7 @@ export default function CustomerDetail() {
       setNewPwd('');
       toast.success(t('passwordReset'));
     } catch (e) {
-      setError(getErrorMessage(e, 'Reset failed'));
+      setPwdError(getErrorMessage(e, 'Reset failed'));
     } finally {
       setSavingPwd(false);
     }
@@ -212,7 +234,7 @@ export default function CustomerDetail() {
       toast.success(t('subscriptionCreated'));
       loadCustomer();
     } catch (e) {
-      setError(getErrorMessage(e, 'Create failed'));
+      setSubError(getErrorMessage(e, 'Create failed'));
     } finally {
       setCreatingSub(false);
     }
@@ -229,7 +251,7 @@ export default function CustomerDetail() {
       loadCustomer();
     } catch (e) {
       setResetPendingSub(null);
-      setError(getErrorMessage(e, 'Reset token failed'));
+      toast.error(getErrorMessage(e, 'Reset token failed'));
     } finally {
       setResettingToken(false);
     }
@@ -246,17 +268,29 @@ export default function CustomerDetail() {
       loadCustomer();
     } catch (e) {
       setDeletePendingSub(null);
-      setError(getErrorMessage(e, 'Delete failed'));
+      toast.error(getErrorMessage(e, 'Delete failed'));
     } finally {
       setDeletingSub(false);
     }
   }
 
-  function copyToken(sub: Subscription) {
-    navigator.clipboard.writeText(sub.token ?? '');
-    setCopiedId(sub.id ?? null);
-    toast.success(t('copied'));
-    setTimeout(() => setCopiedId(null), 1500);
+  async function copyToken(sub: Subscription) {
+    const ok = await copyToClipboard(sub.token ?? '');
+    if (ok) {
+      setLastCopiedSubId(sub.id ?? null);
+      setLastCopiedType('token');
+      toast.success(t('copied'));
+    }
+  }
+
+  async function copySubLink(sub: Subscription) {
+    const url = apiUrl(`/s/${sub.token ?? ''}`);
+    const ok = await copyToClipboard(url);
+    if (ok) {
+      setLastCopiedSubId(sub.id ?? null);
+      setLastCopiedType('link');
+      toast.success(t('copiedLink'));
+    }
   }
 
   const statusLabel = (s: string) =>
@@ -281,10 +315,9 @@ export default function CustomerDetail() {
   }
 
   return (
-    <TooltipProvider>
-    <div className="space-y-6 animate-fade-in">
+    <PageContainer width="content">
       {/* Back button */}
-      <Button variant="ghost" onClick={() => router.push('/customers')} className="-ml-1">
+      <Button variant="ghost" onClick={() => router.back()} className="-ml-1">
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
         <span>{tCommon('back')}</span>
       </Button>
@@ -312,31 +345,35 @@ export default function CustomerDetail() {
 
       {customer && (
         <>
-          {/* ── Customer Info Card ── */}
-          <Card className="rounded-xl border bg-card animate-slide-up" style={{ animationDelay: '40ms' }}>
-            <CardHeader className="flex flex-row items-start justify-between gap-4 pb-4">
-              <div className="space-y-1">
-                <p className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
-                  {t('customerInfo')}
-                </p>
-                <CardTitle className="font-display text-xl font-600 text-foreground">
-                  {customer.nickname || customer.email}
-                </CardTitle>
-                {/* Status chip inline with title */}
-                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${STATUS_CHIP[customer.status ?? ''] ?? 'bg-muted text-muted-foreground'}`}>
-                  <span className={`size-1.5 rounded-full ${STATUS_DOT[customer.status ?? ''] ?? 'bg-md-outline'}`} aria-hidden="true" />
-                  {statusLabel(customer.status ?? '')}
-                </span>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <Button variant="outline" onClick={() => { setNewPwd(''); setPwdOpen(true); }}>
+          {/* ── Page Header ── */}
+          <PageHeader
+            icon={<User />}
+            title={customer.nickname || customer.email}
+            description={
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${STATUS_CHIP[customer.status ?? ''] ?? 'bg-muted text-muted-foreground'}`}>
+                <span className={`size-1.5 rounded-full ${STATUS_DOT[customer.status ?? ''] ?? 'bg-md-outline'}`} aria-hidden="true" />
+                {statusLabel(customer.status ?? '')}
+              </span>
+            }
+            actions={
+              <>
+                <Button variant="outline" onClick={() => { setNewPwd(''); setPwdError(''); setPwdOpen(true); }}>
                   <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>{t('resetPassword')}</span>
                 </Button>
                 <Button variant="outline" onClick={openEdit}>
                   <span>{tCommon('edit')}</span>
                 </Button>
-              </div>
+              </>
+            }
+          />
+
+          {/* ── Customer Info Card ── */}
+          <Card className="rounded-xl border bg-card animate-slide-up" style={{ animationDelay: '40ms' }}>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base font-600 text-muted-foreground uppercase tracking-wide">
+                {t('customerInfo')}
+              </CardTitle>
             </CardHeader>
 
             <CardContent>
@@ -344,7 +381,7 @@ export default function CustomerDetail() {
                 {[
                   { label: t('email'), value: customer.email },
                   { label: t('nickname'), value: customer.nickname || '—' },
-                  { label: t('colCreatedAt'), value: formatDate(customer.created_at) },
+                  { label: t('colCreatedAt'), value: fmt.dateTime(customer.created_at) },
                   { label: 'ID', value: String(customer.id ?? '—') },
                 ].map((item, i) => (
                   <div key={i} className="animate-slide-up" style={{ animationDelay: `${60 + i * 40}ms` }}>
@@ -358,20 +395,17 @@ export default function CustomerDetail() {
           {/* ── Subscriptions Card ── */}
           <Card className="rounded-xl border bg-card animate-slide-up" style={{ animationDelay: '80ms' }}>
             <CardHeader className="flex flex-row items-center justify-between pb-4">
-              <div className="space-y-0.5">
-                <p className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
-                  {t('subscriptions')}
-                </p>
-                <CardTitle className="font-display text-xl font-600 text-foreground">
-                  {subscriptions.length > 0 && (
-                    <span className="font-display text-3xl font-700 text-foreground mr-1">
-                      {subscriptions.length}
-                    </span>
-                  )}
+              <div className="flex items-baseline gap-2">
+                <CardTitle className="font-display text-base font-600 text-muted-foreground uppercase tracking-wide">
                   {t('subscriptions')}
                 </CardTitle>
+                {subscriptions.length > 0 && (
+                  <span className="font-display text-2xl font-700 text-foreground">
+                    {subscriptions.length}
+                  </span>
+                )}
               </div>
-              <Button onClick={() => setSubOpen(true)}>
+              <Button onClick={() => { setSubError(''); setSubOpen(true); }}>
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 <span>{t('createSubscription')}</span>
               </Button>
@@ -435,7 +469,26 @@ export default function CustomerDetail() {
                               </TooltipTrigger>
                               <TooltipContent>{t('copyToken')}</TooltipContent>
                             </Tooltip>
-                            {copiedId === sub.id && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  onClick={() => copySubLink(sub)}
+                                  aria-label={t('copySubLink')}
+                                  className="text-muted-foreground hover:text-foreground"
+                                >
+                                  <Link className="h-3 w-3" aria-hidden="true" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{t('copySubLink')}</TooltipContent>
+                            </Tooltip>
+                            {copied && lastCopiedSubId === sub.id && lastCopiedType === 'token' && (
+                              <span className="text-xs font-500 text-md-tertiary animate-fade-in">
+                                {t('copied')}
+                              </span>
+                            )}
+                            {copied && lastCopiedSubId === sub.id && lastCopiedType === 'link' && (
                               <span className="text-xs font-500 text-md-tertiary animate-fade-in">
                                 {t('copied')}
                               </span>
@@ -462,7 +515,9 @@ export default function CustomerDetail() {
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm text-foreground">{formatDate(sub.expires_at)}</TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          {fmt.date(sub.expires_at)}
+                        </TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${STATUS_CHIP[sub.status ?? ''] ?? 'bg-muted text-muted-foreground'}`}>
                             <span className={`size-1.5 rounded-full ${STATUS_DOT[sub.status ?? ''] ?? 'bg-md-outline'}`} aria-hidden="true" />
@@ -511,7 +566,7 @@ export default function CustomerDetail() {
         </>
       )}
       {/* ── Edit Customer Dialog ── */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      <Dialog open={editOpen} onOpenChange={(o) => { setEditOpen(o); if (!o) setEditError(''); }}>
         <DialogContent size="sm" pending={saving}>
           <DialogHeader>
             <DialogTitle className="font-display text-lg font-600 text-foreground">
@@ -549,7 +604,10 @@ export default function CustomerDetail() {
                 <p className="text-xs text-md-error">{t('statusBlockWarning')}</p>
               )}
             </div>
-            <button type="submit" className="sr-only" aria-hidden="true" tabIndex={-1} />
+            {editError && (
+              <p className="text-xs text-md-error" role="alert">{editError}</p>
+            )}
+            <button type="submit" className="sr-only" tabIndex={-1} />
           </form>
           <DialogFooter className="gap-2 pt-2">
             <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
@@ -563,7 +621,7 @@ export default function CustomerDetail() {
       </Dialog>
 
       {/* ── Reset Password Dialog ── */}
-      <Dialog open={pwdOpen} onOpenChange={setPwdOpen}>
+      <Dialog open={pwdOpen} onOpenChange={(o) => { setPwdOpen(o); if (!o) setPwdError(''); }}>
         <DialogContent size="sm" pending={savingPwd}>
           <DialogHeader>
             <DialogTitle className="font-display text-lg font-600 text-foreground">
@@ -587,7 +645,10 @@ export default function CustomerDetail() {
               autoFocus
               passwordToggleLabel={t('togglePasswordVisibility')}
             />
-            <button type="submit" className="sr-only" aria-hidden="true" tabIndex={-1} />
+            {pwdError && (
+              <p className="text-xs text-md-error" role="alert">{pwdError}</p>
+            )}
+            <button type="submit" className="sr-only" tabIndex={-1} />
           </form>
           <DialogFooter className="gap-2 pt-2">
             <Button variant="outline" onClick={() => setPwdOpen(false)} disabled={savingPwd}>
@@ -601,7 +662,7 @@ export default function CustomerDetail() {
       </Dialog>
 
       {/* ── Create Subscription Dialog ── */}
-      <Dialog open={subOpen} onOpenChange={setSubOpen}>
+      <Dialog open={subOpen} onOpenChange={(o) => { setSubOpen(o); if (!o) setSubError(''); }}>
         <DialogContent size="sm" pending={creatingSub}>
           <DialogHeader>
             <DialogTitle className="font-display text-lg font-600 text-foreground">
@@ -621,6 +682,9 @@ export default function CustomerDetail() {
                 ))}
               </SelectContent>
             </Select>
+            {subError && (
+              <p className="text-xs text-md-error" role="alert">{subError}</p>
+            )}
           </div>
           <DialogFooter className="gap-2 pt-2">
             <Button variant="outline" onClick={() => setSubOpen(false)} disabled={creatingSub}>
@@ -643,6 +707,7 @@ export default function CustomerDetail() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={resettingToken}>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
+              destructive
               onClick={(e) => { e.preventDefault(); confirmResetToken(); }}
               loading={resettingToken}
               loadingLabel={tCommon('saving')}
@@ -673,7 +738,35 @@ export default function CustomerDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-    </TooltipProvider>
+
+      {/* ── Block/Suspend Status Confirm (P2) ── */}
+      <AlertDialog open={blockConfirmOpen} onOpenChange={(o) => { if (!o) { setBlockConfirmOpen(false); setPendingEditPayload(null); } }}>
+        <AlertDialogContent pending={saving}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('blockStatusConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('blockStatusConfirmDesc', { email: customer?.email ?? '', status: pendingEditPayload?.status ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              onClick={(e) => {
+                e.preventDefault();
+                if (pendingEditPayload) {
+                  setBlockConfirmOpen(false);
+                  executeEdit(pendingEditPayload.nickname, pendingEditPayload.status);
+                }
+              }}
+              loading={saving}
+              loadingLabel={tCommon('saving')}
+            >
+              {tCommon('confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </PageContainer>
   );
 }

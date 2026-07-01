@@ -4,8 +4,11 @@ import { AdminService } from '@/src/generated/client';
 import type { model_NodeStatusCheck } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
+import { useFormat } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 import {
   RefreshCw, Activity, WifiOff, Wifi, X, ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
@@ -47,9 +50,9 @@ function pctColor(v: number | null | undefined): string {
   return 'text-foreground';
 }
 
-/** Mini bar indicator for pct columns. `sevText` is an already-translated
+/** Mini bar indicator for pct columns. `sevLabel` is an already-translated
  *  severity word ('' when normal) so screen readers get the colour semantics. */
-function PctBar({ v, sevText }: { v: number | null | undefined; sevText?: string }) {
+function PctBar({ v, sevLabel }: { v: number | null | undefined; sevLabel?: string }) {
   if (v == null) return <span className="text-muted-foreground">—</span>;
   const fill =
     v >= CPU_CRIT
@@ -57,7 +60,7 @@ function PctBar({ v, sevText }: { v: number | null | undefined; sevText?: string
       : v >= CPU_WARN
       ? 'bg-[hsl(43_96%_50%)]'
       : 'bg-md-tertiary';
-  const label = sevText ? `${pct(v)} ${sevText}` : pct(v);
+  const label = sevLabel ? `${pct(v)} ${sevLabel}` : pct(v);
   return (
     <span className="inline-flex flex-col items-end gap-0.5 min-w-[3.5rem]" aria-label={label}>
       <span className={`text-xs tabular-nums ${pctColor(v)}`} aria-hidden="true">{pct(v)}</span>
@@ -141,6 +144,7 @@ function SortableHead({
 export default function NodeStatusPage() {
   const t = useTranslations('nodeStatus');
   const tCommon = useTranslations('common');
+  const fmt = useFormat();
   const [data, setData] = useState<model_NodeStatusCheck[]>([]);
   const [loading, setLoading] = useState(true);     // full-table skeleton (first load only)
   const [refreshing, setRefreshing] = useState(false); // silent background poll
@@ -243,59 +247,102 @@ export default function NodeStatusPage() {
     filterRefs.current[next]?.focus();
   };
 
+  // Translated severity word for PctBar accessible labels.
+  // Defined before return to follow React component conventions.
+  function sevText(v: number | null | undefined): string {
+    if (v == null) return '';
+    if (v >= CPU_CRIT) return t('loadCritical');
+    if (v >= CPU_WARN) return t('loadWarning');
+    return '';
+  }
+
+  const isBusy = loading || refreshing;
+
   return (
-    <div className="space-y-6 animate-fade-in">
+    <PageContainer>
 
       {/* ── Page header ── */}
-      <div className="flex flex-col gap-1 animate-slide-up">
-        <h1 className="font-display text-2xl font-600 tracking-tight text-foreground">
-          {t('title')}
-        </h1>
-        {/* Reserve height to avoid CLS before data arrives */}
-        <p className="text-sm text-muted-foreground min-h-5">
-          {data.length > 0
+      <PageHeader
+        icon={<Activity />}
+        accent="secondary"
+        title={t('title')}
+        description={
+          data.length > 0
             ? t('summaryLine', { total: data.length, online: onlineCount, offline: offlineCount })
-            : !loading && t('monitoringHint')}
-        </p>
-      </div>
-
-      {/* ── Summary stat chips (live region: announces count changes on poll) ── */}
-      {data.length > 0 && (
-        <div
-          className="flex flex-wrap gap-3 animate-slide-up"
-          style={{ animationDelay: '40ms' }}
-          aria-live="polite"
-        >
-          {/* Total */}
-          <div className="flex items-center gap-2 rounded-xl bg-card border px-4 py-2.5 elevation-1">
-            <Activity className="size-4 text-md-primary" aria-hidden="true" />
-            <span className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('statTotal')}</span>
-            <span className="font-display text-base font-700 text-foreground">{data.length}</span>
-          </div>
-          {/* Online */}
-          <div className="flex items-center gap-2 rounded-xl bg-md-tertiary-container border-0 px-4 py-2.5">
-            <Wifi className="size-4 text-md-tertiary" aria-hidden="true" />
-            <span className="text-xs font-500 text-md-on-tertiary-container uppercase tracking-wide">{t('statOnline')}</span>
-            <span className="font-display text-base font-700 text-md-on-tertiary-container">{onlineCount}</span>
-          </div>
-          {/* Offline — always rendered to avoid toolbar layout shift; zero-state is muted */}
-          <div
-            className={[
-              'flex items-center gap-2 rounded-xl border-0 px-4 py-2.5',
-              offlineCount > 0 ? 'bg-md-error-container' : 'bg-muted',
-            ].join(' ')}
+            : !loading
+            ? t('monitoringHint')
+            : undefined
+        }
+        actions={
+          <Button
+            variant="outline"
+            onClick={() => load({ silent: data.length > 0 })}
+            disabled={isBusy}
+            aria-busy={isBusy}
+            aria-label={tCommon('refresh')}
+            className="min-h-12 gap-1.5 text-sm font-500"
           >
-            <WifiOff
-              className={`size-4 ${offlineCount > 0 ? 'text-md-error' : 'text-muted-foreground'}`}
-              aria-hidden="true"
-            />
-            <span className={`text-xs font-500 uppercase tracking-wide ${offlineCount > 0 ? 'text-md-on-error-container' : 'text-muted-foreground'}`}>{t('statOffline')}</span>
-            <span className={`font-display text-base font-700 ${offlineCount > 0 ? 'text-md-on-error-container' : 'text-muted-foreground'}`}>{offlineCount}</span>
+            {/* Only show the RefreshCw icon when not busy; busy state shows the
+                inline spinner from the toolbar timestamp area instead. */}
+            {!isBusy && <RefreshCw className="h-4 w-4" aria-hidden="true" />}
+            {isBusy && (
+              <span
+                className="inline-block size-4 rounded-full border-2 border-md-primary-container border-t-md-primary animate-spin"
+                aria-hidden="true"
+              />
+            )}
+            {tCommon('refresh')}
+          </Button>
+        }
+      />
+
+      {/* ── Summary stat chips ── */}
+      {/* A single hidden sr-only live region announces the summary on each poll,
+          avoiding the noisy per-element announcement from wrapping all chips. */}
+      {data.length > 0 && (
+        <>
+          <span
+            className="sr-only"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {t('summaryLine', { total: data.length, online: onlineCount, offline: offlineCount })}
+          </span>
+          <div
+            className="flex flex-wrap gap-3 animate-slide-up"
+            style={{ animationDelay: '40ms' }}
+          >
+            {/* Total */}
+            <div className="flex items-center gap-2 rounded-xl bg-card border px-4 py-2.5 elevation-1">
+              <Activity className="size-4 text-md-primary" aria-hidden="true" />
+              <span className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('statTotal')}</span>
+              <span className="font-display text-base font-700 text-foreground">{data.length}</span>
+            </div>
+            {/* Online */}
+            <div className="flex items-center gap-2 rounded-xl bg-md-tertiary-container border-0 px-4 py-2.5">
+              <Wifi className="size-4 text-md-tertiary" aria-hidden="true" />
+              <span className="text-xs font-500 text-md-on-tertiary-container uppercase tracking-wide">{t('statOnline')}</span>
+              <span className="font-display text-base font-700 text-md-on-tertiary-container">{onlineCount}</span>
+            </div>
+            {/* Offline — always rendered to avoid toolbar layout shift; zero-state is muted */}
+            <div
+              className={[
+                'flex items-center gap-2 rounded-xl border-0 px-4 py-2.5',
+                offlineCount > 0 ? 'bg-md-error-container' : 'bg-muted',
+              ].join(' ')}
+            >
+              <WifiOff
+                className={`size-4 ${offlineCount > 0 ? 'text-md-error' : 'text-muted-foreground'}`}
+                aria-hidden="true"
+              />
+              <span className={`text-xs font-500 uppercase tracking-wide ${offlineCount > 0 ? 'text-md-on-error-container' : 'text-muted-foreground'}`}>{t('statOffline')}</span>
+              <span className={`font-display text-base font-700 ${offlineCount > 0 ? 'text-md-on-error-container' : 'text-muted-foreground'}`}>{offlineCount}</span>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* ── Toolbar: filter radiogroup + last-updated + refresh ── */}
+      {/* ── Toolbar: filter radiogroup + last-updated ── */}
       <div
         className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 animate-slide-up"
         style={{ animationDelay: '80ms' }}
@@ -329,43 +376,31 @@ export default function NodeStatusPage() {
               >
                 <span>
                   {t(`filter${f.charAt(0).toUpperCase() + f.slice(1)}`)}
-                  {f !== 'all' && ` (${count})`}
+                  {` (${count})`}
                 </span>
               </button>
             );
           })}
         </div>
 
-        <div className="flex items-center gap-3">
-          {lastUpdated && (
-            <span
-              className={[
-                'inline-flex items-center gap-1.5 text-xs',
-                isStale ? 'text-[hsl(38_92%_42%)] dark:text-[hsl(43_96%_62%)]' : 'text-muted-foreground',
-              ].join(' ')}
-              aria-live="polite"
-            >
-              {refreshing && (
-                <span
-                  className="inline-block size-3 rounded-full border-2 border-md-primary-container border-t-md-primary animate-spin"
-                  aria-hidden="true"
-                />
-              )}
-              {isStale && <span className="size-1.5 rounded-full bg-[hsl(43_96%_50%)] shrink-0" aria-hidden="true" />}
-              {isStale ? t('staleUpdated', { time: updatedLabel }) : updatedLabel}
-            </span>
-          )}
-          <Button
-            variant="outline"
-            onClick={() => load({ silent: data.length > 0 })}
-            loading={loading || refreshing}
-            aria-label={tCommon('refresh')}
-            className="min-h-12 gap-1.5 text-sm font-500"
+        {/* Last-updated timestamp */}
+        {lastUpdated && (
+          <span
+            className={[
+              'inline-flex items-center gap-1.5 text-xs',
+              isStale ? 'text-[hsl(38_92%_42%)] dark:text-[hsl(43_96%_62%)]' : 'text-muted-foreground',
+            ].join(' ')}
           >
-            <RefreshCw className={`h-4 w-4 ${(loading || refreshing) ? 'animate-spin' : ''}`} aria-hidden="true" />
-            {tCommon('refresh')}
-          </Button>
-        </div>
+            {refreshing && (
+              <span
+                className="inline-block size-3 rounded-full border-2 border-md-primary-container border-t-md-primary animate-spin"
+                aria-hidden="true"
+              />
+            )}
+            {isStale && <span className="size-1.5 rounded-full bg-[hsl(43_96%_50%)] shrink-0" aria-hidden="true" />}
+            {isStale ? t('staleUpdated', { time: updatedLabel }) : updatedLabel}
+          </span>
+        )}
       </div>
 
       {/* ── Error banner (assertive, dismissible, with retry) ── */}
@@ -382,7 +417,7 @@ export default function NodeStatusPage() {
             onClick={() => load({ silent: data.length > 0 })}
             className="shrink-0 -my-1 text-md-on-error-container hover:text-md-on-error-container"
           >
-            {tCommon('reset')}
+            {tCommon('retry')}
           </Button>
           <Button
             variant="ghost"
@@ -450,7 +485,7 @@ export default function NodeStatusPage() {
               ) : (
                 filtered.map((n, i) => (
                   <TableRow
-                    key={n.mac ?? n.hostname}
+                    key={n.mac ?? (n.hostname ? `hostname-${n.hostname}` : `idx-${i}`)}
                     className="border-b border-md-outline-variant/50 animate-slide-up hover:bg-transparent"
                     style={{ animationDelay: `${i * 30}ms` }}
                   >
@@ -464,13 +499,13 @@ export default function NodeStatusPage() {
                       <StatusChip status={n.status} />
                     </TableCell>
                     <TableCell className="py-3 text-right">
-                      <PctBar v={n.cpu_pct} sevText={sevText(n.cpu_pct)} />
+                      <PctBar v={n.cpu_pct} sevLabel={sevText(n.cpu_pct)} />
                     </TableCell>
                     <TableCell className="py-3 text-right">
-                      <PctBar v={n.mem_pct} sevText={sevText(n.mem_pct)} />
+                      <PctBar v={n.mem_pct} sevLabel={sevText(n.mem_pct)} />
                     </TableCell>
                     <TableCell className="py-3 text-right">
-                      <PctBar v={n.disk_pct} sevText={sevText(n.disk_pct)} />
+                      <PctBar v={n.disk_pct} sevLabel={sevText(n.disk_pct)} />
                     </TableCell>
                     <TableCell className="py-3 text-xs text-muted-foreground hidden md:table-cell">
                       {formatUptime(n.uptime_sec)}
@@ -482,8 +517,11 @@ export default function NodeStatusPage() {
                         </span>
                       ) : '—'}
                     </TableCell>
-                    <TableCell className="py-3 text-xs text-muted-foreground hidden lg:table-cell">
-                      {n.checked_at ? new Date(n.checked_at + 'Z').toLocaleString() : '—'}
+                    <TableCell
+                      className="py-3 text-xs text-muted-foreground hidden lg:table-cell"
+                      title={n.checked_at ? fmt.dateTime(n.checked_at + 'Z') : undefined}
+                    >
+                      {n.checked_at ? fmt.relative(n.checked_at + 'Z') : '—'}
                     </TableCell>
                   </TableRow>
                 ))
@@ -493,14 +531,6 @@ export default function NodeStatusPage() {
         </CardContent>
       </Card>
 
-    </div>
+    </PageContainer>
   );
-
-  // Translated severity word for PctBar accessible labels.
-  function sevText(v: number | null | undefined): string {
-    if (v == null) return '';
-    if (v >= CPU_CRIT) return t('loadCritical');
-    if (v >= CPU_WARN) return t('loadWarning');
-    return '';
-  }
 }

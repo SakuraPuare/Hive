@@ -1,15 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { model_Node } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Server, Wifi, WifiOff, CalendarPlus, Globe, Activity, AlertTriangle, Info } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Server, Wifi, WifiOff, CalendarPlus, Globe, Activity, AlertTriangle, Info, LayoutDashboard } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useLocale } from '@/lib/locale';
+import { useFormat } from '@/lib/format';
 
 // M3 token recipes per card variant — no raw palette colors
 type CardVariant = 'total' | 'online' | 'offline' | 'new';
@@ -26,11 +29,13 @@ interface StatsCardProps {
   icon: React.ElementType;
   variant: CardVariant;
   delay?: number;
+  href?: string;
+  ariaLabel?: string;
 }
 
-function StatsCard({ title, value, icon: Icon, variant, delay = 0 }: StatsCardProps) {
+function StatsCard({ title, value, icon: Icon, variant, delay = 0, href, ariaLabel }: StatsCardProps) {
   const { iconBg, iconColor } = CARD_VARIANT_STYLES[variant];
-  return (
+  const card = (
     <Card
       className="animate-slide-up bg-card border rounded-xl"
       style={{ animationDelay: `${delay}ms` }}
@@ -46,21 +51,25 @@ function StatsCard({ title, value, icon: Icon, variant, delay = 0 }: StatsCardPr
       </CardContent>
     </Card>
   );
-}
 
-function formatDate(s: string | undefined | null, locale: string, noData: string) {
-  if (!s) return noData;
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  if (href) {
+    return (
+      <Link
+        href={href}
+        aria-label={ariaLabel}
+        className="block rounded-xl hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary cursor-pointer transition-opacity"
+      >
+        {card}
+      </Link>
+    );
+  }
+
+  return card;
 }
 
 // §10 status color recipes — M3 token roles only, no raw palette
-function getStatusBadge(probeStatus: string | undefined, label: string) {
+// visibleLabel: translated chip text; label: full aria-label sentence
+function getStatusBadge(probeStatus: string | undefined, label: string, visibleLabel: string) {
   if (probeStatus === 'online')
     return (
       <span
@@ -68,7 +77,7 @@ function getStatusBadge(probeStatus: string | undefined, label: string) {
         aria-label={label}
         className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-md-tertiary-container text-md-on-tertiary-container"
       >
-        <span aria-hidden="true" className="size-1.5 rounded-full bg-md-tertiary" />Online
+        <span aria-hidden="true" className="size-1.5 rounded-full bg-md-tertiary" />{visibleLabel}
       </span>
     );
   if (probeStatus === 'offline')
@@ -78,7 +87,7 @@ function getStatusBadge(probeStatus: string | undefined, label: string) {
         aria-label={label}
         className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-md-error-container text-md-on-error-container"
       >
-        <span aria-hidden="true" className="size-1.5 rounded-full bg-md-error" />Offline
+        <span aria-hidden="true" className="size-1.5 rounded-full bg-md-error" />{visibleLabel}
       </span>
     );
   return (
@@ -87,7 +96,7 @@ function getStatusBadge(probeStatus: string | undefined, label: string) {
       aria-label={label}
       className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-muted text-muted-foreground"
     >
-      <span aria-hidden="true" className="size-1.5 rounded-full bg-md-outline" />Unknown
+      <span aria-hidden="true" className="size-1.5 rounded-full bg-md-outline" />{visibleLabel}
     </span>
   );
 }
@@ -97,23 +106,45 @@ export default function Dashboard() {
   const tCommon = useTranslations('common');
   const tNav = useTranslations('nav');
   const tNodes = useTranslations('nodes');
-  const { locale } = useLocale();
+  const fmt = useFormat();
   const router = useRouter();
   const [nodes, setNodes] = useState<model_Node[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  // Track when the tab was hidden so we can trigger a refresh on re-focus
+  const hiddenAt = useRef<number | null>(null);
 
   const loadNodes = useCallback(() => {
     setLoading(true);
     setError(null);
     sessionApi(AdminService.nodesList({}))
-      .then((res) => setNodes(res ?? []))
+      .then((res) => {
+        setNodes(res ?? []);
+        setLastUpdatedAt(new Date());
+      })
       .catch((e) => setError(e))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     loadNodes();
+  }, [loadNodes]);
+
+  // Refresh when the tab becomes visible after being hidden for >30 s
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenAt.current = Date.now();
+      } else {
+        if (hiddenAt.current !== null && Date.now() - hiddenAt.current > 30_000) {
+          loadNodes();
+        }
+        hiddenAt.current = null;
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [loadNodes]);
 
   const onlineCount = useMemo(
@@ -144,33 +175,42 @@ export default function Dashboard() {
       .slice(0, 10);
   }, [nodes, oneWeekAgo]);
 
-  const onlinePct = nodes.length > 0 ? (onlineCount / nodes.length) * 100 : 0;
-  // Threshold encoding (information, not decoration): <60% critical, otherwise healthy
-  const isLowHealth = nodes.length > 0 && onlinePct < 60;
-  const onlineFillClass = isLowHealth ? 'bg-md-error' : 'bg-md-tertiary';
-  const onlinePctTextClass = isLowHealth ? 'text-md-error' : 'text-md-tertiary';
+  // Wrap inline derivations in a single useMemo for consistency with the rest of the component
+  const { onlinePct, isLowHealth, onlineFillClass, onlinePctTextClass } = useMemo(() => {
+    const pct = nodes.length > 0 ? (onlineCount / nodes.length) * 100 : 0;
+    const lowHealth = nodes.length > 0 && pct < 60;
+    return {
+      onlinePct: pct,
+      isLowHealth: lowHealth,
+      onlineFillClass: lowHealth ? 'bg-md-error' : 'bg-md-tertiary',
+      onlinePctTextClass: lowHealth ? 'text-md-error' : 'text-md-tertiary',
+    };
+  }, [onlineCount, nodes.length]);
 
   return (
-    <TooltipProvider>
-    <div className="space-y-6 animate-fade-in">
-      {/* Page header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">
-            {tNav('dashboard')}
-          </h1>
-          <p className="text-sm text-muted-foreground">{t('subtitle') || 'Node fleet overview'}</p>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={loadNodes}
-          loading={loading}
-          aria-label={tCommon('refresh')}
-        >
-          {tCommon('refresh')}
-        </Button>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={<LayoutDashboard />}
+        title={tNav('dashboard')}
+        description={t('subtitle')}
+        actions={
+          <div className="flex items-center gap-3">
+            {lastUpdatedAt && (
+              <span className="text-xs text-muted-foreground" aria-live="polite">
+                {t('lastUpdated', { time: fmt.dateTime(lastUpdatedAt) })}
+              </span>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadNodes}
+              loading={loading}
+            >
+              {tCommon('refresh')}
+            </Button>
+          </div>
+        }
+      />
 
       {loading ? (
         /* Skeleton matching final layout to avoid CLS */
@@ -217,7 +257,7 @@ export default function Dashboard() {
         </Card>
       ) : (
         <>
-          {/* Stat cards — staggered entrance */}
+          {/* Stat cards — staggered entrance, each links to a filtered node list */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatsCard
               title={t('totalNodes')}
@@ -225,6 +265,8 @@ export default function Dashboard() {
               icon={Server}
               variant="total"
               delay={0}
+              href="/nodes"
+              ariaLabel={t('viewTotalNodes', { count: nodes.length })}
             />
             <StatsCard
               title={t('onlineNodes')}
@@ -232,6 +274,8 @@ export default function Dashboard() {
               icon={Wifi}
               variant="online"
               delay={60}
+              href="/nodes?status=online"
+              ariaLabel={t('viewOnlineNodes', { count: onlineCount })}
             />
             <StatsCard
               title={t('offlineNodes')}
@@ -239,6 +283,8 @@ export default function Dashboard() {
               icon={WifiOff}
               variant="offline"
               delay={120}
+              href="/nodes?status=offline"
+              ariaLabel={t('viewOfflineNodes', { count: offlineCount })}
             />
             <StatsCard
               title={t('newThisWeek')}
@@ -246,6 +292,8 @@ export default function Dashboard() {
               icon={CalendarPlus}
               variant="new"
               delay={180}
+              href="/nodes?within=7d"
+              ariaLabel={t('viewNewNodes', { count: recentNodes.length })}
             />
           </div>
 
@@ -259,7 +307,7 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Activity aria-hidden="true" className="h-4 w-4" />
-                    <span className="text-sm font-500">{t('onlineRate') || 'Online Rate'}</span>
+                    <span className="text-sm font-500">{t('onlineRate')}</span>
                   </div>
                   <span className={`font-display text-sm font-600 ${onlinePctTextClass}`}>
                     {onlinePct.toFixed(1)}%
@@ -326,7 +374,7 @@ export default function Dashboard() {
                   )}
                 </div>
               ) : (
-                <Table aria-label={t('recentlyRegistered')}>
+                <Table>
                   <TableCaption className="sr-only">{t('recentlyRegistered')}</TableCaption>
                   <TableHeader>
                     <TableRow className="border-b border-border">
@@ -337,7 +385,7 @@ export default function Dashboard() {
                         {tNodes('colLocation')}
                       </TableHead>
                       <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
-                        {tNodes('colStatus') || 'Status'}
+                        {tNodes('colStatus')}
                       </TableHead>
                       <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
                         {tNodes('colTailscaleIp')}
@@ -349,66 +397,66 @@ export default function Dashboard() {
                   </TableHeader>
                   <TableBody>
                     {recentNodes.map((n, i) => {
-                      const goToDetail = () =>
-                        router.push('/nodes/detail?mac=' + encodeURIComponent(n.mac || ''));
-                      const statusLabel =
-                        n.probe_status === 'online'
-                          ? t('statusAria', { status: tNodes('statusOnline') })
-                          : n.probe_status === 'offline'
-                            ? t('statusAria', { status: tNodes('statusOffline') })
-                            : t('statusAria', { status: tNodes('statusUnknown') });
+                      const detailHref = '/nodes/detail?mac=' + encodeURIComponent(n.mac || '');
+                      const isOnline = n.probe_status === 'online';
+                      const isOffline = n.probe_status === 'offline';
+                      const statusVisibleLabel = isOnline
+                        ? tNodes('statusOnline')
+                        : isOffline
+                          ? tNodes('statusOffline')
+                          : tNodes('statusUnknown');
+                      const statusLabel = t('statusAria', { status: statusVisibleLabel });
                       return (
-                      <TableRow
-                        key={n.mac}
-                        role="link"
-                        tabIndex={0}
-                        aria-label={t('viewNodeDetail', { name: n.hostname || n.mac || '' })}
-                        onClick={goToDetail}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            goToDetail();
-                          }
-                        }}
-                        className="hover-state cursor-pointer border-b border-border/60 last:border-0 animate-slide-up focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-inset"
-                        style={{ animationDelay: `${300 + i * 40}ms` }}
-                      >
-                        <TableCell className="font-500 text-foreground">
-                          {n.hostname || tCommon('noData')}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Globe aria-hidden="true" className="h-3.5 w-3.5" />
-                            <span className="text-sm">{n.location || tCommon('noData')}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5">
-                            {getStatusBadge(n.probe_status, statusLabel)}
-                            {n.probe_status !== 'online' && n.probe_status !== 'offline' && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    aria-label={t('unknownStatusHint')}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary rounded-full"
-                                  >
-                                    <Info aria-hidden="true" className="h-3.5 w-3.5" />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>{t('unknownStatusHint')}</TooltipContent>
-                              </Tooltip>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {n.tailscale_ip || tCommon('noData')}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDate(n.registered_at, locale, tCommon('noData'))}
-                        </TableCell>
-                      </TableRow>
+                        <TableRow
+                          key={n.mac}
+                          className="border-b border-border/60 last:border-0 animate-slide-up"
+                          style={{ animationDelay: `${300 + i * 40}ms` }}
+                        >
+                          <TableCell className="font-500 text-foreground">
+                            <Link
+                              href={detailHref}
+                              aria-label={t('viewNodeDetail', { name: n.hostname || n.mac || '' })}
+                              className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary rounded"
+                            >
+                              {n.hostname || tCommon('noData')}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5 text-muted-foreground">
+                              <Globe aria-hidden="true" className="h-3.5 w-3.5" />
+                              <span className="text-sm">{n.location || tCommon('noData')}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              {getStatusBadge(n.probe_status, statusLabel, statusVisibleLabel)}
+                              {n.probe_status !== 'online' && n.probe_status !== 'offline' && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      aria-label={t('unknownStatusHint')}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onKeyDown={(e) => e.stopPropagation()}
+                                      className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary rounded-full"
+                                    >
+                                      <Info aria-hidden="true" className="h-3.5 w-3.5" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{t('unknownStatusHint')}</TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {n.tailscale_ip || tCommon('noData')}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            <span title={fmt.dateTime(n.registered_at)}>
+                              {fmt.relative(n.registered_at, tCommon('noData'))}
+                            </span>
+                          </TableCell>
+                        </TableRow>
                       );
                     })}
                   </TableBody>
@@ -418,7 +466,6 @@ export default function Dashboard() {
           </Card>
         </>
       )}
-    </div>
-    </TooltipProvider>
+    </PageContainer>
   );
 }

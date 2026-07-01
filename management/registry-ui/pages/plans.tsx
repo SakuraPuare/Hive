@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useId, useState } from 'react';
 import { AdminService } from '@/src/generated/client';
 import type { model_Plan, model_Line } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
@@ -41,11 +41,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Loader2, MoreVertical, AlertTriangle } from 'lucide-react';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
+import { Loader2, MoreVertical, AlertTriangle, Package, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useCurrentUser } from '@/lib/auth';
 import { useRouter } from 'next/router';
-
 
 function formatTraffic(bytes: number, t: ReturnType<typeof useTranslations>): string {
   if (bytes === 0) return t('unlimited');
@@ -56,40 +57,176 @@ function formatPrice(cents: number, t: ReturnType<typeof useTranslations>): stri
   return `${(cents / 100).toFixed(2)} ${t('yuan')}`;
 }
 
-export default function PlansPage() {
+// ── Shared form field layout helpers ──────────────────────────────────────────
+
+type PlanFormValues = {
+  formName: string;
+  formTraffic: string;
+  formSpeed: string;
+  formDevices: string;
+  formDuration: string;
+  formPrice: string;
+  formOrder: string;
+  formEnabled: boolean;
+};
+
+type PlanFormHandlers = PlanFormValues & {
+  setFormName: (v: string) => void;
+  setFormTraffic: (v: string) => void;
+  setFormSpeed: (v: string) => void;
+  setFormDevices: (v: string) => void;
+  setFormDuration: (v: string) => void;
+  setFormPrice: (v: string) => void;
+  setFormOrder: (v: string) => void;
+  setFormEnabled: (v: boolean) => void;
+  saving: boolean;
+  formError: string;
+  invalidFields: Set<string>;
+  handleSave: () => void;
+  onClose: () => void;
+  idPrefix: string;
+};
+
+function PlanFormFields({
+  idPrefix,
+  formName, setFormName,
+  formTraffic, setFormTraffic,
+  formSpeed, setFormSpeed,
+  formDevices, setFormDevices,
+  formDuration, setFormDuration,
+  formPrice, setFormPrice,
+  formOrder, setFormOrder,
+  formEnabled, setFormEnabled,
+  saving,
+  formError,
+  invalidFields,
+  handleSave,
+  onClose,
+}: PlanFormHandlers) {
   const t = useTranslations('plans');
   const tCommon = useTranslations('common');
-  const router = useRouter();
+
+  return (
+    <>
+      <form
+        onSubmit={(e) => { e.preventDefault(); handleSave(); }}
+        className="grid gap-5"
+      >
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-name`} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+            {t('planName')} <span className="text-md-error" aria-hidden="true">*</span>
+          </Label>
+          <Input
+            id={`${idPrefix}-name`}
+            autoFocus
+            required
+            aria-required="true"
+            aria-invalid={invalidFields.has('name') || undefined}
+            value={formName}
+            onChange={(e) => setFormName(e.target.value)}
+            className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${idPrefix}-traffic`} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('trafficLimit')} ({t('gb')})</Label>
+            <Input id={`${idPrefix}-traffic`} type="number" min="0" step="0.1" inputMode="decimal"
+              aria-describedby={`${idPrefix}-traffic-hint`} aria-invalid={invalidFields.has('traffic') || undefined}
+              value={formTraffic} onChange={(e) => setFormTraffic(e.target.value)}
+              className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
+            <span id={`${idPrefix}-traffic-hint`} className="sr-only">{t('gb')}</span>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${idPrefix}-speed`} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('speedLimit')} ({t('mbps')})</Label>
+            <Input id={`${idPrefix}-speed`} type="number" min="0" step="1" inputMode="numeric"
+              aria-describedby={`${idPrefix}-speed-hint`} aria-invalid={invalidFields.has('speed') || undefined}
+              value={formSpeed} onChange={(e) => setFormSpeed(e.target.value)}
+              className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
+            <span id={`${idPrefix}-speed-hint`} className="sr-only">{t('mbps')}</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${idPrefix}-devices`} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('deviceLimit')}</Label>
+            <Input id={`${idPrefix}-devices`} type="number" min="1" step="1" inputMode="numeric"
+              aria-invalid={invalidFields.has('devices') || undefined}
+              value={formDevices} onChange={(e) => setFormDevices(e.target.value)}
+              className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${idPrefix}-duration`} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('durationDays')}</Label>
+            <Input id={`${idPrefix}-duration`} type="number" min="1" step="1" inputMode="numeric"
+              aria-invalid={invalidFields.has('duration') || undefined}
+              value={formDuration} onChange={(e) => setFormDuration(e.target.value)}
+              className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${idPrefix}-price`} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('price')} ({t('yuan')})</Label>
+            <Input id={`${idPrefix}-price`} type="number" min="0" step="0.01" inputMode="decimal"
+              aria-describedby={`${idPrefix}-price-hint`} aria-invalid={invalidFields.has('price') || undefined}
+              value={formPrice} onChange={(e) => setFormPrice(e.target.value)}
+              className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
+            <span id={`${idPrefix}-price-hint`} className="sr-only">{t('yuan')}</span>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${idPrefix}-order`} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('sortOrder')}</Label>
+            <Input id={`${idPrefix}-order`} type="number" min="0" step="1" inputMode="numeric"
+              aria-invalid={invalidFields.has('order') || undefined}
+              value={formOrder} onChange={(e) => setFormOrder(e.target.value)}
+              className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Label htmlFor={`${idPrefix}-enabled`} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colStatus')}</Label>
+          <Switch
+            id={`${idPrefix}-enabled`}
+            checked={formEnabled}
+            onCheckedChange={setFormEnabled}
+            onLabel={t('enabled')}
+            offLabel={t('disabled')}
+          />
+        </div>
+        {formError && (
+          <p role="alert" className="flex items-center gap-1.5 rounded-lg bg-md-error-container px-3 py-2 text-sm text-md-on-error-container">
+            {formError}
+          </p>
+        )}
+        {/* Hidden submit enables Enter-to-submit from any field while the visible Save lives in the sticky footer. */}
+        <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
+      </form>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>
+          {tCommon('cancel')}
+        </Button>
+        <Button
+          type="button"
+          onClick={handleSave}
+          loading={saving}
+          disabled={!formName.trim()}
+        >
+          {saving ? tCommon('saving') : tCommon('save')}
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+// ── CreatePlanDialog ───────────────────────────────────────────────────────────
+
+type CreatePlanDialogProps = {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+};
+
+function CreatePlanDialog({ open, onClose, onSaved }: CreatePlanDialogProps) {
+  const t = useTranslations('plans');
   const toast = useToast();
-  const { user, loading: authLoading } = useCurrentUser();
-  const canWrite = user?.can('subscription:write') ?? false;
+  const uid = useId();
+  const idPrefix = `${uid}-create`;
 
-  // ── Plans list ──────────────────────────────────────────────────────
-  const [plans, setPlans] = useState<model_Plan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  const loadPlans = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      setPlans(await sessionApi(AdminService.adminListPlans()));
-    } catch (e) {
-      setError(getErrorMessage(e, t('loadFailed')));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
-
-  useEffect(() => {
-    if (!authLoading && !user) { router.replace('/login'); return; }
-    if (!authLoading && user && !user.can('subscription:read')) { router.replace('/dashboard'); return; }
-    if (!authLoading && user) loadPlans();
-  }, [authLoading, user, router, loadPlans]);
-
-  // ── Create / Edit dialog ──────────────────────────────────────────
-  const [editPlan, setEditPlan] = useState<model_Plan | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
   const [formName, setFormName] = useState('');
   const [formTraffic, setFormTraffic] = useState('0');
   const [formSpeed, setFormSpeed] = useState('0');
@@ -102,29 +239,7 @@ export default function PlansPage() {
   const [formError, setFormError] = useState('');
   const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
 
-  function openCreate() {
-    setFormName(''); setFormTraffic('0'); setFormSpeed('0');
-    setFormDevices('1'); setFormDuration('30'); setFormPrice('0');
-    setFormOrder('0'); setFormEnabled(true); setFormError(''); setInvalidFields(new Set());
-    setShowCreate(true);
-  }
-
-  function openEdit(p: model_Plan) {
-    setFormName(p.name ?? '');
-    setFormTraffic(String((p.traffic_limit ?? 0) / (1024 ** 3)));
-    setFormSpeed(String(p.speed_limit ?? 0));
-    setFormDevices(String(p.device_limit ?? 0));
-    setFormDuration(String(p.duration_days ?? 0));
-    setFormPrice(String((p.price ?? 0) / 100));
-    setFormOrder(String(p.sort_order ?? 0));
-    setFormEnabled(p.enabled ?? true);
-    setFormError('');
-    setInvalidFields(new Set());
-    setEditPlan(p);
-  }
-
   async function handleSave() {
-    // ── Centralized numeric validation: reject NaN / out-of-range before POST ──
     const checks: { key: string; raw: string; min: number; integer: boolean }[] = [
       { key: 'traffic', raw: formTraffic, min: 0, integer: false },
       { key: 'speed', raw: formSpeed, min: 0, integer: true },
@@ -157,16 +272,10 @@ export default function PlansPage() {
       enabled: formEnabled,
     };
     try {
-      if (editPlan) {
-        await sessionApi(AdminService.adminUpdatePlan({ id: editPlan.id!, requestBody: body }));
-        setEditPlan(null);
-        toast.success(t('updateSuccess'));
-      } else {
-        await sessionApi(AdminService.adminCreatePlan({ requestBody: body }));
-        setShowCreate(false);
-        toast.success(t('createSuccess'));
-      }
-      loadPlans();
+      await sessionApi(AdminService.adminCreatePlan({ requestBody: body }));
+      toast.success(t('createSuccess'));
+      onClose();
+      onSaved();
     } catch (e) {
       setFormError(getErrorMessage(e, t('saveFailed')));
     } finally {
@@ -174,15 +283,184 @@ export default function PlansPage() {
     }
   }
 
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v && !saving) onClose(); }}>
+      <DialogContent
+        size="md"
+        stickyHeaderFooter
+        pending={saving}
+        className="rounded-2xl border border-border bg-popover overflow-hidden"
+      >
+        <DialogHeader>
+          <DialogTitle className="font-display text-xl font-600 text-foreground">{t('createPlan')}</DialogTitle>
+        </DialogHeader>
+        <PlanFormFields
+          idPrefix={idPrefix}
+          formName={formName} setFormName={setFormName}
+          formTraffic={formTraffic} setFormTraffic={setFormTraffic}
+          formSpeed={formSpeed} setFormSpeed={setFormSpeed}
+          formDevices={formDevices} setFormDevices={setFormDevices}
+          formDuration={formDuration} setFormDuration={setFormDuration}
+          formPrice={formPrice} setFormPrice={setFormPrice}
+          formOrder={formOrder} setFormOrder={setFormOrder}
+          formEnabled={formEnabled} setFormEnabled={setFormEnabled}
+          saving={saving}
+          formError={formError}
+          invalidFields={invalidFields}
+          handleSave={handleSave}
+          onClose={onClose}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── EditPlanDialog ─────────────────────────────────────────────────────────────
+
+type EditPlanDialogProps = {
+  plan: model_Plan | null;
+  onClose: () => void;
+  onSaved: () => void;
+};
+
+function EditPlanDialog({ plan, onClose, onSaved }: EditPlanDialogProps) {
+  const t = useTranslations('plans');
+  const toast = useToast();
+  const uid = useId();
+  const idPrefix = `${uid}-edit`;
+
+  // State initializes directly from `plan`; call site keys on plan.id so a
+  // different plan remounts fresh (React-recommended over syncing in an effect).
+  const [formName, setFormName] = useState(plan?.name ?? '');
+  const [formTraffic, setFormTraffic] = useState(String((plan?.traffic_limit ?? 0) / (1024 ** 3)));
+  const [formSpeed, setFormSpeed] = useState(String(plan?.speed_limit ?? 0));
+  const [formDevices, setFormDevices] = useState(String(Math.max(1, plan?.device_limit ?? 1)));
+  const [formDuration, setFormDuration] = useState(String(plan?.duration_days ?? 0));
+  const [formPrice, setFormPrice] = useState(String((plan?.price ?? 0) / 100));
+  const [formOrder, setFormOrder] = useState(String(plan?.sort_order ?? 0));
+  const [formEnabled, setFormEnabled] = useState(plan?.enabled ?? true);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
+
+  async function handleSave() {
+    if (!plan) return;
+    const checks: { key: string; raw: string; min: number; integer: boolean }[] = [
+      { key: 'traffic', raw: formTraffic, min: 0, integer: false },
+      { key: 'speed', raw: formSpeed, min: 0, integer: true },
+      { key: 'devices', raw: formDevices, min: 1, integer: true },
+      { key: 'duration', raw: formDuration, min: 1, integer: true },
+      { key: 'price', raw: formPrice, min: 0, integer: false },
+      { key: 'order', raw: formOrder, min: 0, integer: true },
+    ];
+    const bad = new Set<string>();
+    if (!formName.trim()) bad.add('name');
+    for (const c of checks) {
+      const n = c.integer ? parseInt(c.raw, 10) : parseFloat(c.raw);
+      if (Number.isNaN(n) || n < c.min) bad.add(c.key);
+    }
+    if (bad.size > 0) {
+      setInvalidFields(bad);
+      setFormError(t('invalidInput'));
+      return;
+    }
+    setInvalidFields(new Set());
+    setSaving(true); setFormError('');
+    const body = {
+      name: formName,
+      traffic_limit: Math.round(parseFloat(formTraffic) * (1024 ** 3)),
+      speed_limit: parseInt(formSpeed, 10),
+      device_limit: parseInt(formDevices, 10),
+      duration_days: parseInt(formDuration, 10),
+      price: Math.round(parseFloat(formPrice) * 100),
+      sort_order: parseInt(formOrder, 10),
+      enabled: formEnabled,
+    };
+    try {
+      await sessionApi(AdminService.adminUpdatePlan({ id: plan.id!, requestBody: body }));
+      toast.success(t('updateSuccess'));
+      onClose();
+      onSaved();
+    } catch (e) {
+      setFormError(getErrorMessage(e, t('saveFailed')));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!plan} onOpenChange={(v) => { if (!v && !saving) onClose(); }}>
+      <DialogContent
+        size="md"
+        stickyHeaderFooter
+        pending={saving}
+        className="rounded-2xl border border-border bg-popover overflow-hidden"
+      >
+        <DialogHeader>
+          <DialogTitle className="font-display text-xl font-600 text-foreground">{t('editPlan')}</DialogTitle>
+        </DialogHeader>
+        <PlanFormFields
+          idPrefix={idPrefix}
+          formName={formName} setFormName={setFormName}
+          formTraffic={formTraffic} setFormTraffic={setFormTraffic}
+          formSpeed={formSpeed} setFormSpeed={setFormSpeed}
+          formDevices={formDevices} setFormDevices={setFormDevices}
+          formDuration={formDuration} setFormDuration={setFormDuration}
+          formPrice={formPrice} setFormPrice={setFormPrice}
+          formOrder={formOrder} setFormOrder={setFormOrder}
+          formEnabled={formEnabled} setFormEnabled={setFormEnabled}
+          saving={saving}
+          formError={formError}
+          invalidFields={invalidFields}
+          handleSave={handleSave}
+          onClose={onClose}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────────
+
+export default function PlansPage() {
+  const t = useTranslations('plans');
+  const tCommon = useTranslations('common');
+  const router = useRouter();
+  const toast = useToast();
+  const { user, loading: authLoading } = useCurrentUser();
+  const canWrite = user?.can('subscription:write') ?? false;
+
+  // ── Plans list ──────────────────────────────────────────────────────
+  const [plans, setPlans] = useState<model_Plan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadPlans = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setPlans(await sessionApi(AdminService.adminListPlans()));
+    } catch (e) {
+      setError(getErrorMessage(e, t('loadFailed')));
+    } finally {
+      setLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (!authLoading && !user) { router.replace('/login'); return; }
+    if (!authLoading && user && !user.can('subscription:read')) { router.replace('/dashboard'); return; }
+    if (!authLoading && user) loadPlans();
+  }, [authLoading, user, router, loadPlans]);
+
+  // ── Create / Edit dialog state ────────────────────────────────────
+  const [editPlan, setEditPlan] = useState<model_Plan | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+
   // ── Delete ────────────────────────────────────────────────────────
   const [deletePlan, setDeletePlan] = useState<model_Plan | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-
-  function openDelete(p: model_Plan) {
-    setDeleteError('');
-    setDeletePlan(p);
-  }
 
   async function handleDelete() {
     if (!deletePlan) return;
@@ -265,147 +543,25 @@ export default function PlansPage() {
   }
   if (!user) return null;
 
-  // ── Form dialog content ───────────────────────────────────────────
-  const formDialog = (open: boolean, onClose: () => void, title: string) => (
-    <Dialog open={open} onOpenChange={(v) => { if (!v && !saving) onClose(); }}>
-      <DialogContent
-        size="md"
-        stickyHeaderFooter
-        pending={saving}
-        className="rounded-2xl border border-border bg-popover overflow-hidden"
-      >
-        <DialogHeader>
-          <DialogTitle className="font-display text-xl font-600 text-foreground">{title}</DialogTitle>
-        </DialogHeader>
-        <form
-          onSubmit={(e) => { e.preventDefault(); handleSave(); }}
-          className="grid gap-5"
-        >
-          <div className="grid gap-1.5">
-            <Label htmlFor="plan-name" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
-              {t('planName')} <span className="text-md-error" aria-hidden="true">*</span>
-            </Label>
-            <Input
-              id="plan-name"
-              autoFocus
-              required
-              aria-required="true"
-              aria-invalid={invalidFields.has('name') || undefined}
-              value={formName}
-              onChange={(e) => setFormName(e.target.value)}
-              className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="plan-traffic" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('trafficLimit')} ({t('gb')})</Label>
-              <Input id="plan-traffic" type="number" min="0" step="0.1" inputMode="decimal"
-                aria-describedby="plan-traffic-hint" aria-invalid={invalidFields.has('traffic') || undefined}
-                value={formTraffic} onChange={(e) => setFormTraffic(e.target.value)}
-                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
-              <span id="plan-traffic-hint" className="sr-only">{t('gb')}</span>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="plan-speed" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('speedLimit')} ({t('mbps')})</Label>
-              <Input id="plan-speed" type="number" min="0" step="1" inputMode="numeric"
-                aria-describedby="plan-speed-hint" aria-invalid={invalidFields.has('speed') || undefined}
-                value={formSpeed} onChange={(e) => setFormSpeed(e.target.value)}
-                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
-              <span id="plan-speed-hint" className="sr-only">{t('mbps')}</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="plan-devices" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('deviceLimit')}</Label>
-              <Input id="plan-devices" type="number" min="1" step="1" inputMode="numeric"
-                aria-invalid={invalidFields.has('devices') || undefined}
-                value={formDevices} onChange={(e) => setFormDevices(e.target.value)}
-                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="plan-duration" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('durationDays')}</Label>
-              <Input id="plan-duration" type="number" min="1" step="1" inputMode="numeric"
-                aria-invalid={invalidFields.has('duration') || undefined}
-                value={formDuration} onChange={(e) => setFormDuration(e.target.value)}
-                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="plan-price" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('price')} ({t('yuan')})</Label>
-              <Input id="plan-price" type="number" min="0" step="0.01" inputMode="decimal"
-                aria-describedby="plan-price-hint" aria-invalid={invalidFields.has('price') || undefined}
-                value={formPrice} onChange={(e) => setFormPrice(e.target.value)}
-                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
-              <span id="plan-price-hint" className="sr-only">{t('yuan')}</span>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="plan-order" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('sortOrder')}</Label>
-              <Input id="plan-order" type="number" min="0" step="1" inputMode="numeric"
-                aria-invalid={invalidFields.has('order') || undefined}
-                value={formOrder} onChange={(e) => setFormOrder(e.target.value)}
-                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Label htmlFor="plan-enabled" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colStatus')}</Label>
-            <Switch
-              id="plan-enabled"
-              checked={formEnabled}
-              onCheckedChange={setFormEnabled}
-              onLabel={t('enabled')}
-              offLabel={t('disabled')}
-            />
-          </div>
-          {formError && (
-            <p role="alert" className="flex items-center gap-1.5 rounded-lg bg-md-error-container px-3 py-2 text-sm text-md-on-error-container">
-              {formError}
-            </p>
-          )}
-          {/* Hidden submit enables Enter-to-submit from any field while the visible Save lives in the sticky footer. */}
-          <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
-        </form>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
-            {tCommon('cancel')}
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSave}
-            loading={saving}
-            disabled={!formName.trim()}
-          >
-            {saving ? tCommon('saving') : tCommon('save')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-
   const totalPlans = plans.length;
   const enabledPlans = plans.filter((p) => p.enabled).length;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <PageContainer>
       {/* ── Page header ── */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">{t('title')}</h1>
-          {!loading && totalPlans > 0 && (
-            <p className="text-sm text-muted-foreground">
-              {totalPlans} {t('title').toLowerCase()} &middot; {enabledPlans} {t('enabled').toLowerCase()}
-            </p>
-          )}
-        </div>
-        {canWrite && (
-          <Button type="button" onClick={openCreate} className="shrink-0">
-            <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
+      <PageHeader
+        icon={<Package aria-hidden="true" />}
+        title={t('title')}
+        description={!loading && totalPlans > 0
+          ? `${totalPlans} ${t('title').toLowerCase()} · ${enabledPlans} ${t('enabled').toLowerCase()}`
+          : undefined}
+        actions={canWrite ? (
+          <Button type="button" onClick={() => setShowCreate(true)}>
+            <Plus className="size-4" aria-hidden="true" />
             {t('createPlan')}
           </Button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* ── Error banner ── */}
       {error && (
@@ -438,13 +594,9 @@ export default function PlansPage() {
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={canWrite ? 9 : 8} className="py-16 text-center">
-                    <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                      <svg className="animate-spin size-8 text-md-primary" viewBox="0 0 50 50" fill="none">
-                        <circle cx="25" cy="25" r="20" stroke="currentColor" strokeWidth="4" strokeLinecap="round"
-                          strokeDasharray="100 28" className="opacity-25" />
-                        <path d="M25 5a20 20 0 0 1 20 20" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                      </svg>
-                      <span className="text-sm">{tCommon('loading')}</span>
+                    <div className="flex flex-col items-center gap-3" role="status" aria-live="polite">
+                      <Loader2 className="size-8 animate-spin text-md-primary" aria-hidden="true" />
+                      <span className="text-sm text-muted-foreground">{tCommon('loading')}</span>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -459,10 +611,8 @@ export default function PlansPage() {
                       </div>
                       <p className="text-sm text-muted-foreground">{t('noPlans')}</p>
                       {canWrite && (
-                        <Button type="button" size="sm" onClick={openCreate} className="mt-1">
-                          <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="M12 5v14M5 12h14" />
-                          </svg>
+                        <Button type="button" size="sm" onClick={() => setShowCreate(true)} className="mt-1">
+                          <Plus className="size-4" aria-hidden="true" />
                           {t('createPlan')}
                         </Button>
                       )}
@@ -501,7 +651,7 @@ export default function PlansPage() {
                             type="button"
                             variant="secondary"
                             size="sm"
-                            onClick={() => openEdit(p)}
+                            onClick={() => setEditPlan(p)}
                           >
                             {tCommon('edit')}
                           </Button>
@@ -523,7 +673,7 @@ export default function PlansPage() {
                               <DropdownMenuItem
                                 size="comfortable"
                                 variant="destructive"
-                                onSelect={() => openDelete(p)}
+                                onSelect={() => { setDeleteError(''); setDeletePlan(p); }}
                               >
                                 {tCommon('delete')}
                               </DropdownMenuItem>
@@ -540,11 +690,21 @@ export default function PlansPage() {
         </CardContent>
       </Card>
 
-      {/* Create dialog */}
-      {formDialog(showCreate, () => setShowCreate(false), t('createPlan'))}
+      {/* Create dialog — keyed so each open remounts with fresh initial state */}
+      <CreatePlanDialog
+        key={showCreate ? 'create-open' : 'create-closed'}
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSaved={loadPlans}
+      />
 
-      {/* Edit dialog */}
-      {formDialog(!!editPlan, () => setEditPlan(null), t('editPlan'))}
+      {/* Edit dialog — keyed on plan id so switching plans remounts fresh */}
+      <EditPlanDialog
+        key={editPlan?.id ?? 'edit-none'}
+        plan={editPlan}
+        onClose={() => setEditPlan(null)}
+        onSaved={loadPlans}
+      />
 
       {/* Delete confirm */}
       <AlertDialog
@@ -592,8 +752,9 @@ export default function PlansPage() {
             <DialogTitle className="font-display text-xl font-600 text-foreground">{t('editLines')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            <Label htmlFor="lines-search" className="sr-only">{tCommon('search')}</Label>
             <Input
-              aria-label={tCommon('search')}
+              id="lines-search"
               placeholder={tCommon('search')}
               value={lineSearch}
               onValueChange={setLineSearch}
@@ -607,10 +768,34 @@ export default function PlansPage() {
               }
               className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary"
             />
-            {!linesLoading && allLines.length > 0 && (
-              <p className="text-xs text-muted-foreground" aria-live="polite">
-                {t('selectedCount', { count: selectedLineIds.size })}
-              </p>
+            {/* Batch selection toolbar — visible when list has items */}
+            {!linesLoading && filteredLines.length > 0 && (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground" aria-live="polite">
+                  {t('selectedCount', { count: selectedLineIds.size })}
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedLineIds((prev) => new Set([...prev, ...filteredLines.map((l) => l.id!)]))}
+                  >
+                    {t('selectAll')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const visibleIds = new Set(filteredLines.map((l) => l.id!));
+                      setSelectedLineIds((prev) => new Set([...prev].filter((id) => !visibleIds.has(id))));
+                    }}
+                  >
+                    {t('clearSelected')}
+                  </Button>
+                </div>
+              </div>
             )}
             <div className="max-h-64 overflow-y-auto rounded-xl bg-md-surface-container-lowest border border-border space-y-0.5 p-1">
               {linesLoading ? (
@@ -660,6 +845,6 @@ export default function PlansPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

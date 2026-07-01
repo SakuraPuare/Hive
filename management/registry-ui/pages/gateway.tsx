@@ -7,7 +7,10 @@ import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table';
@@ -21,11 +24,12 @@ import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command';
 import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+  Tooltip, TooltipContent, TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useToast } from '@/components/ui/toast';
-import { RefreshCw, Waypoints, ChevronsUpDown } from 'lucide-react';
+import { RefreshCw, Waypoints, ChevronDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { Collapsible } from 'radix-ui';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -41,6 +45,8 @@ type GatewayField =
 type GatewayPatch = Partial<Pick<model_Node, GatewayField>>;
 
 // ── Multi-select for manual upstream nodes ───────────────────────────────────
+// Maintains local draft state; flushes to onPatch with a 300ms debounce to
+// prevent a burst of concurrent PATCHes when the user toggles multiple items.
 
 function UpstreamMultiSelect({
   candidates, selected, onChange, disabled, placeholder, emptyLabel,
@@ -60,31 +66,60 @@ function UpstreamMultiSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  // Local draft: checkbox clicks update this immediately; onChange is flushed
+  // after a 300ms debounce so rapid multi-select produces a single PATCH.
+  const [draft, setDraft] = useState<string[]>(selected);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hintId = useId();
   const listboxId = useId();
 
+  // Sync draft when external `selected` changes (e.g. after a server revert).
+  const prevSelectedRef = useRef(selected);
+  useEffect(() => {
+    if (prevSelectedRef.current !== selected) {
+      prevSelectedRef.current = selected;
+      setDraft(selected);
+    }
+  }, [selected]);
+
   function toggle(mac: string) {
-    onChange(selected.includes(mac) ? selected.filter((m) => m !== mac) : [...selected, mac]);
+    setDraft((prev) => {
+      const next = prev.includes(mac) ? prev.filter((m) => m !== mac) : [...prev, mac];
+      // Debounce flush: cancel any pending timer and schedule a new one.
+      if (debounceRef.current != null) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => { onChange(next); }, 300);
+      return next;
+    });
+  }
+
+  // Flush immediately when the popover closes to avoid dangling timers.
+  function handleOpenChange(next: boolean) {
+    if (!next && debounceRef.current != null) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+      onChange(draft);
+    }
+    setOpen(next);
   }
 
   const label =
-    selected.length === 0
+    draft.length === 0
       ? placeholder
       : candidates
-          .filter((n) => selected.includes(n.mac ?? ''))
+          .filter((n) => draft.includes(n.mac ?? ''))
           .map((n) => n.hostname || n.note || n.mac)
           .join(', ');
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           size="sm"
           role="combobox"
           aria-expanded={open}
-          aria-controls={listboxId}
-          aria-haspopup="dialog"
+          aria-haspopup="listbox"
+          aria-controls={open ? listboxId : undefined}
           aria-describedby={hintId}
           disabled={disabled}
           className="w-full max-w-[240px] justify-between rounded-lg border-border bg-card font-normal
@@ -93,7 +128,7 @@ function UpstreamMultiSelect({
             disabled:pointer-events-none disabled:opacity-40"
         >
           <span className="truncate">{label}</span>
-          <ChevronsUpDown aria-hidden="true" className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+          <ChevronDown aria-hidden="true" className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
       <span id={hintId} className="sr-only">{hint}</span>
@@ -115,7 +150,7 @@ function UpstreamMultiSelect({
             <CommandGroup>
               {candidates.map((n) => {
                 const mac = n.mac ?? '';
-                const checked = selected.includes(mac);
+                const checked = draft.includes(mac);
                 return (
                   <CommandItem
                     key={mac}
@@ -142,6 +177,56 @@ function UpstreamMultiSelect({
   );
 }
 
+// ── Collapsible intro card ────────────────────────────────────────────────────
+
+const INTRO_STORAGE_KEY = 'gateway-intro-collapsed';
+
+function IntroCard({ t }: { t: ReturnType<typeof useTranslations> }) {
+  const [open, setOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem(INTRO_STORAGE_KEY) !== 'true';
+  });
+
+  function handleOpenChange(v: boolean) {
+    setOpen(v);
+    try { localStorage.setItem(INTRO_STORAGE_KEY, String(!v)); } catch { /* ignore */ }
+  }
+
+  return (
+    <Collapsible.Root open={open} onOpenChange={handleOpenChange}>
+      <Card className="rounded-xl border border-border bg-card animate-slide-up" style={{ animationDelay: '40ms' }}>
+        <CardHeader className="pb-2 pt-5 px-5">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="font-display text-base font-600 text-foreground">
+              {t('introTitle')}
+            </CardTitle>
+            <Collapsible.Trigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={open ? t('collapseIntro') : t('expandIntro')}
+                className="shrink-0 text-muted-foreground"
+              >
+                <ChevronDown
+                  aria-hidden="true"
+                  className={`h-4 w-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+                />
+              </Button>
+            </Collapsible.Trigger>
+          </div>
+        </CardHeader>
+        <Collapsible.Content>
+          <CardContent className="space-y-2 px-5 pb-5 text-sm text-muted-foreground leading-relaxed">
+            <p>{t('introWhat')}</p>
+            <p>{t('introDirection')}</p>
+            <p>{t('introPanel')}</p>
+          </CardContent>
+        </Collapsible.Content>
+      </Card>
+    </Collapsible.Root>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function GatewayPage() {
@@ -155,21 +240,30 @@ export default function GatewayPage() {
   const [nodes, setNodes] = useState<model_Node[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [savingMac, setSavingMac] = useState<string | null>(null);
+  // P1 fix: Set instead of scalar so concurrent row saves are tracked independently.
+  const [savingMacs, setSavingMacs] = useState<Set<string>>(new Set());
 
-  const loadNodes = useCallback(async () => {
-    setLoading(true);
+  // nodesRef: always current; used inside patchField to avoid stale closure
+  // without listing `nodes` in patchField's deps (which would recreate it on
+  // every optimistic update and risk capturing the wrong pre-save snapshot).
+  const nodesRef = useRef<model_Node[]>([]);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+
+  const loadNodes = useCallback(async (isInitial = false) => {
+    // Only show the full loading skeleton on the initial fetch; subsequent
+    // refreshes keep the existing table visible to avoid a jarring blank-redraw.
+    if (isInitial) setLoading(true);
     setError('');
     try {
       setNodes(await sessionApi(AdminService.nodesList({})));
     } catch (e: unknown) {
       setError(getErrorMessage(e, t('loadFailed')));
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   }, [t]);
 
-  useEffect(() => { loadNodes(); }, [loadNodes]);
+  useEffect(() => { loadNodes(true); }, [loadNodes]);
 
   const directionLabel = useMemo(
     () => Object.fromEntries(DIRECTIONS.map((d) => [d, t(`direction.${d}`)])),
@@ -182,17 +276,21 @@ export default function GatewayPage() {
 
   const patchFieldRef = useRef<(mac: string, patch: GatewayPatch, allowUndo?: boolean) => void>(undefined);
   const patchField = useCallback(async (mac: string, patch: GatewayPatch, allowUndo = true) => {
-    // Capture the prior values for the same keys so we can offer Undo.
-    const current = nodes.find((n) => n.mac === mac);
+    // Use nodesRef (not the `nodes` closure) so the revert snapshot is always
+    // taken from the current list at call time, even if concurrent saves have
+    // already applied optimistic updates to `nodes` state.
+    const current = nodesRef.current.find((n) => n.mac === mac);
     const revert: GatewayPatch = {};
     if (current && allowUndo) {
       (Object.keys(patch) as GatewayField[]).forEach((k) => {
         (revert as Record<string, unknown>)[k] = current[k];
       });
     }
+    // Snapshot the pre-optimistic node for local rollback on error.
+    const preOptimistic = current ? { ...current } : undefined;
     // optimistic update
     setNodes((prev) => prev.map((n) => (n.mac === mac ? { ...n, ...patch } : n)));
-    setSavingMac(mac);
+    setSavingMacs((prev) => new Set([...prev, mac]));
     try {
       await sessionApi(
         AdminService.nodeUpdate({ mac, requestBody: patch as handler_NodeUpdateRequest }),
@@ -205,56 +303,38 @@ export default function GatewayPage() {
       );
     } catch (e: unknown) {
       toast.error(getErrorMessage(e, t('saveFailed')));
-      loadNodes(); // revert to server truth
+      // Revert optimistic update locally — no full reload so the table stays
+      // visible. If the server state diverged in a more complex way the user
+      // can press Refresh explicitly.
+      if (preOptimistic) {
+        setNodes((prev) => prev.map((n) => (n.mac === mac ? preOptimistic : n)));
+      }
     } finally {
-      setSavingMac(null);
+      setSavingMacs((prev) => { const s = new Set(prev); s.delete(mac); return s; });
     }
-  }, [t, tCommon, toast, loadNodes, nodes]);
+  }, [t, tCommon, toast]);
   useEffect(() => { patchFieldRef.current = patchField; }, [patchField]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 animate-slide-up">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl
-            bg-md-primary-container text-md-on-primary-container">
-            <Waypoints aria-hidden="true" className="h-5 w-5" />
-          </div>
-          <div>
-            <h1 className="font-display text-2xl font-600 tracking-tight text-foreground">
-              {tNav('gateway')}
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">{t('subtitle')}</p>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          size="icon-xl"
-          onClick={loadNodes}
-          loading={loading}
-          aria-label={tCommon('refresh')}
-        >
-          <RefreshCw aria-hidden="true" className="h-4 w-4" />
-        </Button>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={<Waypoints />}
+        title={tNav('gateway')}
+        description={t('subtitle')}
+        actions={
+          <Button
+            variant="outline"
+            size="icon-xl"
+            onClick={() => loadNodes()}
+            loading={loading}
+            aria-label={tCommon('refresh')}
+          >
+            <RefreshCw aria-hidden="true" className="h-4 w-4" />
+          </Button>
+        }
+      />
 
-      {/* Intro / explainer */}
-      <Card
-        className="rounded-xl border border-border bg-card animate-slide-up"
-        style={{ animationDelay: '40ms' }}
-      >
-        <CardHeader className="pb-2 pt-5 px-5">
-          <CardTitle className="font-display text-base font-600 text-foreground">
-            {t('introTitle')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 px-5 pb-5 text-sm text-muted-foreground leading-relaxed">
-          <p>{t('introWhat')}</p>
-          <p>{t('introDirection')}</p>
-          <p>{t('introPanel')}</p>
-        </CardContent>
-      </Card>
+      <IntroCard t={t} />
 
       {/* Error banner — persistent status, announced + retry affordance */}
       {error && (
@@ -270,7 +350,7 @@ export default function GatewayPage() {
           <Button
             variant="link"
             size="sm"
-            onClick={loadNodes}
+            onClick={() => loadNodes()}
             className="h-auto p-0 text-md-on-error-container underline"
           >
             {tCommon('retry')}
@@ -291,7 +371,7 @@ export default function GatewayPage() {
           nodes={nodes}
           loading={loading}
           canWrite={canWrite}
-          savingMac={savingMac}
+          savingMacs={savingMacs}
           directionLabel={directionLabel}
           modeLabel={modeLabel}
           onPatch={patchField}
@@ -299,19 +379,19 @@ export default function GatewayPage() {
           tCommon={tCommon}
         />
       </div>
-    </div>
+    </PageContainer>
   );
 }
 
 // ── Table ────────────────────────────────────────────────────────────────────
 
 function GatewayTable({
-  nodes, loading, canWrite, savingMac, directionLabel, modeLabel, onPatch, t, tCommon,
+  nodes, loading, canWrite, savingMacs, directionLabel, modeLabel, onPatch, t, tCommon,
 }: {
   nodes: model_Node[];
   loading: boolean;
   canWrite: boolean;
-  savingMac: string | null;
+  savingMacs: Set<string>;
   directionLabel: Record<string, string>;
   modeLabel: Record<string, string>;
   onPatch: (mac: string, patch: GatewayPatch) => void;
@@ -338,8 +418,6 @@ function GatewayTable({
   }
 
   if (nodes.length === 0) {
-    // Intentionally minimal empty state: edge nodes are provisioned externally,
-    // so there is no "create node" CTA here — only a refresh action.
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-border
         bg-card py-16 text-center">
@@ -352,178 +430,177 @@ function GatewayTable({
   }
 
   return (
-    <TooltipProvider>
-      <div className="overflow-x-auto rounded-xl border border-border bg-card" aria-busy={savingMac !== null}>
-        <Table aria-label={t('tableLabel')}>
-          <TableHeader>
-            <TableRow className="bg-md-surface-container-high hover:bg-md-surface-container-high border-b border-border">
-              <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
-                {t('colHostname')}
-              </TableHead>
-              <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
-                {t('colLocation')}
-              </TableHead>
-              <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
-                {t('colEnabled')}
-              </TableHead>
-              <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
-                {t('colDirection')}
-              </TableHead>
-              <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
-                {t('colMode')}
-              </TableHead>
-              <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
-                {t('colUpstreams')}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {nodes.map((n, i) => {
-              const mac = n.mac ?? '';
-              const enabled = !!n.gateway_enabled;
-              const direction = n.gateway_direction || 'domestic';
-              const mode = n.gateway_upstream_mode || 'auto';
-              const selectedUpstreams = (n.gateway_upstream_nodes ?? '')
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean);
-              const candidates = nodes.filter((c) => c.mac && c.mac !== mac);
-              const rowDisabled = !canWrite || savingMac === mac;
-              const lockedByGateway = rowDisabled || !enabled;
+    <div className="overflow-x-auto rounded-xl border border-border bg-card" aria-busy={savingMacs.size > 0}>
+      <Table aria-label={t('tableLabel')}>
+        <TableHeader>
+          <TableRow className="bg-md-surface-container-high hover:bg-md-surface-container-high border-b border-border">
+            <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
+              {t('colHostname')}
+            </TableHead>
+            <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
+              {t('colLocation')}
+            </TableHead>
+            <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
+              {t('colEnabled')}
+            </TableHead>
+            <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
+              {t('colDirection')}
+            </TableHead>
+            <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
+              {t('colMode')}
+            </TableHead>
+            <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
+              {t('colUpstreams')}
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {nodes.map((n, i) => {
+            const mac = n.mac ?? '';
+            const enabled = !!n.gateway_enabled;
+            const direction = n.gateway_direction || 'domestic';
+            const mode = n.gateway_upstream_mode || 'auto';
+            const selectedUpstreams = (n.gateway_upstream_nodes ?? '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const candidates = nodes.filter((c) => c.mac && c.mac !== mac);
+            const isSaving = savingMacs.has(mac);
+            const rowDisabled = !canWrite || isSaving;
+            // P2 fix: only show "enable gateway first" tooltip when the row is
+            // NOT mid-save; during a save the opacity-50 already signals busy.
+            const lockedByGateway = rowDisabled || !enabled;
+            const showEnableFirstHint = !isSaving && !enabled && canWrite;
 
-              return (
-                <TableRow
-                  key={mac}
-                  className={`hover-state border-b border-border last:border-b-0 transition-opacity
-                    animate-slide-up ${savingMac === mac ? 'opacity-50' : ''}`}
-                  style={{ animationDelay: `${i * 30}ms` }}
-                >
-                  {/* Hostname */}
-                  <TableCell className="py-3">
-                    <div className="flex items-center gap-2">
-                      <span
-                        aria-hidden="true"
-                        className={`h-2 w-2 shrink-0 rounded-full ${
-                          enabled ? 'bg-md-tertiary' : 'bg-md-outline'
-                        }`}
-                      />
-                      <span className="font-500 text-sm text-foreground">
-                        {n.hostname || n.note || '—'}
-                      </span>
-                    </div>
-                  </TableCell>
-
-                  {/* Location */}
-                  <TableCell className="py-3">
-                    <span className="text-sm text-muted-foreground">{n.location || '—'}</span>
-                  </TableCell>
-
-                  {/* Enabled toggle */}
-                  <TableCell className="py-3">
-                    <Switch
-                      checked={enabled}
-                      disabled={rowDisabled}
-                      aria-label={enabled ? t('switchEnabled') : t('switchDisabled')}
-                      onLabel={t('switchEnabled')}
-                      offLabel={t('switchDisabled')}
-                      onCheckedChange={(v) => onPatch(mac, { gateway_enabled: v })}
+            return (
+              <TableRow
+                key={mac}
+                className={`hover-state border-b border-border last:border-b-0 transition-opacity
+                  animate-slide-up ${isSaving ? 'opacity-50' : ''}`}
+                style={{ animationDelay: `${i * 30}ms` }}
+              >
+                {/* Hostname */}
+                <TableCell className="py-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        enabled ? 'bg-md-tertiary' : 'bg-md-outline'
+                      }`}
                     />
-                  </TableCell>
+                    <span className="font-500 text-sm text-foreground">
+                      {n.hostname || n.note || '—'}
+                    </span>
+                  </div>
+                </TableCell>
 
-                  {/* Direction */}
-                  <TableCell className="py-3">
-                    <DisabledHint locked={lockedByGateway && enabled === false && canWrite} hint={t('enableFirst')}>
-                      <Select
-                        value={direction}
-                        disabled={lockedByGateway}
-                        onValueChange={(v) => onPatch(mac, { gateway_direction: v })}
+                {/* Location */}
+                <TableCell className="py-3">
+                  <span className="text-sm text-muted-foreground">{n.location || '—'}</span>
+                </TableCell>
+
+                {/* Enabled toggle */}
+                <TableCell className="py-3">
+                  <Switch
+                    checked={enabled}
+                    disabled={rowDisabled}
+                    aria-label={enabled ? t('switchEnabled') : t('switchDisabled')}
+                    onLabel={t('switchEnabled')}
+                    offLabel={t('switchDisabled')}
+                    onCheckedChange={(v) => onPatch(mac, { gateway_enabled: v })}
+                  />
+                </TableCell>
+
+                {/* Direction */}
+                <TableCell className="py-3">
+                  <DisabledHint locked={showEnableFirstHint} hint={t('enableFirst')}>
+                    <Select
+                      value={direction}
+                      disabled={lockedByGateway}
+                      onValueChange={(v) => onPatch(mac, { gateway_direction: v })}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        className="w-[140px] rounded-lg border-border bg-md-surface-container
+                          text-sm focus:ring-2 focus:ring-md-primary focus:ring-offset-1
+                          disabled:opacity-40"
+                        aria-label={t('colDirection')}
                       >
-                        <SelectTrigger
-                          size="sm"
-                          className="w-[140px] rounded-lg border-border bg-md-surface-container
-                            text-sm focus:ring-2 focus:ring-md-primary focus:ring-offset-1
-                            disabled:opacity-40"
-                          aria-label={t('colDirection')}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl border-border bg-popover elevation-2 animate-scale-in">
-                          {DIRECTIONS.map((d) => (
-                            <SelectItem
-                              key={d}
-                              value={d}
-                              className="rounded-lg text-sm hover:bg-md-surface-container-high"
-                            >
-                              {directionLabel[d]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </DisabledHint>
-                  </TableCell>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl border-border bg-popover elevation-2 animate-scale-in">
+                        {DIRECTIONS.map((d) => (
+                          <SelectItem
+                            key={d}
+                            value={d}
+                            className="rounded-lg text-sm hover:bg-md-surface-container-high"
+                          >
+                            {directionLabel[d]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </DisabledHint>
+                </TableCell>
 
-                  {/* Mode */}
-                  <TableCell className="py-3">
-                    <DisabledHint locked={lockedByGateway && enabled === false && canWrite} hint={t('enableFirst')}>
-                      <Select
-                        value={mode}
-                        disabled={lockedByGateway}
-                        onValueChange={(v) => onPatch(mac, { gateway_upstream_mode: v })}
+                {/* Mode */}
+                <TableCell className="py-3">
+                  <DisabledHint locked={showEnableFirstHint} hint={t('enableFirst')}>
+                    <Select
+                      value={mode}
+                      disabled={lockedByGateway}
+                      onValueChange={(v) => onPatch(mac, { gateway_upstream_mode: v })}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        className="w-[120px] rounded-lg border-border bg-md-surface-container
+                          text-sm focus:ring-2 focus:ring-md-primary focus:ring-offset-1
+                          disabled:opacity-40"
+                        aria-label={t('colMode')}
                       >
-                        <SelectTrigger
-                          size="sm"
-                          className="w-[120px] rounded-lg border-border bg-md-surface-container
-                            text-sm focus:ring-2 focus:ring-md-primary focus:ring-offset-1
-                            disabled:opacity-40"
-                          aria-label={t('colMode')}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl border-border bg-popover elevation-2 animate-scale-in">
-                          {UPSTREAM_MODES.map((m) => (
-                            <SelectItem
-                              key={m}
-                              value={m}
-                              className="rounded-lg text-sm hover:bg-md-surface-container-high"
-                            >
-                              {modeLabel[m]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </DisabledHint>
-                  </TableCell>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl border-border bg-popover elevation-2 animate-scale-in">
+                        {UPSTREAM_MODES.map((m) => (
+                          <SelectItem
+                            key={m}
+                            value={m}
+                            className="rounded-lg text-sm hover:bg-md-surface-container-high"
+                          >
+                            {modeLabel[m]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </DisabledHint>
+                </TableCell>
 
-                  {/* Upstreams */}
-                  <TableCell className="py-3">
-                    {mode === 'manual' && enabled ? (
-                      <UpstreamMultiSelect
-                        candidates={candidates}
-                        selected={selectedUpstreams}
-                        disabled={rowDisabled}
-                        placeholder={t('selectUpstreams')}
-                        emptyLabel={t('noOtherNodes')}
-                        searchableLabel={(c) => c.hostname || c.note || c.mac || '—'}
-                        searchPlaceholder={t('searchUpstreams')}
-                        hint={t('upstreamHint')}
-                        selectedLabel={t('upstreamSelected')}
-                        notSelectedLabel={t('upstreamNotSelected')}
-                        onChange={(macs) => onPatch(mac, { gateway_upstream_nodes: macs.join(',') })}
-                      />
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5
-                        text-xs font-500 bg-muted text-muted-foreground">
-                        {t('autoUpstream')}
-                      </span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
-    </TooltipProvider>
+                {/* Upstreams */}
+                <TableCell className="py-3">
+                  {mode === 'manual' && enabled ? (
+                    <UpstreamMultiSelect
+                      candidates={candidates}
+                      selected={selectedUpstreams}
+                      disabled={rowDisabled}
+                      placeholder={t('selectUpstreams')}
+                      emptyLabel={t('noOtherNodes')}
+                      searchableLabel={(c) => c.hostname || c.note || c.mac || '—'}
+                      searchPlaceholder={t('searchUpstreams')}
+                      hint={t('upstreamHint')}
+                      selectedLabel={t('upstreamSelected')}
+                      notSelectedLabel={t('upstreamNotSelected')}
+                      onChange={(macs) => onPatch(mac, { gateway_upstream_nodes: macs.join(',') })}
+                    />
+                  ) : (
+                    <Badge variant="secondary">{t('autoUpstream')}</Badge>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 

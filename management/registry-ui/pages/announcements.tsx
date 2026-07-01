@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
+import { useFormat } from '@/lib/format';
 import type { model_Announcement } from '@/src/generated/client/models/model_Announcement';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -24,16 +25,12 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { RefreshCw, Plus, Pencil, Trash2, Megaphone, AlertTriangle, Info, AlertCircle, Pin, Globe, X } from 'lucide-react';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
+import { RefreshCw, Plus, Pencil, Trash2, Megaphone, AlertTriangle, Info, AlertCircle, Pin, Globe, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 const CONTENT_MAX = 2000;
-
-function formatDate(s: string) {
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
-}
 
 // M3-compliant level styling using §10 status token recipes
 const LEVEL_CONFIG: Record<string, {
@@ -63,32 +60,73 @@ export default function AnnouncementsPage() {
   const tCommon = useTranslations('common');
   const router = useRouter();
   const toast = useToast();
+  const fmt = useFormat();
   const { user, loading: authLoading } = useCurrentUser();
 
   const [items, setItems] = useState<model_Announcement[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // URL-synced pagination state — hydrated from query once router.isReady
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [initialized, setInitialized] = useState(false);
+  const syncUrl = useRef(false);
+
+  // ── Restore page / limit from URL once router.query is populated ──
+  useEffect(() => {
+    if (!router.isReady || initialized) return;
+    const q = router.query;
+    if (typeof q.page === 'string') {
+      const p = parseInt(q.page, 10);
+      if (Number.isFinite(p) && p > 0) setPage(p);
+    }
+    if (typeof q.limit === 'string') {
+      const l = parseInt(q.limit, 10);
+      if ([20, 50, 100].includes(l)) setLimit(l);
+    }
+    setInitialized(true);
+  }, [router.isReady, router.query, initialized]);
+
+  // ── Sync page / limit changes to URL so the browser Back button restores state ──
+  useEffect(() => {
+    if (!initialized) return;
+    if (!syncUrl.current) {
+      syncUrl.current = true;
+      return;
+    }
+    const query: Record<string, string | number> = {};
+    if (page !== 1) query.page = page;
+    if (limit !== 20) query.limit = limit;
+    router.replace({ query }, undefined, { shallow: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized, page, limit]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await sessionApi(AdminService.adminListAnnouncements({ limit: 100 }));
-      setItems(data.items ?? []);
+      const data = await sessionApi(AdminService.adminListAnnouncements({
+        page: page,
+        limit: limit,
+      }));
+      setItems(data?.items ?? []);
+      setTotal(data?.total ?? 0);
     } catch (e: unknown) {
       setError(getErrorMessage(e, t('loadFailed')));
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [page, limit, t]);
 
   useEffect(() => {
-    if (!authLoading && user?.can('announcement:write')) loadData();
-  }, [authLoading, user, loadData]);
-
-  useEffect(() => {
-    if (!authLoading && user && !user.can('announcement:write')) router.replace('/dashboard');
-  }, [authLoading, user, router]);
+    if (authLoading) return;
+    if (!user) { router.replace('/login'); return; }
+    if (!user.can('announcement:write')) { router.replace('/dashboard'); return; }
+    if (!initialized) return;
+    loadData();
+  }, [authLoading, user, loadData, router, initialized]);
 
   // ── Create / edit dialog state ────────────────────────────────────────
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -231,24 +269,13 @@ export default function AnnouncementsPage() {
   );
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Page header — surface container, M3 title area */}
-      <div className="animate-slide-up">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-10 rounded-2xl bg-md-primary-container text-md-on-primary-container" aria-hidden="true">
-              <Megaphone className="size-5" />
-            </div>
-            <div>
-              <h1 className="font-display text-xl font-600 text-foreground">{t('title')}</h1>
-              <p className="text-xs text-muted-foreground mt-0.5 font-500 uppercase tracking-wide">
-                {items.length > 0 ? `${items.length} ${t('colTitle')}` : ''}
-              </p>
-            </div>
-          </div>
-
-          {/* Toolbar */}
-          <div className="flex items-center gap-2">
+    <PageContainer>
+      <PageHeader
+        icon={<Megaphone />}
+        title={t('title')}
+        description={total > 0 ? t('recordCount', { count: total }) : undefined}
+        actions={
+          <>
             <Button variant="outline" size="sm" type="button" onClick={loadData} loading={loading}>
               {!loading && <RefreshCw className="size-4" aria-hidden="true" />}
               <span>{tCommon('refresh')}</span>
@@ -257,9 +284,9 @@ export default function AnnouncementsPage() {
               <Plus className="size-4" aria-hidden="true" />
               <span>{t('create')}</span>
             </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Error banner */}
       {error && (
@@ -336,7 +363,16 @@ export default function AnnouncementsPage() {
                     className="hover-state border-b border-border/60 last:border-0"
                     style={{ animationDelay: `${i * 30}ms` }}
                   >
-                    <TableCell className="font-500 text-foreground py-3">{ann.title}</TableCell>
+                    <TableCell className="font-500 text-foreground py-3">
+                      <div>
+                        <span className="block">{ann.title}</span>
+                        {ann.content && (
+                          <span className="block line-clamp-1 text-xs text-muted-foreground max-w-xs mt-0.5">
+                            {ann.content}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="py-3">
                       <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${levelCfg.containerClass}`}>
                         <LevelIcon className="size-3" aria-hidden="true" />
@@ -363,7 +399,7 @@ export default function AnnouncementsPage() {
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground py-3 tabular-nums">
                       {ann.created_at
-                        ? <time dateTime={ann.created_at} title={ann.created_at}>{formatDate(ann.created_at)}</time>
+                        ? <time dateTime={ann.created_at} title={fmt.dateTime(ann.created_at)}>{fmt.relative(ann.created_at)}</time>
                         : null}
                     </TableCell>
                     <TableCell className="py-3">
@@ -397,6 +433,55 @@ export default function AnnouncementsPage() {
         </Table>
       </div>
 
+      {/* ── Pagination ── */}
+      {Math.ceil(total / limit) > 1 && (
+        <div className="flex items-center justify-between gap-3 animate-slide-up" style={{ animationDelay: '120ms' }}>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">{tCommon('perPage')}</span>
+            <Select
+              value={String(limit)}
+              onValueChange={(v) => { setLimit(Number(v)); setPage(1); }}
+            >
+              <SelectTrigger className="w-20 h-8 text-sm" aria-label={tCommon('perPage')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+              aria-label={t('prevPage')}
+            >
+              <ChevronLeft className="size-4" aria-hidden="true" />
+              {t('prevPage')}
+            </Button>
+            <span className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
+              {page} / {Math.max(1, Math.ceil(total / limit))}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              disabled={page >= Math.ceil(total / limit)}
+              onClick={() => setPage(page + 1)}
+              aria-label={t('nextPage')}
+            >
+              {t('nextPage')}
+              <ChevronRight className="size-4" aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Create / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
         <DialogContent
@@ -405,7 +490,6 @@ export default function AnnouncementsPage() {
           stickyHeaderFooter
           closeLabel={tCommon('cancel')}
           description={editing ? t('editDescription') : t('createDescription')}
-          className="bg-card"
         >
           <form
             onSubmit={(e) => { e.preventDefault(); handleSave(); }}
@@ -413,7 +497,7 @@ export default function AnnouncementsPage() {
           >
             <DialogHeader className="pb-2">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center size-9 rounded-xl bg-md-primary-container text-md-on-primary-container" aria-hidden="true">
+                <div className="flex items-center justify-center size-10 rounded-xl bg-md-primary-container text-md-on-primary-container" aria-hidden="true">
                   <Megaphone className="size-4" />
                 </div>
                 <DialogTitle className="font-display text-lg font-600">
@@ -446,7 +530,7 @@ export default function AnnouncementsPage() {
                   <SelectTrigger aria-labelledby={levelLabelId} className="rounded-lg bg-md-surface-container-high/50 border-border">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl bg-popover border elevation-2">
+                  <SelectContent>
                     <SelectItem value="info">
                       <span className="flex items-center gap-2">
                         <span className="size-2 rounded-full bg-md-primary" aria-hidden="true" />
@@ -489,35 +573,35 @@ export default function AnnouncementsPage() {
                   <Switch
                     checked={form.pinned}
                     onCheckedChange={(v) => setForm({ ...form, pinned: v })}
-                    aria-labelledby={pinnedLabelId}
                     onLabel={t('pinned')}
                     offLabel={t('pinned')}
+                    aria-labelledby={pinnedLabelId}
                   />
-                  <Label
+                  <span
                     id={pinnedLabelId}
-                    onClick={() => setForm({ ...form, pinned: !form.pinned })}
-                    className="text-sm font-500 flex items-center gap-1.5 cursor-pointer"
+                    className="text-sm font-500 flex items-center gap-1.5 cursor-pointer select-none"
+                    onClick={() => setForm((f) => ({ ...f, pinned: !f.pinned }))}
                   >
                     <Pin className="size-3.5 text-muted-foreground" aria-hidden="true" />
                     {t('pinned')}
-                  </Label>
+                  </span>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <Switch
                     checked={form.published}
                     onCheckedChange={(v) => setForm({ ...form, published: v })}
-                    aria-labelledby={publishedLabelId}
                     onLabel={t('published')}
                     offLabel={t('published')}
+                    aria-labelledby={publishedLabelId}
                   />
-                  <Label
+                  <span
                     id={publishedLabelId}
-                    onClick={() => setForm({ ...form, published: !form.published })}
-                    className="text-sm font-500 flex items-center gap-1.5 cursor-pointer"
+                    className="text-sm font-500 flex items-center gap-1.5 cursor-pointer select-none"
+                    onClick={() => setForm((f) => ({ ...f, published: !f.published }))}
                   >
                     <Globe className="size-3.5 text-muted-foreground" aria-hidden="true" />
                     {t('published')}
-                  </Label>
+                  </span>
                 </div>
               </div>
 
@@ -568,6 +652,6 @@ export default function AnnouncementsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }
