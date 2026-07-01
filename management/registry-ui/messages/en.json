@@ -28,7 +28,13 @@
     "undo": "Undo",
     "dismiss": "Dismiss",
     "deleting": "Deleting…",
-    "clearFilter": "Clear filter"
+    "clearFilter": "Clear filter",
+    "viewDetails": "View details",
+    "close": "Close",
+    "copy": "Copy",
+    "copied": "Copied",
+    "perPage": "Per page",
+    "confirm": "Confirm"
   },
   "auth": {
     "checkingAuth": "Checking authentication…",
@@ -48,7 +54,10 @@
     "redirectStalled": "Taking longer than expected? Go to portal",
     "continueToPortal": "Continue to portal",
     "showPassword": "Show password",
-    "hidePassword": "Hide password"
+    "hidePassword": "Hide password",
+    "pageTitle": "Login",
+    "loginSuccess": "Logged in successfully",
+    "skipToLoginForm": "Skip to login form"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -121,7 +130,12 @@
     "viewAllNodes": "View all nodes",
     "statusAria": "Node status: {status}",
     "viewNodeDetail": "View details for node {name}",
-    "unknownStatusHint": "This node hasn't reported in over 24h. Check its connectivity."
+    "unknownStatusHint": "This node hasn't reported in over 24h. Check its connectivity.",
+    "lastUpdated": "Last updated: {time}",
+    "viewTotalNodes": "View all {count} nodes",
+    "viewOnlineNodes": "View {count} online nodes",
+    "viewOfflineNodes": "View {count} offline nodes",
+    "viewNewNodes": "View {count} new nodes this week"
   },
   "nodes": {
     "searchPlaceholder": "Search hostname, location, IP or MAC…",
@@ -199,7 +213,8 @@
     "firstPage": "First page",
     "previousPage": "Previous page",
     "nextPage": "Next page",
-    "lastPage": "Last page"
+    "lastPage": "Last page",
+    "statTotal": "Total"
   },
   "nodeDetail": {
     "nodeNotFound": "Node not found",
@@ -264,7 +279,8 @@
     "retireDescription": "Retiring stops traffic from being assigned to this node and is nearly irreversible.",
     "retireConfirm": "Mark as retired",
     "probeFetchFailed": "Unable to fetch probe status",
-    "refreshProbe": "Refresh probe status"
+    "refreshProbe": "Refresh probe status",
+    "editNodeDescription": "Edit this node’s location, region, note, status, weight and enabled toggle."
   },
   "subscriptions": {
     "vless": "VLESS",
@@ -301,7 +317,11 @@
     "creating": "Creating…",
     "editGroupNodesDescription": "Select the nodes to include in this subscription group.",
     "groupDeleteTitle": "Delete subscription group?",
-    "resetTokenTitle": "Reset subscription token?"
+    "resetTokenTitle": "Reset subscription token?",
+    "showQr": "Show QR code",
+    "qrHint": "Scan with your proxy client to import the subscription",
+    "linkCopyFailed": "Failed to copy link",
+    "groupNodesLoadFailed": "Failed to load node list"
   },
   "users": {
     "userManagement": "User Management",
@@ -334,7 +354,8 @@
     "togglePassword": "Show or hide password",
     "selectAll": "Select all",
     "rolesAtLeastOne": "Select at least one role.",
-    "rolesSelectedCount": "{count} selected"
+    "rolesSelectedCount": "{count} selected",
+    "usersUnit": "users"
   },
   "roles": {
     "roleManagement": "Role Management",
@@ -357,7 +378,12 @@
     "noPermsInGroup": "No permissions in this group",
     "lockoutTitle": "Remove your own access?",
     "lockoutWarning": "You are removing permissions you currently rely on ({perms}). Saving may immediately lock you out of this page with no undo. Continue?",
-    "confirmSave": "Save anyway"
+    "confirmSave": "Save anyway",
+    "permGroup_other": "Other",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "selectGroupLabel": "Select all {group} permissions",
+    "deselectGroupLabel": "Deselect all {group} permissions"
   },
   "auditLogs": {
     "auditAction": "Action",
@@ -381,7 +407,10 @@
     "ipCopyFailed": "Copy failed",
     "pageSize": "Per page",
     "pageIndicator": "Page {page}",
-    "verifyingIdentity": "Verifying identity"
+    "verifyingIdentity": "Verifying identity",
+    "detailTooltipHint": "Click to view full detail",
+    "detailDialogTitle": "Action Detail",
+    "detailCopied": "Detail copied"
   },
   "lines": {
     "lineManagement": "Line Management",
@@ -433,7 +462,9 @@
     "deselectAll": "Deselect all",
     "deleteLineTitle": "Delete line",
     "resetTokenTitle": "Reset subscription link",
-    "resetTokenConfirmNamed": "Resetting the link for \"{name}\" immediately invalidates existing subscription links; you will need to re-share the new link. Continue?"
+    "resetTokenConfirmNamed": "Resetting the link for \"{name}\" immediately invalidates existing subscription links; you will need to re-share the new link. Continue?",
+    "invalidOrder": "Display order must be a non-negative integer",
+    "copyFailed": "Copy failed, please copy the link manually"
   },
   "plans": {
     "title": "Plans",
@@ -477,7 +508,9 @@
     "linesSaveSuccess": "Lines saved",
     "linesSaveFailed": "Failed to save lines",
     "moreActions": "More actions for \"{name}\"",
-    "selectedCount": "{count} lines selected"
+    "selectedCount": "{count} lines selected",
+    "selectAll": "Select all",
+    "clearSelected": "Clear selected"
   },
   "customers": {
     "title": "Customers",
@@ -556,7 +589,11 @@
     "togglePasswordVisibility": "Show/hide password",
     "statusBlockWarning": "Takes effect on save; the customer will be unable to log in.",
     "plansLoadFailed": "Failed to load plans, please retry",
-    "noPlans": "No plans available"
+    "noPlans": "No plans available",
+    "copySubLink": "Copy subscription link",
+    "copiedLink": "Link copied",
+    "blockStatusConfirmTitle": "Confirm account restriction?",
+    "blockStatusConfirmDesc": "This will set \"{email}\" to \"{status}\". The customer will be immediately unable to access the system. This takes effect instantly."
   },
   "orders": {
     "title": "Orders",
@@ -591,7 +628,9 @@
     "prevPage": "Previous",
     "nextPage": "Next",
     "noOrdersFiltered": "No orders match the current filter ({status}).",
-    "viewAll": "View all"
+    "viewAll": "View all",
+    "colPaidAt": "Paid at",
+    "paidAt": "Paid"
   },
   "promoCodes": {
     "title": "Promo Codes",
@@ -637,7 +676,20 @@
     "createDescription": "Fill in the promo code details and save. Fields marked * are required.",
     "editDescription": "Update the promo code details and save.",
     "fixErrors": "Please fix the errors in the form first",
-    "deleteTitle": "Delete promo code {code}?"
+    "deleteTitle": "Delete promo code {code}?",
+    "pageDescription": "{count} promo codes",
+    "discountAmtYuan": "Discount Amount (¥)",
+    "discountAmtPlaceholder": "e.g. 50 = ¥50.00",
+    "colUsage": "Usage",
+    "exhausted": "Exhausted",
+    "enabledExhausted": "Enabled (exhausted)",
+    "copyCode": "Copy promo code {code}",
+    "copied": "Copied",
+    "searchCode": "Search promo codes…",
+    "filterByStatus": "Filter by status",
+    "filter_all": "All",
+    "filter_enabled": "Enabled",
+    "filter_disabled": "Disabled"
   },
   "tickets": {
     "title": "Tickets",
@@ -665,7 +717,14 @@
     "sendingReply": "Sending…",
     "replyShortcutHint": "Press Ctrl/⌘+Enter to send",
     "closeConfirmTitle": "Close this ticket?",
-    "closeConfirmBody": "Ticket \"{subject}\" cannot be reopened once closed. Are you sure?"
+    "closeConfirmBody": "Ticket \"{subject}\" cannot be reopened once closed. Are you sure?",
+    "colUpdatedAt": "Last Activity",
+    "adminSender": "Admin",
+    "customerSender": "Customer",
+    "replySection": "Reply Thread",
+    "prevPage": "Previous",
+    "nextPage": "Next",
+    "pageOf": "Page {page} of {totalPages}"
   },
   "portal": {
     "brand": "Hive",
@@ -951,7 +1010,21 @@
     "nicknameRequired": "Nickname is required",
     "nicknameTooLong": "Nickname must be at most {max} characters",
     "nicknameUpdated": "Nickname updated",
-    "nicknameUpdateFailed": "Failed to update nickname"
+    "nicknameUpdateFailed": "Failed to update nickname",
+    "codeInvalid": "Please enter the 6-digit verification code",
+    "noNicknameSet": "Not set",
+    "showingOrders": "{count} of {total} orders",
+    "colUpdatedAt": "Last updated",
+    "goToPay": "Pay now",
+    "goToPayComingSoon": "Payment integration coming soon",
+    "loginToBuy": "Login to purchase",
+    "discardDraftTitle": "Discard draft?",
+    "discardDraftDesc": "Your draft will be lost and cannot be recovered.",
+    "keepEditing": "Keep editing",
+    "discardDraft": "Discard",
+    "backToTickets": "Back to tickets",
+    "loginFieldsRequired": "Please enter your email and password",
+    "codeInvalidFormat": "Please enter a 6-digit numeric code"
   },
   "announcements": {
     "title": "Announcements",
@@ -984,7 +1057,10 @@
     "createDescription": "Fill in and save the announcement to show it on the customer portal.",
     "editDescription": "Edit the announcement; the customer portal updates immediately after saving.",
     "titleRequired": "Title is required",
-    "contentHelper": "Markdown supported"
+    "contentHelper": "Markdown supported",
+    "prevPage": "Previous",
+    "nextPage": "Next",
+    "recordCount": "{count} announcements"
   },
   "gateway": {
     "subtitle": "Turn a node into a transparent proxy gateway so LAN/WiFi devices get proxied with zero config",
@@ -1023,6 +1099,34 @@
     "searchUpstreams": "Search nodes…",
     "upstreamHint": "Select one or more nodes to use as upstreams for this node",
     "upstreamSelected": "Selected",
-    "upstreamNotSelected": "Not selected"
+    "upstreamNotSelected": "Not selected",
+    "collapseIntro": "Collapse intro",
+    "expandIntro": "Expand intro"
+  },
+  "theme": {
+    "pickerLabel": "Select theme color",
+    "pickerTitle": "Theme color",
+    "color": {
+      "default": "Default (Google Blue)",
+      "red": "Red",
+      "pink": "Pink",
+      "purple": "Purple",
+      "deepPurple": "Deep Purple",
+      "indigo": "Indigo",
+      "blue": "Blue",
+      "lightBlue": "Light Blue",
+      "cyan": "Cyan",
+      "teal": "Teal",
+      "green": "Green",
+      "lightGreen": "Light Green",
+      "lime": "Lime",
+      "yellow": "Yellow",
+      "amber": "Amber",
+      "orange": "Orange",
+      "deepOrange": "Deep Orange",
+      "brown": "Brown",
+      "grey": "Grey",
+      "blueGrey": "Blue Grey"
+    }
   }
 }

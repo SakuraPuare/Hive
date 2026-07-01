@@ -28,7 +28,13 @@
     "undo": "撤销",
     "dismiss": "关闭",
     "deleting": "正在删除…",
-    "clearFilter": "清除筛选"
+    "clearFilter": "清除筛选",
+    "viewDetails": "查看详情",
+    "close": "关闭",
+    "copy": "复制",
+    "copied": "已复制",
+    "perPage": "每页",
+    "confirm": "确认"
   },
   "auth": {
     "checkingAuth": "正在验证身份…",
@@ -48,7 +54,10 @@
     "redirectStalled": "耗时比预期长?点此前往门户",
     "continueToPortal": "继续前往门户",
     "showPassword": "显示密码",
-    "hidePassword": "隐藏密码"
+    "hidePassword": "隐藏密码",
+    "pageTitle": "登录",
+    "loginSuccess": "登录成功",
+    "skipToLoginForm": "跳到登录表单"
   },
   "nav": {
     "dashboard": "概览",
@@ -121,7 +130,12 @@
     "viewAllNodes": "查看全部节点",
     "statusAria": "节点状态:{status}",
     "viewNodeDetail": "查看节点 {name} 的详情",
-    "unknownStatusHint": "该节点超过 24 小时未上报,请检查连通性。"
+    "unknownStatusHint": "该节点超过 24 小时未上报,请检查连通性。",
+    "lastUpdated": "上次更新：{time}",
+    "viewTotalNodes": "查看全部 {count} 个节点",
+    "viewOnlineNodes": "查看 {count} 个在线节点",
+    "viewOfflineNodes": "查看 {count} 个离线节点",
+    "viewNewNodes": "查看本周新增的 {count} 个节点"
   },
   "nodes": {
     "searchPlaceholder": "搜索主机名、位置、IP 或 MAC…",
@@ -199,7 +213,8 @@
     "firstPage": "首页",
     "previousPage": "上一页",
     "nextPage": "下一页",
-    "lastPage": "末页"
+    "lastPage": "末页",
+    "statTotal": "总计"
   },
   "nodeDetail": {
     "nodeNotFound": "节点未找到",
@@ -264,7 +279,8 @@
     "retireDescription": "下线后将停止向其分配流量,该操作近乎不可逆。",
     "retireConfirm": "标记为已下线",
     "probeFetchFailed": "无法获取探针状态",
-    "refreshProbe": "刷新探针状态"
+    "refreshProbe": "刷新探针状态",
+    "editNodeDescription": "编辑该节点的位置、区域、备注、状态、权重与启用开关。"
   },
   "subscriptions": {
     "vless": "VLESS",
@@ -301,7 +317,11 @@
     "creating": "创建中…",
     "editGroupNodesDescription": "勾选要包含在该订阅分组中的节点。",
     "groupDeleteTitle": "删除订阅分组?",
-    "resetTokenTitle": "重置订阅 Token?"
+    "resetTokenTitle": "重置订阅 Token?",
+    "showQr": "显示二维码",
+    "qrHint": "用代理客户端扫码导入订阅",
+    "linkCopyFailed": "链接复制失败",
+    "groupNodesLoadFailed": "节点列表加载失败"
   },
   "users": {
     "userManagement": "用户管理",
@@ -334,7 +354,8 @@
     "togglePassword": "显示或隐藏密码",
     "selectAll": "全选",
     "rolesAtLeastOne": "请至少选择一个角色。",
-    "rolesSelectedCount": "已选 {count} 个角色"
+    "rolesSelectedCount": "已选 {count} 个角色",
+    "usersUnit": "位用户"
   },
   "roles": {
     "roleManagement": "角色管理",
@@ -357,7 +378,12 @@
     "noPermsInGroup": "该分组暂无权限",
     "lockoutTitle": "确认移除你自己的访问权限？",
     "lockoutWarning": "你正在移除自己当前依赖的权限({perms}),保存后可能立即失去对本页面的访问且无法撤销。确定继续吗？",
-    "confirmSave": "仍然保存"
+    "confirmSave": "仍然保存",
+    "permGroup_other": "其他",
+    "selectAll": "全选",
+    "deselectAll": "取消全选",
+    "selectGroupLabel": "全选 {group} 分组",
+    "deselectGroupLabel": "取消全选 {group} 分组"
   },
   "auditLogs": {
     "auditAction": "操作",
@@ -381,7 +407,10 @@
     "ipCopyFailed": "复制失败",
     "pageSize": "每页条数",
     "pageIndicator": "第 {page} 页",
-    "verifyingIdentity": "正在验证身份"
+    "verifyingIdentity": "正在验证身份",
+    "detailTooltipHint": "点击查看完整详情",
+    "detailDialogTitle": "操作详情",
+    "detailCopied": "详情已复制"
   },
   "lines": {
     "lineManagement": "线路管理",
@@ -433,7 +462,9 @@
     "deselectAll": "清空",
     "deleteLineTitle": "删除线路",
     "resetTokenTitle": "重置订阅链接",
-    "resetTokenConfirmNamed": "重置线路「{name}」的链接后,现有订阅链接将立即失效,需重新分发新链接。确认继续?"
+    "resetTokenConfirmNamed": "重置线路「{name}」的链接后,现有订阅链接将立即失效,需重新分发新链接。确认继续?",
+    "invalidOrder": "排序值必须为非负整数",
+    "copyFailed": "复制失败，请手动复制链接"
   },
   "plans": {
     "title": "套餐管理",
@@ -477,7 +508,9 @@
     "linesSaveSuccess": "线路已保存",
     "linesSaveFailed": "保存线路失败",
     "moreActions": "「{name}」的更多操作",
-    "selectedCount": "已选 {count} 条线路"
+    "selectedCount": "已选 {count} 条线路",
+    "selectAll": "全选",
+    "clearSelected": "清除已选"
   },
   "customers": {
     "title": "客户管理",
@@ -556,7 +589,11 @@
     "togglePasswordVisibility": "显示/隐藏密码",
     "statusBlockWarning": "保存后立即生效,客户将无法登录。",
     "plansLoadFailed": "套餐加载失败,请重试",
-    "noPlans": "暂无套餐"
+    "noPlans": "暂无套餐",
+    "copySubLink": "复制订阅链接",
+    "copiedLink": "链接已复制",
+    "blockStatusConfirmTitle": "确认封禁/暂停账号？",
+    "blockStatusConfirmDesc": "将把「{email}」的状态改为「{status}」，该客户将立即无法访问系统。此操作立刻生效。"
   },
   "orders": {
     "title": "订单管理",
@@ -591,7 +628,9 @@
     "prevPage": "上一页",
     "nextPage": "下一页",
     "noOrdersFiltered": "当前筛选({status})无订单。",
-    "viewAll": "查看全部"
+    "viewAll": "查看全部",
+    "colPaidAt": "支付时间",
+    "paidAt": "支付于"
   },
   "promoCodes": {
     "title": "优惠码管理",
@@ -637,7 +676,20 @@
     "createDescription": "填写优惠码信息并保存,标 * 项为必填。",
     "editDescription": "修改优惠码信息并保存。",
     "fixErrors": "请先修正表单中的错误",
-    "deleteTitle": "删除优惠码「{code}」?"
+    "deleteTitle": "删除优惠码「{code}」?",
+    "pageDescription": "{count} 个优惠码",
+    "discountAmtYuan": "折扣金额（元）",
+    "discountAmtPlaceholder": "例：50 = ¥50.00",
+    "colUsage": "用量",
+    "exhausted": "已用尽",
+    "enabledExhausted": "启用（已用尽）",
+    "copyCode": "复制优惠码 {code}",
+    "copied": "已复制",
+    "searchCode": "搜索优惠码…",
+    "filterByStatus": "按状态筛选",
+    "filter_all": "全部",
+    "filter_enabled": "已启用",
+    "filter_disabled": "已禁用"
   },
   "tickets": {
     "title": "工单管理",
@@ -665,7 +717,14 @@
     "sendingReply": "发送中…",
     "replyShortcutHint": "按 Ctrl/⌘+Enter 发送",
     "closeConfirmTitle": "关闭此工单?",
-    "closeConfirmBody": "工单「{subject}」关闭后将无法重新打开。确定要关闭吗?"
+    "closeConfirmBody": "工单「{subject}」关闭后将无法重新打开。确定要关闭吗?",
+    "colUpdatedAt": "最后活动",
+    "adminSender": "管理员",
+    "customerSender": "客户",
+    "replySection": "回复记录",
+    "prevPage": "上一页",
+    "nextPage": "下一页",
+    "pageOf": "第 {page} / {totalPages} 页"
   },
   "portal": {
     "brand": "Hive",
@@ -951,7 +1010,21 @@
     "nicknameRequired": "请输入昵称",
     "nicknameTooLong": "昵称最多 {max} 个字符",
     "nicknameUpdated": "昵称已更新",
-    "nicknameUpdateFailed": "昵称更新失败"
+    "nicknameUpdateFailed": "昵称更新失败",
+    "codeInvalid": "请输入 6 位数字验证码",
+    "noNicknameSet": "未设置",
+    "showingOrders": "共 {total} 条，本页 {count} 条",
+    "colUpdatedAt": "最后更新",
+    "goToPay": "去支付",
+    "goToPayComingSoon": "支付入口即将开放",
+    "loginToBuy": "登录后购买",
+    "discardDraftTitle": "放弃草稿？",
+    "discardDraftDesc": "您输入的内容将被丢弃，此操作无法撤销。",
+    "keepEditing": "继续编辑",
+    "discardDraft": "放弃草稿",
+    "backToTickets": "返回工单列表",
+    "loginFieldsRequired": "请输入邮箱和密码",
+    "codeInvalidFormat": "请输入 6 位数字验证码"
   },
   "announcements": {
     "title": "公告管理",
@@ -984,7 +1057,10 @@
     "createDescription": "填写并保存公告，将展示给客户门户。",
     "editDescription": "修改公告内容，保存后客户门户即时更新。",
     "titleRequired": "标题为必填项",
-    "contentHelper": "支持 Markdown"
+    "contentHelper": "支持 Markdown",
+    "prevPage": "上一页",
+    "nextPage": "下一页",
+    "recordCount": "{count} 条公告"
   },
   "gateway": {
     "subtitle": "把节点变成透明代理网关，让 LAN/WiFi 设备免配置直接科学上网",
@@ -1023,6 +1099,34 @@
     "searchUpstreams": "搜索节点…",
     "upstreamHint": "选择作为该节点上游的一个或多个节点",
     "upstreamSelected": "已选择",
-    "upstreamNotSelected": "未选择"
+    "upstreamNotSelected": "未选择",
+    "collapseIntro": "收起说明",
+    "expandIntro": "展开说明"
+  },
+  "theme": {
+    "pickerLabel": "选择主题色",
+    "pickerTitle": "主题色",
+    "color": {
+      "default": "默认（Google 蓝）",
+      "red": "红",
+      "pink": "粉红",
+      "purple": "紫",
+      "deepPurple": "深紫",
+      "indigo": "靛蓝",
+      "blue": "蓝",
+      "lightBlue": "浅蓝",
+      "cyan": "青",
+      "teal": "蓝绿",
+      "green": "绿",
+      "lightGreen": "浅绿",
+      "lime": "柠檬绿",
+      "yellow": "黄",
+      "amber": "琥珀",
+      "orange": "橙",
+      "deepOrange": "深橙",
+      "brown": "棕",
+      "grey": "灰",
+      "blueGrey": "蓝灰"
+    }
   }
 }
