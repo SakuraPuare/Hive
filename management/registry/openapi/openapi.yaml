@@ -535,6 +535,12 @@ definitions:
         example: 5
         type: integer
     type: object
+  handler.PortalUpdateMeRequest:
+    properties:
+      nickname:
+        example: alice
+        type: string
+    type: object
   handler.PrometheusTarget:
     properties:
       labels:
@@ -3956,6 +3962,42 @@ paths:
       security:
       - CustomerSessionCookie: []
       summary: 获取当前客户信息
+      tags:
+      - portal
+    patch:
+      consumes:
+      - application/json
+      description: 客户更新自己的昵称等资料字段
+      operationId: PortalUpdateMe
+      parameters:
+      - description: 更新字段
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.PortalUpdateMeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 更新当前客户资料
       tags:
       - portal
   /portal/orders:

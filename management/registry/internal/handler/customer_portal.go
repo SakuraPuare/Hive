@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -58,6 +60,12 @@ type PortalMeResponse struct {
 	Status    string                       `json:"status" example:"active"`
 	CreatedAt string                       `json:"created_at" example:"2025-01-01 00:00:00"`
 	Subs      []model.CustomerSubscription `json:"subscriptions"`
+}
+
+// PortalUpdateMeRequest is the request body for PATCH /portal/me. Fields are
+// pointers so an omitted field means "leave unchanged".
+type PortalUpdateMeRequest struct {
+	Nickname *string `json:"nickname" example:"alice"`
 }
 
 // PortalSubscription is an alias for model.CustomerSubscription used in swagger docs.
@@ -347,6 +355,63 @@ func (h *Handler) HandlePortalMe(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: c.CreatedAt,
 		Subs:      subs,
 	})
+}
+
+// HandlePortalUpdateMe godoc
+// @Summary      更新当前客户资料
+// @ID           PortalUpdateMe
+// @Description  客户更新自己的昵称等资料字段
+// @Tags         portal
+// @Accept       json
+// @Produce      json
+// @Param        body body PortalUpdateMeRequest true "更新字段"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      401 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Security     CustomerSessionCookie
+// @Router       /portal/me [patch]
+func (h *Handler) HandlePortalUpdateMe(w http.ResponseWriter, r *http.Request) {
+	cid := customerID(r)
+
+	var req PortalUpdateMeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.jsonErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	updates := map[string]any{"updated_at": time.Now().UTC().Format(model.TimeLayout)}
+	if req.Nickname != nil {
+		nn := strings.TrimSpace(*req.Nickname)
+		if nn == "" {
+			h.jsonErr(w, http.StatusBadRequest, "nickname must not be empty")
+			return
+		}
+		if utf8.RuneCountInString(nn) > 40 {
+			h.jsonErr(w, http.StatusBadRequest, "nickname too long (max 40)")
+			return
+		}
+		updates["nickname"] = nn
+	}
+
+	// Nothing to update beyond the timestamp → nothing was provided.
+	if len(updates) == 1 {
+		h.jsonErr(w, http.StatusBadRequest, "no updatable fields provided")
+		return
+	}
+
+	if err := h.DB.Table("customers").Where("id = ?", cid).Updates(updates).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+
+	var email string
+	if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", cid).Scan(&email).Error; err != nil {
+		log.Printf("update me: lookup email for customer %d: %v", cid, err)
+	}
+	store.WriteAuditLog(h.DB, email, "portal_profile_update", "", getClientIP(r))
+
+	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
 // ── GET /portal/plans — 公开套餐列表 ────────────────────────────────────────

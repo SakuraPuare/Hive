@@ -167,6 +167,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// ── 客户门户（需登录）────────────────────────────────────────────────────
 	cust := h.requireCustomer
 	mux.HandleFunc("GET /portal/me", cust(h.HandlePortalMe))
+	mux.HandleFunc("PATCH /portal/me", cust(h.HandlePortalUpdateMe))
 	mux.HandleFunc("GET /portal/subscriptions", cust(h.HandlePortalSubscriptions))
 	mux.HandleFunc("POST /portal/orders", cust(h.HandlePortalCreateOrder))
 	mux.HandleFunc("GET /portal/orders", cust(h.HandlePortalOrders))
