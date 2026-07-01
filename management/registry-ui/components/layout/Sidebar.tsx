@@ -6,7 +6,6 @@ import { Dialog as DialogPrimitive } from 'radix-ui';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { useCurrentUser } from '@/lib/auth';
-import { useLocale, type Locale } from '@/lib/locale';
 
 /** First path segment, e.g. "/nodes/[id]" -> "nodes". Used for robust active matching. */
 function firstSegment(path: string): string {
@@ -19,17 +18,16 @@ interface SidebarContentProps {
 }
 
 /**
- * The shared sidebar body: brand, permission-gated nav, locale switcher.
+ * The shared sidebar body: brand + permission-gated nav.
  * Rendered both inside the static desktop rail (<Sidebar>) and the mobile
  * drawer (<SidebarDrawer>) so active state and markup stay in sync.
+ * (Locale switching lives in the top bar, see AppLayout.)
  */
 export function SidebarContent({ onNavigate }: SidebarContentProps) {
   const router = useRouter();
   const { user, loading } = useCurrentUser();
-  const { locale, setLocale } = useLocale();
   const tAuth = useTranslations('auth');
   const tNav = useTranslations('nav');
-  const tCommon = useTranslations('common');
 
   const baseNavItems = [
     { href: '/dashboard', label: tNav('dashboard'), icon: LayoutDashboard, perm: null },
@@ -135,32 +133,6 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           </>
         )}
       </nav>
-      <div className="p-3">
-        <div
-          role="radiogroup"
-          aria-label={tCommon('language')}
-          className="flex items-center gap-1 rounded-full bg-md-surface-container-high p-1"
-        >
-          {(['zh', 'en'] as Locale[]).map((l) => (
-            <button
-              type="button"
-              key={l}
-              role="radio"
-              aria-checked={locale === l}
-              onClick={() => setLocale(l)}
-              className={cn(
-                'state-layer flex min-h-12 flex-1 items-center justify-center rounded-full px-3 text-xs font-medium transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card',
-                locale === l
-                  ? 'bg-md-secondary-container text-md-on-secondary-container'
-                  : 'text-md-on-surface-variant hover:text-md-on-surface'
-              )}
-            >
-              {l === 'zh' ? '中文' : 'EN'}
-            </button>
-          ))}
-        </div>
-      </div>
     </>
   );
 }

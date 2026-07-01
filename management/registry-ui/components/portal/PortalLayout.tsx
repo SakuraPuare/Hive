@@ -5,8 +5,9 @@ import { useTranslations } from 'next-intl';
 import { Menu, X, LayoutDashboard, Package, MessageSquare, ShoppingCart, LogOut, ChevronDown, Globe, Gift, Megaphone, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
+import { ThemeColorPicker } from '@/components/layout/ThemeColorPicker';
 import { CustomerProvider, useCustomer, portalLogout } from '@/lib/portal-auth';
-import { LocaleToggle } from '@/components/portal/LocaleToggle';
+import { LocaleToggle } from '@/components/layout/LocaleToggle';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -133,13 +134,13 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
             </nav>
           </div>
 
-          {/* Right side */}
+          {/* Right side — order mirrors admin AppLayout: locale, color, theme, user */}
           <div className="flex items-center gap-2">
-            <ThemeToggle />
             <div className="hidden md:block">
               <LocaleToggle groupLabel={t('language')} />
             </div>
-
+            <ThemeColorPicker />
+            <ThemeToggle />
             {/* User dropdown (desktop) */}
             {loading ? (
               <div className="hidden md:flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3" aria-hidden="true">

@@ -7,8 +7,10 @@ import { NextIntlClientProvider } from 'next-intl';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PortalLayout } from '@/components/portal/PortalLayout';
 import { LocaleProvider, useLocale, type Locale } from '@/lib/locale';
+import { ThemeColorProvider } from '@/lib/theme-color';
 import { ToastProvider } from '@/components/ui/toast';
 import '@/styles/globals.css';
+import '@/styles/themes.css';
 import zhMessages from '../messages/zh.json';
 import enMessages from '../messages/en.json';
 
@@ -66,11 +68,13 @@ export default function App({ Component, pageProps }: AppProps) {
     <LocaleProvider>
       <IntlWrapper>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <div className={`${robotoFlex.variable} ${lexend.variable}`}>
-            <ToastProvider>
-              {content}
-            </ToastProvider>
-          </div>
+          <ThemeColorProvider>
+            <div className={`${robotoFlex.variable} ${lexend.variable}`}>
+              <ToastProvider>
+                {content}
+              </ToastProvider>
+            </div>
+          </ThemeColorProvider>
         </ThemeProvider>
       </IntlWrapper>
     </LocaleProvider>

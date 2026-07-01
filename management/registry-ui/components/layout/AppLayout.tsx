@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { LogOut, Menu, User, Settings } from 'lucide-react';
 import { Sidebar, SidebarDrawer } from './Sidebar';
 import { ThemeToggle } from './ThemeToggle';
+import { ThemeColorPicker } from './ThemeColorPicker';
+import { LocaleToggle } from './LocaleToggle';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -24,6 +26,7 @@ import {
 import { AdminService } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { CurrentUserProvider, useCurrentUser } from '@/lib/auth';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useTranslations } from 'next-intl';
 
 async function performLogout() {
@@ -60,7 +63,7 @@ function UserBadge() {
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-md-primary-container text-md-on-primary-container text-xs font-700 font-display">
               {(user.username || '?')[0].toUpperCase()}
             </span>
-            <span className="font-500 text-foreground">{user.username}</span>
+            <span className="hidden font-500 text-foreground sm:inline max-w-[10rem] truncate">{user.username}</span>
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[12rem]">
@@ -133,48 +136,53 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <CurrentUserProvider>
-      <a
-        href="#main-content"
-        className="sr-only z-[60] rounded-full bg-md-primary px-4 py-2 text-sm font-medium text-md-on-primary focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-      >
-        {tCommon('skipToContent')}
-      </a>
-      <div className="flex h-screen overflow-hidden bg-background">
-        <Sidebar />
-        <SidebarDrawer
-          open={navOpen}
-          onOpenChange={setNavOpen}
-          title={tNav('mainNavigation')}
-          id="mobile-nav-drawer"
-        />
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <header className="flex h-16 shrink-0 items-center gap-3 border-b border-md-outline-variant glass px-4 sm:px-6">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => setNavOpen(true)}
-              aria-label={tNav('openNavigation')}
-              aria-expanded={navOpen}
-              aria-controls="mobile-nav-drawer"
-              className="text-md-on-surface-variant hover:text-foreground lg:hidden"
+      <TooltipProvider>
+        <a
+          href="#main-content"
+          className="sr-only z-[60] rounded-full bg-md-primary px-4 py-2 text-sm font-medium text-md-on-primary focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          {tCommon('skipToContent')}
+        </a>
+        <div className="flex h-screen overflow-hidden bg-background">
+          <Sidebar />
+          <SidebarDrawer
+            open={navOpen}
+            onOpenChange={setNavOpen}
+            title={tNav('mainNavigation')}
+            id="mobile-nav-drawer"
+          />
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <header className="flex h-16 shrink-0 items-center gap-3 border-b border-md-outline-variant glass px-4 sm:px-6">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setNavOpen(true)}
+                aria-label={tNav('openNavigation')}
+                aria-expanded={navOpen}
+                aria-controls="mobile-nav-drawer"
+                className="text-md-on-surface-variant hover:text-foreground lg:hidden"
+              >
+                <Menu className="h-5 w-5" aria-hidden="true" />
+              </Button>
+              <div className="ml-auto flex items-center gap-2 sm:gap-3">
+                <LocaleToggle groupLabel={tCommon('language')} />
+                <ThemeColorPicker />
+                <ThemeToggle />
+                <div className="mx-0.5 h-6 w-px bg-md-outline-variant" aria-hidden="true" />
+                <UserBadge />
+              </div>
+            </header>
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className="flex-1 overflow-y-auto px-6 py-8 outline-none sm:px-8 lg:px-10"
             >
-              <Menu className="h-5 w-5" aria-hidden="true" />
-            </Button>
-            <div className="ml-auto flex items-center gap-3">
-              <UserBadge />
-              <ThemeToggle />
-            </div>
-          </header>
-          <main
-            id="main-content"
-            tabIndex={-1}
-            className="flex-1 overflow-y-auto px-6 py-8 outline-none sm:px-8 lg:px-10"
-          >
-            {children}
-          </main>
+              {children}
+            </main>
+          </div>
         </div>
-      </div>
+      </TooltipProvider>
     </CurrentUserProvider>
   );
 }
