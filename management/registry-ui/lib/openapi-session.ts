@@ -14,6 +14,25 @@ export function apiPath(path: string) {
   return `${API_PREFIX}${normalized}`;
 }
 
+/**
+ * Absolute, shareable API URL including the current origin.
+ *
+ * `apiPath` returns a root-relative path like `/api/s/<token>`, which is what
+ * fetch() needs but is useless when copied into an external proxy client — the
+ * scheme + host are missing. Subscription links, QR codes, and any URL a user
+ * copies out of the app must go through this so they get
+ * `https://host.example.com/api/s/<token>`. Falls back to the relative path
+ * during SSR where `window` is unavailable.
+ */
+export function apiUrl(path: string) {
+  const rel = apiPath(path);
+  if (typeof window === 'undefined') return rel;
+  // If API_PREFIX is already absolute (cross-origin API base), apiPath already
+  // yields a full URL — return as-is.
+  if (/^https?:\/\//i.test(rel)) return rel;
+  return `${window.location.origin}${rel}`;
+}
+
 function isBrowser() {
   return typeof window !== 'undefined';
 }
