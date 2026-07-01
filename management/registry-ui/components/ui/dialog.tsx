@@ -47,33 +47,104 @@ function DialogOverlay({
   )
 }
 
+const dialogSizes = {
+  sm: "sm:max-w-sm",
+  md: "sm:max-w-md",
+  lg: "sm:max-w-lg",
+  xl: "sm:max-w-2xl",
+} as const
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  closeLabel = "Close",
+  pending = false,
+  description,
+  size = "lg",
+  stickyHeaderFooter = false,
+  onEscapeKeyDown,
+  onPointerDownOutside,
+  onInteractOutside,
+  "aria-describedby": ariaDescribedBy,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  /** Hide/show the persistent X close affordance. */
   showCloseButton?: boolean
+  /** Accessible label for the X close button (sr-only). */
+  closeLabel?: string
+  /**
+   * When true the surface is locked: Escape, pointer-down-outside and
+   * interact-outside are prevented, and the close button is disabled.
+   * Use while an async submit/delete is in flight.
+   */
+  pending?: boolean
+  /**
+   * Optional description rendered as a DialogDescription and automatically
+   * wired via aria-describedby. When omitted (and no aria-describedby is
+   * passed), aria-describedby is explicitly undefined to suppress Radix's
+   * missing-description warning.
+   */
+  description?: React.ReactNode
+  /** Max-width scale. Defaults to "lg" (the previous hardcoded width). */
+  size?: keyof typeof dialogSizes
+  /**
+   * Opt-in for tall form dialogs that use the default p-6 padding: pins the
+   * DialogHeader to the top and DialogFooter to the bottom while only the body
+   * scrolls. Leave false (default) for simple dialogs and for callers that
+   * supply their own padding (e.g. p-0 with padded header/footer), where the
+   * negative-margin offset would not line up. Reachability is already
+   * guaranteed without this — the whole surface scrolls when it overflows.
+   */
+  stickyHeaderFooter?: boolean
 }) {
+  const generatedDescId = React.useId()
+  const describedBy = description
+    ? generatedDescId
+    : ariaDescribedBy
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        data-pending={pending ? "" : undefined}
+        aria-describedby={describedBy}
+        onEscapeKeyDown={(event) => {
+          if (pending) event.preventDefault()
+          onEscapeKeyDown?.(event)
+        }}
+        onPointerDownOutside={(event) => {
+          if (pending) event.preventDefault()
+          onPointerDownOutside?.(event)
+        }}
+        onInteractOutside={(event) => {
+          if (pending) event.preventDefault()
+          onInteractOutside?.(event)
+        }}
         className={cn(
-          "animate-scale-in fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-2xl border bg-popover p-6 text-popover-foreground elevation-3 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 sm:max-w-lg",
+          "animate-scale-in fixed top-[50%] left-[50%] z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] flex-col gap-4 overflow-y-auto rounded-2xl border bg-popover p-6 text-popover-foreground elevation-3 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+          stickyHeaderFooter &&
+            "[&>[data-slot=dialog-footer]]:sticky [&>[data-slot=dialog-footer]]:bottom-0 [&>[data-slot=dialog-footer]]:z-10 [&>[data-slot=dialog-footer]]:-mb-6 [&>[data-slot=dialog-footer]]:bg-popover [&>[data-slot=dialog-footer]]:pb-6 [&>[data-slot=dialog-header]]:sticky [&>[data-slot=dialog-header]]:top-0 [&>[data-slot=dialog-header]]:z-10 [&>[data-slot=dialog-header]]:-mt-6 [&>[data-slot=dialog-header]]:bg-popover [&>[data-slot=dialog-header]]:pt-6",
+          dialogSizes[size],
           className
         )}
         {...props}
       >
+        {description ? (
+          <DialogDescription id={generatedDescId}>
+            {description}
+          </DialogDescription>
+        ) : null}
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="state-layer absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-full text-md-on-surface-variant transition-colors hover:text-md-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 focus-visible:ring-offset-md-surface disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            disabled={pending}
+            className="state-layer absolute top-4 right-4 inline-flex size-11 items-center justify-center rounded-full text-md-on-surface-variant transition-colors hover:text-md-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 focus-visible:ring-offset-md-surface disabled:pointer-events-none disabled:opacity-40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-5"
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{closeLabel}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Content>

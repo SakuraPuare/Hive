@@ -2,12 +2,27 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Card({ className, ...props }: React.ComponentProps<"div">) {
+type CardProps = React.ComponentProps<"div"> & {
+  /**
+   * When true, the card signals it is clickable: it lifts on hover
+   * (`hover:elevation-1`), shows a pointer cursor, and lifts when a child
+   * receives keyboard focus (`focus-within:elevation-1`). Leave `false`
+   * (default) for read-only content cards so hover lift does not imply a
+   * false "clickable" affordance. Pair an interactive card with a real
+   * `onClick`/`role`/`tabIndex` (or wrap it in a link) on the call site.
+   */
+  interactive?: boolean
+}
+
+function Card({ className, interactive = false, ...props }: CardProps) {
   return (
     <div
       data-slot="card"
+      data-interactive={interactive ? "" : undefined}
       className={cn(
-        "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground transition-shadow duration-200 ease-[var(--ease-standard)] hover:elevation-1",
+        "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground transition-shadow duration-200 ease-[var(--ease-standard)]",
+        interactive &&
+          "cursor-pointer hover:elevation-1 focus-within:elevation-1",
         className
       )}
       {...props}

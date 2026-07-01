@@ -20,6 +20,16 @@ const badgeVariants = cva(
         // error / destructive — error tonal container
         destructive:
           "bg-md-error-container text-md-on-error-container focus-visible:ring-md-error/40 [a&]:hover:bg-md-error-container/80",
+        // success — tertiary (teal-green) tonal container (§10 success recipe)
+        success:
+          "bg-md-tertiary-container text-md-on-tertiary-container [a&]:hover:bg-md-tertiary-container/80",
+        // warning — amber chip, light & dark safe (DESIGN_SYSTEM §10 sanctioned recipe).
+        // The only place this amber tone lives, so dark-mode tuning is centralized here.
+        warning:
+          "bg-[hsl(43_96%_50%/0.15)] text-[hsl(38_92%_30%)] dark:bg-[hsl(43_96%_50%/0.18)] dark:text-[hsl(43_96%_70%)] [a&]:hover:bg-[hsl(43_96%_50%/0.25)] dark:[a&]:hover:bg-[hsl(43_96%_50%/0.28)]",
+        // info / neutral — primary tonal container (semantic alias of `default`)
+        info:
+          "bg-md-primary-container text-md-on-primary-container [a&]:hover:bg-md-primary-container/80",
         // outlined assist chip — transparent fill, M3 outline
         outline:
           "border-md-outline-variant text-md-on-surface-variant [a&]:hover:bg-md-on-surface/8 [a&]:hover:text-md-on-surface",

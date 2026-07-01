@@ -1,5 +1,6 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 import { Slot } from "radix-ui"
 
 import { cn } from "@/lib/utils"
@@ -35,6 +36,8 @@ const buttonVariants = cva(
         "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
         "icon-sm": "size-8 rounded-full",
         "icon-lg": "size-11 rounded-full",
+        // 48dp — strict WCAG 2.5.8 / M3 touch target.
+        "icon-xl": "size-12 rounded-full",
       },
     },
     defaultVariants: {
@@ -49,12 +52,23 @@ function Button({
   variant = "default",
   size = "default",
   asChild = false,
+  loading = false,
+  disabled,
+  children,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    /**
+     * When true, prepends a circular spinner, sets aria-busy, and implicitly
+     * disables the button while keeping its label visible (no spinner-only).
+     * With asChild the spinner is NOT injected (Slot accepts a single child);
+     * only aria-busy is applied so the caller's markup stays intact.
+     */
+    loading?: boolean
   }) {
   const Comp = asChild ? Slot.Root : "button"
+  const isDisabled = disabled || loading
 
   return (
     <Comp
@@ -62,8 +76,24 @@ function Button({
       data-variant={variant}
       data-size={size}
       className={cn(buttonVariants({ variant, size, className }))}
+      aria-busy={loading || undefined}
+      disabled={asChild ? disabled : isDisabled}
       {...props}
-    />
+    >
+      {asChild ? (
+        children
+      ) : (
+        <>
+          {loading ? (
+            <Loader2
+              className="size-4 shrink-0 animate-spin"
+              aria-hidden="true"
+            />
+          ) : null}
+          {children}
+        </>
+      )}
+    </Comp>
   )
 }
 
