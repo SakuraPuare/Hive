@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import DOMPurify from 'dompurify';
 import { useCustomer } from '@/lib/portal-auth';
 import type { CustomerSubscription } from '@/lib/portal-auth';
 
@@ -9,46 +10,25 @@ type SubWithPlan = CustomerSubscription & { plan_name?: string };
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import { Copy, Check, Package, MessageSquare, Megaphone, Zap, Clock, Shield, Gift, AlertTriangle, Info, AlertCircle, RefreshCw, X } from 'lucide-react';
-import { PortalPublicService, PortalService } from '@/src/generated/client';
-import DOMPurify from 'dompurify';
+import { useClipboard } from '@/lib/use-clipboard';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
+import {
+  Copy, Check, Package, MessageSquare, Megaphone,
+  Zap, Clock, Shield, Gift, AlertTriangle, Info,
+  AlertCircle, RefreshCw, X, LayoutDashboard,
+} from 'lucide-react';
+import { PortalPublicService } from '@/src/generated/client';
 
 function trafficGB(bytes: number) {
   return (bytes / (1024 ** 3)).toFixed(2);
 }
 
-/**
- * Copy text to clipboard with a graceful fallback for non-secure contexts
- * (no navigator.clipboard) and a failure callback so the UI never falsely
- * reports success. Returns true on success.
- */
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-    // Legacy fallback for http / older browsers.
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(ta);
-    return ok;
-  } catch {
-    return false;
-  }
-}
-
-function SubscriptionCard({ sub, index }: { sub: SubWithPlan; index: number }) {
+function SubscriptionCard({ sub, index, onCopied }: { sub: SubWithPlan; index: number; onCopied?: () => void }) {
   const t = useTranslations('portal');
   const toast = useToast();
-  const [copiedClash, setCopiedClash] = useState(false);
-  const [copiedVless, setCopiedVless] = useState(false);
+  const { copied: copiedClash, copy: copyClash } = useClipboard();
+  const { copied: copiedVless, copy: copyVless } = useClipboard();
 
   const isExpired = new Date(sub.expires_at ?? '') < new Date();
   const usedGB = trafficGB(sub.traffic_used ?? 0);
@@ -61,22 +41,23 @@ function SubscriptionCard({ sub, index }: { sub: SubWithPlan; index: number }) {
   const daysLeft = Math.max(0, diffDays);
   const expiredDays = Math.max(0, -diffDays);
 
+  // Subscription links are Next.js routes (/c/...), not backend API paths,
+  // so we use window.location.origin directly — apiUrl() would prepend /api.
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const clashLink = `${origin}/c/${sub.token}`;
   const vlessLink = `${origin}/c/${sub.token}/vless`;
 
-  const handleCopy = useCallback(
-    async (text: string, setter: (v: boolean) => void) => {
-      const ok = await copyToClipboard(text);
-      if (ok) {
-        setter(true);
-        setTimeout(() => setter(false), 2000);
-      } else {
-        toast.error(t('copyFailed'));
-      }
-    },
-    [toast, t]
-  );
+  const handleCopyClash = useCallback(async () => {
+    const ok = await copyClash(clashLink);
+    if (ok) onCopied?.();
+    else toast.error(t('copyFailed'));
+  }, [copyClash, clashLink, toast, t, onCopied]);
+
+  const handleCopyVless = useCallback(async () => {
+    const ok = await copyVless(vlessLink);
+    if (ok) onCopied?.();
+    else toast.error(t('copyFailed'));
+  }, [copyVless, vlessLink, toast, t, onCopied]);
 
   // Traffic bar color: use M3 semantic roles
   const barColor = pct > 80
@@ -91,12 +72,15 @@ function SubscriptionCard({ sub, index }: { sub: SubWithPlan; index: number }) {
     ? t('expired')
     : daysLeft === 0
     ? t('expiresToday')
-    : (t('daysRemaining') || 'days left');
+    : t('daysRemaining');
+
+  // Stagger only for the first 4 cards to avoid excessive delay on large lists.
+  const delay = Math.min(index, 3) * 80;
 
   return (
     <Card
       className="overflow-hidden rounded-xl border bg-card animate-slide-up"
-      style={{ animationDelay: `${index * 80}ms` }}
+      style={{ animationDelay: `${delay}ms` }}
     >
       {/* Top accent strip */}
       <div className={`h-1 w-full ${isExpired ? 'bg-md-error' : 'bg-md-primary'}`} aria-hidden="true" />
@@ -104,7 +88,7 @@ function SubscriptionCard({ sub, index }: { sub: SubWithPlan; index: number }) {
       <CardHeader className="pb-3 pt-5 px-5">
         <div className="flex items-center justify-between gap-3">
           <CardTitle className="font-display text-base font-600 text-foreground">
-            {sub.plan_name}
+            {sub.plan_name ?? `${t('planName')} #${sub.plan_id}`}
           </CardTitle>
           {isExpired ? (
             <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500
@@ -144,7 +128,7 @@ function SubscriptionCard({ sub, index }: { sub: SubWithPlan; index: number }) {
             <p className="font-display text-xl font-700 text-foreground">
               {sub.traffic_limit === 0 ? '∞' : totalGB}
             </p>
-            <p className="text-xs text-muted-foreground">{t('gb') || 'GB'}</p>
+            <p className="text-xs text-muted-foreground">{t('gb')}</p>
           </div>
         </div>
 
@@ -181,7 +165,7 @@ function SubscriptionCard({ sub, index }: { sub: SubWithPlan; index: number }) {
             type="button"
             variant="outline"
             className="flex-1 h-12 gap-1.5 text-sm font-500"
-            onClick={() => handleCopy(clashLink, setCopiedClash)}
+            onClick={handleCopyClash}
             aria-label={t('copyClashAria')}
           >
             {copiedClash
@@ -194,7 +178,7 @@ function SubscriptionCard({ sub, index }: { sub: SubWithPlan; index: number }) {
             type="button"
             variant="outline"
             className="flex-1 h-12 gap-1.5 text-sm font-500"
-            onClick={() => handleCopy(vlessLink, setCopiedVless)}
+            onClick={handleCopyVless}
             aria-label={t('copyVlessAria')}
           >
             {copiedVless
@@ -205,10 +189,6 @@ function SubscriptionCard({ sub, index }: { sub: SubWithPlan; index: number }) {
           </Button>
         </div>
 
-        {/* SR-only confirmation announced when a copy succeeds */}
-        <span aria-live="polite" className="sr-only">
-          {(copiedClash || copiedVless) ? t('copied') : ''}
-        </span>
       </CardContent>
     </Card>
   );
@@ -238,34 +218,43 @@ const BANNER_STYLES: Record<string, { wrapper: string; icon: React.ReactNode }> 
   },
 };
 
+/**
+ * Sanitize announcement HTML for safe injection.
+ *
+ * Uses the same top-level DOMPurify import pattern as portal/announcements.tsx.
+ * The `output: 'export'` build has no server render pass, so DOMPurify always
+ * runs in the browser where it is fully available.
+ */
+function sanitizeAnnContent(raw: string): string {
+  return DOMPurify.sanitize(raw.replace(/\n/g, '<br/>'));
+}
+
 export default function PortalDashboardPage() {
   const t = useTranslations('portal');
   const tCommon = useTranslations('common');
   const toast = useToast();
   const router = useRouter();
-  const { customer, subscriptions: ctxSubscriptions, loading } = useCustomer();
+  // Use the shared context refresh() — eliminates duplicate /portal/me calls
+  // and closes the race where a context update overwrites fresh local state.
+  const { customer, subscriptions, loading, refresh } = useCustomer();
 
-  // Page-local subscriptions mirror so we can force a refresh after the user
-  // returns from buying/renewing a plan (the shared context does not refetch).
-  const [subscriptions, setSubscriptions] = useState<SubWithPlan[]>(ctxSubscriptions);
   const [refreshing, setRefreshing] = useState(false);
-  useEffect(() => { setSubscriptions(ctxSubscriptions); }, [ctxSubscriptions]);
-
   const [announcements, setAnnouncements] = useState<PortalAnnouncement[]>([]);
   const [annError, setAnnError] = useState(false);
   const [dismissed, setDismissed] = useState<Set<number>>(() => new Set());
+  // Single page-level live region for copy feedback (replaces per-card aria-live).
+  const [copyAnnounce, setCopyAnnounce] = useState('');
 
-  const refetchSubscriptions = useCallback(async () => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const data = await PortalService.portalMe();
-      setSubscriptions((data.subscriptions ?? []) as SubWithPlan[]);
+      await refresh();
     } catch {
       toast.error(t('refreshFailed'));
     } finally {
       setRefreshing(false);
     }
-  }, [toast, t]);
+  }, [refresh, toast, t]);
 
   const loadAnnouncements = useCallback(() => {
     PortalPublicService.portalAnnouncements()
@@ -283,17 +272,20 @@ export default function PortalDashboardPage() {
     loadAnnouncements();
   }, [loadAnnouncements]);
 
-  // Force a fresh /me on mount, and whenever the tab becomes visible again
-  // (e.g. returning from the plans page after a purchase).
+  // Refresh subscriptions on tab focus only — the CustomerProvider already
+  // fetches once on mount, so we skip the initial load→ready transition.
+  const hasMountedRef = useRef(false);
   useEffect(() => {
     if (loading || !customer) return;
-    refetchSubscriptions();
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') refetchSubscriptions();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-    // Run once auth settles; refetchSubscriptions is stable.
+    if (!hasMountedRef.current) {
+      // First time auth settles: mark mounted, no extra fetch needed.
+      hasMountedRef.current = true;
+      const onVisible = () => {
+        if (document.visibilityState === 'visible') handleRefresh();
+      };
+      document.addEventListener('visibilitychange', onVisible);
+      return () => document.removeEventListener('visibilitychange', onVisible);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, customer]);
 
@@ -334,21 +326,26 @@ export default function PortalDashboardPage() {
   }
   if (!customer) return null;
 
-  return (
-    <div className="space-y-8 animate-fade-in">
+  const displayName = customer.nickname || customer.email?.split('@')[0] || t('userFallback');
 
-      {/* Welcome hero — surface container, no old gradient */}
-      <div className="rounded-2xl bg-md-surface-container border border-border px-6 py-7 md:px-8 md:py-9">
-        <p className="text-xs font-500 text-muted-foreground uppercase tracking-wide mb-1">
-          {t('dashboardSubtitle') || 'Manage your subscriptions and account.'}
-        </p>
-        <h1 className="font-display text-2xl font-700 text-foreground tracking-tight">
-          {t('welcomeBack') || 'Welcome back'},{' '}
-          <span className="text-md-primary">
-            {customer.nickname || customer.email?.split('@')[0] || t('userFallback')}
-          </span>
-        </h1>
-      </div>
+  return (
+    <PageContainer width="content">
+      {/* Single page-level live region for copy feedback — avoids per-card duplicates */}
+      <span aria-live="polite" className="sr-only">{copyAnnounce}</span>
+
+      {/* Welcome header — delay 80ms so PageContainer fade-in leads */}
+      <PageHeader
+        icon={<LayoutDashboard />}
+        title={
+          <>
+            {t('welcomeBack')},{' '}
+            <span className="text-md-primary">{displayName}</span>
+          </>
+        }
+        description={t('dashboardSubtitle')}
+        accent="primary"
+        className="[animation-delay:80ms]"
+      />
 
       {/* Announcement banners */}
       {annError ? (
@@ -360,7 +357,14 @@ export default function PortalDashboardPage() {
             <Megaphone className="h-4 w-4 shrink-0" aria-hidden="true" />
             {t('announcementsLoadFailed')}
           </span>
-          <Button type="button" variant="outline" size="sm" onClick={loadAnnouncements}>
+          {/* min-h-[3rem] ensures ≥48px touch target on mobile */}
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            className="min-h-[3rem]"
+            onClick={loadAnnouncements}
+          >
             {t('retry')}
           </Button>
         </div>
@@ -386,18 +390,20 @@ export default function PortalDashboardPage() {
                   {severityLabel && <span className="sr-only">{severityLabel}: </span>}
                   <h3 className="font-600 text-sm">{ann.title}</h3>
                   {ann.content && (
-                    // react-doctor-disable-next-line react-doctor/no-danger -- content is sanitized with DOMPurify before injection
                     <p
                       className="mt-1 text-sm opacity-80 leading-relaxed"
-                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(ann.content.replace(/\n/g, '<br/>')) }}
+                      // Content is sanitized server-side by sanitizeAnnContent (SSR returns '').
+                      // Client hydration replaces with DOMPurify-cleaned markup.
+                      dangerouslySetInnerHTML={{ __html: sanitizeAnnContent(ann.content) }}
                     />
                   )}
                 </div>
+                {/* size="icon" = size-10 (40px); min-h/min-w ensure ≥48px touch target */}
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-sm"
-                  className="shrink-0 -mr-1 -mt-1"
+                  size="icon"
+                  className="shrink-0 -mr-1 -mt-1 min-h-[3rem] min-w-[3rem]"
                   onClick={() => setDismissed((prev) => new Set(prev).add(ann.id))}
                   aria-label={t('dismiss')}
                 >
@@ -420,7 +426,7 @@ export default function PortalDashboardPage() {
               type="button"
               variant="ghost"
               size="icon-lg"
-              onClick={refetchSubscriptions}
+              onClick={handleRefresh}
               loading={refreshing}
               aria-label={t('refreshSubscriptions')}
             >
@@ -447,17 +453,26 @@ export default function PortalDashboardPage() {
               </div>
               <p className="font-display font-600 text-foreground mb-1">{t('noSubscription')}</p>
               <p className="text-sm text-muted-foreground mb-5">
-                {t('noSubDesc') || 'Browse our plans and get started.'}
+                {t('noSubDesc')}
               </p>
               <Button asChild className="h-12">
-                <Link href="/portal/plans">{t('browsePlans') || 'Browse Plans'}</Link>
+                <Link href="/portal/plans">{t('browsePlans')}</Link>
               </Button>
             </CardContent>
           </Card>
         ) : (
           <div className="grid gap-5 md:grid-cols-2">
             {subscriptions.map((sub, i) => (
-              <SubscriptionCard key={sub.id} sub={sub} index={i} />
+              <SubscriptionCard
+                key={sub.id}
+                sub={sub as SubWithPlan}
+                index={i}
+                onCopied={() => {
+                  setCopyAnnounce('');
+                  // Next tick: set text so aria-live fires even when consecutive copies happen.
+                  requestAnimationFrame(() => setCopyAnnounce(t('copied')));
+                }}
+              />
             ))}
           </div>
         )}
@@ -470,21 +485,21 @@ export default function PortalDashboardPage() {
             href: '/portal/plans',
             icon: <Package className="h-5 w-5" aria-hidden="true" />,
             label: t('buyPlan'),
-            desc: t('browsePlansDesc') || 'View available plans',
+            desc: t('browsePlansDesc'),
             iconBg: 'bg-md-primary-container text-md-on-primary-container',
           },
           {
             href: '/portal/tickets',
             icon: <MessageSquare className="h-5 w-5" aria-hidden="true" />,
             label: t('submitTicket'),
-            desc: t('ticketDesc') || 'Need help? Open a ticket',
+            desc: t('ticketDesc'),
             iconBg: 'bg-md-secondary-container text-md-on-secondary-container',
           },
           {
             href: '/portal/orders',
             icon: <Gift className="h-5 w-5" aria-hidden="true" />,
             label: t('navOrders'),
-            desc: t('ordersDesc') || 'View your order history',
+            desc: t('ordersDesc'),
             iconBg: 'bg-md-tertiary-container text-md-on-tertiary-container',
           },
         ].map((item, i) => (
@@ -513,6 +528,6 @@ export default function PortalDashboardPage() {
           </li>
         ))}
       </ul>
-    </div>
+    </PageContainer>
   );
 }

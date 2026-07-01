@@ -11,10 +11,14 @@ vi.mock('@/lib/portal-auth', () => ({
 }));
 
 const mockPortalOrders = vi.fn();
+const mockPortalPlans = vi.fn();
 
 vi.mock('@/src/generated/client', () => ({
   PortalService: {
     portalOrders: (...args: any[]) => mockPortalOrders(...args),
+  },
+  PortalPublicService: {
+    portalPlans: (...args: any[]) => mockPortalPlans(...args),
   },
 }));
 
@@ -33,6 +37,9 @@ describe('PortalOrdersPage', () => {
     vi.clearAllMocks();
     mockRouter.replace.mockClear();
     mockPortalOrders.mockReset();
+    mockPortalPlans.mockReset();
+    // PortalPublicService.portalPlans is non-critical; default to empty list.
+    mockPortalPlans.mockResolvedValue([]);
   });
 
   it('shows loading state while auth is loading', () => {

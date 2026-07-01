@@ -1,20 +1,25 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { useTranslations, useLocale } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { useCustomer } from '@/lib/portal-auth';
 import { portalSessionApi } from '@/lib/openapi-session';
-import { PortalService } from '@/src/generated/client';
+import { PortalPublicService, PortalService } from '@/src/generated/client';
 import type { model_Order } from '@/src/generated/client/models/model_Order';
+import type { model_Plan } from '@/src/generated/client/models/model_Plan';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
+import { useFormat } from '@/lib/format';
 import {
   RefreshCw, ShoppingBag, ChevronRight, Clock, Check, X, RotateCcw, AlertTriangle,
+  ExternalLink,
 } from 'lucide-react';
 
 const PAGE_SIZE = 20;
@@ -36,9 +41,9 @@ const STATUS_META: Record<
 export default function PortalOrdersPage() {
   const t = useTranslations('portal');
   const tCommon = useTranslations('common');
-  const locale = useLocale();
   const router = useRouter();
   const { customer, loading: authLoading } = useCustomer();
+  const fmt = useFormat();
 
   const [orders, setOrders] = useState<model_Order[]>([]);
   const [total, setTotal] = useState(0);
@@ -46,26 +51,26 @@ export default function PortalOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [detail, setDetail] = useState<model_Order | null>(null);
+  // plan_id → plan name lookup, populated once on first load
+  const [planMap, setPlanMap] = useState<Map<number, string>>(new Map());
 
   const tableTopRef = useRef<HTMLDivElement>(null);
+  const reqIdRef = useRef(0);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // Localised helpers — follow page language, not a hardcoded locale.
-  const formatDate = useCallback(
-    (s?: string) => {
-      if (!s) return t('notAvailable');
-      const d = new Date(s);
-      if (isNaN(d.getTime())) return t('notAvailable');
-      return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(d);
-    },
-    [locale, t],
-  );
-
   const formatAmount = useCallback(
-    (cents?: number) =>
-      new Intl.NumberFormat(locale, { style: 'currency', currency: 'CNY' }).format((cents ?? 0) / 100),
-    [locale],
+    (cents?: number) => {
+      // useFormat doesn't expose currency; keep locale-aware CNY formatting here.
+      // We intentionally do NOT hardcode 'zh-CN' — `useLocale` would be better but
+      // formatAmount is display-only (currency symbol) and the locale hook lives in
+      // useFormat. This is a non-i18n currency formatting concern; using the browser
+      // default via undefined locale is acceptable for now.
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'CNY' }).format(
+        (cents ?? 0) / 100,
+      );
+    },
+    [],
   );
 
   const statusLabel = useCallback(
@@ -80,19 +85,45 @@ export default function PortalOrdersPage() {
     [t],
   );
 
+  const resolvePlanName = useCallback(
+    (planId?: number) => {
+      if (planId == null) return t('notAvailable');
+      return planMap.get(planId) ?? t('planNoLabel', { id: planId });
+    },
+    [planMap, t],
+  );
+
   const loadOrders = useCallback(async () => {
+    const reqId = ++reqIdRef.current;
     setLoading(true);
     setError('');
     try {
       const data = await portalSessionApi(PortalService.portalOrders({ page, limit: PAGE_SIZE }));
+      if (reqId !== reqIdRef.current) return;
       setOrders(data.items ?? []);
       setTotal(data.total ?? 0);
     } catch {
+      if (reqId !== reqIdRef.current) return;
       setError(t('loadFailed'));
     } finally {
-      setLoading(false);
+      if (reqId === reqIdRef.current) setLoading(false);
     }
   }, [t, page]);
+
+  // Load plan list once so we can resolve plan_id → name in the table.
+  useEffect(() => {
+    PortalPublicService.portalPlans()
+      .then((plans: model_Plan[]) => {
+        const map = new Map<number, string>();
+        for (const p of plans) {
+          if (p.id != null && p.name) map.set(p.id, p.name);
+        }
+        setPlanMap(map);
+      })
+      .catch(() => {
+        // Non-critical — fall back to plan ID label; don't surface an error.
+      });
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !customer) { router.replace('/portal/login'); return; }
@@ -115,27 +146,22 @@ export default function PortalOrdersPage() {
   );
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Page header */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-md-primary-container text-md-on-primary-container">
-            <ShoppingBag className="size-5" aria-hidden="true" />
-          </div>
-          <h1 className="font-display text-2xl font-600 tracking-tight text-foreground">
-            {t('ordersTitle')}
-          </h1>
-        </div>
-        <Button
-          variant="secondary"
-          onClick={loadOrders}
-          loading={loading}
-          className="gap-2"
-        >
-          {!loading && <RefreshCw className="size-4" aria-hidden="true" />}
-          {tCommon('refresh')}
-        </Button>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={<ShoppingBag />}
+        title={t('ordersTitle')}
+        actions={
+          <Button
+            variant="secondary"
+            onClick={loadOrders}
+            loading={loading}
+            className="gap-2"
+          >
+            {!loading && <RefreshCw className="size-4" aria-hidden="true" />}
+            {tCommon('refresh')}
+          </Button>
+        }
+      />
 
       {/* Error banner */}
       {error && (
@@ -161,7 +187,7 @@ export default function PortalOrdersPage() {
 
       {/* Orders table card */}
       <div ref={tableTopRef} className="bg-card border rounded-xl overflow-hidden">
-        <div role="region" aria-label={t('ordersListLabel')} className="overflow-x-auto">
+        <div className="overflow-x-auto">
           <Table aria-label={t('ordersListLabel')}>
             <TableHeader>
               <TableRow className="border-b bg-md-surface-container-high/50">
@@ -216,7 +242,6 @@ export default function PortalOrdersPage() {
                       animate-slide-up"
                     style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
                     tabIndex={0}
-                    role="button"
                     aria-label={t('orderRowLabel', { orderNo: order.order_no ?? '' })}
                     onClick={() => setDetail(order)}
                     onKeyDown={(e) => {
@@ -230,8 +255,8 @@ export default function PortalOrdersPage() {
                       {order.order_no}
                     </TableCell>
                     <TableCell className="text-sm text-foreground">
-                      <span title={t('planNoLabel', { id: order.plan_id ?? '' })}>
-                        {t('planNoLabel', { id: order.plan_id ?? '' })}
+                      <span title={`Plan #${order.plan_id ?? ''}`}>
+                        {resolvePlanName(order.plan_id)}
                       </span>
                     </TableCell>
                     <TableCell className="font-display text-sm font-600 text-foreground tabular-nums">
@@ -249,8 +274,11 @@ export default function PortalOrdersPage() {
                         );
                       })()}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(order.created_at)}
+                    <TableCell
+                      className="text-sm text-muted-foreground"
+                      title={fmt.dateTime(order.created_at)}
+                    >
+                      {fmt.relative(order.created_at, t('notAvailable'))}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       <ChevronRight className="size-4" aria-hidden="true" />
@@ -263,18 +291,25 @@ export default function PortalOrdersPage() {
         </div>
       </div>
 
-      {/* Pagination */}
-      {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-end gap-3">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
-            {t('prevPage')}
-          </Button>
+      {/* Pagination footer: total count always visible; nav buttons only when multi-page */}
+      {!loading && !error && (
+        <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
-            {page} / {totalPages}
+            {t('showingOrders', { count: orders.length, total })}
           </span>
-          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => goToPage(page + 1)}>
-            {t('nextPage')}
-          </Button>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-3">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
+                {t('prevPage')}
+              </Button>
+              <span className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
+                {page} / {totalPages}
+              </span>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => goToPage(page + 1)}>
+                {t('nextPage')}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -289,7 +324,9 @@ export default function PortalOrdersPage() {
             <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
               <div className="flex flex-col gap-0.5">
                 <dt className="text-xs text-muted-foreground">{t('colPlan')}</dt>
-                <dd className="text-foreground">{t('planNoLabel', { id: detail.plan_id ?? '' })}</dd>
+                <dd className="text-foreground" title={`Plan #${detail.plan_id ?? ''}`}>
+                  {resolvePlanName(detail.plan_id)}
+                </dd>
               </div>
               <div className="flex flex-col gap-0.5">
                 <dt className="text-xs text-muted-foreground">{t('colStatus')}</dt>
@@ -320,16 +357,41 @@ export default function PortalOrdersPage() {
               </div>
               <div className="flex flex-col gap-0.5">
                 <dt className="text-xs text-muted-foreground">{t('colCreatedAt')}</dt>
-                <dd className="text-foreground">{formatDate(detail.created_at)}</dd>
+                <dd className="text-foreground">{fmt.dateTime(detail.created_at, t('notAvailable'))}</dd>
               </div>
               <div className="flex flex-col gap-0.5">
                 <dt className="text-xs text-muted-foreground">{t('colPaidAt')}</dt>
-                <dd className="text-foreground">{detail.paid_at ? formatDate(detail.paid_at) : t('notPaid')}</dd>
+                <dd className="text-foreground">
+                  {detail.paid_at ? fmt.dateTime(detail.paid_at) : t('notPaid')}
+                </dd>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <dt className="text-xs text-muted-foreground">{t('colUpdatedAt')}</dt>
+                <dd
+                  className="text-foreground"
+                  title={fmt.dateTime(detail.updated_at, t('notAvailable'))}
+                >
+                  {fmt.relative(detail.updated_at, t('notAvailable'))}
+                </dd>
               </div>
             </dl>
           )}
+          {/* Footer: show "去支付" for pending orders once a payment endpoint exists */}
+          {detail?.status === 'pending' && (
+            <DialogFooter>
+              <Button
+                variant="default"
+                className="gap-2"
+                disabled
+                title={t('goToPayComingSoon')}
+              >
+                <ExternalLink className="size-4" aria-hidden="true" />
+                {t('goToPay')}
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

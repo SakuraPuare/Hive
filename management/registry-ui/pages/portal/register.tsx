@@ -57,9 +57,10 @@ export default function PortalRegisterPage() {
     setLoading(true);
     try {
       await portalRegister(email, password, nickname, referralCode);
+      await router.replace('/portal/dashboard');
       setSuccess(true);
-      router.replace('/portal/dashboard');
     } catch (err) {
+      setSuccess(false);
       setError(getErrorMessage(err, t('registerFailed')));
       setLoading(false);
     }
@@ -67,8 +68,14 @@ export default function PortalRegisterPage() {
 
   return (
     <div className="flex min-h-screen bg-background">
+      <a
+        href="#register-form"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-lg focus:bg-md-primary focus:px-4 focus:py-2 focus:text-md-on-primary"
+      >
+        {t('skipToContent')}
+      </a>
       {/* Left panel — M3 tonal surface branding */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-md-primary-container">
+      <div aria-hidden="true" className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-md-primary-container">
         {/* Subtle tonal geometry: concentric arcs in on-primary-container at low opacity */}
         <div className="absolute inset-0 pointer-events-none" aria-hidden>
           <svg
@@ -80,8 +87,8 @@ export default function PortalRegisterPage() {
           >
             <defs>
               <radialGradient id="rg" cx="30%" cy="70%" r="80%">
-                <stop offset="0%" stopColor="hsl(224 76% 18%)" stopOpacity="1" />
-                <stop offset="100%" stopColor="hsl(224 76% 18%)" stopOpacity="0" />
+                <stop offset="0%" stopColor="hsl(var(--md-on-primary-container))" stopOpacity="1" />
+                <stop offset="100%" stopColor="hsl(var(--md-on-primary-container))" stopOpacity="0" />
               </radialGradient>
             </defs>
             <rect width="100%" height="100%" fill="url(#rg)" />
@@ -92,7 +99,7 @@ export default function PortalRegisterPage() {
                 cy="70%"
                 r={r}
                 fill="none"
-                stroke="hsl(224 76% 18%)"
+                stroke="hsl(var(--md-on-primary-container))"
                 strokeWidth="1.5"
               />
             ))}
@@ -105,13 +112,13 @@ export default function PortalRegisterPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-md-primary">
               <Globe className="h-6 w-6 text-md-on-primary" aria-hidden="true" />
             </div>
-            <span className="font-display text-2xl font-semibold text-md-on-primary-container tracking-tight">
+            <span className="font-display text-2xl font-600 text-md-on-primary-container tracking-tight">
               {t('brand')}
             </span>
           </div>
 
           {/* Hero copy */}
-          <h1 className="font-display text-4xl font-bold text-md-on-primary-container leading-snug mb-5">
+          <h1 className="font-display text-4xl font-700 text-md-on-primary-container leading-snug mb-5">
             {t('heroTitle') || 'Secure. Fast.\nUnlimited.'}
           </h1>
           <p className="text-base text-md-on-primary-container/70 max-w-sm leading-relaxed">
@@ -119,11 +126,13 @@ export default function PortalRegisterPage() {
           </p>
 
           {/* Decorative pill chips at bottom */}
+          {/* These labels are brand/tech terms intentionally kept in English — marked with lang="en" */}
           <div className="mt-14 flex flex-wrap gap-2">
-            {['TLS 1.3', 'Zero-log', 'Global PoPs', 'API access'].map((label, i) => (
+            {(['TLS 1.3', 'Zero-log', 'Global PoPs', 'API access'] as const).map((label, i) => (
               <span
                 key={label}
-                className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium
+                lang="en"
+                className="inline-flex items-center rounded-full px-3 py-1 text-xs font-500
                   bg-md-primary/20 text-md-on-primary-container animate-slide-up"
                 style={{ animationDelay: `${i * 60}ms` }}
               >
@@ -135,28 +144,28 @@ export default function PortalRegisterPage() {
       </div>
 
       {/* Right panel — form */}
-      <div className="flex w-full lg:w-1/2 items-center justify-center p-6 bg-background">
+      <main id="register-form" className="flex w-full lg:w-1/2 items-center justify-center p-6 bg-background">
         <div className="w-full max-w-[400px] animate-slide-up">
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 mb-10 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-md-primary-container">
-              <Globe className="h-5 w-5 text-md-on-primary-container" aria-hidden="true" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-md-primary elevation-1">
+              <Globe className="h-5 w-5 text-md-on-primary" aria-hidden="true" />
             </div>
-            <span className="font-display text-xl font-semibold text-foreground tracking-tight">
+            <span className="font-display text-xl font-600 text-foreground tracking-tight">
               {t('brand')}
             </span>
           </div>
 
           {/* Page heading */}
           <div className="mb-8">
-            <h2 className="font-display text-2xl font-bold text-foreground tracking-tight">
+            <h1 className="font-display text-2xl font-700 text-foreground tracking-tight">
               {t('customerRegister')}
-            </h2>
+            </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {t('hasAccount')}{' '}
               <Link
                 href="/portal/login"
-                className="font-medium text-md-primary hover:underline
+                className="font-500 text-md-primary hover:underline
                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 rounded-lg"
               >
                 {t('goLogin')}
@@ -167,7 +176,7 @@ export default function PortalRegisterPage() {
           {/* Form card */}
           <div className="bg-md-surface-container-lowest border rounded-2xl p-6 elevation-1">
             {/* react-doctor-disable-next-line react-doctor/no-prevent-default -- static-export SPA against a Go API; server actions are not available */}
-            <form noValidate aria-label={t('registerFormLabel')} onSubmit={handleSubmit}>
+            <form noValidate aria-label={t('registerFormLabel')} aria-busy={loading} onSubmit={handleSubmit}>
               <div className="space-y-5">
                 {/* Error banner — top of form, reserved space avoids layout shift */}
                 <div role="alert" aria-live="assertive" aria-atomic="true">
@@ -203,7 +212,7 @@ export default function PortalRegisterPage() {
 
                 {/* Email */}
                 <div className="space-y-1.5 animate-slide-up" style={{ animationDelay: '40ms' }}>
-                  <Label htmlFor="email" className="text-sm font-medium text-foreground">
+                  <Label htmlFor="email" className="text-sm font-500 text-foreground">
                     {t('email')}
                   </Label>
                   <Input
@@ -211,8 +220,9 @@ export default function PortalRegisterPage() {
                     type="email"
                     placeholder="you@example.com"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => { setEmail(e.target.value); setFieldErrors(prev => ({ ...prev, email: undefined })); }}
                     autoComplete="email"
+                    autoFocus
                     required
                     aria-required={true}
                     error={fieldErrors.email}
@@ -222,14 +232,14 @@ export default function PortalRegisterPage() {
 
                 {/* Nickname */}
                 <div className="space-y-1.5 animate-slide-up" style={{ animationDelay: '80ms' }}>
-                  <Label htmlFor="nickname" className="text-sm font-medium text-foreground">
+                  <Label htmlFor="nickname" className="text-sm font-500 text-foreground">
                     {t('nickname')}
                   </Label>
                   <Input
                     id="nickname"
                     placeholder={t('nicknamePlaceholder') || ''}
                     value={nickname}
-                    onChange={(e) => setNickname(e.target.value)}
+                    onChange={(e) => { setNickname(e.target.value); setFieldErrors(prev => ({ ...prev, nickname: undefined })); }}
                     autoComplete="nickname"
                     required
                     aria-required={true}
@@ -242,14 +252,14 @@ export default function PortalRegisterPage() {
 
                 {/* Password */}
                 <div className="space-y-1.5 animate-slide-up" style={{ animationDelay: '120ms' }}>
-                  <Label htmlFor="password" className="text-sm font-medium text-foreground">
+                  <Label htmlFor="password" className="text-sm font-500 text-foreground">
                     {t('password')}
                   </Label>
                   <Input
                     id="password"
                     type="password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => ({ ...prev, password: undefined })); }}
                     autoComplete="new-password"
                     required
                     aria-required={true}
@@ -286,7 +296,7 @@ export default function PortalRegisterPage() {
             </form>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

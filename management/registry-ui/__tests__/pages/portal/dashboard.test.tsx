@@ -6,7 +6,8 @@ import { mockRouter } from '@/test/setup';
 const mockCustomer = { id: 1, email: 'test@example.com', nickname: 'Test', status: 'active', created_at: '' };
 const mockSub = {
   id: 1,
-  plan_name: 'Pro Plan',
+  // plan_name is NOT present in model_CustomerSubscription — dashboard must show a fallback.
+  plan_id: 42,
   token: 'abc123',
   traffic_used: 2147483648, // 2 GB
   traffic_limit: 10737418240, // 10 GB
@@ -73,7 +74,8 @@ describe('PortalDashboardPage', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [mockSub], loading: false });
     await renderAndSettle(<PortalDashboardPage />);
 
-    expect(screen.getByText('Pro Plan')).toBeInTheDocument();
+    // plan_name is absent in the real API — dashboard shows plan_id fallback.
+    expect(screen.getByText(/portal\.planName.*42|#42/)).toBeInTheDocument();
     expect(screen.getByText('portal.active')).toBeInTheDocument();
     // Device limit shown as number
     expect(screen.getByText('3')).toBeInTheDocument();
@@ -153,12 +155,13 @@ describe('PortalDashboardPage', () => {
   });
 
   it('renders multiple subscription cards', async () => {
-    const sub2 = { ...mockSub, id: 2, plan_name: 'Basic Plan', token: 'def456' };
+    const sub2 = { ...mockSub, id: 2, plan_id: 7, token: 'def456' };
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [mockSub, sub2], loading: false });
     await renderAndSettle(<PortalDashboardPage />);
 
-    expect(screen.getByText('Pro Plan')).toBeInTheDocument();
-    expect(screen.getByText('Basic Plan')).toBeInTheDocument();
+    // Both cards show their plan_id fallback titles.
+    expect(screen.getByText(/42/)).toBeInTheDocument();
+    expect(screen.getByText(/7/)).toBeInTheDocument();
   });
 
   it('fetches announcements on mount', async () => {

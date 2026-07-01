@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { PortalPublicService, PortalService } from '@/src/generated/client';
 import { portalSessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
+import { useCustomer } from '@/lib/portal-auth';
 import type { model_Plan } from '@/src/generated/client/models/model_Plan';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,8 +19,10 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
-import { Check, Zap, AlertCircle } from 'lucide-react';
+import { Check, Zap, AlertCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 
 function formatTraffic(bytes: number, t: ReturnType<typeof useTranslations>) {
   if (bytes === 0) return t('unlimited');
@@ -34,6 +37,7 @@ export default function PortalPlansPage() {
   const t = useTranslations('portal');
   const router = useRouter();
   const toast = useToast();
+  const { customer, loading: authLoading } = useCustomer();
   const [plans, setPlans] = useState<model_Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -48,7 +52,8 @@ export default function PortalPlansPage() {
     setError('');
     try {
       const data = await PortalPublicService.portalPlans();
-      setPlans(data);
+      // Sort by sort_order so the admin-defined display order is respected.
+      setPlans(data.slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)));
     } catch {
       setError(t('loadFailed'));
     } finally {
@@ -61,10 +66,17 @@ export default function PortalPlansPage() {
   async function handleBuy(planId: number) {
     setBuyingId(planId);
     try {
-      await portalSessionApi(PortalService.portalCreateOrder({ requestBody: { plan_id: planId } }));
+      const result = await portalSessionApi(
+        PortalService.portalCreateOrder({ requestBody: { plan_id: planId } }),
+      );
       setConfirmPlan(null);
       toast.success(t('purchaseSuccess'));
-      router.push('/portal/orders');
+      // Navigate to orders, carrying the new order_no so the orders page can
+      // surface the freshly created record to the user.
+      const dest = result?.order_no
+        ? `/portal/orders?highlight=${encodeURIComponent(result.order_no)}`
+        : '/portal/orders';
+      router.push(dest);
     } catch (e) {
       setConfirmPlan(null);
       setBuyError(getErrorMessage(e, t('purchaseFailed')));
@@ -73,60 +85,38 @@ export default function PortalPlansPage() {
     }
   }
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
-      <div
-        className="flex flex-col items-center justify-center py-24 gap-4"
-        role="status"
-        aria-live="polite"
-      >
-        {/* M3 circular indeterminate progress */}
-        <div className="relative h-12 w-12">
-          <svg
-            className="animate-spin"
-            viewBox="0 0 48 48"
-            fill="none"
-            role="img"
-            aria-label={t('loadingPlans')}
-            style={{ animation: 'spin 1.4s linear infinite' }}
-          >
-            <circle
-              cx="24" cy="24" r="20"
-              stroke="hsl(var(--md-primary) / 0.2)"
-              strokeWidth="4"
-            />
-            <circle
-              cx="24" cy="24" r="20"
-              stroke="hsl(var(--md-primary))"
-              strokeWidth="4"
-              strokeLinecap="round"
-              strokeDasharray="100"
-              strokeDashoffset="60"
-            />
-          </svg>
+      <PageContainer width="content">
+        <div
+          className="flex flex-col items-center justify-center py-24 gap-4"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="h-10 w-10 animate-spin text-md-primary" aria-hidden="true" />
+          <p className="text-sm text-muted-foreground animate-fade-in">{t('loadingPlans')}</p>
         </div>
-        <p className="text-sm text-muted-foreground animate-fade-in">{t('loadingPlans')}</p>
-      </div>
+      </PageContainer>
     );
   }
 
+  // Sort by sort_order then pick the highest-sort-order enabled plan as "recommended".
+  // This gives a stable, admin-controllable selection rather than relying on array index.
   const enabledPlans = plans.filter((p) => p.enabled);
-  const recommendedIdx = enabledPlans.length > 1 ? 1 : 0;
+  const recommendedId = enabledPlans.length > 0
+    ? enabledPlans[enabledPlans.length - 1].id
+    : undefined;
+
+  const isLoggedIn = customer !== null;
 
   return (
-    <div className="space-y-10 animate-fade-in">
-      {/* Hero / title区 — surface container，非旧渐变 */}
-      <div className="rounded-2xl bg-md-surface-container-low border px-8 py-10 text-center animate-slide-up">
-        <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-md-primary-container mb-4">
-          <Zap className="h-6 w-6 text-md-on-primary-container" aria-hidden="true" />
-        </div>
-        <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">
-          {t('plansTitle')}
-        </h1>
-        <p className="mt-2 text-base text-muted-foreground leading-relaxed max-w-sm mx-auto">
-          {t('plansSubtitle') || 'Choose a plan that fits your needs.'}
-        </p>
-      </div>
+    <PageContainer width="content">
+      <PageHeader
+        icon={<Zap />}
+        title={t('plansTitle')}
+        description={t('plansSubtitle')}
+        accent="primary"
+      />
 
       {/* 错误提示 — error container */}
       {error && (
@@ -166,9 +156,9 @@ export default function PortalPlansPage() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 max-w-4xl mx-auto">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {enabledPlans.map((plan, i) => {
-            const isRecommended = i === recommendedIdx;
+            const isRecommended = plan.id === recommendedId;
             const titleId = `plan-${plan.id}-title`;
             return (
               <Card
@@ -190,7 +180,7 @@ export default function PortalPlansPage() {
                       className="gap-1 rounded-bl-xl rounded-tr-xl rounded-br-none rounded-tl-none px-3 py-1.5 bg-md-primary text-md-on-primary"
                     >
                       <Zap className="h-3 w-3" aria-hidden="true" />
-                      {t('recommended') || 'Popular'}
+                      {t('recommended')}
                     </Badge>
                   </div>
                 )}
@@ -209,7 +199,7 @@ export default function PortalPlansPage() {
                       {formatPrice(plan.price ?? 0)}
                     </span>
                     <span className={`text-sm ${isRecommended ? 'text-md-on-primary-container/70' : 'text-muted-foreground'}`}>
-                      / {plan.duration_days} {t('days') || 'days'}
+                      / {plan.duration_days} {t('days')}
                     </span>
                   </div>
                 </CardHeader>
@@ -222,7 +212,7 @@ export default function PortalPlansPage() {
                         <Check className={`h-3 w-3 ${isRecommended ? 'text-md-on-primary-container' : 'text-md-on-tertiary-container'}`} aria-hidden="true" />
                       </span>
                       <span className={isRecommended ? 'text-md-on-primary-container' : 'text-foreground'}>
-                        {formatTraffic(plan.traffic_limit ?? 0, t)} {t('trafficQuota') || 'traffic'}
+                        {formatTraffic(plan.traffic_limit ?? 0, t)} {t('trafficQuota')}
                       </span>
                     </li>
                     <li className="flex items-center gap-2.5 text-sm">
@@ -230,7 +220,7 @@ export default function PortalPlansPage() {
                         <Check className={`h-3 w-3 ${isRecommended ? 'text-md-on-primary-container' : 'text-md-on-tertiary-container'}`} aria-hidden="true" />
                       </span>
                       <span className={isRecommended ? 'text-md-on-primary-container' : 'text-foreground'}>
-                        {plan.device_limit} {t('devices')} {t('simultaneous') || 'simultaneous'}
+                        {plan.device_limit} {t('devices')} {t('simultaneous')}
                       </span>
                     </li>
                     {(plan.speed_limit ?? 0) > 0 ? (
@@ -248,7 +238,7 @@ export default function PortalPlansPage() {
                           <Check className={`h-3 w-3 ${isRecommended ? 'text-md-on-primary-container' : 'text-md-on-tertiary-container'}`} aria-hidden="true" />
                         </span>
                         <span className={isRecommended ? 'text-md-on-primary-container' : 'text-foreground'}>
-                          {t('noSpeedLimit') || 'Unlimited speed'}
+                          {t('noSpeedLimit')}
                         </span>
                       </li>
                     )}
@@ -257,29 +247,48 @@ export default function PortalPlansPage() {
                         <Check className={`h-3 w-3 ${isRecommended ? 'text-md-on-primary-container' : 'text-md-on-tertiary-container'}`} aria-hidden="true" />
                       </span>
                       <span className={isRecommended ? 'text-md-on-primary-container' : 'text-foreground'}>
-                        {t('allNodes') || 'All available nodes'}
+                        {t('allNodes')}
                       </span>
                     </li>
                   </ul>
 
-                  {/* 购买按钮 */}
-                  <Button
-                    className={`w-full h-12 rounded-lg text-sm font-500 ${
-                      isRecommended
-                        ? 'bg-md-primary text-md-on-primary elevation-1 hover:elevation-2'
-                        : 'hover:elevation-1'
-                    }`}
-                    variant={isRecommended ? 'default' : 'secondary'}
-                    onClick={() => setConfirmPlan(plan)}
-                    loading={buyingId === plan.id}
-                    aria-label={
-                      buyingId === plan.id
-                        ? `${t('buying')} · ${plan.name}`
-                        : `${t('buy')} · ${plan.name} · ${formatPrice(plan.price ?? 0)}`
-                    }
-                  >
-                    {buyingId === plan.id ? t('buying') : t('buy')}
-                  </Button>
+                  {/* 购买按钮 — 未登录时导向登录页，保留 redirect 参数 */}
+                  {isLoggedIn ? (
+                    <Button
+                      className={`w-full h-12 rounded-lg text-sm font-500 ${
+                        isRecommended
+                          ? 'bg-md-primary text-md-on-primary elevation-1 hover:elevation-2'
+                          : 'hover:elevation-1'
+                      }`}
+                      variant={isRecommended ? 'default' : 'secondary'}
+                      onClick={() => setConfirmPlan(plan)}
+                      loading={buyingId === plan.id}
+                      aria-label={
+                        buyingId === plan.id
+                          ? `${t('buying')} · ${plan.name}`
+                          : `${t('buy')} · ${plan.name} · ${formatPrice(plan.price ?? 0)}`
+                      }
+                    >
+                      {buyingId === plan.id ? t('buying') : t('buy')}
+                    </Button>
+                  ) : (
+                    <Button
+                      className={`w-full h-12 rounded-lg text-sm font-500 ${
+                        isRecommended
+                          ? 'bg-md-primary text-md-on-primary elevation-1 hover:elevation-2'
+                          : 'hover:elevation-1'
+                      }`}
+                      variant={isRecommended ? 'default' : 'secondary'}
+                      onClick={() =>
+                        router.push(
+                          `/portal/login?redirect=${encodeURIComponent('/portal/plans')}`,
+                        )
+                      }
+                      aria-label={`${t('loginToBuy')} · ${plan.name}`}
+                    >
+                      {t('loginToBuy')}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -344,6 +353,6 @@ export default function PortalPlansPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

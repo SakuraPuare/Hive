@@ -1,17 +1,15 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { PortalAuthService } from '@/src/generated/client';
 import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Globe, ArrowRight, Loader2, Mail } from 'lucide-react';
+import { Globe, ArrowRight, Mail } from 'lucide-react';
 
 export default function PortalForgotPasswordPage() {
   const t = useTranslations('portal');
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [fieldError, setFieldError] = useState('');
@@ -22,6 +20,13 @@ export default function PortalForgotPasswordPage() {
 
   return (
     <div className="flex min-h-screen">
+      {/* Skip link — keyboard users bypass branding panel (WCAG 2.4.1) */}
+      <a
+        href="#forgot-form"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-lg focus:bg-md-primary focus:px-4 focus:py-2 focus:text-md-on-primary"
+      >
+        {t('skipToContent')}
+      </a>
       {/* Left panel — branding (M3 surface container, no legacy gradient) */}
       <div className="hidden lg:flex lg:w-1/2 bg-md-primary-container relative overflow-hidden">
         {/* Subtle dot texture using on-primary-container tint */}
@@ -38,13 +43,13 @@ export default function PortalForgotPasswordPage() {
             </div>
             <span className="font-display text-2xl font-600 text-md-on-primary-container tracking-tight">{t('brand')}</span>
           </div>
-          <h1 className="font-display text-4xl font-700 text-md-on-primary-container leading-tight mb-4 animate-slide-up" style={{ animationDelay: '60ms' }}>{t('heroTitle')}</h1>
+          <p aria-hidden="true" className="font-display text-4xl font-700 text-md-on-primary-container leading-tight mb-4 animate-slide-up" style={{ animationDelay: '60ms' }}>{t('heroTitle')}</p>
           <p className="text-base text-md-on-primary-container/70 max-w-md leading-relaxed animate-slide-up" style={{ animationDelay: '120ms' }}>{t('heroDesc')}</p>
         </div>
       </div>
 
       {/* Right panel — form / success */}
-      <div className="flex w-full lg:w-1/2 items-center justify-center p-6 bg-background">
+      <main id="forgot-form" className="flex w-full lg:w-1/2 items-center justify-center p-6 bg-background">
         <div className="w-full max-w-[400px] animate-fade-in">
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 mb-10 lg:hidden">
@@ -72,12 +77,13 @@ export default function PortalForgotPasswordPage() {
               <h2 className="font-display text-2xl font-600 tracking-tight">{t('codeSent')}</h2>
               <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{t('codeSentDesc')}</p>
               <Button
-                type="button"
+                asChild
                 className="state-layer ripple w-full h-11 text-sm font-500 mt-8 rounded-lg bg-md-primary text-md-on-primary elevation-1 hover:elevation-2 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-                onClick={() => router.push('/portal/reset-password')}
               >
-                {t('goReset')}
-                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                <Link href={`/portal/reset-password?email=${encodeURIComponent(email)}`}>
+                  {t('goReset')}
+                  <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                </Link>
               </Button>
               <Button
                 type="button"
@@ -96,7 +102,7 @@ export default function PortalForgotPasswordPage() {
           ) : (
             <>
               <div className="mb-8 animate-slide-up" style={{ animationDelay: '0ms' }}>
-                <h2 className="font-display text-2xl font-600 tracking-tight">{t('forgotTitle')}</h2>
+                <h1 className="font-display text-2xl font-600 tracking-tight">{t('forgotTitle')}</h1>
                 <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{t('forgotDesc')}</p>
               </div>
 
@@ -104,6 +110,7 @@ export default function PortalForgotPasswordPage() {
               <form
                 className="animate-slide-up"
                 style={{ animationDelay: '60ms' }}
+                noValidate
                 aria-busy={loading}
                 onSubmit={async (e) => {
                   e.preventDefault();
@@ -144,7 +151,7 @@ export default function PortalForgotPasswordPage() {
                         autoComplete="email"
                         autoFocus
                         required
-                        aria-required="true"
+                        disabled={loading}
                         aria-invalid={!!(error || fieldError)}
                         aria-describedby={fieldError ? 'email-field-error' : error ? 'email-error' : undefined}
                         className="h-11 pl-10 rounded-lg bg-md-surface-container-high border-input focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0"
@@ -163,20 +170,11 @@ export default function PortalForgotPasswordPage() {
                   )}
                   <Button
                     type="submit"
+                    loading={loading}
                     className="state-layer ripple w-full h-11 text-sm font-500 rounded-lg bg-md-primary text-md-on-primary elevation-1 hover:elevation-2 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-                    disabled={loading}
                   >
-                    {loading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                        <span>{t('sending')}</span>
-                      </>
-                    ) : (
-                      <>
-                        {t('sendCode')}
-                        <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
-                      </>
-                    )}
+                    {t('sendCode')}
+                    <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
               </form>
@@ -189,7 +187,7 @@ export default function PortalForgotPasswordPage() {
             </>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

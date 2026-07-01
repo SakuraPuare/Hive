@@ -4,20 +4,24 @@ import userEvent from '@testing-library/user-event';
 import PortalLoginPage from '@/pages/portal/login';
 
 const mockPortalLogin = vi.fn();
+const mockRouterReplace = vi.fn();
 
 vi.mock('@/lib/portal-auth', () => ({
   portalLogin: (...args: any[]) => mockPortalLogin(...args),
 }));
 
-describe('PortalLoginPage', () => {
-  const mockReplace = vi.fn();
+vi.mock('next/router', () => ({
+  useRouter: () => ({
+    replace: mockRouterReplace,
+    query: {},
+    pathname: '/portal/login',
+    push: vi.fn(),
+  }),
+}));
 
+describe('PortalLoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    Object.defineProperty(window, 'location', {
-      writable: true,
-      value: { href: '', replace: mockReplace },
-    });
   });
 
   it('renders login form with email and password fields', () => {
@@ -50,7 +54,7 @@ describe('PortalLoginPage', () => {
     await waitFor(() => {
       expect(mockPortalLogin).toHaveBeenCalledWith('test@example.com', 'password123');
     });
-    expect(window.location.replace).toHaveBeenCalledWith('/portal/dashboard');
+    expect(mockRouterReplace).toHaveBeenCalledWith('/portal/dashboard');
   });
 
   it('shows error message on login failure', async () => {

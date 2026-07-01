@@ -4,7 +4,9 @@ import DOMPurify from 'dompurify';
 import { PortalPublicService } from '@/src/generated/client';
 import type { model_Announcement } from '@/src/generated/client/models/model_Announcement';
 import { getErrorMessage } from '@/lib/i18n';
-import { useLocale } from '@/lib/locale';
+import { useFormat } from '@/lib/format';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -56,28 +58,77 @@ const normalizeLevel = (level?: string): LevelKey => {
   return 'info';
 };
 
-/** Sanitizer that permits the legal block/inline subset and hardens links. */
+/**
+ * Sanitizer that permits the legal block/inline subset and hardens links.
+ *
+ * Order: sanitize first (XSS-safe), then inject <br/> into text nodes so that
+ * raw \n in the original string never enters the sanitise context as HTML.
+ */
 const sanitizeContent = (raw: string): string => {
-  const html = DOMPurify.sanitize(raw.replace(/\n/g, '<br/>'), {
+  // 1. Sanitize the raw string first — before any \n→<br/> substitution —
+  //    so no attacker-controlled newline-adjacent payload can slip into the
+  //    HTML context pre-sanitise.
+  const sanitized = DOMPurify.sanitize(raw, {
     ALLOWED_TAGS: ['a', 'b', 'strong', 'i', 'em', 'u', 'br', 'p', 'ul', 'ol', 'li', 'h3', 'h4', 'code', 'pre', 'blockquote', 'span'],
     ALLOWED_ATTR: ['href', 'title', 'target', 'rel'],
   });
-  // Harden anchors: open in new tab, drop opener, apply M3 link token.
-  if (typeof document === 'undefined') return html;
+
+  if (typeof document === 'undefined') return sanitized;
+
   const tpl = document.createElement('template');
-  tpl.innerHTML = html;
+  tpl.innerHTML = sanitized;
+
+  // 2. Walk text nodes: replace literal \n with <br/> elements.
+  //    This runs after DOMPurify so we are only injecting structural <br>
+  //    into already-sanitised markup, not into raw user input.
+  const walker = document.createTreeWalker(tpl.content, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let node: Node | null;
+  while ((node = walker.nextNode()) !== null) {
+    textNodes.push(node as Text);
+  }
+  for (const textNode of textNodes) {
+    if (!textNode.nodeValue?.includes('\n')) continue;
+    const parts = textNode.nodeValue.split('\n');
+    const frag = document.createDocumentFragment();
+    parts.forEach((part, idx) => {
+      frag.appendChild(document.createTextNode(part));
+      if (idx < parts.length - 1) {
+        frag.appendChild(document.createElement('br'));
+      }
+    });
+    textNode.parentNode?.replaceChild(frag, textNode);
+  }
+
+  // 3. Harden anchors: open in new tab, drop opener, apply M3 link token.
   tpl.content.querySelectorAll('a[href]').forEach((el) => {
     el.setAttribute('target', '_blank');
     el.setAttribute('rel', 'noopener noreferrer');
     el.classList.add('text-md-primary', 'underline', 'underline-offset-2');
   });
+
   return tpl.innerHTML;
+};
+
+/**
+ * Extract plain text from sanitised HTML to accurately measure visible length.
+ * Used for the "is this long enough to collapse?" heuristic.
+ */
+const getTextLength = (sanitizedHtml: string): { chars: number; lines: number } => {
+  if (typeof document === 'undefined') {
+    return { chars: sanitizedHtml.length, lines: 1 };
+  }
+  const div = document.createElement('div');
+  div.innerHTML = sanitizedHtml;
+  const text = div.textContent ?? '';
+  const lines = div.querySelectorAll('br, p, li').length + 1;
+  return { chars: text.length, lines };
 };
 
 export default function PortalAnnouncementsPage() {
   const t = useTranslations('portal');
   const tCommon = useTranslations('common');
-  const { locale } = useLocale();
+  const fmt = useFormat();
 
   const [announcements, setAnnouncements] = useState<model_Announcement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,7 +151,7 @@ export default function PortalAnnouncementsPage() {
         setAnnouncements(Array.isArray(data) ? data : []);
       } catch (e) {
         if (controller.signal.aborted) return;
-        setError(getErrorMessage(e, t('loadFailed')));
+        setError(getErrorMessage(e, t('announcementsLoadFailed')));
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -129,48 +180,26 @@ export default function PortalAnnouncementsPage() {
     [announcements],
   );
 
-  const dateLabel = useCallback(
-    (iso?: string) => {
-      if (!iso) return '';
-      const d = new Date(iso);
-      if (Number.isNaN(d.getTime())) return '';
-      return d.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      });
-    },
-    [locale],
-  );
-
   return (
-    <section aria-labelledby="announcements-heading" className="space-y-8">
+    <PageContainer width="content">
       {/* ── Page header ──────────────────────────────────────────────────── */}
-      <div className="animate-slide-up flex items-center gap-3">
-        <div
-          className="flex size-10 items-center justify-center rounded-2xl bg-md-primary-container text-md-on-primary-container"
-          aria-hidden="true"
-        >
-          <Megaphone className="size-5" />
-        </div>
-        <h1
-          id="announcements-heading"
-          className="font-display text-2xl font-600 text-foreground tracking-tight"
-        >
-          {t('announcementsTitle')}
-        </h1>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-lg"
-          className="ml-auto"
-          onClick={() => load({ silent: true })}
-          loading={refreshing}
-          disabled={loading}
-          aria-label={tCommon('refresh')}
-        >
-          <RefreshCw className="size-5" aria-hidden="true" />
-        </Button>
-      </div>
+      <PageHeader
+        icon={<Megaphone />}
+        title={t('announcementsTitle')}
+        actions={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-lg"
+            onClick={() => load({ silent: true })}
+            loading={refreshing}
+            disabled={loading}
+            aria-label={tCommon('refresh')}
+          >
+            <RefreshCw className="size-5" aria-hidden="true" />
+          </Button>
+        }
+      />
 
       {/* ── Loading state ────────────────────────────────────────────────── */}
       {loading ? (
@@ -199,7 +228,7 @@ export default function PortalAnnouncementsPage() {
             <AlertCircle className="size-7 text-destructive" />
           </div>
           <p className="text-base text-md-on-error-container">{error}</p>
-          <Button type="button" variant="default" onClick={() => load()} loading={refreshing}>
+          <Button type="button" variant="default" onClick={() => load()} loading={loading}>
             <RefreshCw className="size-4" aria-hidden="true" />
             {tCommon('retry')}
           </Button>
@@ -223,102 +252,135 @@ export default function PortalAnnouncementsPage() {
       ) : (
         /* ── Announcement list ───────────────────────────────────────────── */
         <ul role="list" aria-label={t('announcementsTitle')} className="space-y-4">
-          {sorted.map((a, i) => {
-            const levelKey = normalizeLevel(a.level);
-            const cfg = LEVEL_CONFIG[levelKey];
-            const LevelIcon = cfg.icon;
-            const titleId = `ann-${a.id}-title`;
-            const rawContent = a.content ?? '';
-            const isLong = rawContent.length > 280 || rawContent.split('\n').length > 6;
-            const isExpanded = a.id != null ? !!expanded[a.id] : true;
-            const created = dateLabel(a.created_at);
-            const updated =
-              a.updated_at && a.updated_at !== a.created_at ? dateLabel(a.updated_at) : '';
-
-            return (
-              <li key={a.id}>
-                <Card
-                  aria-labelledby={titleId}
-                  className={`relative overflow-hidden rounded-xl border-0 shadow-none animate-slide-up ${cfg.card}`}
-                  style={{ animationDelay: `${i * 50}ms` }}
-                >
-                  {/* left tonal accent bar */}
-                  <span
-                    className={`absolute inset-y-0 left-0 w-1 rounded-l-xl ${cfg.bar}`}
-                    aria-hidden="true"
-                  />
-
-                  <CardHeader className="pl-6 pb-2">
-                    <CardTitle className="flex flex-wrap items-center gap-2">
-                      <LevelIcon className={`size-4 shrink-0 ${cfg.iconClass}`} aria-hidden="true" />
-                      <h2
-                        id={titleId}
-                        className="font-display text-base font-600 text-foreground"
-                      >
-                        {a.title}
-                      </h2>
-
-                      {a.pinned && (
-                        <Badge
-                          variant={cfg.badgeVariant}
-                          className="gap-1"
-                          aria-label={t('pinnedAnnouncement')}
-                        >
-                          <Pin className="size-3" aria-hidden="true" />
-                          {t('pinned')}
-                        </Badge>
-                      )}
-
-                      {a.level && (
-                        <Badge variant={cfg.badgeVariant}>{t(`level.${levelKey}`)}</Badge>
-                      )}
-                    </CardTitle>
-
-                    {created && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        <time dateTime={a.created_at}>{created}</time>
-                        {updated && (
-                          <span className="ml-2">
-                            {t('announcementUpdatedAt', { time: updated })}
-                          </span>
-                        )}
-                      </p>
-                    )}
-                  </CardHeader>
-
-                  <CardContent className="pl-6">
-                    {/* content is sanitized with DOMPurify (explicit allow-list) */}
-                    <div
-                      id={a.id != null ? `ann-${a.id}-body` : undefined}
-                      className={`text-sm leading-relaxed text-foreground/80 [&_a]:text-md-primary ${
-                        isLong && !isExpanded
-                          ? 'max-h-32 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]'
-                          : ''
-                      }`}
-                      dangerouslySetInnerHTML={{ __html: sanitizeContent(rawContent) }}
-                    />
-                    {isLong && a.id != null && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="mt-2 px-2"
-                        aria-expanded={isExpanded}
-                        aria-controls={`ann-${a.id}-body`}
-                        onClick={() =>
-                          setExpanded((prev) => ({ ...prev, [a.id as number]: !isExpanded }))
-                        }
-                      >
-                        {isExpanded ? t('collapse') : t('expandFull')}
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              </li>
-            );
-          })}
+          {sorted.map((a, i) => (
+            <AnnouncementCard
+              key={a.id ?? i}
+              announcement={a}
+              index={i}
+              t={t}
+              fmt={fmt}
+              expanded={a.id != null ? !!expanded[a.id] : true}
+              onToggleExpand={() =>
+                setExpanded((prev) => ({ ...prev, [a.id as number]: !expanded[a.id as number] }))
+              }
+            />
+          ))}
         </ul>
       )}
-    </section>
+    </PageContainer>
+  );
+}
+
+/* ── AnnouncementCard ────────────────────────────────────────────────────── */
+
+type AnnouncementCardProps = {
+  announcement: model_Announcement;
+  index: number;
+  t: ReturnType<typeof useTranslations>;
+  fmt: ReturnType<typeof useFormat>;
+  expanded: boolean;
+  onToggleExpand: () => void;
+};
+
+function AnnouncementCard({ announcement: a, index: i, t, fmt, expanded: isExpanded, onToggleExpand }: AnnouncementCardProps) {
+  const levelKey = normalizeLevel(a.level);
+  const cfg = LEVEL_CONFIG[levelKey];
+  const LevelIcon = cfg.icon;
+  const titleId = `ann-${a.id}-title`;
+  const rawContent = a.content ?? '';
+
+  // Memoize sanitization per content string — avoids redundant DOMPurify
+  // parses on every parent re-render.
+  const sanitizedHtml = useMemo(() => sanitizeContent(rawContent), [rawContent]);
+
+  // Determine "long content" from visible text length, not raw HTML byte count,
+  // to avoid misjudging heavily tagged-but-short content.
+  const isLong = useMemo(() => {
+    const { chars, lines } = getTextLength(sanitizedHtml);
+    return chars > 280 || lines > 6;
+  }, [sanitizedHtml]);
+
+  // Relative time as primary label; absolute as tooltip via `title`.
+  const createdRelative = fmt.relative(a.created_at);
+  const createdAbsolute = fmt.dateTime(a.created_at);
+  const updatedAbsolute = fmt.dateTime(a.updated_at);
+  const showUpdated = !!a.updated_at && a.updated_at !== a.created_at;
+
+  return (
+    <li>
+      <Card
+        aria-labelledby={titleId}
+        className={`relative overflow-hidden rounded-xl border-0 shadow-none animate-slide-up ${cfg.card}`}
+        style={{ animationDelay: `${i * 50}ms` }}
+      >
+        {/* left tonal accent bar */}
+        <span
+          className={`absolute inset-y-0 left-0 w-1 rounded-l-xl ${cfg.bar}`}
+          aria-hidden="true"
+        />
+
+        <CardHeader className="pl-6 pb-2">
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            <LevelIcon className={`size-4 shrink-0 ${cfg.iconClass}`} aria-hidden="true" />
+            <h2
+              id={titleId}
+              className="font-display text-base font-600 text-foreground"
+            >
+              {a.title}
+            </h2>
+
+            {a.pinned && (
+              <Badge variant={cfg.badgeVariant} className="gap-1">
+                <Pin className="size-3" aria-hidden="true" />
+                {t('pinned')}
+              </Badge>
+            )}
+
+            {a.level && (
+              <Badge variant={cfg.badgeVariant}>{t(`level.${levelKey}`)}</Badge>
+            )}
+          </CardTitle>
+
+          {a.created_at && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              <time dateTime={a.created_at} title={createdAbsolute}>
+                {createdRelative}
+              </time>
+              {showUpdated && (
+                <time dateTime={a.updated_at} className="ml-2">
+                  {t('announcementUpdatedAt', { time: updatedAbsolute })}
+                </time>
+              )}
+            </p>
+          )}
+        </CardHeader>
+
+        <CardContent className="pl-6">
+          {/* content is sanitized with DOMPurify (explicit allow-list) */}
+          <div
+            id={a.id != null ? `ann-${a.id}-body` : undefined}
+            className={`text-sm leading-relaxed text-foreground/80 [&_a]:text-md-primary ${
+              isLong && !isExpanded
+                ? 'max-h-32 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]'
+                : ''
+            }`}
+            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+          />
+          {isLong && a.id != null && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-2 px-2"
+              aria-expanded={isExpanded}
+              aria-controls={`ann-${a.id}-body`}
+              onClick={onToggleExpand}
+            >
+              {isExpanded ? t('collapse') : t('expandFull')}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    </li>
   );
 }

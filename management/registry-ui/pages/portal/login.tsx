@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { portalLogin } from '@/lib/portal-auth';
 import { getErrorMessage } from '@/lib/i18n';
@@ -10,9 +11,12 @@ import { Globe, ArrowRight } from 'lucide-react';
 
 export default function PortalLoginPage() {
   const t = useTranslations('portal');
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const [loading, setLoading] = useState(false);
 
   return (
@@ -51,13 +55,14 @@ export default function PortalLoginPage() {
             </span>
           </div>
 
-          {/* Hero copy */}
-          <h1
+          {/* Hero copy — decorative, not a page heading */}
+          <p
+            aria-hidden="true"
             className="font-display text-4xl font-700 text-md-on-primary-container leading-tight mb-4 animate-slide-up"
             style={{ animationDelay: '60ms' }}
           >
             {t('heroTitle') || 'Secure. Fast.\nUnlimited.'}
-          </h1>
+          </p>
           <p
             className="text-base leading-relaxed text-md-on-primary-container/70 max-w-sm animate-slide-up"
             style={{ animationDelay: '120ms' }}
@@ -100,9 +105,9 @@ export default function PortalLoginPage() {
             className="mb-8 animate-slide-up"
             style={{ animationDelay: '40ms' }}
           >
-            <h2 className="font-display text-2xl font-700 tracking-tight text-foreground">
+            <h1 className="font-display text-2xl font-700 tracking-tight text-foreground">
               {t('customerLogin')}
-            </h2>
+            </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {t('noAccount')}{' '}
               <Link
@@ -121,11 +126,26 @@ export default function PortalLoginPage() {
             aria-label={t('customerLogin')}
             onSubmit={async (e) => {
               e.preventDefault();
+              const emailEmpty = !email.trim();
+              const passwordEmpty = !password.trim();
+              if (emailEmpty) setEmailTouched(true);
+              if (passwordEmpty) setPasswordTouched(true);
+              if (emailEmpty || passwordEmpty) {
+                setError(t('loginFieldsRequired'));
+                return;
+              }
               setLoading(true);
               setError('');
               try {
                 await portalLogin(email, password);
-                window.location.replace('/portal/dashboard');
+                // Consume returnUrl set by portal auth guard, guard against open redirect
+                const raw = router.query.returnUrl;
+                const returnUrl = typeof raw === 'string' ? decodeURIComponent(raw) : '';
+                const isSafe =
+                  returnUrl.startsWith('/') &&
+                  !returnUrl.startsWith('//') &&
+                  !returnUrl.startsWith('/\\');
+                router.replace(isSafe ? returnUrl : '/portal/dashboard');
               } catch (e) {
                 setError(getErrorMessage(e, t('loginFailed')));
               } finally {
@@ -148,12 +168,13 @@ export default function PortalLoginPage() {
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => setEmailTouched(true)}
                   autoComplete="email"
                   autoFocus
                   required
-                  aria-invalid={error ? true : undefined}
+                  disabled={loading}
+                  aria-invalid={emailTouched && !email.trim() ? true : undefined}
                   aria-describedby={error ? 'login-error' : undefined}
-                  className="h-11 rounded-lg bg-md-surface-container-high border-border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0 focus-visible:border-md-primary transition-colors"
                 />
               </div>
 
@@ -178,12 +199,13 @@ export default function PortalLoginPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => setPasswordTouched(true)}
                   autoComplete="current-password"
                   required
+                  disabled={loading}
                   passwordToggleLabel={t('togglePassword')}
-                  aria-invalid={error ? true : undefined}
+                  aria-invalid={passwordTouched && !password.trim() ? true : undefined}
                   aria-describedby={error ? 'login-error' : undefined}
-                  className="h-11 rounded-lg bg-md-surface-container-high border-border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0 focus-visible:border-md-primary transition-colors"
                 />
               </div>
 
@@ -211,7 +233,7 @@ export default function PortalLoginPage() {
                   size="lg"
                   loading={loading}
                   aria-label={loading ? t('loggingIn') : undefined}
-                  className="w-full h-11"
+                  className="w-full"
                 >
                   {loading ? (
                     t('loggingIn')

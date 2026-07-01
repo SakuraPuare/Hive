@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { useCustomer } from '@/lib/portal-auth';
@@ -6,6 +6,7 @@ import { portalSessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { PortalService } from '@/src/generated/client';
 import type { model_Ticket } from '@/src/generated/client/models/model_Ticket';
+import { useFormat } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,25 +18,40 @@ import {
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+} from '@/components/ui/alert-dialog';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
+import { CircularProgress } from '@/components/ui/circular-progress';
 import { RefreshCw, Plus, Ticket, AlertCircle, InboxIcon, ChevronRight } from 'lucide-react';
 
 const PAGE_SIZE = 20;
 
-function formatDate(s: string) {
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
-}
+/** Known status values → label key map. Falls back to raw status string. */
+const STATUS_KEY_MAP: Record<string, 'statusOpen' | 'statusReplied' | 'statusClosed' | 'statusUnknown'> = {
+  open: 'statusOpen',
+  replied: 'statusReplied',
+  closed: 'statusClosed',
+};
 
 /** M3 §10 status chip — open=info/primary, replied=warning, closed=idle */
 function StatusChip({ status }: { status: string }) {
   const t = useTranslations('portal');
-  const label = t(`status${status.charAt(0).toUpperCase() + status.slice(1)}`);
+  const key = STATUS_KEY_MAP[status];
+  const label = key ? t(key) : (status || t('statusUnknown'));
 
   if (status === 'open') {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-md-primary-container text-md-on-primary-container">
-        <span className="size-1.5 rounded-full bg-md-primary" />
+        <span className="size-1.5 rounded-full bg-md-primary" aria-hidden="true" />
         {label}
       </span>
     );
@@ -43,7 +59,7 @@ function StatusChip({ status }: { status: string }) {
   if (status === 'replied') {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-[hsl(43_96%_50%/0.15)] text-[hsl(38_92%_30%)] dark:text-[hsl(43_96%_70%)]">
-        <span className="size-1.5 rounded-full bg-[hsl(43_96%_50%)]" />
+        <span className="size-1.5 rounded-full bg-[hsl(43_96%_50%)]" aria-hidden="true" />
         {label}
       </span>
     );
@@ -51,33 +67,9 @@ function StatusChip({ status }: { status: string }) {
   // closed / unknown → idle
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 bg-muted text-muted-foreground">
-      <span className="size-1.5 rounded-full bg-md-outline" />
+      <span className="size-1.5 rounded-full bg-md-outline" aria-hidden="true" />
       {label}
     </span>
-  );
-}
-
-/** M3 circular progress indicator (SVG, replaces old text-only loading) */
-function CircularProgress({ className = '' }: { className?: string }) {
-  return (
-    <svg
-      className={`animate-spin ${className}`}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <circle
-        className="opacity-20"
-        cx="12" cy="12" r="10"
-        stroke="currentColor"
-        strokeWidth="3"
-      />
-      <path
-        className="opacity-80"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"
-      />
-    </svg>
   );
 }
 
@@ -86,6 +78,7 @@ export default function PortalTicketsPage() {
   const tCommon = useTranslations('common');
   const router = useRouter();
   const toast = useToast();
+  const fmt = useFormat();
   const { customer, loading: authLoading } = useCustomer();
 
   const [tickets, setTickets] = useState<model_Ticket[]>([]);
@@ -94,18 +87,24 @@ export default function PortalTicketsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Monotonic request ID — prevents stale responses overwriting newer data.
+  const requestIdRef = useRef(0);
+
   const loadTickets = useCallback(async (targetPage = 1) => {
+    const id = ++requestIdRef.current;
     setLoading(true);
     setError('');
     try {
       const data = await portalSessionApi(PortalService.portalTickets({ page: targetPage, limit: PAGE_SIZE }));
+      if (id !== requestIdRef.current) return; // stale response — discard
       setTickets(data.items ?? []);
       setTotal(data.total ?? (data.items?.length ?? 0));
       setPage(targetPage);
     } catch {
+      if (id !== requestIdRef.current) return;
       setError(t('loadFailed'));
     } finally {
-      setLoading(false);
+      if (id === requestIdRef.current) setLoading(false);
     }
   }, [t]);
 
@@ -116,12 +115,48 @@ export default function PortalTicketsPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // New ticket dialog
+  // ── New ticket dialog ──────────────────────────────────────────────────────
   const [showNew, setShowNew] = useState(false);
   const [newSubject, setNewSubject] = useState('');
   const [newContent, setNewContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+
+  // Unsaved-changes guard: show AlertDialog before discarding draft
+  const [showDiscard, setShowDiscard] = useState(false);
+
+  const hasDraft = newSubject.trim() !== '' || newContent.trim() !== '';
+
+  function resetDraft() {
+    setNewSubject('');
+    setNewContent('');
+    setSubmitError('');
+  }
+
+  function handleDialogOpenChange(open: boolean) {
+    if (!open && hasDraft) {
+      // Intercept close attempt — show discard confirmation
+      setShowDiscard(true);
+      return;
+    }
+    setShowNew(open);
+    if (!open) resetDraft();
+  }
+
+  function handleCancel() {
+    if (hasDraft) {
+      setShowDiscard(true);
+    } else {
+      setShowNew(false);
+      resetDraft();
+    }
+  }
+
+  function handleConfirmDiscard() {
+    setShowDiscard(false);
+    setShowNew(false);
+    resetDraft();
+  }
 
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
@@ -133,8 +168,7 @@ export default function PortalTicketsPage() {
         requestBody: { subject: newSubject.trim(), content: newContent.trim() },
       }));
       setShowNew(false);
-      setNewSubject('');
-      setNewContent('');
+      resetDraft();
       toast.success(t('ticketCreated'));
       loadTickets(1);
     } catch (e: unknown) {
@@ -147,51 +181,45 @@ export default function PortalTicketsPage() {
   // Auth loading — M3 surface placeholder with circular progress
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center py-24 animate-fade-in">
-        <div className="flex flex-col items-center gap-4 text-muted-foreground">
-          <CircularProgress className="size-8 text-md-primary" />
-          <p className="text-sm">{tCommon('loading')}</p>
+      <PageContainer width="content">
+        <div className="flex items-center justify-center py-24 animate-fade-in">
+          <div className="flex flex-col items-center gap-4 text-muted-foreground">
+            <CircularProgress className="size-8 text-md-primary" label={tCommon('loading')} />
+            <p className="text-sm" aria-hidden="true">{tCommon('loading')}</p>
+          </div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <PageContainer width="content">
 
       {/* ── Page header ─────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3 animate-slide-up">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-md-primary-container text-md-on-primary-container">
-            <Ticket className="size-5" aria-hidden="true" />
-          </div>
-          <div>
-            <h1 className="font-display text-xl font-600 text-foreground">{t('ticketsTitle')}</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">{t('ticketsSubtitle')}</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 animate-slide-up" style={{ animationDelay: '40ms' }}>
-          {/* Primary action */}
-          <Button type="button" size="lg" className="h-11" onClick={() => setShowNew(true)}>
-            <Plus className="size-4" aria-hidden="true" />
-            <span>{t('newTicket')}</span>
-          </Button>
-
-          {/* Tonal secondary action */}
-          <Button
-            type="button"
-            variant="secondary"
-            size="lg"
-            className="h-11"
-            loading={loading}
-            onClick={() => loadTickets(page)}
-          >
-            {!loading && <RefreshCw className="size-4" aria-hidden="true" />}
-            <span>{tCommon('refresh')}</span>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Ticket />}
+        title={t('ticketsTitle')}
+        description={t('ticketsSubtitle')}
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              className="h-11"
+              loading={loading}
+              onClick={() => loadTickets(page)}
+            >
+              {!loading && <RefreshCw className="size-4" aria-hidden="true" />}
+              <span>{tCommon('refresh')}</span>
+            </Button>
+            <Button type="button" size="lg" className="h-11" onClick={() => setShowNew(true)}>
+              <Plus className="size-4" aria-hidden="true" />
+              <span>{t('newTicket')}</span>
+            </Button>
+          </>
+        }
+      />
 
       {/* ── Error banner ─────────────────────────────────────── */}
       {error && (
@@ -239,9 +267,9 @@ export default function PortalTicketsPage() {
               /* Loading state — M3 circular progress centered */
               <TableRow>
                 <TableCell colSpan={5} className="py-16">
-                  <div className="flex flex-col items-center gap-3 text-muted-foreground" role="status" aria-live="polite">
-                    <CircularProgress className="size-7 text-md-primary" />
-                    <p className="text-sm">{tCommon('loading')}</p>
+                  <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                    <CircularProgress className="size-7 text-md-primary" label={tCommon('loading')} />
+                    <p className="text-sm" aria-hidden="true">{tCommon('loading')}</p>
                   </div>
                 </TableCell>
               </TableRow>
@@ -271,7 +299,7 @@ export default function PortalTicketsPage() {
                     aria-label={t('viewTicket', { id: ticket.id ?? '', subject: ticket.subject ?? '' })}
                     className="cursor-pointer hover-state border-b border-md-outline-variant/40 last:border-0
                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-md-primary
-                      animate-slide-up"
+                      animate-slide-up motion-reduce:animate-none"
                     style={{ animationDelay: `${120 + i * 30}ms` }}
                     onClick={go}
                     tabIndex={0}
@@ -288,8 +316,11 @@ export default function PortalTicketsPage() {
                     <TableCell>
                       <StatusChip status={ticket.status ?? ''} />
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(ticket.created_at ?? '')}
+                    <TableCell
+                      className="text-sm text-muted-foreground"
+                      title={fmt.dateTime(ticket.created_at)}
+                    >
+                      {fmt.relative(ticket.created_at)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       <ChevronRight className="size-4" aria-hidden="true" />
@@ -308,36 +339,42 @@ export default function PortalTicketsPage() {
               {t('showingTickets', { count: tickets.length, total })}
             </p>
             {totalPages > 1 && (
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => loadTickets(page - 1)}
-                >
-                  {t('prevPage')}
-                </Button>
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {t('pageOf', { page, total: totalPages })}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => loadTickets(page + 1)}
-                >
-                  {t('nextPage')}
-                </Button>
-              </div>
+              <nav aria-label={t('pagination')}>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="default"
+                    disabled={page <= 1}
+                    aria-disabled={page <= 1 || undefined}
+                    aria-label={t('prevPage')}
+                    onClick={() => loadTickets(page - 1)}
+                  >
+                    {t('prevPage')}
+                  </Button>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {t('pageOf', { page, total: totalPages })}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="default"
+                    disabled={page >= totalPages}
+                    aria-disabled={page >= totalPages || undefined}
+                    aria-label={t('nextPage')}
+                    onClick={() => loadTickets(page + 1)}
+                  >
+                    {t('nextPage')}
+                  </Button>
+                </div>
+              </nav>
             )}
           </div>
         )}
       </div>
 
       {/* ── New ticket dialog ─────────────────────────────────── */}
-      <Dialog open={showNew} onOpenChange={setShowNew}>
+      <Dialog open={showNew} onOpenChange={handleDialogOpenChange}>
         <DialogContent
           size="md"
           pending={submitting}
@@ -397,19 +434,16 @@ export default function PortalTicketsPage() {
             </div>
 
             <DialogFooter className="gap-2 pt-1">
-              {/* Outlined / text cancel */}
               <Button
                 type="button"
                 variant="outline"
                 size="lg"
                 className="h-11"
                 disabled={submitting}
-                onClick={() => setShowNew(false)}
+                onClick={handleCancel}
               >
                 {tCommon('cancel')}
               </Button>
-
-              {/* Primary submit */}
               <Button
                 type="submit"
                 size="lg"
@@ -423,6 +457,25 @@ export default function PortalTicketsPage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+
+      {/* ── Discard-draft confirmation ────────────────────────── */}
+      <AlertDialog open={showDiscard} onOpenChange={setShowDiscard}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('discardDraftTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('discardDraftDesc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowDiscard(false)}>
+              {t('keepEditing')}
+            </AlertDialogCancel>
+            <AlertDialogAction destructive onClick={handleConfirmDiscard}>
+              {t('discardDraft')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+    </PageContainer>
   );
 }

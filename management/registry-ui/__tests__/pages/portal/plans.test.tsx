@@ -24,6 +24,15 @@ vi.mock('@/lib/openapi-session', () => ({
   portalSessionApi: (p: any) => p,
 }));
 
+vi.mock('@/lib/portal-auth', () => ({
+  useCustomer: () => ({
+    customer: { id: 1, email: 'test@example.com', nickname: 'Test', status: 'active', created_at: '' },
+    subscriptions: [],
+    loading: false,
+    refresh: vi.fn(),
+  }),
+}));
+
 vi.mock('@/src/generated/client/core/ApiError', () => {
   class ApiError extends Error {
     status: number;
@@ -155,7 +164,7 @@ describe('PortalPlansPage', () => {
     });
     // Success now surfaces via toast + redirect (no alert).
     expect(mockToast.success).toHaveBeenCalledWith('portal.purchaseSuccess');
-    expect(mockRouter.push).toHaveBeenCalledWith('/portal/orders');
+    expect(mockRouter.push).toHaveBeenCalledWith('/portal/orders?highlight=ORD-001');
   });
 
   it('shows error dialog on 401 when buying', async () => {

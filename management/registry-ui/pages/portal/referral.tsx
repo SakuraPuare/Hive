@@ -5,9 +5,13 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { useCustomer } from '@/lib/portal-auth';
 import { portalSessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
+import { useFormat } from '@/lib/format';
+import { useClipboard } from '@/lib/use-clipboard';
 import { PortalService } from '@/src/generated/client';
 import type { handler_PortalReferralResponse } from '@/src/generated/client/models/handler_PortalReferralResponse';
 import type { handler_PortalReferralRecord } from '@/src/generated/client/models/handler_PortalReferralRecord';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
@@ -30,7 +34,9 @@ export default function PortalReferralPage() {
   const t = useTranslations('portal');
   const router = useRouter();
   const toast = useToast();
+  const fmt = useFormat();
   const { customer, loading: authLoading } = useCustomer();
+  const { copied, copy } = useClipboard({ resetMs: 2000 });
 
   const [info, setInfo] = useState<handler_PortalReferralResponse | null>(null);
   const [records, setRecords] = useState<handler_PortalReferralRecord[]>([]);
@@ -39,8 +45,6 @@ export default function PortalReferralPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [copyStatus, setCopyStatus] = useState('');
   const errorRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async (targetPage: number) => {
@@ -62,28 +66,33 @@ export default function PortalReferralPage() {
   }, [t]);
 
   useEffect(() => {
-    if (!authLoading && !customer) { router.replace('/portal/login'); return; }
-    if (!authLoading && customer) load(page);
-  }, [authLoading, customer, router, page, load]);
+    if (authLoading) return;
+    if (!customer) { router.replace('/portal/login'); return; }
+    load(page);
+    // router.replace is stable; load is stable (deps: [t]). Exclude both to
+    // avoid double-fire on authLoading→false transitions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, customer, page]);
 
   // Move focus to the error banner when it first appears (keyboard recovery).
   useEffect(() => {
     if (error) errorRef.current?.focus();
   }, [error]);
 
+  // Derive the full shareable link — SSR-safe.
+  const inviteLink = typeof window !== 'undefined'
+    ? window.location.origin + '/portal/register' + (info?.referral_link ?? '')
+    : '';
+
   const handleCopy = useCallback(async () => {
-    const link = window.location.origin + '/portal/register' + (info?.referral_link ?? '');
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-      setCopyStatus(t('linkCopied'));
+    if (!inviteLink) return;
+    const ok = await copy(inviteLink);
+    if (ok) {
       toast.success(t('linkCopied'));
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopyStatus(t('copyFailed'));
+    } else {
       toast.error(t('copyFailed'));
     }
-  }, [info, t, toast]);
+  }, [inviteLink, copy, toast, t]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   // The API has no status query param, so the filter narrows the current page
@@ -130,13 +139,16 @@ export default function PortalReferralPage() {
       cell: (i) => {
         const v = i.getValue();
         return (
-          <span className="text-xs text-muted-foreground">
-            {v ? new Date(v).toLocaleString() : ''}
+          <span
+            className="text-xs text-muted-foreground"
+            title={fmt.dateTime(v)}
+          >
+            {fmt.relative(v)}
           </span>
         );
       },
     }),
-  ], [t]);
+  ], [t, fmt]);
 
   // Initial paint: a full-page spinner until the first payload lands. Page
   // navigation keeps the chrome visible and only disables the controls.
@@ -154,28 +166,26 @@ export default function PortalReferralPage() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <PageContainer>
 
       {/* ── Page header ─────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 animate-slide-up" style={{ animationDelay: '0ms' }}>
-        <div>
-          <h1 className="font-display text-2xl font-600 text-foreground tracking-tight">
-            {t('referralTitle')}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('referralSubtitle')}</p>
-        </div>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          onClick={() => load(page)}
-          loading={loading}
-          aria-label={t('refresh')}
-          title={t('refresh')}
-          className="shrink-0"
-        >
-          {!loading && <RefreshCw className="h-4 w-4" aria-hidden="true" />}
-        </Button>
-      </div>
+      <PageHeader
+        icon={<Gift />}
+        title={t('referralTitle')}
+        description={t('referralSubtitle')}
+        actions={
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => load(page)}
+            loading={loading}
+            aria-label={t('refresh')}
+            title={t('refresh')}
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        }
+      />
 
       {/* ── Error ────────────────────────────────────────────────────────── */}
       {error && (
@@ -199,6 +209,7 @@ export default function PortalReferralPage() {
           </div>
         </div>
       )}
+
       {/* ── Hero / invite-code card ──────────────────────────────────────── */}
       <div
         className="bg-md-primary-container rounded-2xl px-6 py-6 elevation-1 animate-slide-up"
@@ -217,6 +228,12 @@ export default function PortalReferralPage() {
               <p className="font-display text-4xl font-700 tracking-widest text-md-on-primary-container mt-0.5">
                 {info?.referral_code ?? '—'}
               </p>
+              {/* Show the full shareable URL so the user can visually verify before copying */}
+              {inviteLink && (
+                <p className="font-mono text-xs text-md-on-primary-container/70 mt-1 break-all">
+                  {inviteLink}
+                </p>
+              )}
             </div>
           </div>
 
@@ -233,7 +250,9 @@ export default function PortalReferralPage() {
           </Button>
         </div>
         {/* aria-live confirmation for copy success / failure (WCAG 4.1.3) */}
-        <div role="status" aria-live="polite" className="sr-only">{copyStatus}</div>
+        <div role="status" aria-live="polite" className="sr-only">
+          {copied ? t('linkCopied') : ''}
+        </div>
       </div>
 
       {/* ── Stat cards ───────────────────────────────────────────────────── */}
@@ -270,7 +289,8 @@ export default function PortalReferralPage() {
             style={{ animationDelay: `${stat.delay}ms` }}
           >
             <div className="flex items-center gap-3">
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${stat.iconBg}`}>
+              {/* size-11 rounded-2xl matches secondary icon container spec */}
+              <div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl ${stat.iconBg}`}>
                 {stat.icon}
               </div>
               <div>
@@ -295,10 +315,13 @@ export default function PortalReferralPage() {
           <h2 className="font-display text-base font-600 text-foreground">
             {t('referralRecords')}
           </h2>
-          {/* status filter */}
+          {/* status filter — reset page to 1 on change to avoid empty-page glitch */}
           <Select
             value={statusFilter}
-            onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+            onValueChange={(v) => {
+              setStatusFilter(v as StatusFilter);
+              setPage(1);
+            }}
           >
             <SelectTrigger size="sm" className="w-[160px]" aria-label={t('filterByStatus')}>
               <SelectValue />
@@ -318,9 +341,9 @@ export default function PortalReferralPage() {
           getRowId={(r) => String(r.id)}
           ariaLabel={t('referralRecords')}
           manualPagination
-          pageIndex={page - 1}
-          pageCount={totalPages}
-          rowCount={total}
+          pageIndex={statusFilter !== 'all' ? 0 : page - 1}
+          pageCount={statusFilter !== 'all' ? 1 : totalPages}
+          rowCount={statusFilter !== 'all' ? visibleRecords.length : total}
           pageSize={PAGE_SIZE}
           onPageChange={(idx) => setPage(idx + 1)}
           isFiltered={statusFilter !== 'all'}
@@ -336,7 +359,7 @@ export default function PortalReferralPage() {
                 </Button>
               </div>
             ) : (
-              <Button variant="secondary" size="sm" onClick={() => setStatusFilter('all')}>
+              <Button variant="secondary" size="sm" onClick={() => { setStatusFilter('all'); setPage(1); }}>
                 {t('clearFilter')}
               </Button>
             )
@@ -350,6 +373,6 @@ export default function PortalReferralPage() {
         />
       </div>
 
-    </div>
+    </PageContainer>
   );
 }

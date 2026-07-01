@@ -11,14 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/toast';
+import { PageContainer } from '@/components/ui/page-container';
+import { useFormat } from '@/lib/format';
 import { ArrowLeft, Send, MessageCircle } from 'lucide-react';
-
-
-function formatDate(s: string) {
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'medium' });
-}
 
 // M3 §10 status chip recipes — no raw Tailwind palette
 const STATUS_CHIP: Record<string, string> = {
@@ -31,6 +26,7 @@ export default function PortalTicketDetailPage() {
   const t = useTranslations('portal');
   const tCommon = useTranslations('common');
   const toast = useToast();
+  const fmt = useFormat();
   const router = useRouter();
   const { id } = router.query;
   const { customer, loading: authLoading } = useCustomer();
@@ -101,58 +97,87 @@ export default function PortalTicketDetailPage() {
 
   // M3 loading state — circular-ish spinner via CSS animation, no raw p tag
   if (authLoading || loading) return (
-    <div className="flex flex-col items-center justify-center gap-4 py-20 animate-fade-in">
-      <span aria-hidden="true" className="size-10 rounded-full border-4 border-md-surface-container-high border-t-md-primary animate-spin" />
-      <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
-    </div>
+    <PageContainer width="content">
+      <div
+        role="status"
+        aria-live="polite"
+        aria-label={tCommon('loading')}
+        className="flex flex-col items-center justify-center gap-4 py-20 animate-fade-in"
+      >
+        <span aria-hidden="true" className="size-10 rounded-full border-4 border-md-surface-container-high border-t-md-primary animate-spin" />
+        <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
+      </div>
+    </PageContainer>
   );
   if (error) return (
-    <div className="flex flex-col items-center gap-4 py-16 animate-slide-up">
-      <div role="alert" className="flex items-center gap-3 rounded-xl bg-md-error-container px-5 py-4 text-md-on-error-container">
-        <span aria-hidden="true" className="size-2 rounded-full bg-md-error shrink-0" />
-        <p className="text-sm font-500">{error}</p>
+    <PageContainer width="content">
+      <div className="flex flex-col items-center gap-4 py-16 animate-slide-up">
+        <div role="alert" className="flex items-center gap-3 rounded-xl bg-md-error-container px-5 py-4 text-md-on-error-container">
+          <span aria-hidden="true" className="size-2 rounded-full bg-md-error shrink-0" />
+          <p className="text-sm font-500">{error}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => loadTicket()}>{t('retry')}</Button>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/portal/tickets">{tCommon('back')}</Link>
+          </Button>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => loadTicket()}>{t('retry')}</Button>
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/portal/tickets">{tCommon('back')}</Link>
-        </Button>
-      </div>
-    </div>
+    </PageContainer>
   );
   if (!ticket) return null;
 
   const tk = ticket.ticket!;
   const isClosed = tk.status === 'closed';
 
+  const statusChip = (
+    <span className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-500
+      ${STATUS_CHIP[tk.status ?? ''] ?? 'bg-muted text-muted-foreground'}`}>
+      {t(`status${(tk.status ?? '').charAt(0).toUpperCase() + (tk.status ?? '').slice(1)}`)}
+    </span>
+  );
+
+  const timeDescription = (
+    <>
+      <span>{t('createdLabel')} <time dateTime={tk.created_at ?? ''} title={fmt.dateTime(tk.created_at)}>{fmt.relative(tk.created_at)}</time></span>
+      {tk.updated_at && tk.updated_at !== tk.created_at && (
+        <span> · {t('updatedLabel')} <time dateTime={tk.updated_at} title={fmt.dateTime(tk.updated_at)}>{fmt.relative(tk.updated_at)}</time></span>
+      )}
+    </>
+  );
+
   return (
-    <div className="space-y-6 animate-fade-in">
+    <PageContainer width="content">
       {/* Header — back button + title + status chip */}
-      <div className="flex items-start gap-3 animate-slide-up">
-        <Button variant="secondary" size="sm" className="shrink-0" asChild>
+      <div className="flex items-start gap-3">
+        <Button variant="secondary" size="sm" className="shrink-0 mt-1" asChild>
           <Link href="/portal/tickets">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <span>{tCommon('back')}</span>
           </Link>
         </Button>
-
         <div className="flex-1 min-w-0">
-          <h1 className="font-display text-xl font-600 text-foreground leading-snug">
-            <span className="text-muted-foreground font-400">#{tk.id}</span>{' '}
-            {tk.subject}
-          </h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            <span>{t('createdLabel')} {formatDate(tk.created_at ?? '')}</span>
-            {tk.updated_at && tk.updated_at !== tk.created_at && (
-              <span> · {t('updatedLabel')} {formatDate(tk.updated_at)}</span>
-            )}
-          </p>
+          {/* Use a plain div+h1 block instead of PageHeader to avoid a second
+              <header> banner landmark inside <main> (PortalLayout already owns
+              the page-level <header> in its sticky navbar). */}
+          <div data-slot="page-header" className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 animate-slide-up">
+            <div className="flex min-w-0 items-center gap-3">
+              <span
+                aria-hidden="true"
+                className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-md-primary-container text-md-on-primary-container [&_svg]:size-5"
+              >
+                <MessageCircle />
+              </span>
+              <div className="min-w-0 space-y-0.5">
+                <h1 className="font-display text-2xl font-600 leading-tight tracking-tight text-foreground">
+                  <span className="text-muted-foreground font-400">#{tk.id}</span>{' '}{tk.subject}
+                </h1>
+                <p className="text-sm text-muted-foreground">{timeDescription}</p>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">{statusChip}</div>
+          </div>
         </div>
-
-        <span className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-500
-          ${STATUS_CHIP[tk.status ?? ''] ?? 'bg-muted text-muted-foreground'}`}>
-          {t(`status${(tk.status ?? '').charAt(0).toUpperCase() + (tk.status ?? '').slice(1)}`)}
-        </span>
       </div>
 
       {/* Conversation thread */}
@@ -169,7 +194,7 @@ export default function PortalTicketDetailPage() {
             const isAdmin = reply.is_admin;
             return (
               <div
-                key={reply.id}
+                key={reply.id ?? i}
                 className={`flex ${isAdmin ? 'justify-start' : 'justify-end'} animate-slide-up`}
                 style={{ animationDelay: `${i * 40}ms` }}
               >
@@ -180,7 +205,13 @@ export default function PortalTicketDetailPage() {
                 }`}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-xs font-500 opacity-80">{reply.author}</span>
-                    <span className="text-xs opacity-50">{formatDate(reply.created_at ?? '')}</span>
+                    <time
+                      dateTime={reply.created_at ?? ''}
+                      title={fmt.dateTime(reply.created_at)}
+                      className="text-xs opacity-50"
+                    >
+                      {fmt.relative(reply.created_at)}
+                    </time>
                   </div>
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">{reply.content}</p>
                 </div>
@@ -200,7 +231,7 @@ export default function PortalTicketDetailPage() {
             </span>
             <p className="text-sm text-muted-foreground">{t('ticketClosedDesc')}</p>
             <Button asChild>
-              <Link href="/portal/tickets">{t('submitNewTicket')}</Link>
+              <Link href="/portal/tickets">{t('backToTickets')}</Link>
             </Button>
           </CardContent>
         </Card>
@@ -214,6 +245,8 @@ export default function PortalTicketDetailPage() {
               value={replyContent}
               onChange={(e) => { setReplyContent(e.target.value); if (sendError) setSendError(''); }}
               minRows={4}
+              maxLength={2000}
+              showCount
               busy={sending}
               errorText={sendError || undefined}
               submitHint={t('replyShortcut')}
@@ -233,6 +266,6 @@ export default function PortalTicketDetailPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }

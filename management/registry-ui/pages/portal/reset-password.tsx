@@ -28,19 +28,21 @@ export default function PortalResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [resending, setResending] = useState(false);
+  // cooldown > 0 only after the user has explicitly triggered a send.
   const [cooldown, setCooldown] = useState(0);
+  // hasSent tracks whether the user has triggered at least one code send
+  // (used to gate the Resend button so it's not clickable before first send).
+  const [hasSent, setHasSent] = useState(false);
 
   useEffect(() => {
     const q = router.query.email;
     if (typeof q === 'string') {
       setEmail(q);
-      // Email already known from the link — jump focus straight to the code
+      // Email already known from the query param — jump focus to the code
       // field so returning users skip a redundant Tab.
+      // useEffect fires after mount so the element is guaranteed to exist.
       if (EMAIL_RE.test(q)) {
-        // Defer to after paint so the input is mounted.
-        requestAnimationFrame(() => {
-          document.getElementById('code')?.focus();
-        });
+        document.getElementById('code')?.focus();
       }
     }
   }, [router.query.email]);
@@ -77,6 +79,7 @@ export default function PortalResetPasswordPage() {
       await PortalAuthService.portalForgotPassword({ requestBody: { email } });
       toast.success(t('codeSent'));
       setCooldown(RESEND_COOLDOWN);
+      setHasSent(true);
     } catch (e) {
       toast.error(getErrorMessage(e, t('sendCodeFailed')));
     } finally {
@@ -86,11 +89,18 @@ export default function PortalResetPasswordPage() {
 
   return (
     <div className="flex min-h-screen bg-background">
+      {/* Skip link — keyboard users bypass branding panel (WCAG 2.4.1) */}
+      <a
+        href="#reset-password-form"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-lg focus:bg-md-primary focus:px-4 focus:py-2 focus:text-md-on-primary"
+      >
+        {t('skipToContent')}
+      </a>
       {/* Left panel — branding (M3 surface-container, no old gradient) */}
       <div className="hidden lg:flex lg:w-1/2 bg-md-primary-container relative overflow-hidden">
-        {/* Subtle tonal dot pattern — on-primary-container at low opacity */}
+        {/* Subtle tonal dot pattern — on-primary-container at low opacity; unified to 0.08 across auth pages */}
         <div
-          className="absolute inset-0 opacity-20"
+          className="absolute inset-0 opacity-[0.08]"
           style={{
             backgroundImage:
               'radial-gradient(circle, hsl(var(--md-on-primary-container)) 1px, transparent 1px)',
@@ -122,7 +132,7 @@ export default function PortalResetPasswordPage() {
       </div>
 
       {/* Right panel — form */}
-      <div className="flex w-full lg:w-1/2 items-center justify-center p-6 bg-background">
+      <main id="reset-password-form" tabIndex={-1} className="flex w-full lg:w-1/2 items-center justify-center p-6 bg-background">
         <div className="w-full max-w-[400px] animate-fade-in motion-reduce:animate-none">
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 mb-10 lg:hidden">
@@ -135,14 +145,15 @@ export default function PortalResetPasswordPage() {
           {done ? (
             /* ── Success state ── */
             <div className="text-center animate-slide-up motion-reduce:animate-none">
-              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-md-tertiary-container">
+              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-md-tertiary-container">
                 <KeyRound className="h-8 w-8 text-md-on-tertiary-container" aria-hidden="true" />
               </div>
               <h2 className="font-display text-2xl font-600 tracking-tight text-foreground">{t('resetSuccess')}</h2>
               <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{t('resetSuccessDesc')}</p>
               <Button
                 asChild
-                className="mt-8 w-full h-11 text-sm font-500 state-layer ripple rounded-lg bg-md-primary text-md-on-primary elevation-1 hover:elevation-2 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 transition-shadow"
+                size="lg"
+                className="mt-8 w-full"
               >
                 <Link href="/portal/login">
                   {t('goLogin')}
@@ -161,13 +172,14 @@ export default function PortalResetPasswordPage() {
               {/* react-doctor-disable-next-line react-doctor/no-prevent-default -- static-export SPA against a Go API; server actions are not available */}
               <form
                 noValidate
+                aria-label={t('resetTitle')}
                 aria-busy={loading}
                 onSubmit={async (e) => {
                   e.preventDefault();
                   const okEmail = validateEmail(email);
                   const okPassword = validatePassword(password);
-                  const okCode = code.trim().length > 0;
-                  if (!okCode) setCodeError(t('codeRequired'));
+                  const okCode = /^[0-9]{6}$/.test(code.trim());
+                  if (!okCode) setCodeError(t('codeInvalidFormat'));
                   else setCodeError('');
                   if (!okEmail || !okPassword || !okCode) {
                     setError('');
@@ -226,9 +238,9 @@ export default function PortalResetPasswordPage() {
                         className="h-auto px-0 text-xs"
                         onClick={handleResend}
                         loading={resending}
-                        disabled={cooldown > 0}
+                        disabled={cooldown > 0 || (!hasSent && !EMAIL_RE.test(email.trim()))}
                       >
-                        {cooldown > 0 ? t('resendCodeIn', { seconds: cooldown }) : t('resendCode')}
+                        {cooldown > 0 ? t('resendCodeIn', { seconds: cooldown }) : hasSent ? t('resendCode') : t('sendCode')}
                       </Button>
                     </div>
                     <Input
@@ -236,7 +248,11 @@ export default function PortalResetPasswordPage() {
                       type="text"
                       inputMode="numeric"
                       maxLength={6}
+                      pattern="[0-9]{6}"
                       autoComplete="one-time-code"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       placeholder={t('codePlaceholder')}
                       value={code}
                       onChange={(e) => {
@@ -290,7 +306,8 @@ export default function PortalResetPasswordPage() {
                   <div className="animate-slide-up motion-reduce:animate-none pt-1" style={{ animationDelay: '160ms' }}>
                     <Button
                       type="submit"
-                      className="w-full h-11 text-sm font-500 state-layer ripple rounded-lg bg-md-primary text-md-on-primary elevation-1 hover:elevation-2 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 transition-shadow"
+                      size="lg"
+                      className="w-full"
                       loading={loading}
                     >
                       {loading ? t('submitting') : t('doReset')}
@@ -311,7 +328,7 @@ export default function PortalResetPasswordPage() {
             </>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
