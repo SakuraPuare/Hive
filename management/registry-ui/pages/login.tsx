@@ -8,12 +8,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslations } from 'next-intl';
-import { ArrowRight, Loader2, Shield } from 'lucide-react';
+import { useRouter } from 'next/router';
+import { AlertCircle, LogIn } from 'lucide-react';
 
 export default function Login() {
   const t = useTranslations('auth');
+  const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -27,7 +31,7 @@ export default function Login() {
               bg-md-primary-container text-md-on-primary-container mb-5
               elevation-1"
           >
-            <Shield className="h-8 w-8" />
+            <LogIn className="h-8 w-8" aria-hidden="true" />
           </div>
           <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">
             {t('hiveRegistry')}
@@ -41,13 +45,18 @@ export default function Login() {
           <form
             onSubmit={async (e) => {
               e.preventDefault();
+              const uErr = username.trim() ? '' : t('usernameRequired');
+              const pErr = password ? '' : t('passwordRequired');
+              setUsernameError(uErr);
+              setPasswordError(pErr);
+              if (uErr || pErr) return;
               setLoading(true);
               setError('');
               try {
                 const body = { username, password } as handler_AdminLoginRequest;
                 handlerAdminLoginRequestSchema.parse(body);
                 await sessionApi(AdminService.adminLogin({ requestBody: body }));
-                window.location.href = '/dashboard';
+                router.replace('/dashboard');
               } catch (e: unknown) {
                 setError(getErrorMessage(e, t('loginFailed')));
               } finally {
@@ -56,7 +65,7 @@ export default function Login() {
             }}
           >
             <div className="space-y-5">
-              <div className="space-y-1.5" style={{ animationDelay: '60ms' }}>
+              <div className="space-y-1.5">
                 <Label
                   htmlFor="username"
                   className="text-xs font-500 text-muted-foreground uppercase tracking-wide"
@@ -66,15 +75,25 @@ export default function Login() {
                 <Input
                   id="username"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    if (usernameError) setUsernameError('');
+                  }}
+                  onBlur={() =>
+                    setUsernameError(username.trim() ? '' : t('usernameRequired'))
+                  }
                   autoComplete="username"
+                  autoFocus
                   required
+                  disabled={loading}
+                  placeholder={t('usernamePlaceholder')}
+                  error={usernameError || undefined}
                   className="h-11 rounded-lg bg-md-surface-container-high border-0
                     focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0
                     text-foreground placeholder:text-muted-foreground"
                 />
               </div>
-              <div className="space-y-1.5" style={{ animationDelay: '100ms' }}>
+              <div className="space-y-1.5">
                 <Label
                   htmlFor="password"
                   className="text-xs font-500 text-muted-foreground uppercase tracking-wide"
@@ -85,9 +104,19 @@ export default function Login() {
                   id="password"
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (passwordError) setPasswordError('');
+                  }}
+                  onBlur={() =>
+                    setPasswordError(password ? '' : t('passwordRequired'))
+                  }
                   autoComplete="current-password"
                   required
+                  disabled={loading}
+                  error={passwordError || undefined}
+                  showPasswordLabel={t('showPassword')}
+                  hidePasswordLabel={t('hidePassword')}
                   className="h-11 rounded-lg bg-md-surface-container-high border-0
                     focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0
                     text-foreground placeholder:text-muted-foreground"
@@ -96,34 +125,24 @@ export default function Login() {
 
               {error && (
                 <div
+                  role="alert"
+                  aria-atomic="true"
                   className="flex items-start gap-3 rounded-xl
                     bg-md-error-container text-md-on-error-container
                     px-4 py-3 text-sm"
                 >
-                  {error}
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{error}</span>
                 </div>
               )}
 
               <Button
                 type="submit"
-                disabled={loading}
-                className="state-layer ripple w-full h-11 rounded-lg
-                  bg-md-primary text-md-on-primary
-                  text-sm font-500 elevation-1
-                  hover:elevation-2 transition-shadow
-                  focus-visible:outline-none focus-visible:ring-2
-                  focus-visible:ring-md-primary focus-visible:ring-offset-2
-                  disabled:opacity-50 disabled:pointer-events-none"
-                style={{ animationDelay: '140ms' }}
+                loading={loading}
+                className="w-full h-11"
               >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    {t('login')}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
+                {loading ? t('signingIn') : t('login')}
+                {!loading && <LogIn className="ml-2 h-4 w-4" aria-hidden="true" />}
               </Button>
             </div>
           </form>

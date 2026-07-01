@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { MoreVertical } from 'lucide-react';
 import { AdminService } from '@/src/generated/client';
 import type { model_Node, model_Line } from '@/src/generated/client';
 import { sessionApi, apiPath } from '@/lib/openapi-session';
@@ -8,12 +9,34 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useToast } from '@/components/ui/toast';
 import {
   Table,
   TableBody,
@@ -22,16 +45,22 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { useTranslations } from 'next-intl';
 import { useCurrentUser } from '@/lib/auth';
 import { useRouter } from 'next/router';
+
+function setsEqual(a: Set<string>, b: Set<string>) {
+  if (a.size !== b.size) return false;
+  for (const v of a) if (!b.has(v)) return false;
+  return true;
+}
 
 export default function LinesPage() {
   const t = useTranslations('lines');
   const tCommon = useTranslations('common');
   const tNodes = useTranslations('nodes');
   const router = useRouter();
+  const toast = useToast();
   const { user, loading: authLoading } = useCurrentUser();
   const canWrite = user?.can('line:write') ?? false;
 
@@ -69,6 +98,14 @@ export default function LinesPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
+  function resetCreateForm() {
+    setCreateName('');
+    setCreateRegion('');
+    setCreateOrder('0');
+    setCreateNote('');
+    setCreateError('');
+  }
+
   async function handleCreate() {
     setCreating(true);
     setCreateError('');
@@ -82,10 +119,8 @@ export default function LinesPage() {
         },
       }));
       setShowCreate(false);
-      setCreateName('');
-      setCreateRegion('');
-      setCreateOrder('0');
-      setCreateNote('');
+      resetCreateForm();
+      toast.success(t('lineCreated'));
       loadLines();
     } catch (e) {
       setCreateError(getErrorMessage(e, t('lineCreateFailed')));
@@ -130,6 +165,7 @@ export default function LinesPage() {
         },
       }));
       setEditLine(null);
+      toast.success(t('lineUpdated'));
       loadLines();
     } catch (e) {
       setEditError(getErrorMessage(e, t('lineUpdateFailed')));
@@ -137,15 +173,45 @@ export default function LinesPage() {
       setEditing(false);
     }
   }
+  // ── Delete (themed confirmation) ────────────────────────────────────
+  const [deleteTarget, setDeleteTarget] = useState<model_Line | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
-  // ── Delete ──────────────────────────────────────────────────────────
-  async function handleDelete(line: model_Line) {
-    if (!confirm(t('lineDeleteConfirm', { name: line.name ?? '' }))) return;
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError('');
     try {
-      await sessionApi(AdminService.adminDeleteLine({ id: line.id! }));
+      await sessionApi(AdminService.adminDeleteLine({ id: deleteTarget.id! }));
+      setDeleteTarget(null);
+      toast.success(t('lineDeleted'));
       loadLines();
     } catch (e) {
-      alert(getErrorMessage(e, t('lineDeleteFailed')));
+      setDeleteError(getErrorMessage(e, t('lineDeleteFailed')));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  // ── Reset token (themed confirmation) ───────────────────────────────
+  const [resetTarget, setResetTarget] = useState<model_Line | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState('');
+
+  async function confirmResetToken() {
+    if (!resetTarget) return;
+    setResetting(true);
+    setResetError('');
+    try {
+      await sessionApi(AdminService.adminResetLineToken({ id: resetTarget.id! }));
+      setResetTarget(null);
+      toast.success(t('resetTokenDone'));
+      loadLines();
+    } catch (e) {
+      setResetError(getErrorMessage(e, t('resetTokenFailed')));
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -153,6 +219,7 @@ export default function LinesPage() {
   const [nodeEditLine, setNodeEditLine] = useState<model_Line | null>(null);
   const [allNodes, setAllNodes] = useState<model_Node[]>([]);
   const [selectedMacs, setSelectedMacs] = useState<Set<string>>(new Set());
+  const [initialMacs, setInitialMacs] = useState<Set<string>>(new Set());
   const [nodeSearch, setNodeSearch] = useState('');
   const [savingNodes, setSavingNodes] = useState(false);
   const [saveNodesError, setSaveNodesError] = useState('');
@@ -168,9 +235,11 @@ export default function LinesPage() {
       ]);
       setAllNodes(nodes);
       setSelectedMacs(new Set(macs));
+      setInitialMacs(new Set(macs));
     } catch {
       setAllNodes([]);
       setSelectedMacs(new Set());
+      setInitialMacs(new Set());
     }
   }
 
@@ -183,7 +252,7 @@ export default function LinesPage() {
     });
   }
 
-  const filteredNodes = allNodes.filter((n) => {
+  const filteredNodes = useMemo(() => allNodes.filter((n) => {
     if (!nodeSearch) return true;
     const q = nodeSearch.toLowerCase();
     return (
@@ -192,7 +261,25 @@ export default function LinesPage() {
       (n.mac ?? '').toLowerCase().includes(q) ||
       n.tailscale_ip?.toLowerCase().includes(q)
     );
-  });
+  }), [allNodes, nodeSearch]);
+
+  function selectAllFiltered() {
+    setSelectedMacs((prev) => {
+      const next = new Set(prev);
+      filteredNodes.forEach((n) => n.mac && next.add(n.mac));
+      return next;
+    });
+  }
+
+  function deselectAllFiltered() {
+    setSelectedMacs((prev) => {
+      const next = new Set(prev);
+      filteredNodes.forEach((n) => n.mac && next.delete(n.mac));
+      return next;
+    });
+  }
+
+  const nodesDirty = !setsEqual(selectedMacs, initialMacs);
 
   async function handleSaveNodes() {
     if (!nodeEditLine) return;
@@ -204,6 +291,7 @@ export default function LinesPage() {
         requestBody: { nodes: Array.from(selectedMacs) },
       }));
       setNodeEditLine(null);
+      toast.success(t('lineNodesSaved'));
       loadLines();
     } catch (e) {
       setSaveNodesError(getErrorMessage(e, t('lineNodesSaveFailed')));
@@ -212,24 +300,22 @@ export default function LinesPage() {
     }
   }
 
-  // ── Reset token ─────────────────────────────────────────────────────
-  async function handleResetToken(line: model_Line) {
-    if (!confirm(t('resetTokenConfirm'))) return;
-    try {
-      await sessionApi(AdminService.adminResetLineToken({ id: line.id! }));
-      loadLines();
-    } catch (e) {
-      alert(getErrorMessage(e, t('resetTokenFailed')));
-    }
-  }
-
   // ── Copy link ───────────────────────────────────────────────────────
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copyAnnounce, setCopyAnnounce] = useState('');
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+
   function copyLink(line: model_Line) {
     const url = `${window.location.origin}${apiPath(`/l/${line.token}`)}`;
     navigator.clipboard.writeText(url);
     setCopiedId(line.id!);
-    setTimeout(() => setCopiedId(null), 2000);
+    setCopyAnnounce(t('copied'));
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => {
+      setCopiedId(null);
+      setCopyAnnounce('');
+    }, 2000);
   }
 
   // ── Render ──────────────────────────────────────────────────────────
@@ -239,6 +325,7 @@ export default function LinesPage() {
   const totalLines = lines.length;
   const enabledLines = lines.filter((l) => l.enabled).length;
   const totalNodes = lines.reduce((acc, l) => acc + (l.node_count ?? 0), 0);
+  const selectedCount = filteredNodes.filter((n) => selectedMacs.has(n.mac ?? '')).length;
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -256,14 +343,7 @@ export default function LinesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 mt-3 sm:mt-0">
-          <button
-            onClick={loadLines}
-            className="state-layer inline-flex items-center justify-center gap-2 rounded-lg
-              px-4 py-2 text-sm font-500
-              bg-md-surface-container-high text-foreground border border-border
-              transition-colors
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-          >
+          <Button variant="ghost" onClick={loadLines} loading={loading}>
             <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
               <path d="M21 3v5h-5"/>
@@ -271,28 +351,26 @@ export default function LinesPage() {
               <path d="M3 21v-5h5"/>
             </svg>
             {tCommon('refresh')}
-          </button>
+          </Button>
           {canWrite && (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg
-                px-4 py-2 text-sm font-500
-                bg-md-primary text-md-on-primary elevation-1
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
+            <Button onClick={() => setShowCreate(true)}>
               <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
                 <path d="M12 5v14M5 12h14"/>
               </svg>
               {t('createLine')}
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
       {/* ── Error banner ── */}
       {error && (
-        <div className="flex items-center gap-3 rounded-xl px-4 py-3
-          bg-md-error-container text-md-on-error-container text-sm animate-slide-up">
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex items-center gap-3 rounded-xl px-4 py-3
+            bg-md-error-container text-md-on-error-container text-sm animate-slide-up"
+        >
           <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
@@ -303,7 +381,8 @@ export default function LinesPage() {
       {/* ── Lines table ── */}
       <Card className="bg-card border rounded-xl overflow-hidden">
         <CardContent className="p-0">
-          <Table>
+          <Table aria-label={t('lineManagement')}>
+            <caption className="sr-only">{t('tableCaption')}</caption>
             <TableHeader>
               <TableRow className="bg-md-surface-container-high/60 border-b border-border">
                 <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide py-3 pl-6">{t('colName')}</TableHead>
@@ -319,13 +398,13 @@ export default function LinesPage() {
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={canWrite ? 7 : 6} className="py-16 text-center">
-                    <div className="flex flex-col items-center gap-4">
+                    <div className="flex flex-col items-center gap-4" role="status" aria-live="polite">
                       {/* M3 circular progress indicator */}
                       <svg
                         className="size-10 animate-spin text-md-primary"
                         viewBox="0 0 48 48"
                         fill="none"
-                        aria-label={tCommon('loading')}
+                        aria-hidden="true"
                       >
                         <circle
                           cx="24" cy="24" r="20"
@@ -350,6 +429,14 @@ export default function LinesPage() {
                         </svg>
                       </span>
                       <p className="text-sm text-muted-foreground">{t('noLines')}</p>
+                      {canWrite && (
+                        <Button variant="secondary" size="sm" onClick={() => setShowCreate(true)} className="mt-1">
+                          <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                            <path d="M12 5v14M5 12h14"/>
+                          </svg>
+                          {t('createLine')}
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -381,13 +468,13 @@ export default function LinesPage() {
                       {line.enabled ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500
                           bg-md-tertiary-container text-md-on-tertiary-container">
-                          <span className="size-1.5 rounded-full bg-md-tertiary" />
+                          <span className="size-1.5 rounded-full bg-md-tertiary" aria-hidden="true" />
                           {t('enabled')}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500
                           bg-muted text-muted-foreground">
-                          <span className="size-1.5 rounded-full bg-md-outline" />
+                          <span className="size-1.5 rounded-full bg-md-outline" aria-hidden="true" />
                           {t('disabled')}
                         </span>
                       )}
@@ -397,22 +484,19 @@ export default function LinesPage() {
                     </TableCell>
                     <TableCell className="py-4">
                       <div className="flex items-center gap-1">
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => copyLink(line)}
-                          className="state-layer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-500
-                            transition-colors
-                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
-                          style={copiedId === line.id
-                            ? { '--state-color': 'hsl(var(--md-tertiary))' } as React.CSSProperties
-                            : { '--state-color': 'hsl(var(--md-on-surface))' } as React.CSSProperties
-                          }
+                          className={copiedId === line.id ? 'text-md-tertiary' : 'text-muted-foreground'}
+                          aria-label={copiedId === line.id ? t('copied') : t('copyLink')}
                         >
                           {copiedId === line.id ? (
                             <>
-                              <svg className="size-3 text-md-tertiary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                              <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
                                 <polyline points="20 6 9 17 4 12"/>
                               </svg>
-                              <span className="text-md-tertiary">{t('copied')}</span>
+                              {t('copied')}
                             </>
                           ) : (
                             <>
@@ -422,48 +506,67 @@ export default function LinesPage() {
                               {t('copyLink')}
                             </>
                           )}
-                        </button>
+                        </Button>
                         {canWrite && (
-                          <button
-                            onClick={() => handleResetToken(line)}
-                            className="state-layer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-500 text-muted-foreground
-                              transition-colors
-                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setResetError(''); setResetTarget(line); }}
+                            className="text-muted-foreground"
                           >
                             <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                               <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
                               <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
                             </svg>
                             {t('resetToken')}
-                          </button>
+                          </Button>
                         )}
                       </div>
                     </TableCell>
                     {canWrite && (
                       <TableCell className="py-4 pr-6">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => openEdit(line)}
-                            className="state-layer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-500 text-foreground
-                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
-                          >
+                        {/* Desktop: inline actions */}
+                        <div className="hidden items-center gap-1 sm:flex">
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(line)}>
                             {tCommon('edit')}
-                          </button>
-                          <button
-                            onClick={() => openNodeEdit(line)}
-                            className="state-layer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-500 text-md-primary
-                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
-                          >
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => openNodeEdit(line)} className="text-md-primary">
                             {t('editLineNodes')}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(line)}
-                            className="state-layer inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-500 text-destructive
-                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-1"
-                            style={{ '--state-color': 'hsl(var(--md-error))' } as React.CSSProperties}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setDeleteError(''); setDeleteTarget(line); }}
+                            className="text-destructive"
                           >
                             {tCommon('delete')}
-                          </button>
+                          </Button>
+                        </div>
+                        {/* Mobile: overflow menu keeps 48dp targets without crowding */}
+                        <div className="flex sm:hidden">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon-xl" aria-label={t('rowActions', { name: line.name ?? '' })}>
+                                <MoreVertical className="size-5" aria-hidden="true" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem size="comfortable" onSelect={() => openEdit(line)}>
+                                {tCommon('edit')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem size="comfortable" onSelect={() => openNodeEdit(line)}>
+                                {t('editLineNodes')}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                size="comfortable"
+                                className="text-destructive focus:text-destructive"
+                                onSelect={() => { setDeleteError(''); setDeleteTarget(line); }}
+                              >
+                                {tCommon('delete')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </TableCell>
                     )}
@@ -475,31 +578,48 @@ export default function LinesPage() {
         </CardContent>
       </Card>
 
+      {/* sr-only live region for copy-link confirmation */}
+      <span className="sr-only" role="status" aria-live="polite">{copyAnnounce}</span>
       {/* ── Create dialog ── */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+      <Dialog
+        open={showCreate}
+        onOpenChange={(open) => {
+          setShowCreate(open);
+          if (!open) resetCreateForm();
+        }}
+      >
         <DialogContent className="rounded-2xl border border-border bg-card elevation-3 max-w-md">
           <DialogHeader className="pb-2">
             <DialogTitle className="font-display text-xl font-600 text-foreground">
               {t('createLine')}
             </DialogTitle>
+            <DialogDescription>{t('createLineDescription')}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <form
+            className="space-y-4 py-2"
+            onSubmit={(e) => { e.preventDefault(); if (createName.trim() && !creating) handleCreate(); }}
+          >
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
-                {t('lineName')}
+              <Label htmlFor="create-line-name" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('lineName')} <span className="text-md-error" aria-hidden="true">*</span>
               </Label>
               <Input
+                id="create-line-name"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
                 placeholder={t('lineNamePlaceholder')}
+                required
+                aria-required="true"
+                autoFocus
                 className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              <Label htmlFor="create-line-region" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
                 {t('region')}
               </Label>
               <Input
+                id="create-line-region"
                 value={createRegion}
                 onChange={(e) => setCreateRegion(e.target.value)}
                 placeholder={t('regionPlaceholder')}
@@ -507,11 +627,14 @@ export default function LinesPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              <Label htmlFor="create-line-order" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
                 {t('displayOrder')}
               </Label>
               <Input
+                id="create-line-order"
                 type="number"
+                min="0"
+                step="1"
                 value={createOrder}
                 onChange={(e) => setCreateOrder(e.target.value)}
                 placeholder={t('displayOrderPlaceholder')}
@@ -519,42 +642,34 @@ export default function LinesPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              <Label htmlFor="create-line-note" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
                 {t('note')}
               </Label>
-              <Input
+              <Textarea
+                id="create-line-note"
                 value={createNote}
                 onChange={(e) => setCreateNote(e.target.value)}
                 placeholder={t('notePlaceholder')}
+                minRows={2}
+                maxRows={5}
                 className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
             {createError && (
-              <p className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
+              <p role="alert" aria-live="assertive" className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
                 bg-md-error-container text-md-on-error-container">
                 {createError}
               </p>
             )}
-          </div>
+            <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
+          </form>
           <DialogFooter className="gap-2 pt-2">
-            <button
-              onClick={() => setShowCreate(false)}
-              className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
-                bg-md-surface-container-high text-foreground border border-border
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
+            <Button variant="outline" onClick={() => setShowCreate(false)}>
               {tCommon('cancel')}
-            </button>
-            <button
-              onClick={handleCreate}
-              disabled={creating || !createName.trim()}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
-                bg-md-primary text-md-on-primary elevation-1
-                disabled:opacity-50 disabled:pointer-events-none
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
+            </Button>
+            <Button onClick={handleCreate} disabled={!createName.trim()} loading={creating}>
               {creating ? tCommon('saving') : tCommon('save')}
-            </button>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -566,91 +681,89 @@ export default function LinesPage() {
             <DialogTitle className="font-display text-xl font-600 text-foreground">
               {t('editLine')}
             </DialogTitle>
+            <DialogDescription>{t('editLineDescription')}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <form
+            className="space-y-4 py-2"
+            onSubmit={(e) => { e.preventDefault(); if (editName.trim() && !editing) handleUpdate(); }}
+          >
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
-                {t('lineName')}
+              <Label htmlFor="edit-line-name" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('lineName')} <span className="text-md-error" aria-hidden="true">*</span>
               </Label>
               <Input
+                id="edit-line-name"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
+                required
+                aria-required="true"
+                autoFocus
                 className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              <Label htmlFor="edit-line-region" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
                 {t('region')}
               </Label>
               <Input
+                id="edit-line-region"
                 value={editRegion}
                 onChange={(e) => setEditRegion(e.target.value)}
                 className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              <Label htmlFor="edit-line-order" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
                 {t('displayOrder')}
               </Label>
               <Input
+                id="edit-line-order"
                 type="number"
+                min="0"
+                step="1"
                 value={editOrder}
                 onChange={(e) => setEditOrder(e.target.value)}
                 className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              <Label htmlFor="edit-line-note" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
                 {t('note')}
               </Label>
-              <Input
+              <Textarea
+                id="edit-line-note"
                 value={editNote}
                 onChange={(e) => setEditNote(e.target.value)}
+                minRows={2}
+                maxRows={5}
                 className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
               />
             </div>
             <div className="flex items-center justify-between rounded-xl px-4 py-3 bg-md-surface-container-high/50 border border-border">
-              <Label className="text-sm font-500 text-foreground">{t('colStatus')}</Label>
-              <button
-                onClick={() => setEditEnabled(!editEnabled)}
-                className={[
-                  'state-layer inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-500 transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1',
-                  editEnabled
-                    ? 'bg-md-tertiary-container text-md-on-tertiary-container'
-                    : 'bg-muted text-muted-foreground',
-                ].join(' ')}
-              >
-                <span className={['size-1.5 rounded-full', editEnabled ? 'bg-md-tertiary' : 'bg-md-outline'].join(' ')} />
-                {editEnabled ? t('enabled') : t('disabled')}
-              </button>
+              <Label htmlFor="edit-line-enabled" className="text-sm font-500 text-foreground">{t('colStatus')}</Label>
+              <Switch
+                id="edit-line-enabled"
+                checked={editEnabled}
+                onCheckedChange={setEditEnabled}
+                onLabel={t('enabled')}
+                offLabel={t('disabled')}
+              />
             </div>
             {editError && (
-              <p className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
+              <p role="alert" aria-live="assertive" className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
                 bg-md-error-container text-md-on-error-container">
                 {editError}
               </p>
             )}
-          </div>
+            <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
+          </form>
           <DialogFooter className="gap-2 pt-2">
-            <button
-              onClick={() => setEditLine(null)}
-              className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
-                bg-md-surface-container-high text-foreground border border-border
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
+            <Button variant="outline" onClick={() => setEditLine(null)}>
               {tCommon('cancel')}
-            </button>
-            <button
-              onClick={handleUpdate}
-              disabled={editing}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
-                bg-md-primary text-md-on-primary elevation-1
-                disabled:opacity-50 disabled:pointer-events-none
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
+            </Button>
+            <Button onClick={handleUpdate} disabled={!editName.trim()} loading={editing}>
               {editing ? tCommon('saving') : tCommon('save')}
-            </button>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -667,73 +780,143 @@ export default function LinesPage() {
                 </span>
               )}
             </DialogTitle>
+            <DialogDescription>{t('editLineNodesDescription')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <Input
               value={nodeSearch}
               onChange={(e) => setNodeSearch(e.target.value)}
+              onValueChange={setNodeSearch}
+              debounceMs={300}
+              clearable
+              clearLabel={tCommon('clear')}
+              aria-label={t('searchNodes')}
               placeholder={t('searchNodes')}
               className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
             />
+            <div className="flex items-center justify-between px-0.5 text-xs">
+              <span className="text-muted-foreground" role="status" aria-live="polite">
+                {t('nodesSelectedCount', { selected: selectedCount, total: filteredNodes.length })}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button variant="link" size="xs" onClick={selectAllFiltered} disabled={filteredNodes.length === 0}>
+                  {t('selectAll')}
+                </Button>
+                <span className="text-md-outline-variant" aria-hidden="true">·</span>
+                <Button variant="link" size="xs" onClick={deselectAllFiltered} disabled={selectedCount === 0}>
+                  {t('deselectAll')}
+                </Button>
+              </div>
+            </div>
             <div className="max-h-72 overflow-y-auto rounded-xl border border-border
               bg-md-surface-container-lowest divide-y divide-border/60">
               {filteredNodes.length === 0 ? (
-                <p className="text-sm text-muted-foreground px-4 py-3">
+                <p role="status" aria-live="polite" className="text-sm text-muted-foreground px-4 py-3">
                   {tNodes('noMatchingNodes')}
                 </p>
               ) : (
-                filteredNodes.map((n) => (
-                  <label
-                    key={n.mac}
-                    className="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover-state transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedMacs.has(n.mac ?? '')}
-                      onChange={() => toggleMac(n.mac ?? '')}
-                      className="h-4 w-4 rounded accent-md-primary"
-                    />
-                    <span className="text-sm text-foreground">
-                      {n.location && (
-                        <span className="mr-1.5 text-xs text-muted-foreground">[{n.location}]</span>
-                      )}
-                      {n.hostname}
-                    </span>
-                  </label>
-                ))
+                filteredNodes.map((n) => {
+                  const mac = n.mac ?? '';
+                  const label = `${n.location ? `[${n.location}] ` : ''}${n.hostname ?? mac}`;
+                  return (
+                    <label
+                      key={mac}
+                      className="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover-state transition-colors"
+                    >
+                      <Checkbox
+                        checked={selectedMacs.has(mac)}
+                        onCheckedChange={() => toggleMac(mac)}
+                        aria-label={label}
+                      />
+                      <span className="text-sm text-foreground">
+                        {n.location && (
+                          <span className="mr-1.5 text-xs text-muted-foreground">[{n.location}]</span>
+                        )}
+                        {n.hostname}
+                      </span>
+                    </label>
+                  );
+                })
               )}
             </div>
             {saveNodesError && (
-              <p className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
+              <p role="alert" aria-live="assertive" className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
                 bg-md-error-container text-md-on-error-container">
                 {saveNodesError}
               </p>
             )}
           </div>
           <DialogFooter className="gap-2 pt-2">
-            <button
-              onClick={() => setNodeEditLine(null)}
-              className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
-                bg-md-surface-container-high text-foreground border border-border
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
+            <Button variant="outline" onClick={() => setNodeEditLine(null)}>
               {tCommon('cancel')}
-            </button>
-            <button
-              onClick={handleSaveNodes}
-              disabled={savingNodes}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500
-                bg-md-primary text-md-on-primary elevation-1
-                disabled:opacity-50 disabled:pointer-events-none
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
+            </Button>
+            <Button onClick={handleSaveNodes} disabled={!nodesDirty} loading={savingNodes}>
               {savingNodes ? tCommon('saving') : tCommon('save')}
-            </button>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* ── Delete confirmation ── */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && !deleting && setDeleteTarget(null)}>
+        <AlertDialogContent pending={deleting}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteLineTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('lineDeleteConfirm', { name: deleteTarget?.name ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && (
+            <p role="alert" aria-live="assertive" className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
+              bg-md-error-container text-md-on-error-container">
+              {deleteError}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              loading={deleting}
+              loadingLabel={tCommon('saving')}
+              onClick={(e) => { e.preventDefault(); confirmDelete(); }}
+            >
+              {tCommon('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Reset token confirmation ── */}
+      <AlertDialog open={!!resetTarget} onOpenChange={(open) => !open && !resetting && setResetTarget(null)}>
+        <AlertDialogContent pending={resetting}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('resetTokenTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('resetTokenConfirmNamed', { name: resetTarget?.name ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {resetError && (
+            <p role="alert" aria-live="assertive" className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs
+              bg-md-error-container text-md-on-error-container">
+              {resetError}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetting}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              loading={resetting}
+              loadingLabel={tCommon('saving')}
+              onClick={(e) => { e.preventDefault(); confirmResetToken(); }}
+            >
+              {t('resetToken')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
+
 

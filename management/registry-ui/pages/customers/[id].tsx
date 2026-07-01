@@ -8,15 +8,26 @@ import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useToast } from '@/components/ui/toast';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -25,6 +36,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   Table,
   TableBody,
   TableCell,
@@ -32,7 +49,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Plus, Trash2, KeyRound, Copy, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, KeyRound, Copy, RefreshCw, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 // Backend returns plan_name via JOIN; extend the generated type locally
@@ -73,11 +90,13 @@ export default function CustomerDetail() {
   const id = router.query.id as string | undefined;
   const t = useTranslations('customers');
   const tCommon = useTranslations('common');
+  const toast = useToast();
   const { user, loading: authLoading } = useCurrentUser();
 
   const [customer, setCustomer] = useState<model_Customer | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [plans, setPlans] = useState<model_Plan[]>([]);
+  const [plansError, setPlansError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -97,14 +116,21 @@ export default function CustomerDetail() {
   const [selectedPlan, setSelectedPlan] = useState('');
   const [creatingSub, setCreatingSub] = useState(false);
 
+  // Destructive confirmations
+  const [deletePendingSub, setDeletePendingSub] = useState<Subscription | null>(null);
+  const [deletingSub, setDeletingSub] = useState(false);
+  const [resetPendingSub, setResetPendingSub] = useState<Subscription | null>(null);
+  const [resettingToken, setResettingToken] = useState(false);
+
   // Copy feedback
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!authLoading && user && !user.can('customer:read')) {
+      toast.error(t('noPermission'));
       router.replace('/dashboard');
     }
-  }, [authLoading, user, router]);
+  }, [authLoading, user, router, toast, t]);
 
   const loadCustomer = useCallback(async () => {
     if (!id) return;
@@ -125,7 +151,9 @@ export default function CustomerDetail() {
 
   // Load plans for create subscription dialog
   useEffect(() => {
-    sessionApi(AdminService.adminListPlans()).then(setPlans).catch(() => {});
+    sessionApi(AdminService.adminListPlans())
+      .then((p) => { setPlans(p); setPlansError(false); })
+      .catch(() => setPlansError(true));
   }, []);
 
   function openEdit() {
@@ -144,6 +172,7 @@ export default function CustomerDetail() {
         requestBody: { nickname: editNickname, status: editStatus },
       }));
       setEditOpen(false);
+      toast.success(t('customerUpdated'));
       loadCustomer();
     } catch (e) {
       setError(getErrorMessage(e, 'Update failed'));
@@ -162,6 +191,7 @@ export default function CustomerDetail() {
       }));
       setPwdOpen(false);
       setNewPwd('');
+      toast.success(t('passwordReset'));
     } catch (e) {
       setError(getErrorMessage(e, 'Reset failed'));
     } finally {
@@ -179,6 +209,7 @@ export default function CustomerDetail() {
       }));
       setSubOpen(false);
       setSelectedPlan('');
+      toast.success(t('subscriptionCreated'));
       loadCustomer();
     } catch (e) {
       setError(getErrorMessage(e, 'Create failed'));
@@ -187,65 +218,95 @@ export default function CustomerDetail() {
     }
   }
 
-  async function handleResetToken(subId: number) {
+  async function confirmResetToken() {
+    const sub = resetPendingSub;
+    if (!sub?.id) return;
+    setResettingToken(true);
     try {
-      await sessionApi(AdminService.adminResetSubscriptionToken({ id: subId }));
+      await sessionApi(AdminService.adminResetSubscriptionToken({ id: sub.id }));
+      setResetPendingSub(null);
+      toast.success(t('tokenReset'));
       loadCustomer();
     } catch (e) {
+      setResetPendingSub(null);
       setError(getErrorMessage(e, 'Reset token failed'));
+    } finally {
+      setResettingToken(false);
     }
   }
 
-  async function handleDeleteSub(subId: number) {
+  async function confirmDeleteSub() {
+    const sub = deletePendingSub;
+    if (!sub?.id) return;
+    setDeletingSub(true);
     try {
-      await sessionApi(AdminService.adminDeleteSubscription({ id: subId }));
+      await sessionApi(AdminService.adminDeleteSubscription({ id: sub.id }));
+      setDeletePendingSub(null);
+      toast.success(t('subscriptionDeleted'));
       loadCustomer();
     } catch (e) {
+      setDeletePendingSub(null);
       setError(getErrorMessage(e, 'Delete failed'));
+    } finally {
+      setDeletingSub(false);
     }
   }
 
   function copyToken(sub: Subscription) {
     navigator.clipboard.writeText(sub.token ?? '');
     setCopiedId(sub.id ?? null);
+    toast.success(t('copied'));
     setTimeout(() => setCopiedId(null), 1500);
   }
 
   const statusLabel = (s: string) =>
     ({ active: t('active'), suspended: t('suspended'), banned: t('banned'), expired: t('expired') }[s] ?? s);
 
+  const statusWillBlock =
+    (editStatus === 'banned' || editStatus === 'suspended') &&
+    editStatus !== (customer?.status ?? 'active');
+
   // M3 circular loading indicator
   if (authLoading || loading) {
     return (
-      <div className="flex h-48 items-center justify-center">
+      <div className="flex h-48 items-center justify-center" role="status" aria-live="polite">
         <span
           className="block size-10 rounded-full border-4 border-md-primary-container border-t-md-primary animate-spin"
           style={{ animationDuration: '800ms', animationTimingFunction: 'var(--ease-standard)' }}
+          aria-hidden="true"
         />
+        <span className="sr-only">{tCommon('loading')}</span>
       </div>
     );
   }
 
   return (
+    <TooltipProvider>
     <div className="space-y-6 animate-fade-in">
       {/* Back button */}
-      <button
-        onClick={() => router.push('/customers')}
-        className="state-layer ripple inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5
-          text-sm font-500 text-md-on-surface-variant
-          hover:bg-md-surface-container-high
-          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-          transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
+      <Button variant="ghost" onClick={() => router.push('/customers')} className="-ml-1">
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
         <span>{tCommon('back')}</span>
-      </button>
+      </Button>
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-3 rounded-xl border border-md-error-container bg-md-error-container px-4 py-3 animate-slide-up">
-          <span className="size-2 shrink-0 rounded-full bg-md-error" />
-          <p className="text-sm text-md-on-error-container">{error}</p>
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex items-center gap-3 rounded-xl border border-md-error-container bg-md-error-container px-4 py-3 animate-slide-up"
+        >
+          <span className="size-2 shrink-0 rounded-full bg-md-error" aria-hidden="true" />
+          <p className="flex-1 text-sm text-md-on-error-container">{error}</p>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setError('')}
+            aria-label={tCommon('clear')}
+            className="shrink-0 text-md-on-error-container hover:bg-md-error-container"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </Button>
         </div>
       )}
 
@@ -263,32 +324,18 @@ export default function CustomerDetail() {
                 </CardTitle>
                 {/* Status chip inline with title */}
                 <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${STATUS_CHIP[customer.status ?? ''] ?? 'bg-muted text-muted-foreground'}`}>
-                  <span className={`size-1.5 rounded-full ${STATUS_DOT[customer.status ?? ''] ?? 'bg-md-outline'}`} />
+                  <span className={`size-1.5 rounded-full ${STATUS_DOT[customer.status ?? ''] ?? 'bg-md-outline'}`} aria-hidden="true" />
                   {statusLabel(customer.status ?? '')}
                 </span>
               </div>
               <div className="flex shrink-0 gap-2">
-                <button
-                  onClick={() => { setNewPwd(''); setPwdOpen(true); }}
-                  className="state-layer ripple inline-flex items-center gap-1.5 rounded-lg px-3 py-2
-                    text-sm font-500 border border-border bg-card text-foreground
-                    hover:bg-md-surface-container-high
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                    transition-colors"
-                >
-                  <KeyRound className="h-3.5 w-3.5" />
+                <Button variant="outline" onClick={() => { setNewPwd(''); setPwdOpen(true); }}>
+                  <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>{t('resetPassword')}</span>
-                </button>
-                <button
-                  onClick={openEdit}
-                  className="state-layer ripple inline-flex items-center gap-1.5 rounded-lg px-3 py-2
-                    text-sm font-500 border border-border bg-card text-foreground
-                    hover:bg-md-surface-container-high
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                    transition-colors"
-                >
+                </Button>
+                <Button variant="outline" onClick={openEdit}>
                   <span>{tCommon('edit')}</span>
-                </button>
+                </Button>
               </div>
             </CardHeader>
 
@@ -308,7 +355,6 @@ export default function CustomerDetail() {
               </div>
             </CardContent>
           </Card>
-
           {/* ── Subscriptions Card ── */}
           <Card className="rounded-xl border bg-card animate-slide-up" style={{ animationDelay: '80ms' }}>
             <CardHeader className="flex flex-row items-center justify-between pb-4">
@@ -325,21 +371,14 @@ export default function CustomerDetail() {
                   {t('subscriptions')}
                 </CardTitle>
               </div>
-              <button
-                onClick={() => setSubOpen(true)}
-                className="state-layer ripple inline-flex items-center gap-2 rounded-lg px-4 py-2
-                  text-sm font-500 bg-md-primary text-md-on-primary elevation-1
-                  hover:elevation-2
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                  transition-shadow"
-              >
-                <Plus className="h-4 w-4" />
+              <Button onClick={() => setSubOpen(true)}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
                 <span>{t('createSubscription')}</span>
-              </button>
+              </Button>
             </CardHeader>
 
             <CardContent className="p-0">
-              <Table>
+              <Table aria-label={t('subscriptions')}>
                 <TableHeader>
                   <TableRow className="border-b border-border hover:bg-transparent">
                     <TableHead className="text-xs font-500 text-muted-foreground pl-6">{t('planName')}</TableHead>
@@ -356,15 +395,20 @@ export default function CustomerDetail() {
                       <TableCell colSpan={6} className="py-16 text-center">
                         <div className="flex flex-col items-center gap-3 text-muted-foreground">
                           <div className="flex size-12 items-center justify-center rounded-full bg-md-surface-container-high">
-                            <Plus className="h-5 w-5 text-md-on-surface-variant" />
+                            <Plus className="h-5 w-5 text-md-on-surface-variant" aria-hidden="true" />
                           </div>
                           <p className="text-sm">{t('noSubscriptions')}</p>
+                          <Button variant="outline" size="sm" onClick={() => setSubOpen(true)}>
+                            <Plus className="h-4 w-4" aria-hidden="true" />
+                            <span>{t('createSubscription')}</span>
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
                   )}
                   {subscriptions.map((sub, i) => {
                     const pct = (sub.traffic_limit ?? 0) > 0 ? Math.min(100, ((sub.traffic_used ?? 0) / (sub.traffic_limit ?? 1)) * 100) : 0;
+                    const nearLimit = pct >= 90;
                     return (
                       <TableRow
                         key={sub.id}
@@ -377,16 +421,20 @@ export default function CustomerDetail() {
                             <code className="rounded-md bg-md-surface-container-high px-2 py-0.5 text-xs text-muted-foreground max-w-[120px] truncate">
                               {sub.token}
                             </code>
-                            <button
-                              onClick={() => copyToken(sub)}
-                              className="state-layer inline-flex size-6 items-center justify-center rounded-md
-                                text-muted-foreground hover:text-foreground
-                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary
-                                transition-colors"
-                              title="Copy token"
-                            >
-                              <Copy className="h-3 w-3" />
-                            </button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  onClick={() => copyToken(sub)}
+                                  aria-label={t('copyToken')}
+                                  className="text-muted-foreground hover:text-foreground"
+                                >
+                                  <Copy className="h-3 w-3" aria-hidden="true" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{t('copyToken')}</TooltipContent>
+                            </Tooltip>
                             {copiedId === sub.id && (
                               <span className="text-xs font-500 text-md-tertiary animate-fade-in">
                                 {t('copied')}
@@ -396,9 +444,16 @@ export default function CustomerDetail() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2.5">
-                            <div className="h-1.5 w-24 overflow-hidden rounded-full bg-md-surface-container-highest">
+                            <div
+                              role="progressbar"
+                              aria-valuenow={Math.round(pct)}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-label={`${t('trafficUsed')} ${formatBytes(sub.traffic_used ?? 0)} / ${formatBytes(sub.traffic_limit ?? 0)}`}
+                              className="h-1.5 w-24 overflow-hidden rounded-full bg-md-surface-container-highest"
+                            >
                               <div
-                                className="h-full rounded-full bg-md-primary transition-all"
+                                className={`h-full rounded-full transition-all ${nearLimit ? 'bg-[hsl(43_96%_50%)]' : 'bg-md-primary'}`}
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
@@ -410,31 +465,40 @@ export default function CustomerDetail() {
                         <TableCell className="text-sm text-foreground">{formatDate(sub.expires_at)}</TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${STATUS_CHIP[sub.status ?? ''] ?? 'bg-muted text-muted-foreground'}`}>
-                            <span className={`size-1.5 rounded-full ${STATUS_DOT[sub.status ?? ''] ?? 'bg-md-outline'}`} />
+                            <span className={`size-1.5 rounded-full ${STATUS_DOT[sub.status ?? ''] ?? 'bg-md-outline'}`} aria-hidden="true" />
                             {statusLabel(sub.status ?? '')}
                           </span>
                         </TableCell>
                         <TableCell className="text-right pr-6">
                           <div className="flex justify-end gap-1">
-                            <button
-                              onClick={() => handleResetToken(sub.id!)}
-                              title={t('resetToken')}
-                              className="state-layer inline-flex size-7 items-center justify-center rounded-md
-                                text-muted-foreground hover:text-foreground
-                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary
-                                transition-colors"
-                            >
-                              <RefreshCw className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSub(sub.id!)}
-                              className="state-layer inline-flex size-7 items-center justify-center rounded-md
-                                text-md-error hover:bg-md-error-container
-                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error
-                                transition-colors"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => setResetPendingSub(sub)}
+                                  aria-label={t('resetToken')}
+                                  className="text-muted-foreground hover:text-foreground"
+                                >
+                                  <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{t('resetToken')}</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => setDeletePendingSub(sub)}
+                                  aria-label={t('deleteSubscription')}
+                                  className="text-md-error hover:bg-md-error-container"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{t('deleteSubscription')}</TooltipContent>
+                            </Tooltip>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -446,124 +510,112 @@ export default function CustomerDetail() {
           </Card>
         </>
       )}
-
       {/* ── Edit Customer Dialog ── */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="rounded-2xl border bg-popover elevation-3 animate-scale-in sm:max-w-md">
-          <DialogHeader className="pb-2">
+        <DialogContent size="sm" pending={saving}>
+          <DialogHeader>
             <DialogTitle className="font-display text-lg font-600 text-foreground">
               {t('editCustomer')}
             </DialogTitle>
+            <DialogDescription>{t('editCustomerDesc')}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (!saving) handleEdit(); }}
+            className="space-y-4 py-2"
+          >
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground">{t('nickname')}</Label>
+              <Label htmlFor="edit-nickname" className="text-xs font-500 text-muted-foreground">{t('nickname')}</Label>
               <Input
+                id="edit-nickname"
                 value={editNickname}
                 onChange={(e) => setEditNickname(e.target.value)}
-                className="rounded-lg border-border bg-md-surface-container-high focus-visible:ring-md-primary"
+                autoFocus
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground">{t('status')}</Label>
+              <Label htmlFor="edit-status" className="text-xs font-500 text-muted-foreground">{t('status')}</Label>
               <Select value={editStatus} onValueChange={setEditStatus}>
-                <SelectTrigger className="rounded-lg border-border bg-md-surface-container-high focus:ring-md-primary">
+                <SelectTrigger id="edit-status">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="rounded-xl border bg-popover elevation-2">
+                <SelectContent>
                   <SelectItem value="active">{t('active')}</SelectItem>
                   <SelectItem value="suspended">{t('suspended')}</SelectItem>
                   <SelectItem value="banned">{t('banned')}</SelectItem>
+                  <SelectItem value="expired">{t('expired')}</SelectItem>
                 </SelectContent>
               </Select>
+              {statusWillBlock && (
+                <p className="text-xs text-md-error">{t('statusBlockWarning')}</p>
+              )}
             </div>
-          </div>
+            <button type="submit" className="sr-only" aria-hidden="true" tabIndex={-1} />
+          </form>
           <DialogFooter className="gap-2 pt-2">
-            <button
-              onClick={() => setEditOpen(false)}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-4 py-2
-                text-sm font-500 border border-border bg-card text-foreground
-                hover:bg-md-surface-container-high
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-colors"
-            >
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
               {tCommon('cancel')}
-            </button>
-            <button
-              onClick={handleEdit}
-              disabled={saving}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-5 py-2
-                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
-                disabled:opacity-50 disabled:cursor-not-allowed
-                hover:elevation-2
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-shadow"
-            >
-              {saving ? tCommon('saving') : tCommon('save')}
-            </button>
+            </Button>
+            <Button onClick={handleEdit} loading={saving}>
+              {tCommon('save')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* ── Reset Password Dialog ── */}
       <Dialog open={pwdOpen} onOpenChange={setPwdOpen}>
-        <DialogContent className="rounded-2xl border bg-popover elevation-3 animate-scale-in sm:max-w-md">
-          <DialogHeader className="pb-2">
+        <DialogContent size="sm" pending={savingPwd}>
+          <DialogHeader>
             <DialogTitle className="font-display text-lg font-600 text-foreground">
               {t('resetPassword')}
             </DialogTitle>
+            <DialogDescription>{t('resetPasswordDesc')}</DialogDescription>
           </DialogHeader>
-          <div className="py-2 space-y-1.5">
-            <Label className="text-xs font-500 text-muted-foreground">{t('newPassword')}</Label>
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (!savingPwd && newPwd) handleResetPassword(); }}
+            className="py-2 space-y-1.5"
+          >
+            <Label htmlFor="reset-password" className="text-xs font-500 text-muted-foreground">{t('newPassword')}</Label>
             <Input
+              id="reset-password"
               type="password"
               value={newPwd}
               onChange={(e) => setNewPwd(e.target.value)}
-              className="rounded-lg border-border bg-md-surface-container-high focus-visible:ring-md-primary"
+              required
+              aria-required="true"
+              autoComplete="new-password"
+              autoFocus
+              passwordToggleLabel={t('togglePasswordVisibility')}
             />
-          </div>
+            <button type="submit" className="sr-only" aria-hidden="true" tabIndex={-1} />
+          </form>
           <DialogFooter className="gap-2 pt-2">
-            <button
-              onClick={() => setPwdOpen(false)}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-4 py-2
-                text-sm font-500 border border-border bg-card text-foreground
-                hover:bg-md-surface-container-high
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-colors"
-            >
+            <Button variant="outline" onClick={() => setPwdOpen(false)} disabled={savingPwd}>
               {tCommon('cancel')}
-            </button>
-            <button
-              onClick={handleResetPassword}
-              disabled={savingPwd || !newPwd}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-5 py-2
-                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
-                disabled:opacity-50 disabled:cursor-not-allowed
-                hover:elevation-2
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-shadow"
-            >
-              {savingPwd ? tCommon('saving') : tCommon('save')}
-            </button>
+            </Button>
+            <Button onClick={handleResetPassword} loading={savingPwd} disabled={!newPwd}>
+              {tCommon('save')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* ── Create Subscription Dialog ── */}
       <Dialog open={subOpen} onOpenChange={setSubOpen}>
-        <DialogContent className="rounded-2xl border bg-popover elevation-3 animate-scale-in sm:max-w-md">
-          <DialogHeader className="pb-2">
+        <DialogContent size="sm" pending={creatingSub}>
+          <DialogHeader>
             <DialogTitle className="font-display text-lg font-600 text-foreground">
               {t('createSubscription')}
             </DialogTitle>
+            <DialogDescription>{t('createSubscriptionDesc')}</DialogDescription>
           </DialogHeader>
           <div className="py-2 space-y-1.5">
-            <Label className="text-xs font-500 text-muted-foreground">{t('selectPlan')}</Label>
+            <Label htmlFor="sub-plan" className="text-xs font-500 text-muted-foreground">{t('selectPlan')}</Label>
             <Select value={selectedPlan} onValueChange={setSelectedPlan}>
-              <SelectTrigger className="rounded-lg border-border bg-md-surface-container-high focus:ring-md-primary">
-                <SelectValue placeholder={t('selectPlan')} />
+              <SelectTrigger id="sub-plan" aria-required="true" disabled={plans.length === 0}>
+                <SelectValue placeholder={plansError ? t('plansLoadFailed') : t('selectPlan')} />
               </SelectTrigger>
-              <SelectContent className="rounded-xl border bg-popover elevation-2">
+              <SelectContent emptyLabel={plansError ? t('plansLoadFailed') : t('noPlans')}>
                 {plans.map((p) => (
                   <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                 ))}
@@ -571,31 +623,57 @@ export default function CustomerDetail() {
             </Select>
           </div>
           <DialogFooter className="gap-2 pt-2">
-            <button
-              onClick={() => setSubOpen(false)}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-4 py-2
-                text-sm font-500 border border-border bg-card text-foreground
-                hover:bg-md-surface-container-high
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-colors"
-            >
+            <Button variant="outline" onClick={() => setSubOpen(false)} disabled={creatingSub}>
               {tCommon('cancel')}
-            </button>
-            <button
-              onClick={handleCreateSub}
-              disabled={creatingSub || !selectedPlan}
-              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2
-                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
-                disabled:opacity-50 disabled:cursor-not-allowed
-                hover:elevation-2
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-shadow"
-            >
-              {creatingSub ? tCommon('saving') : tCommon('save')}
-            </button>
+            </Button>
+            <Button onClick={handleCreateSub} loading={creatingSub} disabled={!selectedPlan}>
+              {tCommon('save')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Reset Token Confirm ── */}
+      <AlertDialog open={!!resetPendingSub} onOpenChange={(o) => { if (!o) setResetPendingSub(null); }}>
+        <AlertDialogContent pending={resettingToken}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('resetToken')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('resetTokenConfirm')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resettingToken}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); confirmResetToken(); }}
+              loading={resettingToken}
+              loadingLabel={tCommon('saving')}
+            >
+              {t('resetToken')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Delete Subscription Confirm ── */}
+      <AlertDialog open={!!deletePendingSub} onOpenChange={(o) => { if (!o) setDeletePendingSub(null); }}>
+        <AlertDialogContent pending={deletingSub}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-md-error">{t('deleteSubscription')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('deleteSubscriptionConfirm')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingSub}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              onClick={(e) => { e.preventDefault(); confirmDeleteSub(); }}
+              loading={deletingSub}
+              loadingLabel={tCommon('saving')}
+            >
+              {t('confirmDelete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+    </TooltipProvider>
   );
 }

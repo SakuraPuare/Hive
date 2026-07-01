@@ -7,6 +7,18 @@ import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/components/ui/toast';
 import { ArrowLeft, Send } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -27,6 +39,7 @@ const STATUS_CHIP: Record<string, string> = {
 export default function TicketDetailPage() {
   const t = useTranslations('tickets');
   const tCommon = useTranslations('common');
+  const toast = useToast();
   const router = useRouter();
   const { id } = router.query;
   const { user, loading: authLoading } = useCurrentUser();
@@ -35,6 +48,7 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const sendErrorRef = useRef<HTMLDivElement>(null);
 
   const loadTicket = useCallback(async () => {
     if (!id) return;
@@ -75,8 +89,11 @@ export default function TicketDetailPage() {
       await sessionApi(AdminService.adminReplyTicket({ id: Number(ticket.ticket!.id), requestBody: { content: replyContent.trim() } }));
       setReplyContent('');
       await loadTicket();
+      toast.success(t('replySent'));
     } catch (e: unknown) {
-      setSendError(getErrorMessage(e, t('replyFailed')));
+      const msg = getErrorMessage(e, t('replyFailed'));
+      setSendError(msg);
+      sendErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } finally {
       setSending(false);
     }
@@ -84,16 +101,20 @@ export default function TicketDetailPage() {
 
   // Close ticket
   const [closing, setClosing] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [closeError, setCloseError] = useState('');
 
   async function handleClose() {
     if (!ticket) return;
-    if (!confirm(t('closeConfirm'))) return;
     setClosing(true);
+    setCloseError('');
     try {
       await sessionApi(AdminService.adminCloseTicket({ id: Number(ticket.ticket!.id) }));
-      loadTicket();
+      setCloseOpen(false);
+      await loadTicket();
+      toast.success(t('ticketClosed'));
     } catch (e: unknown) {
-      alert(getErrorMessage(e, t('closeFailed')));
+      setCloseError(getErrorMessage(e, t('closeFailed')));
     } finally {
       setClosing(false);
     }
@@ -118,8 +139,8 @@ export default function TicketDetailPage() {
   if (error) {
     return (
       <div className="p-6 animate-fade-in">
-        <div className="inline-flex items-center gap-2 rounded-xl bg-md-error-container text-md-on-error-container px-4 py-3 text-sm">
-          <span className="size-2 rounded-full bg-md-error shrink-0" />
+        <div role="alert" className="inline-flex items-center gap-2 rounded-xl bg-md-error-container text-md-on-error-container px-4 py-3 text-sm">
+          <span aria-hidden="true" className="size-2 rounded-full bg-md-error shrink-0" />
           {error}
         </div>
       </div>
@@ -135,16 +156,15 @@ export default function TicketDetailPage() {
     <div className="p-6 space-y-5 max-w-3xl animate-fade-in">
       {/* Back nav */}
       <div className="flex items-center gap-3">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => router.push('/tickets')}
-          className="state-layer ripple inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5
-            text-sm font-500 text-md-on-surface-variant hover:text-foreground
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-            transition-colors"
+          className="-ml-2 text-md-on-surface-variant"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>{tCommon('back')}</span>
-        </button>
+        </Button>
       </div>
 
       {/* Ticket header card */}
@@ -159,23 +179,22 @@ export default function TicketDetailPage() {
             </div>
             <div className="flex items-center gap-2 shrink-0 pt-0.5">
               {/* M3 status chip */}
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-500 ${STATUS_CHIP[statusKey] ?? 'bg-muted text-muted-foreground'}`}>
-                <span className={`size-1.5 rounded-full ${statusKey === 'open' ? 'bg-md-primary' : statusKey === 'replied' ? 'bg-[hsl(43_96%_50%)]' : 'bg-md-outline'}`} />
+              <span
+                role="status"
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-500 ${STATUS_CHIP[statusKey] ?? 'bg-muted text-muted-foreground'}`}
+              >
+                <span aria-hidden="true" className={`size-1.5 rounded-full ${statusKey === 'open' ? 'bg-md-primary' : statusKey === 'replied' ? 'bg-[hsl(43_96%_50%)]' : 'bg-md-outline'}`} />
+                <span className="sr-only">{t('colStatus')}: </span>
                 {t(`status${statusKey.charAt(0).toUpperCase() + statusKey.slice(1)}`)}
               </span>
               {!isClosed && (
-                <button
-                  onClick={handleClose}
-                  disabled={closing}
-                  className="state-layer ripple inline-flex items-center justify-center rounded-lg px-3 py-1.5
-                    text-xs font-500 border border-md-outline-variant
-                    bg-md-surface-container text-foreground
-                    disabled:opacity-50 disabled:pointer-events-none
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                    transition-colors"
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => { setCloseError(''); setCloseOpen(true); }}
                 >
-                  {closing ? tCommon('saving') : t('close')}
-                </button>
+                  {t('close')}
+                </Button>
               )}
             </div>
           </div>
@@ -187,7 +206,7 @@ export default function TicketDetailPage() {
         {(ticket.replies ?? []).length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3 animate-fade-in">
             <div className="size-12 rounded-full bg-md-surface-container-high flex items-center justify-center">
-              <Send className="h-5 w-5 text-muted-foreground" />
+              <Send className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
             </div>
             <p className="text-sm text-muted-foreground">{t('noReplies')}</p>
           </div>
@@ -225,41 +244,73 @@ export default function TicketDetailPage() {
         <Card className="bg-card border rounded-xl animate-slide-up" style={{ animationDelay: '80ms' }}>
           <CardContent className="pt-5 pb-5 px-6 space-y-4">
             <Textarea
+              aria-label={t('reply')}
               placeholder={t('replyPlaceholder')}
               value={replyContent}
               onChange={(e) => setReplyContent(e.target.value)}
               rows={4}
-              className="rounded-lg resize-none bg-md-surface-container-high border-md-outline-variant
+              busy={sending}
+              onSubmit={handleReply}
+              submitHint={t('replyShortcutHint')}
+              className="rounded-lg bg-md-surface-container-high border-md-outline-variant
                 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0
                 focus-visible:border-md-primary text-sm"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleReply();
-              }}
             />
             {sendError && (
-              <div className="flex items-center gap-2 rounded-lg bg-md-error-container text-md-on-error-container px-3 py-2 text-sm">
-                <span className="size-1.5 rounded-full bg-md-error shrink-0" />
+              <div
+                ref={sendErrorRef}
+                role="alert"
+                className="flex items-center gap-2 rounded-lg bg-md-error-container text-md-on-error-container px-3 py-2 text-sm"
+              >
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-md-error shrink-0" />
                 {sendError}
               </div>
             )}
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Ctrl+Enter {t('reply')}</span>
-              <button
+            <div className="flex items-center justify-end">
+              <Button
                 onClick={handleReply}
-                disabled={sending || !replyContent.trim()}
-                className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5
-                  text-sm font-500 bg-md-primary text-md-on-primary elevation-1
-                  disabled:opacity-50 disabled:pointer-events-none
-                  hover:elevation-2 transition-shadow
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+                loading={sending}
+                disabled={!replyContent.trim()}
               >
-                <Send className="h-4 w-4" />
-                <span>{sending ? tCommon('saving') : t('reply')}</span>
-              </button>
+                {!sending && <Send className="h-4 w-4" aria-hidden="true" />}
+                <span>{sending ? t('sendingReply') : t('reply')}</span>
+              </Button>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Close-ticket confirmation */}
+      <AlertDialog open={closeOpen} onOpenChange={(o) => { if (!closing) setCloseOpen(o); }}>
+        <AlertDialogContent pending={closing}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('closeConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('closeConfirmBody', { subject: ticket.ticket?.subject ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {closeError && (
+            <div
+              role="alert"
+              className="flex items-center gap-2 rounded-lg bg-md-error-container text-md-on-error-container px-3 py-2 text-sm"
+            >
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-md-error shrink-0" />
+              {closeError}
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={closing}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              loading={closing}
+              loadingLabel={tCommon('saving')}
+              onClick={(e) => { e.preventDefault(); handleClose(); }}
+            >
+              {t('close')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

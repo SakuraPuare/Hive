@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 import { AdminService } from '@/src/generated/client';
 import type { model_Customer } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
@@ -16,12 +17,28 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   Table,
   TableBody,
@@ -30,7 +47,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { RefreshCw, Plus, Trash2, Users } from 'lucide-react';
+import { RefreshCw, Plus, Trash2, Users, ChevronRight, X } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
 import { useTranslations } from 'next-intl';
 
 function formatDate(s: string) {
@@ -60,7 +78,9 @@ export default function CustomersPage() {
   const t = useTranslations('customers');
   const tCommon = useTranslations('common');
   const router = useRouter();
+  const toast = useToast();
   const { user, loading: authLoading } = useCurrentUser();
+  const canWrite = user?.can('customer:write') ?? false;
 
   const [customers, setCustomers] = useState<model_Customer[]>([]);
   const [total, setTotal] = useState(0);
@@ -69,16 +89,20 @@ export default function CustomersPage() {
 
   const [page, setPage] = useState(1);
   const limit = 20;
+  // emailFilter is debounced by the Input primitive (debounceMs) — it only
+  // updates after the user stops typing, so it is safe as a load dependency.
   const [emailFilter, setEmailFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newNickname, setNewNickname] = useState('');
   const [creating, setCreating] = useState(false);
+  const [formErrors, setFormErrors] = useState<{ email?: string; password?: string }>({});
 
   const [deleteTarget, setDeleteTarget] = useState<model_Customer | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!authLoading && user && !user.can('customer:read')) {
@@ -86,18 +110,20 @@ export default function CustomersPage() {
     }
   }, [authLoading, user, router]);
 
+  const hasActiveFilters = emailFilter.length > 0 || statusFilter !== 'all';
+
   const loadCustomers = useCallback(async () => {
     setLoading(true);
-    setError('');
     try {
       const data = await sessionApi(AdminService.adminListCustomers({
-        status: statusFilter !== 'all' ? statusFilter || undefined : undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
         email: emailFilter || undefined,
         page: page,
         limit: 20,
       }));
       setCustomers(data?.items ?? []);
       setTotal(data?.total ?? 0);
+      setError('');
     } catch (e) {
       setError(getErrorMessage(e, t('loadFailed')));
     } finally {
@@ -107,19 +133,38 @@ export default function CustomersPage() {
 
   useEffect(() => { loadCustomers(); }, [loadCustomers]);
 
-  async function handleCreate() {
+  function resetCreateForm() {
+    setNewEmail('');
+    setNewPassword('');
+    setNewNickname('');
+    setFormErrors({});
+  }
+
+  function validateCreate() {
+    const errs: { email?: string; password?: string } = {};
+    if (!newEmail) errs.email = t('emailRequired');
+    else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newEmail)) errs.email = t('emailInvalid');
+    if (!newPassword) errs.password = t('passwordRequired');
+    else if (newPassword.length < 8) errs.password = t('passwordMinLength');
+    return errs;
+  }
+
+  async function handleCreate(e?: React.FormEvent) {
+    e?.preventDefault();
+    const errs = validateCreate();
+    setFormErrors(errs);
+    if (Object.keys(errs).length > 0) return;
     setCreating(true);
     try {
       await sessionApi(AdminService.adminCreateCustomer({
         requestBody: { email: newEmail, password: newPassword, nickname: newNickname || undefined },
       }));
       setCreateOpen(false);
-      setNewEmail('');
-      setNewPassword('');
-      setNewNickname('');
+      resetCreateForm();
+      toast.success(t('customerCreated'));
       loadCustomers();
-    } catch (e) {
-      setError(getErrorMessage(e, 'Create failed'));
+    } catch (err) {
+      toast.error(getErrorMessage(err, t('createFailed')));
     } finally {
       setCreating(false);
     }
@@ -127,13 +172,23 @@ export default function CustomersPage() {
 
   async function handleDelete() {
     if (!deleteTarget) return;
+    setDeleting(true);
     try {
       await sessionApi(AdminService.adminDeleteCustomer({ id: deleteTarget.id! }));
+      toast.success(t('customerDeleted'));
       setDeleteTarget(null);
       loadCustomers();
     } catch (e) {
-      setError(getErrorMessage(e, 'Delete failed'));
+      toast.error(getErrorMessage(e, t('deleteFailed')));
+    } finally {
+      setDeleting(false);
     }
+  }
+
+  function clearFilters() {
+    setEmailFilter('');
+    setStatusFilter('all');
+    setPage(1);
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -143,78 +198,106 @@ export default function CustomersPage() {
   if (authLoading) return null;
 
   return (
+    <TooltipProvider>
     <div className="space-y-6 animate-fade-in">
 
       {/* ── Page header ── */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-xl bg-md-primary-container text-md-on-primary-container">
-            <Users className="size-5" />
+            <Users className="size-5" aria-hidden="true" />
           </div>
           <div>
             <h1 className="font-display text-xl font-600 text-foreground leading-tight">
               {t('title')}
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {total > 0 && `${total} 条记录`}
+              {total > 0 && t('recordCount', { count: total })}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={loadCustomers}
-            className="state-layer ripple inline-flex items-center justify-center size-9
-              rounded-lg border border-border bg-card text-muted-foreground
-              hover:text-foreground focus-visible:outline-none focus-visible:ring-2
-              focus-visible:ring-ring focus-visible:ring-offset-2
-              transition-colors"
-            aria-label="刷新"
-          >
-            <RefreshCw className="size-4" />
-          </button>
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="state-layer ripple inline-flex items-center gap-1.5
-              rounded-lg px-4 py-2 text-sm font-500
-              bg-md-primary text-md-on-primary elevation-1
-              focus-visible:outline-none focus-visible:ring-2
-              focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            <Plus className="size-4" />
-            {t('createCustomer')}
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={loadCustomers}
+                disabled={loading}
+                aria-label={tCommon('refresh')}
+              >
+                <RefreshCw className={loading ? 'size-4 animate-spin' : 'size-4'} aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{tCommon('refresh')}</TooltipContent>
+          </Tooltip>
+          {canWrite && (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="size-4" aria-hidden="true" />
+              {t('createCustomer')}
+            </Button>
+          )}
         </div>
       </div>
 
       {/* ── Filters toolbar ── */}
       <div className="flex flex-wrap items-center gap-2 p-4 bg-card border rounded-xl animate-slide-up">
         <Input
+          aria-label={t('searchPlaceholder')}
           placeholder={t('searchPlaceholder')}
-          value={emailFilter}
-          onChange={(e) => { setEmailFilter(e.target.value); setPage(1); }}
-          className="max-w-xs rounded-lg bg-md-surface-container-high border-border
-            focus-visible:ring-ring text-sm"
+          defaultValue={emailFilter}
+          debounceMs={350}
+          clearable
+          clearLabel={tCommon('clear')}
+          onValueChange={(v) => { setEmailFilter(v); setPage(1); }}
+          className="max-w-xs"
         />
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === '__all__' ? '' : v); setPage(1); }}>
-          <SelectTrigger className="w-36 rounded-lg bg-md-surface-container-high border-border text-sm">
+        <Select
+          value={statusFilter}
+          onValueChange={(v) => { setStatusFilter(v); setPage(1); }}
+        >
+          <SelectTrigger className="w-36" aria-label={t('colStatus')}>
             <SelectValue placeholder={tCommon('all')} />
           </SelectTrigger>
-          <SelectContent className="rounded-xl bg-popover border-border">
-            <SelectItem value="__all__">{tCommon('all')}</SelectItem>
+          <SelectContent>
+            <SelectItem value="all">{tCommon('all')}</SelectItem>
             <SelectItem value="active">{t('active')}</SelectItem>
             <SelectItem value="suspended">{t('suspended')}</SelectItem>
             <SelectItem value="banned">{t('banned')}</SelectItem>
           </SelectContent>
         </Select>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
+            <X className="size-4" aria-hidden="true" />
+            {tCommon('clear')}
+          </Button>
+        )}
       </div>
 
       {/* ── Error banner ── */}
       {error && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl
-          bg-md-error-container text-md-on-error-container text-sm animate-slide-up">
-          <span className="size-1.5 rounded-full bg-md-error shrink-0" />
-          {error}
+        <div
+          role="alert"
+          className="flex items-center gap-2 px-4 py-3 rounded-xl
+          bg-md-error-container text-md-on-error-container text-sm animate-slide-up"
+        >
+          <span className="size-1.5 rounded-full bg-md-error shrink-0" aria-hidden="true" />
+          <span className="flex-1">{error}</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setError('')}
+                aria-label={tCommon('clear')}
+                className="text-md-on-error-container hover:text-md-on-error-container -mr-1"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{tCommon('clear')}</TooltipContent>
+          </Tooltip>
         </div>
       )}
 
@@ -224,18 +307,19 @@ export default function CustomersPage() {
 
         {/* Loading overlay */}
         {loading && (
-          <div className="flex items-center justify-center py-16">
+          <div className="flex items-center justify-center py-16" role="status" aria-live="polite">
             <span
               className="size-10 rounded-full border-4 border-md-primary-container
                 border-t-md-primary animate-spin"
               style={{ animationDuration: '0.75s' }}
-              aria-label="加载中"
+              aria-hidden="true"
             />
+            <span className="sr-only">{tCommon('loading')}</span>
           </div>
         )}
 
         {!loading && (
-          <Table>
+          <Table aria-label={t('title')}>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
                 <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3 pl-5">
@@ -261,9 +345,27 @@ export default function CustomersPage() {
                   <TableCell colSpan={5} className="py-20 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="flex size-12 items-center justify-center rounded-full bg-muted">
-                        <Users className="size-6 text-muted-foreground" />
+                        <Users className="size-6 text-muted-foreground" aria-hidden="true" />
                       </div>
-                      <p className="text-sm text-muted-foreground">{t('noCustomers')}</p>
+                      {hasActiveFilters ? (
+                        <>
+                          <p className="text-sm text-muted-foreground">{t('noMatchingCustomers')}</p>
+                          <Button variant="ghost" size="sm" onClick={clearFilters}>
+                            <X className="size-4" aria-hidden="true" />
+                            {t('clearFilters')}
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm text-muted-foreground">{t('noCustomers')}</p>
+                          {canWrite && (
+                            <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
+                              <Plus className="size-4" aria-hidden="true" />
+                              {t('createFirstCustomer')}
+                            </Button>
+                          )}
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -271,12 +373,19 @@ export default function CustomersPage() {
               {customers.map((c, i) => (
                 <TableRow
                   key={c.id}
-                  className="hover-state cursor-pointer border-border animate-slide-up"
+                  className="hover-state border-border animate-slide-up focus-within:bg-md-surface-container-high"
                   style={{ animationDelay: `${80 + i * 40}ms` }}
-                  onClick={() => router.push(`/customers/${c.id}`)}
                 >
-                  <TableCell className="py-3.5 pl-5 font-mono text-sm text-foreground">
-                    {c.email}
+                  <TableCell className="py-3.5 pl-5 font-mono text-sm">
+                    <Link
+                      href={`/customers/${c.id}`}
+                      className="group inline-flex items-center gap-1.5 text-foreground rounded-md
+                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
+                        hover:text-md-primary transition-colors"
+                    >
+                      {c.email}
+                      <ChevronRight className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
+                    </Link>
                   </TableCell>
                   <TableCell className="py-3.5 text-sm text-muted-foreground">
                     {c.nickname || '—'}
@@ -285,7 +394,7 @@ export default function CustomersPage() {
                     <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500
                       ${STATUS_CHIP[c.status ?? ''] ?? 'bg-muted text-muted-foreground'}`}>
                       <span className={`size-1.5 rounded-full shrink-0
-                        ${STATUS_DOT[c.status ?? ''] ?? 'bg-md-outline'}`} />
+                        ${STATUS_DOT[c.status ?? ''] ?? 'bg-md-outline'}`} aria-hidden="true" />
                       {statusLabel(c.status ?? '')}
                     </span>
                   </TableCell>
@@ -293,17 +402,22 @@ export default function CustomersPage() {
                     {c.created_at ? formatDate(c.created_at) : '—'}
                   </TableCell>
                   <TableCell className="py-3.5 pr-5 text-right">
-                    <button
-                      className="state-layer inline-flex items-center justify-center size-8
-                        rounded-lg text-muted-foreground hover:text-md-error
-                        focus-visible:outline-none focus-visible:ring-2
-                        focus-visible:ring-ring focus-visible:ring-offset-1
-                        transition-colors"
-                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(c); }}
-                      aria-label="删除"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
+                    {canWrite && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-muted-foreground hover:text-md-error"
+                            onClick={() => setDeleteTarget(c)}
+                            aria-label={t('deleteCustomerLabel', { email: c.email ?? '' })}
+                          >
+                            <Trash2 className="size-4" aria-hidden="true" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{t('deleteCustomer')}</TooltipContent>
+                      </Tooltip>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -321,11 +435,10 @@ export default function CustomersPage() {
             size="sm"
             disabled={page <= 1}
             onClick={() => setPage(page - 1)}
-            className="rounded-lg border-border text-sm"
           >
             {t('prevPage')}
           </Button>
-          <span className="text-sm text-muted-foreground tabular-nums">
+          <span className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
             {page} / {totalPages}
           </span>
           <Button
@@ -333,7 +446,6 @@ export default function CustomersPage() {
             size="sm"
             disabled={page >= totalPages}
             onClick={() => setPage(page + 1)}
-            className="rounded-lg border-border text-sm"
           >
             {t('nextPage')}
           </Button>
@@ -341,101 +453,108 @@ export default function CustomersPage() {
       )}
 
       {/* ── Create Dialog ── */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="rounded-2xl bg-md-surface-container elevation-3 border-border max-w-md">
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          if (creating) return;
+          setCreateOpen(open);
+          if (!open) resetCreateForm();
+        }}
+      >
+        <DialogContent size="sm" pending={creating}>
           <DialogHeader className="pb-1">
             <DialogTitle className="font-display text-lg font-600 text-foreground">
               {t('createCustomer')}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <form onSubmit={handleCreate} className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
-                {t('email')}
+              <Label htmlFor="create-email" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('email')} <span className="text-md-error" aria-hidden="true">*</span>
               </Label>
               <Input
+                id="create-email"
+                type="email"
+                autoFocus
+                autoComplete="off"
+                aria-required="true"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
-                className="rounded-lg bg-md-surface-container-high border-border focus-visible:ring-ring"
+                error={formErrors.email}
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
-                {t('password')}
+              <Label htmlFor="create-password" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                {t('password')} <span className="text-md-error" aria-hidden="true">*</span>
               </Label>
               <Input
+                id="create-password"
                 type="password"
+                autoComplete="new-password"
+                aria-required="true"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="rounded-lg bg-md-surface-container-high border-border focus-visible:ring-ring"
+                error={formErrors.password}
+                helperText={formErrors.password ? undefined : t('passwordHint')}
+                passwordToggleLabel={t('togglePassword')}
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              <Label htmlFor="create-nickname" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
                 {t('nickname')}
               </Label>
               <Input
+                id="create-nickname"
                 value={newNickname}
                 onChange={(e) => setNewNickname(e.target.value)}
-                className="rounded-lg bg-md-surface-container-high border-border focus-visible:ring-ring"
               />
             </div>
-          </div>
-          <DialogFooter className="pt-2 gap-2">
-            <button
-              onClick={() => setCreateOpen(false)}
-              className="state-layer inline-flex items-center justify-center px-4 py-2 text-sm font-500
-                rounded-lg border border-border bg-transparent text-foreground
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-            >
-              {tCommon('cancel')}
-            </button>
-            <button
-              onClick={handleCreate}
-              disabled={creating || !newEmail || !newPassword}
-              className="state-layer ripple inline-flex items-center justify-center px-5 py-2 text-sm font-500
-                rounded-lg bg-md-primary text-md-on-primary elevation-1
-                disabled:opacity-40 disabled:cursor-not-allowed
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-            >
-              {creating ? tCommon('saving') : tCommon('save')}
-            </button>
-          </DialogFooter>
+            <DialogFooter className="pt-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={creating}
+                onClick={() => { setCreateOpen(false); resetCreateForm(); }}
+              >
+                {tCommon('cancel')}
+              </Button>
+              <Button type="submit" loading={creating}>
+                {tCommon('save')}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
       {/* ── Delete Confirm Dialog ── */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
-        <DialogContent className="rounded-2xl bg-md-surface-container elevation-3 border-border max-w-sm">
-          <DialogHeader className="pb-1">
-            <DialogTitle className="font-display text-lg font-600 text-foreground">
-              {tCommon('delete')}
-            </DialogTitle>
-          </DialogHeader>
-          <p className="py-2 text-sm text-muted-foreground leading-relaxed">
-            {t('deleteConfirm', { email: deleteTarget?.email ?? '' })}
-          </p>
-          <DialogFooter className="pt-2 gap-2">
-            <button
-              onClick={() => setDeleteTarget(null)}
-              className="state-layer inline-flex items-center justify-center px-4 py-2 text-sm font-500
-                rounded-lg border border-border bg-transparent text-foreground
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-            >
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}
+      >
+        <AlertDialogContent pending={deleting}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteCustomer')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('deleteConfirm', { email: deleteTarget?.email ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>
               {tCommon('cancel')}
-            </button>
-            <button
-              onClick={handleDelete}
-              className="state-layer ripple inline-flex items-center justify-center px-5 py-2 text-sm font-500
-                rounded-lg bg-md-error text-md-on-error
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+            </AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              loading={deleting}
+              loadingLabel={tCommon('saving')}
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
             >
               {tCommon('delete')}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
+    </TooltipProvider>
   );
 }

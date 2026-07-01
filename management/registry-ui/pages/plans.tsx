@@ -11,8 +11,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useToast } from '@/components/ui/toast';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Table,
   TableBody,
@@ -21,6 +41,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Loader2, MoreVertical, AlertTriangle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useCurrentUser } from '@/lib/auth';
 import { useRouter } from 'next/router';
@@ -39,6 +60,7 @@ export default function PlansPage() {
   const t = useTranslations('plans');
   const tCommon = useTranslations('common');
   const router = useRouter();
+  const toast = useToast();
   const { user, loading: authLoading } = useCurrentUser();
   const canWrite = user?.can('subscription:write') ?? false;
 
@@ -78,11 +100,12 @@ export default function PlansPage() {
   const [formEnabled, setFormEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
 
   function openCreate() {
     setFormName(''); setFormTraffic('0'); setFormSpeed('0');
     setFormDevices('1'); setFormDuration('30'); setFormPrice('0');
-    setFormOrder('0'); setFormEnabled(true); setFormError('');
+    setFormOrder('0'); setFormEnabled(true); setFormError(''); setInvalidFields(new Set());
     setShowCreate(true);
   }
 
@@ -96,10 +119,32 @@ export default function PlansPage() {
     setFormOrder(String(p.sort_order ?? 0));
     setFormEnabled(p.enabled ?? true);
     setFormError('');
+    setInvalidFields(new Set());
     setEditPlan(p);
   }
 
   async function handleSave() {
+    // ── Centralized numeric validation: reject NaN / out-of-range before POST ──
+    const checks: { key: string; raw: string; min: number; integer: boolean }[] = [
+      { key: 'traffic', raw: formTraffic, min: 0, integer: false },
+      { key: 'speed', raw: formSpeed, min: 0, integer: true },
+      { key: 'devices', raw: formDevices, min: 1, integer: true },
+      { key: 'duration', raw: formDuration, min: 1, integer: true },
+      { key: 'price', raw: formPrice, min: 0, integer: false },
+      { key: 'order', raw: formOrder, min: 0, integer: true },
+    ];
+    const bad = new Set<string>();
+    if (!formName.trim()) bad.add('name');
+    for (const c of checks) {
+      const n = c.integer ? parseInt(c.raw, 10) : parseFloat(c.raw);
+      if (Number.isNaN(n) || n < c.min) bad.add(c.key);
+    }
+    if (bad.size > 0) {
+      setInvalidFields(bad);
+      setFormError(t('invalidInput'));
+      return;
+    }
+    setInvalidFields(new Set());
     setSaving(true); setFormError('');
     const body = {
       name: formName,
@@ -115,13 +160,15 @@ export default function PlansPage() {
       if (editPlan) {
         await sessionApi(AdminService.adminUpdatePlan({ id: editPlan.id!, requestBody: body }));
         setEditPlan(null);
+        toast.success(t('updateSuccess'));
       } else {
         await sessionApi(AdminService.adminCreatePlan({ requestBody: body }));
         setShowCreate(false);
+        toast.success(t('createSuccess'));
       }
       loadPlans();
     } catch (e) {
-      setFormError(getErrorMessage(e, 'Error'));
+      setFormError(getErrorMessage(e, t('saveFailed')));
     } finally {
       setSaving(false);
     }
@@ -130,15 +177,23 @@ export default function PlansPage() {
   // ── Delete ────────────────────────────────────────────────────────
   const [deletePlan, setDeletePlan] = useState<model_Plan | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  function openDelete(p: model_Plan) {
+    setDeleteError('');
+    setDeletePlan(p);
+  }
 
   async function handleDelete() {
     if (!deletePlan) return;
-    setDeleting(true);
+    setDeleting(true); setDeleteError('');
     try {
       await sessionApi(AdminService.adminDeletePlan({ id: deletePlan.id! }));
+      toast.success(t('deleteSuccess', { name: deletePlan.name ?? '' }));
       setDeletePlan(null);
       loadPlans();
-    } catch {
+    } catch (e) {
+      setDeleteError(getErrorMessage(e, t('deleteFailed')));
     } finally {
       setDeleting(false);
     }
@@ -151,11 +206,13 @@ export default function PlansPage() {
   const [savingLines, setSavingLines] = useState(false);
   const [saveLinesError, setSaveLinesError] = useState('');
   const [lineSearch, setLineSearch] = useState('');
+  const [linesLoading, setLinesLoading] = useState(false);
 
   async function openLineEdit(p: model_Plan) {
     setLineEditPlan(p);
     setSaveLinesError('');
     setLineSearch('');
+    setLinesLoading(true);
     try {
       const [lines, assigned] = await Promise.all([
         sessionApi(AdminService.adminListLines()),
@@ -166,6 +223,8 @@ export default function PlansPage() {
     } catch {
       setAllLines([]);
       setSelectedLineIds(new Set());
+    } finally {
+      setLinesLoading(false);
     }
   }
 
@@ -182,9 +241,10 @@ export default function PlansPage() {
     setSavingLines(true); setSaveLinesError('');
     try {
       await sessionApi(AdminService.adminSetPlanLines({ id: lineEditPlan.id!, requestBody: { lines: Array.from(selectedLineIds) } }));
+      toast.success(t('linesSaveSuccess'));
       setLineEditPlan(null);
     } catch (e) {
-      setSaveLinesError(getErrorMessage(e, 'Error'));
+      setSaveLinesError(getErrorMessage(e, t('linesSaveFailed')));
     } finally {
       setSavingLines(false);
     }
@@ -195,19 +255,42 @@ export default function PlansPage() {
   );
 
   // ── Auth guard ────────────────────────────────────────────────────
-  if (authLoading || !user) return null;
+  if (authLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-live="polite">
+        <Loader2 className="size-8 animate-spin text-md-primary" aria-hidden="true" />
+        <span className="sr-only">{tCommon('loading')}</span>
+      </div>
+    );
+  }
+  if (!user) return null;
 
   // ── Form dialog content ───────────────────────────────────────────
   const formDialog = (open: boolean, onClose: () => void, title: string) => (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="rounded-2xl border border-border bg-popover p-0 gap-0 overflow-hidden animate-scale-in">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+    <Dialog open={open} onOpenChange={(v) => { if (!v && !saving) onClose(); }}>
+      <DialogContent
+        size="md"
+        stickyHeaderFooter
+        pending={saving}
+        className="rounded-2xl border border-border bg-popover overflow-hidden"
+      >
+        <DialogHeader>
           <DialogTitle className="font-display text-xl font-600 text-foreground">{title}</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-5 px-6 py-5">
+        <form
+          onSubmit={(e) => { e.preventDefault(); handleSave(); }}
+          className="grid gap-5"
+        >
           <div className="grid gap-1.5">
-            <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('planName')}</Label>
+            <Label htmlFor="plan-name" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              {t('planName')} <span className="text-md-error" aria-hidden="true">*</span>
+            </Label>
             <Input
+              id="plan-name"
+              autoFocus
+              required
+              aria-required="true"
+              aria-invalid={invalidFields.has('name') || undefined}
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
               className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary"
@@ -215,87 +298,86 @@ export default function PlansPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('trafficLimit')} ({t('gb')})</Label>
-              <Input type="number" min="0" step="0.1" value={formTraffic} onChange={(e) => setFormTraffic(e.target.value)}
+              <Label htmlFor="plan-traffic" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('trafficLimit')} ({t('gb')})</Label>
+              <Input id="plan-traffic" type="number" min="0" step="0.1" inputMode="decimal"
+                aria-describedby="plan-traffic-hint" aria-invalid={invalidFields.has('traffic') || undefined}
+                value={formTraffic} onChange={(e) => setFormTraffic(e.target.value)}
+                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
+              <span id="plan-traffic-hint" className="sr-only">{t('gb')}</span>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="plan-speed" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('speedLimit')} ({t('mbps')})</Label>
+              <Input id="plan-speed" type="number" min="0" step="1" inputMode="numeric"
+                aria-describedby="plan-speed-hint" aria-invalid={invalidFields.has('speed') || undefined}
+                value={formSpeed} onChange={(e) => setFormSpeed(e.target.value)}
+                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
+              <span id="plan-speed-hint" className="sr-only">{t('mbps')}</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="plan-devices" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('deviceLimit')}</Label>
+              <Input id="plan-devices" type="number" min="1" step="1" inputMode="numeric"
+                aria-invalid={invalidFields.has('devices') || undefined}
+                value={formDevices} onChange={(e) => setFormDevices(e.target.value)}
                 className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
             </div>
             <div className="grid gap-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('speedLimit')} ({t('mbps')})</Label>
-              <Input type="number" min="0" value={formSpeed} onChange={(e) => setFormSpeed(e.target.value)}
+              <Label htmlFor="plan-duration" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('durationDays')}</Label>
+              <Input id="plan-duration" type="number" min="1" step="1" inputMode="numeric"
+                aria-invalid={invalidFields.has('duration') || undefined}
+                value={formDuration} onChange={(e) => setFormDuration(e.target.value)}
                 className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('deviceLimit')}</Label>
-              <Input type="number" min="1" value={formDevices} onChange={(e) => setFormDevices(e.target.value)}
+              <Label htmlFor="plan-price" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('price')} ({t('yuan')})</Label>
+              <Input id="plan-price" type="number" min="0" step="0.01" inputMode="decimal"
+                aria-describedby="plan-price-hint" aria-invalid={invalidFields.has('price') || undefined}
+                value={formPrice} onChange={(e) => setFormPrice(e.target.value)}
                 className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
+              <span id="plan-price-hint" className="sr-only">{t('yuan')}</span>
             </div>
             <div className="grid gap-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('durationDays')}</Label>
-              <Input type="number" min="1" value={formDuration} onChange={(e) => setFormDuration(e.target.value)}
-                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('price')} ({t('yuan')})</Label>
-              <Input type="number" min="0" step="0.01" value={formPrice} onChange={(e) => setFormPrice(e.target.value)}
-                className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('sortOrder')}</Label>
-              <Input type="number" value={formOrder} onChange={(e) => setFormOrder(e.target.value)}
+              <Label htmlFor="plan-order" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('sortOrder')}</Label>
+              <Input id="plan-order" type="number" min="0" step="1" inputMode="numeric"
+                aria-invalid={invalidFields.has('order') || undefined}
+                value={formOrder} onChange={(e) => setFormOrder(e.target.value)}
                 className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary" />
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colStatus')}</Label>
-            <button
-              type="button"
-              onClick={() => setFormEnabled(!formEnabled)}
-              className={[
-                'state-layer inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-500 transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2',
-                formEnabled
-                  ? 'bg-md-tertiary-container text-md-on-tertiary-container'
-                  : 'bg-muted text-muted-foreground',
-              ].join(' ')}
-            >
-              <span className={['size-1.5 rounded-full', formEnabled ? 'bg-md-tertiary' : 'bg-md-outline'].join(' ')} />
-              {formEnabled ? t('enabled') : t('disabled')}
-            </button>
+            <Label htmlFor="plan-enabled" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colStatus')}</Label>
+            <Switch
+              id="plan-enabled"
+              checked={formEnabled}
+              onCheckedChange={setFormEnabled}
+              onLabel={t('enabled')}
+              offLabel={t('disabled')}
+            />
+            <span className="text-sm text-foreground">{formEnabled ? t('enabled') : t('disabled')}</span>
           </div>
           {formError && (
-            <p className="flex items-center gap-1.5 rounded-lg bg-md-error-container px-3 py-2 text-sm text-md-on-error-container">
+            <p role="alert" className="flex items-center gap-1.5 rounded-lg bg-md-error-container px-3 py-2 text-sm text-md-on-error-container">
               {formError}
             </p>
           )}
-        </div>
-        <DialogFooter className="px-6 py-4 border-t border-border flex gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500 border border-border bg-transparent text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-          >
+          {/* Hidden submit enables Enter-to-submit from any field while the visible Save lives in the sticky footer. */}
+          <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
+        </form>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
             {tCommon('cancel')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={handleSave}
-            disabled={saving || !formName.trim()}
-            className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 transition-shadow hover:elevation-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none"
+            loading={saving}
+            disabled={!formName.trim()}
           >
-            {saving ? (
-              <span className="flex items-center gap-2">
-                <svg className="animate-spin size-4" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                </svg>
-                {tCommon('saving')}
-              </span>
-            ) : tCommon('save')}
-          </button>
+            {saving ? tCommon('saving') : tCommon('save')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -317,23 +399,19 @@ export default function PlansPage() {
           )}
         </div>
         {canWrite && (
-          <button
-            type="button"
-            onClick={openCreate}
-            className="state-layer ripple inline-flex shrink-0 items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 transition-shadow hover:elevation-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-          >
-            <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <Button type="button" onClick={openCreate} className="shrink-0">
+            <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M12 5v14M5 12h14" />
             </svg>
             {t('createPlan')}
-          </button>
+          </Button>
         )}
       </div>
 
       {/* ── Error banner ── */}
       {error && (
-        <div className="flex items-center gap-2.5 rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container animate-slide-up">
-          <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <div role="alert" className="flex items-center gap-2.5 rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container animate-slide-up">
+          <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
           </svg>
           {error}
@@ -376,11 +454,19 @@ export default function PlansPage() {
                   <TableCell colSpan={canWrite ? 9 : 8} className="py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="flex size-14 items-center justify-center rounded-2xl bg-md-surface-container-high">
-                        <svg className="size-7 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg className="size-7 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <rect x="3" y="5" width="18" height="14" rx="2" /><path d="M8 10h8M8 14h4" />
                         </svg>
                       </div>
                       <p className="text-sm text-muted-foreground">{t('noPlans')}</p>
+                      {canWrite && (
+                        <Button type="button" size="sm" onClick={openCreate} className="mt-1">
+                          <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M12 5v14M5 12h14" />
+                          </svg>
+                          {t('createPlan')}
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -411,28 +497,39 @@ export default function PlansPage() {
                     <TableCell className="px-4 py-3 text-sm text-muted-foreground">{p.sort_order ?? 0}</TableCell>
                     {canWrite && (
                       <TableCell className="px-4 py-3">
-                        <div className="flex gap-1">
-                          <button
+                        <div className="flex items-center gap-1">
+                          <Button
                             type="button"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => openEdit(p)}
-                            className="state-layer inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-500 text-md-primary bg-md-primary-container/50 hover:bg-md-primary-container transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
                           >
                             {tCommon('edit')}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openLineEdit(p)}
-                            className="state-layer inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-500 text-foreground bg-muted/50 hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
-                          >
-                            {t('editLines')}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeletePlan(p)}
-                            className="state-layer inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-500 text-destructive bg-md-error-container/40 hover:bg-md-error-container transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-1"
-                          >
-                            {tCommon('delete')}
-                          </button>
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={t('moreActions', { name: p.name ?? '' })}
+                              >
+                                <MoreVertical className="size-4" aria-hidden="true" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem size="comfortable" onSelect={() => openLineEdit(p)}>
+                                {t('editLines')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                size="comfortable"
+                                variant="destructive"
+                                onSelect={() => openDelete(p)}
+                              >
+                                {tCommon('delete')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </TableCell>
                     )}
@@ -451,71 +548,90 @@ export default function PlansPage() {
       {formDialog(!!editPlan, () => setEditPlan(null), t('editPlan'))}
 
       {/* Delete confirm */}
-      <Dialog open={!!deletePlan} onOpenChange={(v) => { if (!v) setDeletePlan(null); }}>
-        <DialogContent className="rounded-2xl border border-border bg-popover p-0 gap-0 overflow-hidden animate-scale-in">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
-            <DialogTitle className="font-display text-xl font-600 text-foreground">{t('deletePlan')}</DialogTitle>
-          </DialogHeader>
-          <div className="px-6 py-5">
-            <p className="text-sm text-foreground leading-relaxed">
+      <AlertDialog
+        open={!!deletePlan}
+        onOpenChange={(v) => { if (!v && !deleting) { setDeletePlan(null); setDeleteError(''); } }}
+      >
+        <AlertDialogContent pending={deleting}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-5 text-md-error" aria-hidden="true" />
+              {t('deletePlan')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
               {deletePlan && t('deleteConfirm', { name: deletePlan.name ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && (
+            <p role="alert" className="flex items-center gap-1.5 rounded-lg bg-md-error-container px-3 py-2 text-sm text-md-on-error-container">
+              {deleteError}
             </p>
-          </div>
-          <DialogFooter className="px-6 py-4 border-t border-border flex gap-2">
-            <button
-              type="button"
-              onClick={() => setDeletePlan(null)}
-              className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500 border border-border bg-transparent text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              loading={deleting}
+              loadingLabel={tCommon('loading')}
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
             >
-              {tCommon('cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-500 bg-md-error text-md-on-error elevation-1 transition-shadow hover:elevation-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none"
-            >
-              {deleting ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin size-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                  </svg>
-                  {tCommon('loading')}
-                </span>
-              ) : tCommon('delete')}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {tCommon('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Lines dialog */}
-      <Dialog open={!!lineEditPlan} onOpenChange={(v) => { if (!v) setLineEditPlan(null); }}>
-        <DialogContent className="rounded-2xl border border-border bg-popover p-0 gap-0 overflow-hidden animate-scale-in">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+      <Dialog open={!!lineEditPlan} onOpenChange={(v) => { if (!v && !savingLines) setLineEditPlan(null); }}>
+        <DialogContent
+          size="md"
+          stickyHeaderFooter
+          pending={savingLines}
+          className="rounded-2xl border border-border bg-popover overflow-hidden"
+        >
+          <DialogHeader>
             <DialogTitle className="font-display text-xl font-600 text-foreground">{t('editLines')}</DialogTitle>
           </DialogHeader>
-          <div className="px-6 py-5 space-y-3">
+          <div className="space-y-3">
             <Input
+              aria-label={tCommon('search')}
               placeholder={tCommon('search')}
               value={lineSearch}
-              onChange={(e) => setLineSearch(e.target.value)}
+              onValueChange={setLineSearch}
+              debounceMs={250}
+              clearable
+              clearLabel={tCommon('clear')}
+              startIcon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
+                </svg>
+              }
               className="rounded-lg bg-muted border-border focus-visible:ring-2 focus-visible:ring-md-primary"
             />
+            {!linesLoading && allLines.length > 0 && (
+              <p className="text-xs text-muted-foreground" aria-live="polite">
+                {t('selectedCount', { count: selectedLineIds.size })}
+              </p>
+            )}
             <div className="max-h-64 overflow-y-auto rounded-xl bg-md-surface-container-lowest border border-border space-y-0.5 p-1">
-              {filteredLines.length === 0 ? (
+              {linesLoading ? (
+                <div className="flex items-center justify-center gap-2 px-3 py-6 text-muted-foreground" role="status" aria-live="polite">
+                  <Loader2 className="size-5 animate-spin text-md-primary" aria-hidden="true" />
+                  <span className="text-sm">{tCommon('loading')}</span>
+                </div>
+              ) : filteredLines.length === 0 ? (
                 <p className="text-sm text-muted-foreground px-3 py-4 text-center">{tCommon('noData')}</p>
               ) : (
                 filteredLines.map((l) => (
                   <label
                     key={l.id!}
+                    htmlFor={`line-${l.id}`}
                     className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 hover:bg-md-surface-container-high transition-colors"
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
+                      id={`line-${l.id}`}
                       checked={selectedLineIds.has(l.id!)}
-                      onChange={() => toggleLine(l.id!)}
-                      className="h-4 w-4 accent-md-primary rounded"
+                      onCheckedChange={() => toggleLine(l.id!)}
                     />
                     <span className="text-sm text-foreground leading-snug">
                       {l.region && (
@@ -530,35 +646,18 @@ export default function PlansPage() {
               )}
             </div>
             {saveLinesError && (
-              <p className="flex items-center gap-1.5 rounded-lg bg-md-error-container px-3 py-2 text-sm text-md-on-error-container">
+              <p role="alert" className="flex items-center gap-1.5 rounded-lg bg-md-error-container px-3 py-2 text-sm text-md-on-error-container">
                 {saveLinesError}
               </p>
             )}
           </div>
-          <DialogFooter className="px-6 py-4 border-t border-border flex gap-2">
-            <button
-              type="button"
-              onClick={() => setLineEditPlan(null)}
-              className="state-layer inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-500 border border-border bg-transparent text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setLineEditPlan(null)} disabled={savingLines}>
               {tCommon('cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveLines}
-              disabled={savingLines}
-              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 transition-shadow hover:elevation-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none"
-            >
-              {savingLines ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin size-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                  </svg>
-                  {tCommon('saving')}
-                </span>
-              ) : tCommon('save')}
-            </button>
+            </Button>
+            <Button type="button" onClick={handleSaveLines} loading={savingLines}>
+              {savingLines ? tCommon('saving') : tCommon('save')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

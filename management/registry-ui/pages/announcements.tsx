@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
@@ -6,22 +6,28 @@ import { getErrorMessage } from '@/lib/i18n';
 import type { model_Announcement } from '@/src/generated/client/models/model_Announcement';
 import { useCurrentUser } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { useToast } from '@/components/ui/toast';
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogClose,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { RefreshCw, Plus, Pencil, Trash2, Megaphone, AlertTriangle, Info, AlertCircle, Pin, Globe } from 'lucide-react';
+import { RefreshCw, Plus, Pencil, Trash2, Megaphone, AlertTriangle, Info, AlertCircle, Pin, Globe, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+
+const CONTENT_MAX = 2000;
 
 function formatDate(s: string) {
   const d = new Date(s);
@@ -56,6 +62,7 @@ export default function AnnouncementsPage() {
   const t = useTranslations('announcements');
   const tCommon = useTranslations('common');
   const router = useRouter();
+  const toast = useToast();
   const { user, loading: authLoading } = useCurrentUser();
 
   const [items, setItems] = useState<model_Announcement[]>([]);
@@ -83,17 +90,41 @@ export default function AnnouncementsPage() {
     if (!authLoading && user && !user.can('announcement:write')) router.replace('/dashboard');
   }, [authLoading, user, router]);
 
-  // ── Dialog state ──────────────────────────────────────────────────────
+  // ── Create / edit dialog state ────────────────────────────────────────
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<model_Announcement | null>(null);
   const [form, setForm] = useState({ title: '', content: '', level: 'info', pinned: false, published: false });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [titleTouched, setTitleTouched] = useState(false);
+
+  // Stable ids for label/control association (WCAG 1.3.1 / 4.1.2).
+  const baseId = useId();
+  const titleInputId = `${baseId}-title`;
+  const levelLabelId = `${baseId}-level-label`;
+  const contentInputId = `${baseId}-content`;
+  const pinnedLabelId = `${baseId}-pinned-label`;
+  const publishedLabelId = `${baseId}-published-label`;
+
+  // Autofocus the title field when the dialog opens. Input doesn't forward a
+  // ref, so focus by id once the field is mounted.
+  useEffect(() => {
+    if (dialogOpen) {
+      const id = window.setTimeout(() => {
+        document.getElementById(titleInputId)?.focus();
+      }, 60);
+      return () => window.clearTimeout(id);
+    }
+  }, [dialogOpen, titleInputId]);
+
+  const titleEmpty = !form.title.trim();
+  const titleInvalid = titleTouched && titleEmpty;
 
   function openCreate() {
     setEditing(null);
     setForm({ title: '', content: '', level: 'info', pinned: false, published: false });
     setSaveError('');
+    setTitleTouched(false);
     setDialogOpen(true);
   }
 
@@ -101,19 +132,34 @@ export default function AnnouncementsPage() {
     setEditing(ann);
     setForm({ title: ann.title ?? '', content: ann.content ?? '', level: ann.level ?? 'info', pinned: ann.pinned ?? false, published: ann.published ?? false });
     setSaveError('');
+    setTitleTouched(false);
     setDialogOpen(true);
   }
 
+  function handleDialogOpenChange(open: boolean) {
+    if (saving) return; // guarded by pending, but be defensive
+    if (!open) setSaveError('');
+    setDialogOpen(open);
+  }
+
   async function handleSave() {
+    if (titleEmpty) {
+      setTitleTouched(true);
+      document.getElementById(titleInputId)?.focus();
+      return;
+    }
     setSaving(true);
     setSaveError('');
+    const isEdit = !!editing;
     try {
+      const payload = { ...form, title: form.title.trim() };
       if (editing) {
-        await sessionApi(AdminService.adminUpdateAnnouncement({ id: editing.id!, requestBody: form }));
+        await sessionApi(AdminService.adminUpdateAnnouncement({ id: editing.id!, requestBody: payload }));
       } else {
-        await sessionApi(AdminService.adminCreateAnnouncement({ requestBody: form }));
+        await sessionApi(AdminService.adminCreateAnnouncement({ requestBody: payload }));
       }
       setDialogOpen(false);
+      toast.success(isEdit ? t('updateSuccess') : t('createSuccess'));
       loadData();
     } catch (e: unknown) {
       setSaveError(getErrorMessage(e, t('saveFailed')));
@@ -122,22 +168,48 @@ export default function AnnouncementsPage() {
     }
   }
 
-  async function handleDelete(id: number) {
-    if (!confirm(t('deleteConfirm'))) return;
+  // ── Delete confirmation state ─────────────────────────────────────────
+  const [deleteTarget, setDeleteTarget] = useState<model_Announcement | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  // Element to restore focus to after the AlertDialog closes.
+  const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  function requestDelete(ann: model_Announcement, trigger: HTMLButtonElement | null) {
+    deleteTriggerRef.current = trigger;
+    setDeleteTarget(ann);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await sessionApi(AdminService.adminDeleteAnnouncement({ id }));
+      await sessionApi(AdminService.adminDeleteAnnouncement({ id: deleteTarget.id! }));
+      setDeleteTarget(null);
+      toast.success(t('deleteSuccess'));
       loadData();
     } catch (e: unknown) {
-      setError(getErrorMessage(e, t('deleteFailed')));
+      setDeleteTarget(null);
+      toast.error(getErrorMessage(e, t('deleteFailed')));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function handleDeleteOpenChange(open: boolean) {
+    if (deleting) return;
+    if (!open) {
+      setDeleteTarget(null);
+      // Return focus to the row's delete button.
+      deleteTriggerRef.current?.focus();
     }
   }
 
   if (authLoading) return (
     <div className="flex items-center justify-center min-h-[40vh]">
-      <div className="flex flex-col items-center gap-4 animate-fade-in">
+      <div className="flex flex-col items-center gap-4 animate-fade-in" role="status" aria-live="polite">
         {/* M3 circular progress indicator */}
-        <div className="relative size-12">
-          <svg className="size-12 animate-spin" viewBox="0 0 48 48" fill="none" style={{ animationDuration: '1.2s' }}>
+        <div className="relative size-12" aria-hidden="true">
+          <svg className="size-12 animate-spin motion-reduce:animate-none" viewBox="0 0 48 48" fill="none" style={{ animationDuration: '1.2s' }}>
             <circle
               cx="24" cy="24" r="20"
               stroke="hsl(var(--md-surface-container-highest))"
@@ -164,7 +236,7 @@ export default function AnnouncementsPage() {
       <div className="animate-slide-up">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-10 rounded-2xl bg-md-primary-container text-md-on-primary-container">
+            <div className="flex items-center justify-center size-10 rounded-2xl bg-md-primary-container text-md-on-primary-container" aria-hidden="true">
               <Megaphone className="size-5" />
             </div>
             <div>
@@ -177,41 +249,42 @@ export default function AnnouncementsPage() {
 
           {/* Toolbar */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={loadData}
-              disabled={loading}
-              className="state-layer ripple inline-flex items-center gap-2 rounded-lg px-3 py-2
-                text-sm font-500 text-foreground bg-md-surface-container-high border border-transparent
-                disabled:opacity-50 disabled:pointer-events-none
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
-              <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
+            <Button variant="outline" size="sm" type="button" onClick={loadData} loading={loading}>
+              {!loading && <RefreshCw className="size-4" aria-hidden="true" />}
               <span>{tCommon('refresh')}</span>
-            </button>
-            <button
-              onClick={openCreate}
-              className="state-layer ripple inline-flex items-center gap-2 rounded-lg px-4 py-2
-                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
-              <Plus className="size-4" />
+            </Button>
+            <Button type="button" onClick={openCreate}>
+              <Plus className="size-4" aria-hidden="true" />
               <span>{t('create')}</span>
-            </button>
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-3 rounded-xl px-4 py-3 bg-md-error-container text-md-on-error-container text-sm animate-slide-up">
-          <AlertCircle className="size-4 shrink-0" />
-          <span>{error}</span>
+        <div
+          role="alert"
+          className="flex items-center gap-3 rounded-xl px-4 py-3 bg-md-error-container text-md-on-error-container text-sm animate-slide-up"
+        >
+          <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+          <span className="flex-1">{error}</span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            type="button"
+            className="text-md-on-error-container hover:text-md-on-error-container"
+            onClick={() => setError('')}
+            aria-label={tCommon('dismiss')}
+          >
+            <X className="size-4" aria-hidden="true" />
+          </Button>
         </div>
       )}
 
       {/* Table card */}
       <div className="bg-card border rounded-xl overflow-hidden animate-slide-up" style={{ animationDelay: '40ms' }}>
-        <Table>
+        <Table aria-label={t('title')}>
           <TableHeader>
             <TableRow className="border-b border-border bg-md-surface-container-high/50">
               <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colTitle')}</TableHead>
@@ -226,10 +299,10 @@ export default function AnnouncementsPage() {
             {loading ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-16">
-                  <div className="flex flex-col items-center justify-center gap-4">
+                  <div className="flex flex-col items-center justify-center gap-4" role="status" aria-live="polite">
                     {/* M3 circular progress */}
-                    <div className="relative size-10">
-                      <svg className="size-10 animate-spin" viewBox="0 0 48 48" fill="none" style={{ animationDuration: '1.2s' }}>
+                    <div className="relative size-10" aria-hidden="true">
+                      <svg className="size-10 animate-spin motion-reduce:animate-none" viewBox="0 0 48 48" fill="none" style={{ animationDuration: '1.2s' }}>
                         <circle cx="24" cy="24" r="20" stroke="hsl(var(--md-surface-container-highest))" strokeWidth="4" />
                         <circle cx="24" cy="24" r="20" stroke="hsl(var(--md-primary))" strokeWidth="4" strokeLinecap="round" strokeDasharray="94" strokeDashoffset="62" />
                       </svg>
@@ -241,11 +314,15 @@ export default function AnnouncementsPage() {
             ) : items.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-20">
-                  <div className="flex flex-col items-center justify-center gap-3 text-center">
-                    <div className="flex items-center justify-center size-14 rounded-full bg-md-surface-container-highest">
+                  <div className="flex flex-col items-center justify-center gap-3 text-center" role="status">
+                    <div className="flex items-center justify-center size-14 rounded-full bg-md-surface-container-highest" aria-hidden="true">
                       <Megaphone className="size-6 text-muted-foreground" />
                     </div>
                     <p className="text-sm font-500 text-muted-foreground">{t('noData')}</p>
+                    <Button type="button" onClick={openCreate} className="mt-1">
+                      <Plus className="size-4" aria-hidden="true" />
+                      <span>{t('create')}</span>
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -262,49 +339,54 @@ export default function AnnouncementsPage() {
                     <TableCell className="font-500 text-foreground py-3">{ann.title}</TableCell>
                     <TableCell className="py-3">
                       <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${levelCfg.containerClass}`}>
-                        <LevelIcon className="size-3" />
+                        <LevelIcon className="size-3" aria-hidden="true" />
                         {t(`level${(ann.level ?? '').charAt(0).toUpperCase() + (ann.level ?? '').slice(1)}`)}
                       </span>
                     </TableCell>
                     <TableCell className="py-3">
                       {ann.pinned ? (
                         <span className="inline-flex items-center gap-1 text-xs text-md-primary font-500" role="img" aria-label={t('pinned')}>
-                          <Pin className="size-3" />
+                          <Pin className="size-3" aria-hidden="true" />
                         </span>
                       ) : (
-                        <span className="text-muted-foreground/40 text-xs">—</span>
+                        <span className="text-muted-foreground/40 text-xs" aria-hidden="true">—</span>
                       )}
                     </TableCell>
                     <TableCell className="py-3">
                       {ann.published ? (
                         <span className="inline-flex items-center gap-1 text-xs text-md-tertiary font-500" role="img" aria-label={t('published')}>
-                          <Globe className="size-3" />
+                          <Globe className="size-3" aria-hidden="true" />
                         </span>
                       ) : (
-                        <span className="text-muted-foreground/40 text-xs">—</span>
+                        <span className="text-muted-foreground/40 text-xs" aria-hidden="true">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground py-3 tabular-nums">{formatDate(ann.created_at ?? '')}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground py-3 tabular-nums">
+                      {ann.created_at
+                        ? <time dateTime={ann.created_at} title={ann.created_at}>{formatDate(ann.created_at)}</time>
+                        : null}
+                    </TableCell>
                     <TableCell className="py-3">
                       <div className="flex gap-1">
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          type="button"
                           onClick={() => openEdit(ann)}
-                          className="state-layer inline-flex items-center justify-center size-8 rounded-lg
-                            text-muted-foreground hover:text-foreground
-                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
-                          aria-label={t('editTitle')}
+                          aria-label={`${t('editTitle')}: ${ann.title}`}
                         >
-                          <Pencil className="size-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(ann.id!)}
-                          className="state-layer inline-flex items-center justify-center size-8 rounded-lg
-                            text-muted-foreground hover:text-destructive
-                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-1"
-                          aria-label={tCommon('delete') ?? 'Delete'}
+                          <Pencil className="size-3.5" aria-hidden="true" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          type="button"
+                          className="text-md-on-surface-variant hover:text-md-error"
+                          onClick={(e) => requestDelete(ann, e.currentTarget)}
+                          aria-label={`${tCommon('delete')}: ${ann.title}`}
                         >
-                          <Trash2 className="size-3.5" />
-                        </button>
+                          <Trash2 className="size-3.5" aria-hidden="true" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -316,123 +398,176 @@ export default function AnnouncementsPage() {
       </div>
 
       {/* Create / Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg rounded-2xl bg-card border animate-scale-in">
-          <DialogHeader className="pb-2">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center size-9 rounded-xl bg-md-primary-container text-md-on-primary-container">
-                <Megaphone className="size-4" />
+      <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
+        <DialogContent
+          size="lg"
+          pending={saving}
+          stickyHeaderFooter
+          closeLabel={tCommon('cancel')}
+          description={editing ? t('editDescription') : t('createDescription')}
+          className="bg-card"
+        >
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSave(); }}
+            className="contents"
+          >
+            <DialogHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center size-9 rounded-xl bg-md-primary-container text-md-on-primary-container" aria-hidden="true">
+                  <Megaphone className="size-4" />
+                </div>
+                <DialogTitle className="font-display text-lg font-600">
+                  {editing ? t('editTitle') : t('create')}
+                </DialogTitle>
               </div>
-              <DialogTitle className="font-display text-lg font-600">
-                {editing ? t('editTitle') : t('create')}
-              </DialogTitle>
-            </div>
-          </DialogHeader>
+            </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colTitle')}</Label>
-              <Input
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                placeholder={t('titlePlaceholder')}
-                className="rounded-lg bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colLevel')}</Label>
-              <Select value={form.level} onValueChange={(v) => setForm({ ...form, level: v })}>
-                <SelectTrigger className="rounded-lg bg-md-surface-container-high/50 border-border">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl bg-popover border elevation-2">
-                  <SelectItem value="info">
-                    <span className="flex items-center gap-2">
-                      <span className="size-2 rounded-full bg-md-primary" />
-                      {t('levelInfo')}
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="warning">
-                    <span className="flex items-center gap-2">
-                      <span className="size-2 rounded-full bg-[hsl(43_96%_50%)]" />
-                      {t('levelWarning')}
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="critical">
-                    <span className="flex items-center gap-2">
-                      <span className="size-2 rounded-full bg-md-error" />
-                      {t('levelCritical')}
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">Content</Label>
-              <Textarea
-                value={form.content}
-                onChange={(e) => setForm({ ...form, content: e.target.value })}
-                placeholder={t('contentPlaceholder')}
-                rows={6}
-                className="rounded-lg bg-md-surface-container-high/50 border-border resize-none focus-visible:ring-md-primary"
-              />
-            </div>
-
-            <div className="flex items-center gap-6 pt-1">
-              <div className="flex items-center gap-2.5">
-                <Switch checked={form.pinned} onCheckedChange={(v) => setForm({ ...form, pinned: v })} />
-                <Label className="text-sm font-500 flex items-center gap-1.5">
-                  <Pin className="size-3.5 text-muted-foreground" />
-                  {t('pinned')}
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor={titleInputId} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+                  {t('colTitle')} <span className="text-md-error" aria-hidden="true">*</span>
                 </Label>
+                <Input
+                  id={titleInputId}
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  onBlur={() => setTitleTouched(true)}
+                  placeholder={t('titlePlaceholder')}
+                  required
+                  aria-required="true"
+                  error={titleInvalid ? t('titleRequired') : undefined}
+                  className="bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
+                />
               </div>
-              <div className="flex items-center gap-2.5">
-                <Switch checked={form.published} onCheckedChange={(v) => setForm({ ...form, published: v })} />
-                <Label className="text-sm font-500 flex items-center gap-1.5">
-                  <Globe className="size-3.5 text-muted-foreground" />
-                  {t('published')}
-                </Label>
-              </div>
-            </div>
 
-            {saveError && (
-              <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 bg-md-error-container text-md-on-error-container text-sm">
-                <AlertCircle className="size-4 shrink-0" />
-                <span>{saveError}</span>
+              <div className="space-y-1.5">
+                <Label id={levelLabelId} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colLevel')}</Label>
+                <Select value={form.level} onValueChange={(v) => setForm({ ...form, level: v })}>
+                  <SelectTrigger aria-labelledby={levelLabelId} className="rounded-lg bg-md-surface-container-high/50 border-border">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl bg-popover border elevation-2">
+                    <SelectItem value="info">
+                      <span className="flex items-center gap-2">
+                        <span className="size-2 rounded-full bg-md-primary" aria-hidden="true" />
+                        {t('levelInfo')}
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="warning">
+                      <span className="flex items-center gap-2">
+                        <span className="size-2 rounded-full bg-[hsl(43_96%_50%)]" aria-hidden="true" />
+                        {t('levelWarning')}
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="critical">
+                      <span className="flex items-center gap-2">
+                        <span className="size-2 rounded-full bg-md-error" aria-hidden="true" />
+                        {t('levelCritical')}
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            )}
-          </div>
 
-          <DialogFooter className="gap-2 pt-2">
-            <button
-              onClick={() => setDialogOpen(false)}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg px-4 py-2
-                text-sm font-500 text-foreground bg-md-surface-container-high border border-border
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
-              {tCommon('cancel')}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving || !form.title}
-              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2
-                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
-                disabled:opacity-50 disabled:pointer-events-none
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
-              {saving && (
-                <svg className="size-4 animate-spin" viewBox="0 0 48 48" fill="none" style={{ animationDuration: '1s' }}>
-                  <circle cx="24" cy="24" r="20" stroke="hsl(var(--md-on-primary)/0.3)" strokeWidth="4" />
-                  <circle cx="24" cy="24" r="20" stroke="hsl(var(--md-on-primary))" strokeWidth="4" strokeLinecap="round" strokeDasharray="94" strokeDashoffset="62" />
-                </svg>
+              <div className="space-y-1.5">
+                <Label htmlFor={contentInputId} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('colContent')}</Label>
+                <Textarea
+                  id={contentInputId}
+                  value={form.content}
+                  onChange={(e) => setForm({ ...form, content: e.target.value })}
+                  placeholder={t('contentPlaceholder')}
+                  minRows={6}
+                  maxLength={CONTENT_MAX}
+                  showCount
+                  helperText={t('contentHelper')}
+                  className="bg-md-surface-container-high/50 border-border focus-visible:ring-md-primary"
+                />
+              </div>
+
+              <div className="flex items-center gap-6 pt-1">
+                <div className="flex items-center gap-2.5">
+                  <Switch
+                    checked={form.pinned}
+                    onCheckedChange={(v) => setForm({ ...form, pinned: v })}
+                    aria-labelledby={pinnedLabelId}
+                    onLabel={t('pinned')}
+                    offLabel={t('pinned')}
+                  />
+                  <Label
+                    id={pinnedLabelId}
+                    onClick={() => setForm({ ...form, pinned: !form.pinned })}
+                    className="text-sm font-500 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Pin className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                    {t('pinned')}
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <Switch
+                    checked={form.published}
+                    onCheckedChange={(v) => setForm({ ...form, published: v })}
+                    aria-labelledby={publishedLabelId}
+                    onLabel={t('published')}
+                    offLabel={t('published')}
+                  />
+                  <Label
+                    id={publishedLabelId}
+                    onClick={() => setForm({ ...form, published: !form.published })}
+                    className="text-sm font-500 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Globe className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                    {t('published')}
+                  </Label>
+                </div>
+              </div>
+
+              {saveError && (
+                <div
+                  role="alert"
+                  className="flex items-center gap-2 rounded-lg px-3 py-2.5 bg-md-error-container text-md-on-error-container text-sm"
+                >
+                  <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+                  <span>{saveError}</span>
+                </div>
               )}
-              {saving ? tCommon('saving') : tCommon('save')}
-            </button>
-          </DialogFooter>
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <DialogClose asChild>
+                <Button variant="outline" type="button" disabled={saving}>
+                  {tCommon('cancel')}
+                </Button>
+              </DialogClose>
+              <Button type="submit" loading={saving} disabled={titleEmpty}>
+                {saving ? tCommon('saving') : tCommon('save')}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={handleDeleteOpenChange}>
+        <AlertDialogContent pending={deleting}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('deleteDescription', { title: deleteTarget?.title ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              loading={deleting}
+              loadingLabel={tCommon('deleting')}
+              onClick={(e) => { e.preventDefault(); confirmDelete(); }}
+            >
+              {tCommon('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

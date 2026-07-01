@@ -5,15 +5,19 @@ import type { model_Node } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/components/ui/toast';
+import {
   RefreshCw, Trash2, Download, MoreHorizontal, Power, PowerOff,
-  Server, Wifi, WifiOff, HelpCircle,
+  Server, Wifi, WifiOff, HelpCircle, AlertTriangle, X,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -116,6 +120,7 @@ export default function NodesPage() {
   const t = useTranslations('nodes');
   const tCommon = useTranslations('common');
   const tNav = useTranslations('nav');
+  const toast = useToast();
 
   const [nodes, setNodes] = useState<model_Node[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +128,13 @@ export default function NodesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedRows, setSelectedRows] = useState<model_Node[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+  // Single-row delete confirmation target (null = closed).
+  const [deleteTarget, setDeleteTarget] = useState<model_Node | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  // Batch delete confirmation.
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
 
   const loadNodes = useCallback(async () => {
     setLoading(true);
@@ -162,36 +174,110 @@ export default function NodesPage() {
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
-  async function handleDelete(mac: string) {
-    if (!confirm(t('deleteConfirm', { mac }))) return;
-    try {
-      await sessionApi(AdminService.nodeDelete({ mac }));
-      loadNodes();
-    } catch (e: unknown) {
-      setError(getErrorMessage(e, t('deleteFailed')));
+  // Best-effort human label for a node in confirmations/feedback.
+  function nodeLabel(n: model_Node) {
+    return n.note || n.hostname || formatMac(n.mac) || n.mac || '—';
+  }
+
+  // Run an async op over many nodes with bounded concurrency, collecting
+  // per-node failures so callers can report partial success.
+  async function runBatch(
+    targets: model_Node[],
+    op: (n: model_Node) => Promise<unknown>,
+  ): Promise<{ ok: number; failed: model_Node[] }> {
+    const CONCURRENCY = 5;
+    const failed: model_Node[] = [];
+    let ok = 0;
+    for (let i = 0; i < targets.length; i += CONCURRENCY) {
+      const slice = targets.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(slice.map(op));
+      results.forEach((r, idx) => {
+        if (r.status === 'fulfilled') ok += 1;
+        else failed.push(slice[idx]);
+      });
+    }
+    return { ok, failed };
+  }
+
+  function reportBatch(ok: number, failed: model_Node[], successMsg: string) {
+    if (failed.length === 0) {
+      toast.success(successMsg);
+    } else if (ok === 0) {
+      toast.error(t('batchAllFailed', { count: failed.length }));
+    } else {
+      toast.error(t('batchPartial', {
+        ok,
+        failed: failed.length,
+        names: failed.slice(0, 3).map(nodeLabel).join('、'),
+      }));
     }
   }
 
-  async function batchAction(action: 'enable' | 'disable' | 'delete') {
-    const macs = selectedRows.map(r => r.mac!);
-    if (!macs.length) return;
-    if (action === 'delete' && !confirm(t('batchDeleteConfirm', { count: macs.length }))) return;
-    for (const mac of macs) {
-      if (action === 'delete') await sessionApi(AdminService.nodeDelete({ mac })).catch(() => {});
-      else await sessionApi(AdminService.nodeUpdate({ mac, requestBody: { enabled: action === 'enable' } })).catch(() => {});
+  async function confirmDelete() {
+    if (!deleteTarget?.mac) return;
+    const mac = deleteTarget.mac;
+    setDeleting(true);
+    try {
+      await sessionApi(AdminService.nodeDelete({ mac }));
+      toast.success(t('deleteSuccess'));
+      setDeleteTarget(null);
+      loadNodes();
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, t('deleteFailed')));
+    } finally {
+      setDeleting(false);
     }
-    loadNodes();
+  }
+
+  async function batchToggle(action: 'enable' | 'disable') {
+    const targets = selectedRows.filter(r => r.mac);
+    if (!targets.length || batchBusy) return;
+    setBatchBusy(true);
+    try {
+      const { ok, failed } = await runBatch(targets, n =>
+        sessionApi(AdminService.nodeUpdate({ mac: n.mac!, requestBody: { enabled: action === 'enable' } })));
+      reportBatch(ok, failed,
+        action === 'enable'
+          ? t('batchEnableSuccess', { count: ok })
+          : t('batchDisableSuccess', { count: ok }));
+      loadNodes();
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  async function confirmBatchDelete() {
+    const targets = selectedRows.filter(r => r.mac);
+    if (!targets.length) return;
+    setBatchBusy(true);
+    try {
+      const { ok, failed } = await runBatch(targets, n =>
+        sessionApi(AdminService.nodeDelete({ mac: n.mac! })));
+      reportBatch(ok, failed, t('batchDeleteSuccess', { count: ok }));
+      setBatchDeleteOpen(false);
+      loadNodes();
+    } finally {
+      setBatchBusy(false);
+    }
   }
 
   function exportCSV() {
-    const headers = ['note', 'hostname', 'location', 'mac', 'tailscale_ip', 'easytier_ip', 'frp_port', 'status', 'enabled', 'weight', 'region', 'registered_at', 'last_seen'];
-    const rows = filteredNodes.map(n => headers.map(h => String((n as Record<string, unknown>)[h] ?? '')));
-    const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `nodes-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const headers = ['note', 'hostname', 'location', 'mac', 'tailscale_ip', 'easytier_ip', 'frp_port', 'status', 'enabled', 'weight', 'region', 'registered_at', 'last_seen'];
+      const rows = filteredNodes.map(n => headers.map(h => String((n as Record<string, unknown>)[h] ?? '')));
+      const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(','))].join('\n');
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `nodes-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.success(t('exportSuccess', { count: filteredNodes.length }));
+    } finally {
+      setExporting(false);
+    }
   }
 
   // ── Column defs ────────────────────────────────────────────────────────────
@@ -232,12 +318,14 @@ export default function NodesPage() {
     col.accessor('weight', { header: t('colWeight'), cell: i => <span className="text-muted-foreground">{i.getValue() ?? '—'}</span> }),
     col.accessor('region', { header: t('colRegion'), cell: i => <span className="text-muted-foreground">{i.getValue() || '—'}</span>, enableSorting: false }),
     col.display({ id: 'actions', header: () => null, enableSorting: false, enableHiding: false,
+      meta: { stopRowClick: true },
       cell: ({ row }) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm"
+              aria-label={t('rowActionsLabel', { name: nodeLabel(row.original) })}
               className="h-8 w-8 p-0 state-layer rounded-lg focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
-              <MoreHorizontal className="h-4 w-4" />
+              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="rounded-xl bg-popover border elevation-2 animate-scale-in">
@@ -249,7 +337,7 @@ export default function NodesPage() {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="rounded-lg text-destructive focus:text-destructive hover-state cursor-pointer"
-              onClick={() => handleDelete(row.original.mac!)}>
+              onSelect={() => setDeleteTarget(row.original)}>
               {tCommon('delete')}
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -290,8 +378,9 @@ export default function NodesPage() {
             variant="outline"
             size="sm"
             onClick={exportCSV}
+            loading={exporting}
             className="state-layer rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
-            <Download className="h-4 w-4" />
+            {!exporting && <Download className="h-4 w-4" aria-hidden="true" />}
             {t('exportCsv')}
           </Button>
           <Button
@@ -299,8 +388,10 @@ export default function NodesPage() {
             size="sm"
             onClick={loadNodes}
             disabled={loading}
+            aria-label={tCommon('refresh')}
+            title={tCommon('refresh')}
             className="state-layer rounded-lg size-9 p-0 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
           </Button>
         </div>
       </div>
@@ -308,28 +399,28 @@ export default function NodesPage() {
       {/* ── Stat cards ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
-          icon={<Server className="size-4.5" />}
+          icon={<Server className="size-4.5" aria-hidden="true" />}
           label="Total"
           value={counts.all}
           accent="primary"
           delay={0}
         />
         <StatCard
-          icon={<Wifi className="size-4.5" />}
+          icon={<Wifi className="size-4.5" aria-hidden="true" />}
           label="Online"
           value={counts.online}
           accent="tertiary"
           delay={40}
         />
         <StatCard
-          icon={<WifiOff className="size-4.5" />}
+          icon={<WifiOff className="size-4.5" aria-hidden="true" />}
           label="Offline"
           value={counts.offline}
           accent="error"
           delay={80}
         />
         <StatCard
-          icon={<HelpCircle className="size-4.5" />}
+          icon={<HelpCircle className="size-4.5" aria-hidden="true" />}
           label="Unknown"
           value={counts.unknown}
           accent="neutral"
@@ -339,8 +430,18 @@ export default function NodesPage() {
 
       {/* ── Error banner ───────────────────────────────────────────────────── */}
       {error && (
-        <div className="rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container border border-md-error/20 animate-slide-up">
-          {error}
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container border border-md-error/20 animate-slide-up">
+          <AlertTriangle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
+          <p className="flex-1 min-w-0">{error}</p>
+          <button
+            type="button"
+            onClick={() => setError('')}
+            aria-label={t('dismissError')}
+            className="state-layer -my-1 -mr-1 grid size-8 place-items-center rounded-lg shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error">
+            <X className="size-4" aria-hidden="true" />
+          </button>
         </div>
       )}
 
@@ -351,19 +452,53 @@ export default function NodesPage() {
         loading={loading}
         emptyMessage={t('noNodesYet')}
         emptyFilteredMessage={t('noMatchingNodes')}
+        isFiltered={statusFilter !== 'all'}
+        emptyAction={
+          (statusFilter !== 'all' || searchQuery.trim()) ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setStatusFilter('all'); setSearchQuery(''); }}
+              className="state-layer rounded-lg focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
+              {t('clearFilters')}
+            </Button>
+          ) : undefined
+        }
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
         searchPlaceholder={t('searchPlaceholder')}
+        searchLabel={t('searchLabel')}
+        clearSearchLabel={t('clearSearch')}
         enableSelection
         onSelectionChange={setSelectedRows}
+        selectAllLabel={t('selectAllLabel')}
+        selectRowLabel={t('selectRowLabel')}
+        clearSelectionLabel={tCommon('clear')}
+        batchRegionLabel={t('batchRegionLabel')}
+        renderSelectedCount={(n) => t('selectedCount', { count: n })}
         storageKey="nodes"
         columnLabels={columnLabels}
+        columnsLabel={t('colSettings')}
+        toggleColumnsLabel={t('colSettings')}
+        ariaLabel={tNav('nodes')}
         getRowId={(row) => row.mac!}
         onRowClick={(row) => router.push('/nodes/detail?mac=' + encodeURIComponent(row.mac!))}
+        rowRole="link"
+        getRowAriaLabel={(row) => t('rowOpenLabel', { name: nodeLabel(row) })}
+        pageSizeOptions={[20, 50, 100]}
+        rowsPerPageLabel={t('rowsPerPage')}
+        paginationLabel={t('paginationLabel')}
+        firstPageLabel={t('firstPage')}
+        previousPageLabel={t('previousPage')}
+        nextPageLabel={t('nextPage')}
+        lastPageLabel={t('lastPage')}
         defaultSorting={[{ id: 'last_seen', desc: true }]}
         toolbar={
           /* Status filter tab strip — M3 tonal pill style */
-          <div className="flex items-center rounded-xl bg-muted p-0.5 gap-0.5">
+          <div
+            role="group"
+            aria-label={t('filterByStatus')}
+            className="flex items-center rounded-xl bg-muted p-0.5 gap-0.5 overflow-x-auto max-w-full">
             {(['all', 'online', 'offline', 'unknown'] as StatusFilter[]).map(s => {
               const isActive = statusFilter === s;
               const activeExtra =
@@ -375,8 +510,9 @@ export default function NodesPage() {
                 <button
                   type="button"
                   key={s}
+                  aria-pressed={isActive}
                   onClick={() => setStatusFilter(s)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-500 transition-all duration-150
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-500 transition-all duration-150
                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1
                     ${isActive ? activeExtra : 'text-muted-foreground hover:text-foreground hover:bg-md-surface-container-high'}`}
                 >
@@ -394,30 +530,110 @@ export default function NodesPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => batchAction('enable')}
+              onClick={() => batchToggle('enable')}
+              loading={batchBusy}
+              disabled={batchBusy}
               className="state-layer rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
-              <Power className="h-3.5 w-3.5" />
+              {!batchBusy && <Power className="h-3.5 w-3.5" aria-hidden="true" />}
               {t('batchEnable')}
             </Button>
             <Button
               size="sm"
               variant="outline"
-              onClick={() => batchAction('disable')}
+              onClick={() => batchToggle('disable')}
+              disabled={batchBusy}
               className="state-layer rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
-              <PowerOff className="h-3.5 w-3.5" />
+              <PowerOff className="h-3.5 w-3.5" aria-hidden="true" />
               {t('batchDisable')}
             </Button>
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => batchAction('delete')}
+              onClick={() => setBatchDeleteOpen(true)}
+              disabled={batchBusy}
               className="state-layer ripple rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-1">
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
               {t('batchDelete')}
             </Button>
           </>
         }
       />
+
+      {/* ── Single-row delete confirmation ─────────────────────────────────── */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(o) => { if (!o && !deleting) setDeleteTarget(null); }}>
+        <AlertDialogContent pending={deleting}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="grid size-8 place-items-center rounded-full bg-md-error-container text-md-on-error-container shrink-0">
+                <AlertTriangle className="size-4" aria-hidden="true" />
+              </span>
+              {t('deleteNodeTitle')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('deleteNodeBody', {
+                name: deleteTarget ? nodeLabel(deleteTarget) : '',
+                mac: deleteTarget?.mac ? formatMac(deleteTarget.mac) : '',
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              loading={deleting}
+              loadingLabel={tCommon('loading')}
+              onClick={(e) => { e.preventDefault(); confirmDelete(); }}>
+              {tCommon('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Batch delete confirmation ──────────────────────────────────────── */}
+      <AlertDialog
+        open={batchDeleteOpen}
+        onOpenChange={(o) => { if (!o && !batchBusy) setBatchDeleteOpen(false); }}>
+        <AlertDialogContent pending={batchBusy} size="md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="grid size-8 place-items-center rounded-full bg-md-error-container text-md-on-error-container shrink-0">
+                <AlertTriangle className="size-4" aria-hidden="true" />
+              </span>
+              {t('batchDeleteTitle')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('batchDeleteBody', { count: selectedRows.length })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {selectedRows.length > 0 && (
+            <ul className="rounded-lg bg-muted px-3 py-2 text-sm text-foreground max-h-40 overflow-y-auto space-y-0.5">
+              {selectedRows.slice(0, 5).map((n) => (
+                <li key={n.mac} className="flex items-center justify-between gap-3">
+                  <span className="truncate">{nodeLabel(n)}</span>
+                  <span className="font-mono text-xs text-muted-foreground shrink-0">{formatMac(n.mac)}</span>
+                </li>
+              ))}
+              {selectedRows.length > 5 && (
+                <li className="text-xs text-muted-foreground pt-0.5">
+                  {t('batchDeleteMore', { count: selectedRows.length - 5 })}
+                </li>
+              )}
+            </ul>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchBusy}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              loading={batchBusy}
+              loadingLabel={tCommon('loading')}
+              onClick={(e) => { e.preventDefault(); confirmBatchDelete(); }}>
+              {t('batchDelete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

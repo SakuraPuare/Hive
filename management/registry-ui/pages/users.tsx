@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { handler_RoleDetail } from '@/src/generated/client';
@@ -6,16 +6,30 @@ import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import type { AdminUser } from '@/lib/domain-types';
 import { useCurrentUser } from '@/lib/auth';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useToast } from '@/components/ui/toast';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -31,7 +45,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { RefreshCw, Plus, Trash2, KeyRound, UserCog } from 'lucide-react';
+import { RefreshCw, Plus, Trash2, KeyRound, UserCog, Search, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 function formatDate(s: string) {
@@ -46,34 +60,74 @@ export default function UsersPage() {
   const tCommon = useTranslations('common');
   const tNodes = useTranslations('nodes');
   const tAuth = useTranslations('auth');
+  const toast = useToast();
   const { user: currentUser, loading: authLoading } = useCurrentUser();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [allRoles, setAllRoles] = useState<handler_RoleDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+
+  // Search / filter (synced to URL query so refresh keeps state).
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('viewer');
   const [creating, setCreating] = useState(false);
+  const [touchedUsername, setTouchedUsername] = useState(false);
+  const [touchedPassword, setTouchedPassword] = useState(false);
 
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pwdTarget, setPwdTarget] = useState<AdminUser | null>(null);
   const [newPwd, setNewPwd] = useState('');
   const [savingPwd, setSavingPwd] = useState(false);
+  const [touchedNewPwd, setTouchedNewPwd] = useState(false);
 
   const [rolesOpen, setRolesOpen] = useState(false);
   const [rolesTarget, setRolesTarget] = useState<AdminUser | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [savingRoles, setSavingRoles] = useState(false);
 
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // ── Client-side validation helpers ──
+  const usernameError =
+    touchedUsername && newUsername.trim().length === 0 ? t('usernameRequired') : '';
+  const passwordRuleOk = newPassword.length >= 8 && /[a-zA-Z]/.test(newPassword) && /\d/.test(newPassword);
+  const passwordError =
+    touchedPassword && newPassword.length > 0 && !passwordRuleOk ? t('passwordRule') : '';
+  const newPwdError =
+    touchedNewPwd && newPwd.length > 0 && newPwd.length < 8 ? t('passwordRule') : '';
+
   useEffect(() => {
     if (!authLoading && currentUser && !currentUser.can('user:read')) {
       router.replace('/dashboard');
     }
   }, [authLoading, currentUser, router]);
+
+  // Hydrate search/filter from URL query once the router is ready.
+  useEffect(() => {
+    if (!router.isReady) return;
+    const q = router.query.q;
+    const role = router.query.role;
+    if (typeof q === 'string') setSearch(q);
+    if (typeof role === 'string') setRoleFilter(role);
+  }, [router.isReady, router.query.q, router.query.role]);
+
+  const syncQuery = useCallback(
+    (next: { q?: string; role?: string }) => {
+      const query: Record<string, string> = {};
+      const q = next.q ?? search;
+      const role = next.role ?? roleFilter;
+      if (q.trim()) query.q = q.trim();
+      if (role && role !== 'all') query.role = role;
+      router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
+    },
+    [router, search, roleFilter],
+  );
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -101,50 +155,59 @@ export default function UsersPage() {
   async function handleCreate() {
     setCreating(true);
     setError('');
-    setSuccess('');
     try {
       await sessionApi(
         AdminService.adminCreateUser({
           requestBody: { username: newUsername, password: newPassword, role: newRole },
         }),
       );
-      setSuccess(t('userCreated'));
+      toast.success(t('userCreated'));
       setCreateOpen(false);
-      setNewUsername('');
-      setNewPassword('');
-      setNewRole('viewer');
       await loadData();
     } catch (e: unknown) {
-      setError(getErrorMessage(e, t('userCreateFailed')));
+      toast.error(getErrorMessage(e, t('userCreateFailed')));
     } finally {
       setCreating(false);
     }
   }
 
-  async function handleDelete(u: AdminUser) {
-    if (!window.confirm(t('userDeleteConfirm', { username: u.username }))) return;
-    setError('');
-    setSuccess('');
+  // Reset the create form whenever the dialog fully closes.
+  function handleCreateOpenChange(open: boolean) {
+    setCreateOpen(open);
+    if (!open) {
+      setNewUsername('');
+      setNewPassword('');
+      setNewRole('viewer');
+      setTouchedUsername(false);
+      setTouchedPassword(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await sessionApi(AdminService.adminDeleteUser({ id: u.id }));
-      setSuccess(t('userDeleted'));
+      await sessionApi(AdminService.adminDeleteUser({ id: deleteTarget.id }));
+      toast.success(t('userDeleted'));
+      setDeleteTarget(null);
       await loadData();
     } catch (e: unknown) {
-      setError(getErrorMessage(e, t('userDeleteFailed')));
+      toast.error(getErrorMessage(e, t('userDeleteFailed')));
+    } finally {
+      setDeleting(false);
     }
   }
 
   function openPwd(u: AdminUser) {
     setPwdTarget(u);
     setNewPwd('');
+    setTouchedNewPwd(false);
     setPwdOpen(true);
   }
 
   async function handleChangePassword() {
     if (!pwdTarget) return;
     setSavingPwd(true);
-    setError('');
-    setSuccess('');
     try {
       await sessionApi(
         AdminService.adminChangePassword({
@@ -152,10 +215,10 @@ export default function UsersPage() {
           requestBody: { password: newPwd },
         }),
       );
-      setSuccess(t('passwordChanged'));
+      toast.success(t('passwordChanged'));
       setPwdOpen(false);
     } catch (e: unknown) {
-      setError(getErrorMessage(e, t('passwordChangeFailed')));
+      toast.error(getErrorMessage(e, t('passwordChangeFailed')));
     } finally {
       setSavingPwd(false);
     }
@@ -173,11 +236,21 @@ export default function UsersPage() {
     );
   }
 
+  function selectAllRoles() {
+    setSelectedRoles(allRoles.map((r) => r.name ?? '').filter(Boolean));
+  }
+
+  function clearAllRoles() {
+    setSelectedRoles([]);
+  }
+
   async function handleSaveRoles() {
-    if (!rolesTarget || selectedRoles.length === 0) return;
+    if (!rolesTarget) return;
+    if (selectedRoles.length === 0) {
+      toast.error(t('rolesAtLeastOne'));
+      return;
+    }
     setSavingRoles(true);
-    setError('');
-    setSuccess('');
     try {
       await sessionApi(
         AdminService.adminSetUserRoles({
@@ -185,11 +258,11 @@ export default function UsersPage() {
           requestBody: { roles: selectedRoles },
         }),
       );
-      setSuccess(t('rolesSaved'));
+      toast.success(t('rolesSaved'));
       setRolesOpen(false);
       await loadData();
     } catch (e: unknown) {
-      setError(getErrorMessage(e, t('rolesSaveFailed')));
+      toast.error(getErrorMessage(e, t('rolesSaveFailed')));
     } finally {
       setSavingRoles(false);
     }
@@ -197,6 +270,24 @@ export default function UsersPage() {
 
   const canWrite = currentUser?.can('user:write') ?? false;
   const canDelete = currentUser?.can('user:delete') ?? false;
+
+  // Derived filtered list.
+  const filteredUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return users.filter((u) => {
+      const matchesSearch = q === '' || u.username.toLowerCase().includes(q);
+      const matchesRole = roleFilter === 'all' || u.roles.includes(roleFilter);
+      return matchesSearch && matchesRole;
+    });
+  }, [users, search, roleFilter]);
+
+  const isFiltered = search.trim() !== '' || roleFilter !== 'all';
+
+  function clearFilters() {
+    setSearch('');
+    setRoleFilter('all');
+    syncQuery({ q: '', role: 'all' });
+  }
 
   if (authLoading) return null;
 
@@ -211,7 +302,7 @@ export default function UsersPage() {
           <p className="text-sm text-muted-foreground">
             {users.length > 0 ? (
               <span className="inline-flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full bg-md-tertiary" />
+                <span className="size-1.5 rounded-full bg-md-tertiary" aria-hidden="true" />
                 <span className="font-display font-600 text-foreground">{users.length}</span>
                 &nbsp;{t('userManagement').toLowerCase()}
               </span>
@@ -219,53 +310,79 @@ export default function UsersPage() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <button
+          <Button
+            variant="ghost"
             onClick={loadData}
-            disabled={loading}
-            className="state-layer inline-flex items-center gap-1.5 rounded-lg border border-border
-              bg-card px-3 py-2 text-sm font-500 text-foreground
-              disabled:opacity-50 disabled:cursor-not-allowed
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-              transition-colors"
+            loading={loading}
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
             {tCommon('refresh')}
-          </button>
+          </Button>
           {canWrite && (
-            <button
-              onClick={() => { setCreateOpen(true); setError(''); setSuccess(''); }}
-              className="state-layer ripple inline-flex items-center gap-1.5 rounded-lg
-                bg-md-primary px-4 py-2 text-sm font-500 text-md-on-primary elevation-1
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-shadow hover:elevation-2"
-            >
-              <Plus className="h-4 w-4" />
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
               {t('createUser')}
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
-      {/* ── Status banners ── */}
+      {/* ── Toolbar: search + role filter ── */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          size="sm"
+          type="search"
+          value={search}
+          onValueChange={(v) => { setSearch(v); syncQuery({ q: v }); }}
+          debounceMs={300}
+          placeholder={t('searchPlaceholder')}
+          aria-label={t('searchPlaceholder')}
+          startIcon={<Search className="h-4 w-4" aria-hidden="true" />}
+          clearable
+          clearLabel={tCommon('clear')}
+          className="max-w-xs"
+        />
+        <Select
+          value={roleFilter}
+          onValueChange={(v) => { setRoleFilter(v); syncQuery({ role: v }); }}
+        >
+          <SelectTrigger size="sm" className="w-44" aria-label={t('filterByRole')}>
+            <SelectValue placeholder={t('filterByRole')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{tCommon('all')}</SelectItem>
+            {allRoles.map((r) => (
+              <SelectItem key={r.id} value={r.name ?? ''}>
+                {r.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {isFiltered && (
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
+            <X className="h-4 w-4" aria-hidden="true" />
+            {tCommon('reset')}
+          </Button>
+        )}
+      </div>
+
+      {/* ── Status banner (load error only; CRUD feedback goes through toasts) ── */}
       {error && (
-        <div className="flex items-center gap-2 rounded-xl border border-md-error-container
-          bg-md-error-container px-4 py-3 text-sm text-md-on-error-container animate-slide-up">
-          <span className="size-1.5 shrink-0 rounded-full bg-md-error" />
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex items-center gap-2 rounded-xl border border-md-error-container
+            bg-md-error-container px-4 py-3 text-sm text-md-on-error-container animate-slide-up"
+        >
+          <span className="size-1.5 shrink-0 rounded-full bg-md-error" aria-hidden="true" />
           {error}
-        </div>
-      )}
-      {success && (
-        <div className="flex items-center gap-2 rounded-xl border border-md-tertiary-container
-          bg-md-tertiary-container px-4 py-3 text-sm text-md-on-tertiary-container animate-slide-up">
-          <span className="size-1.5 shrink-0 rounded-full bg-md-tertiary" />
-          {success}
         </div>
       )}
 
       {/* ── User table card ── */}
       <Card className="rounded-xl border bg-card overflow-hidden">
         <CardContent className="p-0">
-          <Table>
+          <Table aria-label={t('userManagement')}>
             <TableHeader>
               <TableRow className="border-b border-border bg-md-surface-container-high/50">
                 <TableHead className="w-12 text-xs font-500 text-muted-foreground uppercase tracking-wide">
@@ -289,7 +406,11 @@ export default function UsersPage() {
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={5} className="py-16 text-center">
-                    <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                    <div
+                      className="flex flex-col items-center gap-3 text-muted-foreground"
+                      role="status"
+                      aria-live="polite"
+                    >
                       {/* M3 circular progress indicator */}
                       <svg
                         className="h-8 w-8 animate-spin"
@@ -313,20 +434,32 @@ export default function UsersPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : users.length === 0 ? (
+              ) : filteredUsers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="py-20 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full
                         bg-md-surface-container-high text-muted-foreground">
-                        <UserCog className="h-5 w-5" />
+                        <UserCog className="h-5 w-5" aria-hidden="true" />
                       </div>
-                      <p className="text-sm text-muted-foreground">{tCommon('noData')}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {isFiltered ? tCommon('noResults') : tCommon('noData')}
+                      </p>
+                      {isFiltered ? (
+                        <Button variant="outline" size="sm" onClick={clearFilters}>
+                          {tCommon('reset')}
+                        </Button>
+                      ) : canWrite ? (
+                        <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
+                          <Plus className="h-4 w-4" aria-hidden="true" />
+                          {t('createUser')}
+                        </Button>
+                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                users.map((u, i) => (
+                filteredUsers.map((u, i) => (
                   <TableRow
                     key={u.id}
                     className="hover-state border-b border-border/60 last:border-0 animate-slide-up"
@@ -338,7 +471,8 @@ export default function UsersPage() {
                     <TableCell>
                       <div className="flex items-center gap-2.5">
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full
-                          bg-md-primary-container text-md-on-primary-container text-xs font-display font-600">
+                          bg-md-primary-container text-md-on-primary-container text-xs font-display font-600"
+                          aria-hidden="true">
                           {u.username.charAt(0).toUpperCase()}
                         </div>
                         <span className="text-sm font-500 text-foreground">{u.username}</span>
@@ -369,40 +503,41 @@ export default function UsersPage() {
                       <div className="flex justify-end gap-1">
                         {canWrite && (
                           <>
-                            <button
+                            <Button
+                              variant="ghost"
+                              size="icon-lg"
                               onClick={() => openRoles(u)}
                               title={t('editRoles')}
-                              className="state-layer inline-flex h-8 w-8 items-center justify-center rounded-lg
-                                text-muted-foreground hover:text-foreground
-                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1
-                                transition-colors"
+                              aria-label={`${t('editRoles')}: ${u.username}`}
+                              className="text-muted-foreground hover:text-foreground"
                             >
-                              <UserCog className="h-4 w-4" />
-                            </button>
-                            <button
+                              <UserCog className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-lg"
                               onClick={() => openPwd(u)}
                               title={t('changePassword')}
-                              className="state-layer inline-flex h-8 w-8 items-center justify-center rounded-lg
-                                text-muted-foreground hover:text-foreground
-                                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1
-                                transition-colors"
+                              aria-label={`${t('changePassword')}: ${u.username}`}
+                              className="text-muted-foreground hover:text-foreground"
                             >
-                              <KeyRound className="h-4 w-4" />
-                            </button>
+                              <KeyRound className="h-4 w-4" aria-hidden="true" />
+                            </Button>
                           </>
                         )}
                         {canDelete && (
-                          <button
+                          <Button
+                            variant="ghost"
+                            size="icon-lg"
                             disabled={u.username === currentUser?.username}
-                            onClick={() => handleDelete(u)}
-                            className="state-layer inline-flex h-8 w-8 items-center justify-center rounded-lg
-                              text-muted-foreground hover:text-destructive
-                              disabled:opacity-30 disabled:cursor-not-allowed
-                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-1
-                              transition-colors"
+                            onClick={() => setDeleteTarget(u)}
+                            title={t('deleteUser')}
+                            aria-label={`${t('deleteUser')}: ${u.username}`}
+                            className="text-muted-foreground hover:text-destructive
+                              focus-visible:ring-md-error"
                           >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          </Button>
                         )}
                       </div>
                     </TableCell>
@@ -414,84 +549,122 @@ export default function UsersPage() {
         </CardContent>
       </Card>
 
+      {/* ── 删除用户确认 ── */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}
+      >
+        <AlertDialogContent pending={deleting}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteUser')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('userDeleteConfirmDetail', { username: deleteTarget?.username ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              loading={deleting}
+              loadingLabel={tCommon('loading')}
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
+            >
+              {tCommon('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* ── 创建用户弹窗 ── */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={handleCreateOpenChange}>
         <DialogContent className="rounded-2xl border bg-card elevation-3 sm:max-w-md animate-scale-in">
           <DialogHeader className="pb-2">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-md-primary-container">
-                <Plus className="h-5 w-5 text-md-on-primary-container" />
+                <Plus className="h-5 w-5 text-md-on-primary-container" aria-hidden="true" />
               </div>
               <DialogTitle className="font-display text-lg font-600 text-foreground">
                 {t('createUser')}
               </DialogTitle>
             </div>
+            <DialogDescription className="sr-only">{t('createUserDesc')}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (newUsername && newPassword && passwordRuleOk) handleCreate(); }}
+            className="space-y-4 py-2"
+          >
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              <Label
+                htmlFor="new-username"
+                className="text-xs font-500 text-muted-foreground uppercase tracking-wide"
+              >
                 {tAuth('username')}
               </Label>
               <Input
+                id="new-username"
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
+                onBlur={() => setTouchedUsername(true)}
                 placeholder="username"
-                className="rounded-lg bg-md-surface-container-high border-border
-                  focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:border-transparent"
+                autoComplete="username"
+                autoFocus
+                error={usernameError || undefined}
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              <Label
+                htmlFor="new-password"
+                className="text-xs font-500 text-muted-foreground uppercase tracking-wide"
+              >
                 {tAuth('password')}
               </Label>
               <Input
+                id="new-password"
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
+                onBlur={() => setTouchedPassword(true)}
                 placeholder="••••••••"
-                className="rounded-lg bg-md-surface-container-high border-border
-                  focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:border-transparent"
+                autoComplete="new-password"
+                passwordToggleLabel={t('togglePassword')}
+                error={passwordError || undefined}
+                helperText={passwordError ? undefined : t('passwordRule')}
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              <Label
+                htmlFor="new-role"
+                className="text-xs font-500 text-muted-foreground uppercase tracking-wide"
+              >
                 {t('role')}
               </Label>
               <Select value={newRole} onValueChange={setNewRole}>
-                <SelectTrigger className="rounded-lg bg-md-surface-container-high border-border">
+                <SelectTrigger id="new-role">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="rounded-xl bg-popover border elevation-2">
+                <SelectContent>
                   {allRoles.map((r) => (
-                    <SelectItem key={r.id} value={r.name ?? ''} className="rounded-lg">
+                    <SelectItem key={r.id} value={r.name ?? ''}>
                       {r.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          </div>
+            {/* Submit handled by form onSubmit; hidden submit enables Enter. */}
+            <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true" />
+          </form>
           <DialogFooter className="gap-2 pt-2">
-            <button
-              onClick={() => setCreateOpen(false)}
-              className="state-layer inline-flex items-center justify-center rounded-lg border border-border
-                bg-card px-4 py-2 text-sm font-500 text-foreground
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-colors"
-            >
+            <Button variant="outline" onClick={() => handleCreateOpenChange(false)}>
               {tCommon('cancel')}
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleCreate}
-              disabled={creating || !newUsername || !newPassword}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg
-                bg-md-primary px-4 py-2 text-sm font-500 text-md-on-primary elevation-1
-                disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-shadow hover:elevation-2"
+              loading={creating}
+              disabled={!newUsername || !newPassword || !passwordRuleOk}
             >
-              {creating ? tCommon('saving') : tCommon('save')}
-            </button>
+              {tCommon('save')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -502,49 +675,54 @@ export default function UsersPage() {
           <DialogHeader className="pb-2">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-md-secondary-container">
-                <KeyRound className="h-5 w-5 text-md-on-secondary-container" />
+                <KeyRound className="h-5 w-5 text-md-on-secondary-container" aria-hidden="true" />
               </div>
               <DialogTitle className="font-display text-lg font-600 text-foreground">
                 {t('changePassword')}{pwdTarget ? `：${pwdTarget.username}` : ''}
               </DialogTitle>
             </div>
+            <DialogDescription>
+              {t('passwordChangeWarning', { username: pwdTarget?.username ?? '' })}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (newPwd && newPwd.length >= 8) handleChangePassword(); }}
+            className="space-y-4 py-2"
+          >
             <div className="space-y-1.5">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              <Label
+                htmlFor="changepwd-password"
+                className="text-xs font-500 text-muted-foreground uppercase tracking-wide"
+              >
                 {t('newPassword')}
               </Label>
               <Input
+                id="changepwd-password"
                 type="password"
                 value={newPwd}
                 onChange={(e) => setNewPwd(e.target.value)}
+                onBlur={() => setTouchedNewPwd(true)}
                 placeholder="••••••••"
-                className="rounded-lg bg-md-surface-container-high border-border
-                  focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:border-transparent"
+                autoComplete="new-password"
+                autoFocus
+                passwordToggleLabel={t('togglePassword')}
+                error={newPwdError || undefined}
+                helperText={newPwdError ? undefined : t('passwordRule')}
               />
             </div>
-          </div>
+            <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true" />
+          </form>
           <DialogFooter className="gap-2 pt-2">
-            <button
-              onClick={() => setPwdOpen(false)}
-              className="state-layer inline-flex items-center justify-center rounded-lg border border-border
-                bg-card px-4 py-2 text-sm font-500 text-foreground
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-colors"
-            >
+            <Button variant="outline" onClick={() => setPwdOpen(false)}>
               {tCommon('cancel')}
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleChangePassword}
-              disabled={savingPwd || !newPwd}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg
-                bg-md-primary px-4 py-2 text-sm font-500 text-md-on-primary elevation-1
-                disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-shadow hover:elevation-2"
+              loading={savingPwd}
+              disabled={!newPwd || newPwd.length < 8}
             >
-              {savingPwd ? tCommon('saving') : tCommon('save')}
-            </button>
+              {tCommon('save')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -555,19 +733,36 @@ export default function UsersPage() {
           <DialogHeader className="pb-2">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-md-tertiary-container">
-                <UserCog className="h-5 w-5 text-md-on-tertiary-container" />
+                <UserCog className="h-5 w-5 text-md-on-tertiary-container" aria-hidden="true" />
               </div>
               <DialogTitle className="font-display text-lg font-600 text-foreground">
                 {t('editRoles')}{rolesTarget ? `：${rolesTarget.username}` : ''}
               </DialogTitle>
             </div>
+            <DialogDescription className="sr-only">{t('editRolesDesc')}</DialogDescription>
           </DialogHeader>
+          <div className="flex items-center justify-between px-1 pt-1">
+            <span className="text-xs text-muted-foreground">
+              {t('rolesSelectedCount', { count: selectedRoles.length })}
+            </span>
+            <div className="flex gap-1">
+              <Button variant="ghost" size="sm" onClick={selectAllRoles}>
+                {t('selectAll')}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={clearAllRoles}>
+                {tCommon('clear')}
+              </Button>
+            </div>
+          </div>
           <div className="space-y-1.5 py-2">
             {allRoles.map((r) => {
-              const checked = selectedRoles.includes(r.name ?? '');
+              const name = r.name ?? '';
+              const checked = selectedRoles.includes(name);
+              const descId = r.description ? `role-desc-${r.id}` : undefined;
               return (
                 <label
                   key={r.id}
+                  htmlFor={`role-${r.id}`}
                   className={`flex cursor-pointer items-start gap-3 rounded-xl px-3 py-2.5
                     transition-colors
                     ${checked
@@ -575,29 +770,19 @@ export default function UsersPage() {
                       : 'hover:bg-md-surface-container-high'
                     }`}
                 >
-                  <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded
-                    border transition-colors
-                    ${checked
-                      ? 'border-md-primary bg-md-primary'
-                      : 'border-border bg-transparent'
-                    }`}
-                  >
-                    {checked && (
-                      <svg viewBox="0 0 10 8" className="h-2.5 w-2.5 fill-md-on-primary" aria-hidden="true">
-                        <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                      </svg>
-                    )}
-                  </div>
-                  <input
-                    type="checkbox"
+                  <Checkbox
+                    id={`role-${r.id}`}
+                    className="mt-0.5"
                     checked={checked}
-                    onChange={() => toggleRole(r.name ?? '')}
-                    className="sr-only"
+                    onCheckedChange={() => toggleRole(name)}
+                    aria-describedby={descId}
                   />
                   <div className="flex-1 min-w-0">
                     <span className="text-sm font-500">{r.name}</span>
                     {r.description && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">{r.description}</p>
+                      <p id={descId} className="mt-0.5 text-xs text-muted-foreground">
+                        {r.description}
+                      </p>
                     )}
                   </div>
                 </label>
@@ -605,26 +790,16 @@ export default function UsersPage() {
             })}
           </div>
           <DialogFooter className="gap-2 pt-2">
-            <button
-              onClick={() => setRolesOpen(false)}
-              className="state-layer inline-flex items-center justify-center rounded-lg border border-border
-                bg-card px-4 py-2 text-sm font-500 text-foreground
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-colors"
-            >
+            <Button variant="outline" onClick={() => setRolesOpen(false)}>
               {tCommon('cancel')}
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleSaveRoles}
-              disabled={savingRoles || selectedRoles.length === 0}
-              className="state-layer ripple inline-flex items-center justify-center rounded-lg
-                bg-md-primary px-4 py-2 text-sm font-500 text-md-on-primary elevation-1
-                disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                transition-shadow hover:elevation-2"
+              loading={savingRoles}
+              disabled={selectedRoles.length === 0}
             >
-              {savingRoles ? tCommon('saving') : tCommon('save')}
-            </button>
+              {tCommon('save')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

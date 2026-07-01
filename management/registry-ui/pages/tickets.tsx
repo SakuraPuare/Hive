@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { model_Ticket } from '@/src/generated/client';
@@ -12,7 +12,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { RefreshCw, TicketIcon, InboxIcon } from 'lucide-react';
+import { RefreshCw, TicketIcon, InboxIcon, ChevronRight, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 
@@ -44,20 +44,36 @@ export default function TicketsPage() {
   const [tickets, setTickets] = useState<model_Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+
+  // Filter is driven by the URL so refresh / share / back restores the view.
+  // Absent `status` query = no filter (show all); we never store a sentinel.
+  const statusFilter = typeof router.query.status === 'string' ? router.query.status : '';
+
+  const setStatusFilter = useCallback((status: string) => {
+    const nextQuery = { ...router.query };
+    if (!status) delete nextQuery.status;
+    else nextQuery.status = status;
+    router.push({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+  }, [router]);
+
+  // Monotonic request id — ignore stale responses when the filter changes quickly.
+  const reqIdRef = useRef(0);
 
   const loadTickets = useCallback(async () => {
+    const reqId = ++reqIdRef.current;
     setLoading(true);
     setError('');
     try {
       const data = await sessionApi(AdminService.adminListTickets({
-        status: statusFilter !== 'all' ? statusFilter : undefined,
+        status: statusFilter || undefined,
       }));
+      if (reqId !== reqIdRef.current) return;
       setTickets(data?.items ?? []);
     } catch (e: unknown) {
+      if (reqId !== reqIdRef.current) return;
       setError(getErrorMessage(e, t('loadFailed')));
     } finally {
-      setLoading(false);
+      if (reqId === reqIdRef.current) setLoading(false);
     }
   }, [statusFilter, t]);
 
@@ -103,7 +119,7 @@ export default function TicketsPage() {
               focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
               transition-colors"
           >
-            <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw aria-hidden="true" className={`size-4 ${loading ? 'animate-spin' : ''}`} />
             <span>{tCommon('refresh')}</span>
           </Button>
         </div>
@@ -113,13 +129,18 @@ export default function TicketsPage() {
           className="flex items-center gap-3 animate-slide-up"
           style={{ animationDelay: '40ms' }}
         >
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v)}>
-            <SelectTrigger className="w-40 rounded-lg border bg-md-surface-container-low
-              text-foreground focus:ring-2 focus:ring-md-primary">
-              <SelectValue />
+          <Select value={statusFilter || undefined} onValueChange={(v) => setStatusFilter(v)}>
+            <SelectTrigger
+              aria-label={t('filterByStatus')}
+              clearable
+              onClear={() => setStatusFilter('')}
+              clearLabel={tCommon('clearFilter')}
+              className="w-full sm:w-40 rounded-lg border bg-md-surface-container-low
+              text-foreground focus:ring-2 focus:ring-md-primary"
+            >
+              <SelectValue placeholder={tCommon('all')} />
             </SelectTrigger>
             <SelectContent className="rounded-xl bg-popover border elevation-2">
-              <SelectItem value="all">{tCommon('all')}</SelectItem>
               <SelectItem value="open">{t('statusOpen')}</SelectItem>
               <SelectItem value="replied">{t('statusReplied')}</SelectItem>
               <SelectItem value="closed">{t('statusClosed')}</SelectItem>
@@ -129,10 +150,23 @@ export default function TicketsPage() {
 
         {/* ── Error banner ── */}
         {error && (
-          <div className="flex items-center gap-2 rounded-xl px-4 py-3
-            bg-md-error-container text-md-on-error-container text-sm animate-fade-in">
-            <span className="size-1.5 rounded-full bg-md-error flex-shrink-0" />
-            {error}
+          <div
+            role="alert"
+            className="flex items-center gap-2 rounded-xl px-4 py-3
+            bg-md-error-container text-md-on-error-container text-sm animate-fade-in"
+          >
+            <span aria-hidden="true" className="size-1.5 rounded-full bg-md-error flex-shrink-0" />
+            <span className="flex-1">{error}</span>
+            <button
+              type="button"
+              onClick={() => setError('')}
+              aria-label={tCommon('dismiss')}
+              className="state-layer flex items-center justify-center size-8 -mr-1 rounded-full
+                text-md-on-error-container focus-visible:outline-none focus-visible:ring-2
+                focus-visible:ring-md-error focus-visible:ring-offset-1"
+            >
+              <X aria-hidden="true" className="size-4" />
+            </button>
           </div>
         )}
 
@@ -159,67 +193,95 @@ export default function TicketsPage() {
                 <TableHead className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
                   {t('colCreatedAt')}
                 </TableHead>
+                <TableHead className="w-10">
+                  <span className="sr-only">{t('colOpen')}</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                /* ── Loading state — M3 circular progress ── */
-                <TableRow>
-                  <TableCell colSpan={5} className="py-16">
-                    <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                      <div className="size-8 rounded-full border-4
-                        border-md-primary-container border-t-md-primary animate-spin" />
-                      <span className="text-sm">{tCommon('loading')}</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                /* ── Loading state — skeleton rows keep table height stable ── */
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={`skeleton-${i}`} className="border-b border-border/60 last:border-0">
+                    <TableCell><div className="h-4 w-8 rounded bg-md-surface-container-high animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 w-40 rounded bg-md-surface-container-high animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 w-48 rounded bg-md-surface-container-high animate-pulse" /></TableCell>
+                    <TableCell><div className="h-5 w-16 rounded-full bg-md-surface-container-high animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 w-24 rounded bg-md-surface-container-high animate-pulse" /></TableCell>
+                    <TableCell><div className="h-4 w-4 rounded bg-md-surface-container-high animate-pulse" /></TableCell>
+                  </TableRow>
+                ))
               ) : tickets.length === 0 ? (
                 /* ── Empty state ── */
                 <TableRow>
-                  <TableCell colSpan={5} className="py-16">
+                  <TableCell colSpan={6} className="py-16">
                     <div className="flex flex-col items-center gap-3 text-muted-foreground animate-fade-in">
                       <div className="flex items-center justify-center size-12 rounded-full
                         bg-md-surface-container-high">
-                        <InboxIcon className="size-6 text-md-on-surface-variant" />
+                        <InboxIcon aria-hidden="true" className="size-6 text-md-on-surface-variant" />
                       </div>
                       <p className="text-sm">{t('noTickets')}</p>
+                      <Button variant="outline" size="sm" onClick={loadTickets} disabled={loading}>
+                        <RefreshCw aria-hidden="true" className="size-4" />
+                        <span>{tCommon('refresh')}</span>
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                tickets.map((ticket, i) => (
-                  <TableRow
-                    key={ticket.id}
-                    className="hover-state cursor-pointer border-b border-border/60 last:border-0
-                      transition-colors"
-                    style={{ animationDelay: `${i * 30}ms` }}
-                    onClick={() => router.push(`/tickets/${ticket.id}`)}
-                  >
-                    <TableCell className="font-display text-sm font-500 text-muted-foreground">
-                      #{ticket.id}
-                    </TableCell>
-                    <TableCell className="text-sm text-foreground">
-                      {ticket.customer_email ?? ''}
-                    </TableCell>
-                    <TableCell className="text-sm font-500 text-foreground">
-                      {ticket.subject ?? ''}
-                    </TableCell>
-                    <TableCell>
-                      {ticket.status ? (
-                        <span className={`inline-flex items-center gap-1.5 rounded-full
-                          px-2.5 py-0.5 text-xs font-500
-                          ${STATUS_CHIP[ticket.status] ?? 'bg-muted text-muted-foreground'}`}>
-                          <span className={`size-1.5 rounded-full flex-shrink-0
-                            ${STATUS_DOT[ticket.status] ?? 'bg-md-outline'}`} />
-                          {t(`status${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}`)}
-                        </span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {ticket.created_at ? formatDate(ticket.created_at) : ''}
-                    </TableCell>
-                  </TableRow>
-                ))
+                tickets.map((ticket, i) => {
+                  const cap = ticket.status
+                    ? ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)
+                    : '';
+                  const statusLabel = ticket.status ? t(`status${cap}`) : '';
+                  const goToTicket = () => router.push(`/tickets/${ticket.id}`);
+                  return (
+                    <TableRow
+                      key={ticket.id}
+                      role="link"
+                      tabIndex={0}
+                      aria-label={`${t('colSubject')}: ${ticket.subject ?? ''}, ${t('colStatus')}: ${statusLabel}`}
+                      className="hover-state cursor-pointer border-b border-border/60 last:border-0
+                        transition-colors focus-visible:outline-none focus-visible:ring-2
+                        focus-visible:ring-md-primary focus-visible:ring-inset"
+                      style={{ animationDelay: `${i * 30}ms` }}
+                      onClick={goToTicket}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          goToTicket();
+                        }
+                      }}
+                    >
+                      <TableCell className="font-display text-sm font-500 text-muted-foreground">
+                        #{ticket.id}
+                      </TableCell>
+                      <TableCell className="text-sm text-foreground">
+                        {ticket.customer_email ?? ''}
+                      </TableCell>
+                      <TableCell className="text-sm font-500 text-foreground">
+                        {ticket.subject ?? ''}
+                      </TableCell>
+                      <TableCell>
+                        {ticket.status ? (
+                          <span className={`inline-flex items-center gap-1.5 rounded-full
+                            px-2.5 py-0.5 text-xs font-500
+                            ${STATUS_CHIP[ticket.status] ?? 'bg-muted text-muted-foreground'}`}>
+                            <span aria-hidden="true" className={`size-1.5 rounded-full flex-shrink-0
+                              ${STATUS_DOT[ticket.status] ?? 'bg-md-outline'}`} />
+                            {statusLabel}
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {ticket.created_at ? formatDate(ticket.created_at) : ''}
+                      </TableCell>
+                      <TableCell className="w-10 text-right">
+                        <ChevronRight aria-hidden="true" className="size-4 opacity-40" />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

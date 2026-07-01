@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useId, useState } from 'react';
 import {
   AdminService,
   SubscriptionService,
@@ -15,8 +15,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useToast } from '@/components/ui/toast';
 import { Download } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useCurrentUser } from '@/lib/auth';
@@ -28,6 +40,10 @@ export default function Subscriptions() {
   const tNodes = useTranslations('nodes');
   const { user } = useCurrentUser();
   const canWrite = user?.can('subscription:write') ?? false;
+  const toast = useToast();
+  const createNameId = useId();
+  const createErrorId = useId();
+  const editSearchId = useId();
 
   const [preview, setPreview] = useState('');
   const [previewType, setPreviewType] = useState('');
@@ -88,6 +104,7 @@ export default function Subscriptions() {
     navigator.clipboard.writeText(url).then(() => {
       setCopiedId(group.id ?? null);
       setTimeout(() => setCopiedId(null), 1500);
+      toast.success(t('linkCopied'));
     });
   }
 
@@ -106,6 +123,7 @@ export default function Subscriptions() {
       );
       setCreateOpen(false);
       setNewName('');
+      toast.success(t('groupCreated'));
       loadGroups();
     } catch (e: unknown) {
       setCreateError(getErrorMessage(e, t('groupCreateFailed')));
@@ -114,23 +132,38 @@ export default function Subscriptions() {
     }
   }
 
-  async function handleDelete(group: model_SubscriptionGroup) {
-    if (!confirm(t('groupDeleteConfirm', { name: group.name ?? '' }))) return;
+  const [deleteTarget, setDeleteTarget] = useState<model_SubscriptionGroup | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [resetTarget, setResetTarget] = useState<model_SubscriptionGroup | null>(null);
+  const [resetting, setResetting] = useState(false);
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await sessionApi(AdminService.adminDeleteSubscriptionGroup({ id: group.id! }));
+      await sessionApi(AdminService.adminDeleteSubscriptionGroup({ id: deleteTarget.id! }));
+      toast.success(t('groupDeleted'));
+      setDeleteTarget(null);
       loadGroups();
-    } catch {
-      alert(t('groupDeleteFailed'));
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, t('groupDeleteFailed')));
+    } finally {
+      setDeleting(false);
     }
   }
 
-  async function handleResetToken(group: model_SubscriptionGroup) {
-    if (!confirm(t('resetTokenConfirm'))) return;
+  async function confirmResetToken() {
+    if (!resetTarget) return;
+    setResetting(true);
     try {
-      await sessionApi(AdminService.adminResetSubscriptionGroupToken({ id: group.id! }));
+      await sessionApi(AdminService.adminResetSubscriptionGroupToken({ id: resetTarget.id! }));
+      toast.success(t('tokenReset'));
+      setResetTarget(null);
       loadGroups();
-    } catch {
-      alert(t('resetTokenFailed'));
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, t('resetTokenFailed')));
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -174,6 +207,7 @@ export default function Subscriptions() {
         }),
       );
       setEditGroup(null);
+      toast.success(t('groupNodesSaved'));
       loadGroups();
     } catch (e: unknown) {
       setSaveNodesError(getErrorMessage(e, t('groupNodesSaveFailed')));
@@ -182,8 +216,9 @@ export default function Subscriptions() {
     }
   }
 
+  const deferredNodeSearch = useDeferredValue(nodeSearch);
   const filteredNodes = allNodes.filter((n) => {
-    const q = nodeSearch.toLowerCase();
+    const q = deferredNodeSearch.toLowerCase();
     return (
       (n.hostname ?? '').toLowerCase().includes(q) ||
       n.location?.toLowerCase().includes(q) ||
@@ -210,7 +245,7 @@ export default function Subscriptions() {
           <CardHeader className="pb-3">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-md-primary-container">
-                <Download className="h-4 w-4 text-md-on-primary-container" />
+                <Download className="h-4 w-4 text-md-on-primary-container" aria-hidden="true" />
               </div>
               <div>
                 <CardTitle className="font-display text-base font-600">{t('vless')}</CardTitle>
@@ -225,7 +260,7 @@ export default function Subscriptions() {
               asChild
             >
               <a href={apiPath('/subscription')} target="_blank" rel="noopener noreferrer">
-                <Download className="mr-2 h-4 w-4" />
+                <Download className="mr-2 h-4 w-4" aria-hidden="true" />
                 {tCommon('download')}
               </a>
             </Button>
@@ -247,7 +282,7 @@ export default function Subscriptions() {
           <CardHeader className="pb-3">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-md-tertiary-container">
-                <Download className="h-4 w-4 text-md-on-tertiary-container" />
+                <Download className="h-4 w-4 text-md-on-tertiary-container" aria-hidden="true" />
               </div>
               <div>
                 <CardTitle className="font-display text-base font-600">{t('clashMihomo')}</CardTitle>
@@ -262,7 +297,7 @@ export default function Subscriptions() {
               asChild
             >
               <a href={apiPath('/subscription/clash')} target="_blank" rel="noopener noreferrer">
-                <Download className="mr-2 h-4 w-4" />
+                <Download className="mr-2 h-4 w-4" aria-hidden="true" />
                 {tCommon('download')}
               </a>
             </Button>
@@ -279,8 +314,8 @@ export default function Subscriptions() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-4 py-3 animate-fade-in">
-          <span className="size-1.5 rounded-full bg-md-error shrink-0" />
+        <div role="alert" className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-4 py-3 animate-fade-in">
+          <span aria-hidden="true" className="size-1.5 rounded-full bg-md-error shrink-0" />
           <p className="text-sm text-md-on-error-container">{error}</p>
         </div>
       )}
@@ -336,18 +371,19 @@ export default function Subscriptions() {
           </div>
 
           {groupsError && (
-            <div className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-4 py-3">
-              <span className="size-1.5 rounded-full bg-md-error shrink-0" />
+            <div role="alert" className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-4 py-3">
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-md-error shrink-0" />
               <p className="text-sm text-md-on-error-container">{groupsError}</p>
             </div>
           )}
 
           {groupsLoading ? (
-            <div className="flex items-center justify-center py-16">
+            <div role="status" aria-busy="true" className="flex items-center justify-center py-16">
               <div className="flex flex-col items-center gap-4">
                 {/* M3 circular progress indicator */}
                 <div className="relative h-10 w-10">
                   <svg
+                    aria-hidden="true"
                     className="h-10 w-10 animate-spin"
                     viewBox="0 0 40 40"
                     fill="none"
@@ -372,11 +408,20 @@ export default function Subscriptions() {
               </div>
             </div>
           ) : groups.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-16 gap-3">
+            <div role="status" className="flex flex-col items-center justify-center rounded-xl border bg-card py-16 gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-md-surface-container-high">
-                <Download className="h-5 w-5 text-muted-foreground" />
+                <Download className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
               </div>
-              <p className="text-sm font-500 text-muted-foreground">{tCommon('noData')}</p>
+              <p className="text-sm font-500 text-muted-foreground">{t('noGroups')}</p>
+              {canWrite && (
+                <Button
+                  size="sm"
+                  className="state-layer ripple h-9 rounded-lg px-4 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+                  onClick={() => { setNewName(''); setCreateError(''); setCreateOpen(true); }}
+                >
+                  {t('createFirstGroup')}
+                </Button>
+              )}
             </div>
           ) : (
             <div className="rounded-xl border overflow-hidden bg-card">
@@ -436,7 +481,7 @@ export default function Subscriptions() {
                               variant="outline"
                               size="sm"
                               className="state-layer h-7 rounded-lg px-2.5 text-xs font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
-                              onClick={() => handleResetToken(g)}
+                              onClick={() => setResetTarget(g)}
                             >
                               {t('resetToken')}
                             </Button>
@@ -444,7 +489,7 @@ export default function Subscriptions() {
                               variant="outline"
                               size="sm"
                               className="state-layer h-7 rounded-lg px-2.5 text-xs font-500 border border-md-error-container text-destructive hover:bg-md-error-container/30 focus-visible:ring-2 focus-visible:ring-md-error focus-visible:ring-offset-1"
-                              onClick={() => handleDelete(g)}
+                              onClick={() => setDeleteTarget(g)}
                             >
                               {tCommon('delete')}
                             </Button>
@@ -461,24 +506,32 @@ export default function Subscriptions() {
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="rounded-2xl elevation-3 bg-md-surface-container-low border">
+        <DialogContent
+          description={t('createGroupDescription')}
+          className="rounded-2xl elevation-3 bg-md-surface-container-low border"
+        >
           <DialogHeader>
             <DialogTitle className="font-display text-xl font-600">{t('createGroup')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('groupName')}</Label>
+              <Label htmlFor={createNameId} className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('groupName')}</Label>
               <Input
+                id={createNameId}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder={t('groupNamePlaceholder')}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                autoFocus
+                aria-required="true"
+                aria-invalid={createError ? true : undefined}
+                aria-describedby={createError ? createErrorId : undefined}
                 className="rounded-lg border bg-md-surface-container-high focus-visible:ring-2 focus-visible:ring-md-primary"
               />
             </div>
             {createError && (
-              <div className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-3 py-2">
-                <span className="size-1.5 rounded-full bg-md-error shrink-0" />
+              <div id={createErrorId} role="alert" className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-3 py-2">
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-md-error shrink-0" />
                 <p className="text-sm text-md-on-error-container">{createError}</p>
               </div>
             )}
@@ -492,66 +545,73 @@ export default function Subscriptions() {
               {tCommon('cancel')}
             </Button>
             <Button
+              loading={creating}
               className="state-layer ripple rounded-lg px-4 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
               onClick={handleCreate}
-              disabled={creating || !newName.trim()}
+              disabled={!newName.trim()}
             >
-              {creating ? tCommon('saving') : t('createGroup')}
+              {creating ? t('creating') : t('createGroup')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!editGroup} onOpenChange={(open) => { if (!open) setEditGroup(null); }}>
-        <DialogContent className="max-w-lg rounded-2xl elevation-3 bg-md-surface-container-low border">
+        <DialogContent
+          description={t('editGroupNodesDescription')}
+          className="max-w-lg rounded-2xl elevation-3 bg-md-surface-container-low border"
+        >
           <DialogHeader>
             <DialogTitle className="font-display text-xl font-600">
               {t('editGroupNodes')}{editGroup ? `：${editGroup.name}` : ''}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
+            <Label htmlFor={editSearchId} className="sr-only">{t('searchNodes')}</Label>
             <Input
+              id={editSearchId}
               value={nodeSearch}
               onChange={(e) => setNodeSearch(e.target.value)}
               placeholder={t('searchNodes')}
+              autoFocus
               className="rounded-lg border bg-md-surface-container-high focus-visible:ring-2 focus-visible:ring-md-primary"
             />
             <div className="max-h-72 overflow-y-auto space-y-0.5 rounded-xl border bg-md-surface-container p-2">
               {filteredNodes.length === 0 ? (
                 <p className="text-sm text-muted-foreground px-2 py-3 text-center">{tNodes('noMatchingNodes')}</p>
               ) : (
-                filteredNodes.map((n, i) => (
-                  <label
-                    key={n.mac}
-                    className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover-state animate-slide-up"
-                    style={{ animationDelay: `${i * 20}ms` }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedMacs.has(n.mac ?? '')}
-                      onChange={() => toggleMac(n.mac ?? '')}
-                      className="h-4 w-4 rounded accent-[hsl(var(--md-primary))]"
-                    />
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-sm font-500 text-foreground truncate">
-                        {n.hostname}
-                      </span>
-                      {n.location && (
-                        <span className="text-xs text-muted-foreground">{n.location}</span>
-                      )}
-                    </div>
-                    {selectedMacs.has(n.mac ?? '') && (
-                      <span className="ml-auto shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-500 bg-md-primary-container text-md-on-primary-container">
-                        ✓
-                      </span>
-                    )}
-                  </label>
-                ))
+                filteredNodes.map((n, i) => {
+                  const mac = n.mac ?? '';
+                  const checked = selectedMacs.has(mac);
+                  const cbId = `node-cb-${mac.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                  return (
+                    <label
+                      key={mac}
+                      htmlFor={cbId}
+                      className="flex min-h-[48px] cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover-state animate-slide-up"
+                      style={{ animationDelay: `${i * 20}ms` }}
+                    >
+                      <Checkbox
+                        id={cbId}
+                        checked={checked}
+                        onCheckedChange={() => toggleMac(mac)}
+                      />
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-500 text-foreground truncate">
+                          {n.hostname}
+                        </span>
+                        {n.location && (
+                          <span className="text-xs text-muted-foreground">{n.location}</span>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })
               )}
             </div>
             {saveNodesError && (
-              <div className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-3 py-2">
-                <span className="size-1.5 rounded-full bg-md-error shrink-0" />
+              <div role="alert" className="flex items-center gap-2 rounded-xl border border-md-error-container bg-md-error-container px-3 py-2">
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-md-error shrink-0" />
                 <p className="text-sm text-md-on-error-container">{saveNodesError}</p>
               </div>
             )}
@@ -565,15 +625,57 @@ export default function Subscriptions() {
               {tCommon('cancel')}
             </Button>
             <Button
+              loading={savingNodes}
               className="state-layer ripple rounded-lg px-4 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
               onClick={handleSaveNodes}
-              disabled={savingNodes}
             >
               {savingNodes ? tCommon('saving') : tCommon('save')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
+        <AlertDialogContent pending={deleting}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('groupDeleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('groupDeleteConfirm', { name: deleteTarget?.name ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              loading={deleting}
+              loadingLabel={tCommon('saving')}
+              onClick={(e) => { e.preventDefault(); confirmDelete(); }}
+            >
+              {tCommon('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!resetTarget} onOpenChange={(open) => { if (!open && !resetting) setResetTarget(null); }}>
+        <AlertDialogContent pending={resetting}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('resetTokenTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('resetTokenConfirm')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetting}>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              loading={resetting}
+              loadingLabel={tCommon('saving')}
+              onClick={(e) => { e.preventDefault(); confirmResetToken(); }}
+            >
+              {t('resetToken')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
