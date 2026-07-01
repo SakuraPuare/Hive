@@ -91,10 +91,11 @@ describe('Nodes page', () => {
       expect(screen.getByText('node-alpha')).toBeInTheDocument();
     });
 
-    // 'Online'/'Offline' appear in both the summary stat cards and the
+    // Status labels now go through i18n; the test mock renders keys as
+    // `nodes.<key>`. They appear in both the summary stat cards and the
     // per-row StatusBadge, so assert presence via getAllByText.
-    expect(screen.getAllByText('Online').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Offline').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('nodes.statusOnline').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('nodes.statusOffline').length).toBeGreaterThan(0);
   });
 
   it('filters nodes by search query', async () => {

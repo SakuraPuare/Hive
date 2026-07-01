@@ -1,47 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
-import type { model_Node, handler_NodeUpdateRequest, model_NodeStatusCheck } from '@/src/generated/client';
+import type { model_Node, model_NodeStatusCheck } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LocationCombobox } from '@/components/ui/location-combobox';
-import { useToast } from '@/components/ui/toast';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '@/components/ui/alert-dialog';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
+import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
+import { ArrowLeft, RefreshCw, Pencil, Server } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { LOCATION_OPTIONS } from '@/lib/locations';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-
-const WEIGHT_MIN = 0;
-const WEIGHT_MAX = 10000;
-
-// §10 semantic status tokens for the maintenance-status field.
-const STATUS_DOT: Record<string, string> = {
-  active: 'bg-md-tertiary',
-  maintenance: 'bg-md-outline',
-  retired: 'bg-md-error',
-};
+import { useFormat } from '@/lib/format';
 
 function FieldRow({ label, value, mono, noData }: { label: string; value?: string | number | null; mono?: boolean; noData: string }) {
   const display = value === null || value === undefined || value === '' ? noData : String(value);
@@ -61,115 +31,32 @@ function formatMac(mac: string | undefined | null) {
   return mac.match(/.{2}/g)!.join(':');
 }
 
-function formatDateTime(s: string | undefined | null, noData: string) {
-  if (!s) return noData;
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString('zh-CN');
-}
-
 export default function NodeDetail() {
   const router = useRouter();
   const mac = router.query.mac as string | undefined;
   const t = useTranslations('nodeDetail');
   const tCommon = useTranslations('common');
-  const toast = useToast();
+  const fmt = useFormat();
 
   const [node, setNode] = useState<model_Node | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  const [location, setLocation] = useState('');
-  const [note, setNote] = useState('');
-  const [enabled, setEnabled] = useState(true);
-  const [status, setStatus] = useState('active');
-  // Keep weight as a string so clearing the field does not silently coerce to 0.
-  const [weight, setWeight] = useState('100');
-  const [region, setRegion] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const [weightError, setWeightError] = useState('');
-  // Confirmation gate for the irreversible retire transition.
-  const [confirmRetire, setConfirmRetire] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const noData = tCommon('noData');
 
-  useEffect(() => {
+  const load = React.useCallback(() => {
     if (!mac) return;
     setLoading(true);
     sessionApi(AdminService.nodeGet({ mac }))
-      .then((n) => {
-        setNode(n);
-        setLocation(n.location ?? '');
-        setNote(n.note ?? '');
-        setEnabled(n.enabled ?? true);
-        setStatus(n.status ?? 'active');
-        setWeight(String(n.weight ?? 100));
-        setRegion(n.region ?? '');
-      })
+      .then((n) => setNode(n))
       .catch((e: unknown) => setError(getErrorMessage(e, t('updateFailed'))))
       .finally(() => setLoading(false));
-  }, [mac]);
+  }, [mac, t]);
 
-  function validateWeight(): number | null {
-    const trimmed = weight.trim();
-    if (trimmed === '') {
-      setWeightError(t('weightRequired'));
-      return null;
-    }
-    const n = Number(trimmed);
-    if (!Number.isFinite(n) || n < WEIGHT_MIN || n > WEIGHT_MAX) {
-      setWeightError(t('weightRange'));
-      return null;
-    }
-    setWeightError('');
-    return n;
-  }
-
-  async function persist(weightValue: number) {
-    if (!mac) return;
-    setSaving(true);
-    setSaveError('');
-    try {
-      await sessionApi(
-        AdminService.nodeUpdate({
-          mac,
-          requestBody: { location, note, enabled, status, weight: weightValue, region } as handler_NodeUpdateRequest,
-        }),
-      );
-      toast.success(t('saved'));
-      const updated = await sessionApi(AdminService.nodeGet({ mac }));
-      setNode(updated);
-    } catch (e) {
-      const msg = getErrorMessage(e, t('updateFailed'));
-      setSaveError(msg);
-      toast.error(msg);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleSave() {
-    if (!mac) return;
-    const weightValue = validateWeight();
-    if (weightValue === null) return;
-    // Gate the destructive non-retired → retired transition behind a confirm.
-    if (status === 'retired' && node?.status !== 'retired') {
-      setConfirmRetire(true);
-      return;
-    }
-    void persist(weightValue);
-  }
-
-  async function handleConfirmRetire() {
-    const weightValue = validateWeight();
-    if (weightValue === null) {
-      setConfirmRetire(false);
-      return;
-    }
-    await persist(weightValue);
-    setConfirmRetire(false);
-  }
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -210,26 +97,28 @@ export default function NodeDetail() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Hero header — M3 surface container */}
-      <div className="bg-md-surface-container-low border rounded-2xl px-6 py-5 flex items-center gap-4 animate-slide-up elevation-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push('/nodes')}
-          className="state-layer rounded-lg shrink-0 text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="mr-1 h-4 w-4" />
-          {tCommon('back')}
-        </Button>
-        <div className="h-5 w-px bg-border/60 shrink-0" aria-hidden="true" />
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <h1 className="font-display text-2xl font-600 tracking-tight text-foreground truncate">{node.hostname}</h1>
-          {node.mac && (
-            <span className="text-xs font-mono text-muted-foreground truncate">{formatMac(node.mac)}</span>
-          )}
-        </div>
-      </div>
+    <PageContainer width="content">
+      {/* Back button */}
+      <Button variant="ghost" onClick={() => router.push('/nodes')} className="-ml-1">
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+        <span>{tCommon('back')}</span>
+      </Button>
+
+      <PageHeader
+        icon={<Server aria-hidden="true" />}
+        title={node.note || node.hostname}
+        description={
+          node.mac ? (
+            <span className="font-mono">{formatMac(node.mac)}</span>
+          ) : undefined
+        }
+        actions={
+          <Button variant="outline" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>{t('editNode')}</span>
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card className="rounded-xl border bg-card animate-slide-up" style={{ animationDelay: '40ms' }}>
@@ -280,8 +169,8 @@ export default function NodeDetail() {
             <CardTitle role="heading" aria-level={2} className="font-display text-base font-600 text-foreground">{t('activity')}</CardTitle>
           </CardHeader>
           <CardContent className="px-5 pb-5">
-            <FieldRow label={t('registeredAt')} value={formatDateTime(node.registered_at, noData)} noData={noData} />
-            <FieldRow label={t('lastSeen')} value={formatDateTime(node.last_seen, noData)} noData={noData} />
+            <FieldRow label={t('registeredAt')} value={fmt.dateTime(node.registered_at, noData)} noData={noData} />
+            <FieldRow label={t('lastSeen')} value={fmt.dateTime(node.last_seen, noData)} noData={noData} />
           </CardContent>
         </Card>
 
@@ -298,149 +187,21 @@ export default function NodeDetail() {
         </Card>
 
         <ProbeStatusCard mac={mac!} t={t} noData={noData} />
-
-        <Card className="md:col-span-2 rounded-xl border bg-md-surface-container-low animate-slide-up" style={{ animationDelay: '280ms' }}>
-          <CardHeader className="pb-3 pt-5 px-5">
-            <CardTitle role="heading" aria-level={2} className="font-display text-base font-600 text-foreground">{t('editNode')}</CardTitle>
-          </CardHeader>
-          <CardContent className="px-5 pb-5">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSave();
-              }}
-              className="grid grid-cols-1 gap-4 md:grid-cols-2"
-            >
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="detail-location" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('location')}</Label>
-                  <LocationCombobox
-                    id="detail-location"
-                    options={LOCATION_OPTIONS}
-                    value={location}
-                    onChange={setLocation}
-                    placeholder={t('locationPlaceholder')}
-                    searchPlaceholder={tCommon('search')}
-                    emptyText={tCommon('noResults')}
-                    clearable
-                    clearLabel={tCommon('clear')}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="detail-region" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('region')}</Label>
-                  <Input id="detail-region" value={region} onChange={(e) => setRegion(e.target.value)} placeholder={t('regionPlaceholder')} helperText={t('regionHelper')} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="detail-note" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('note')}</Label>
-                  <Textarea
-                    id="detail-note"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder={t('notePlaceholder')}
-                    minRows={2}
-                    maxRows={6}
-                  />
-                </div>
-              </div>
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 py-1">
-                  <Switch
-                    id="detail-enabled"
-                    checked={enabled}
-                    onCheckedChange={setEnabled}
-                    onLabel={t('enabledOn')}
-                    offLabel={t('enabledOff')}
-                  />
-                  <Label htmlFor="detail-enabled" className="cursor-pointer text-sm font-500 text-foreground">{t('enabled')}</Label>
-                </div>
-                <div className="space-y-1.5">
-                  <Label id="detail-status-label" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('nodeStatus')}</Label>
-                  <Select value={status} onValueChange={setStatus}>
-                    <SelectTrigger aria-labelledby="detail-status-label">
-                      <span className="flex items-center gap-2">
-                        <span className={`size-1.5 rounded-full shrink-0 ${STATUS_DOT[status] ?? 'bg-md-outline'}`} aria-hidden="true" />
-                        <SelectValue />
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">
-                        <span className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-md-tertiary" aria-hidden="true" />{t('statusActive')}</span>
-                      </SelectItem>
-                      <SelectItem value="maintenance">
-                        <span className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-md-outline" aria-hidden="true" />{t('statusMaintenance')}</span>
-                      </SelectItem>
-                      <SelectItem value="retired">
-                        <span className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-md-error" aria-hidden="true" />{t('statusRetired')}</span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="detail-weight" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('weight')}</Label>
-                  <Input
-                    id="detail-weight"
-                    type="number"
-                    inputMode="numeric"
-                    min={WEIGHT_MIN}
-                    max={WEIGHT_MAX}
-                    step={1}
-                    value={weight}
-                    onChange={(e) => {
-                      setWeight(e.target.value);
-                      if (weightError) setWeightError('');
-                    }}
-                    error={weightError || undefined}
-                    helperText={weightError ? undefined : t('weightHelper')}
-                  />
-                </div>
-              </div>
-              <div className="md:col-span-2 space-y-3 pt-1">
-                {saveError && (
-                  <div
-                    role="alert"
-                    aria-live="assertive"
-                    className="flex items-center gap-2 rounded-lg bg-md-error-container px-3 py-2.5 text-sm text-md-on-error-container animate-slide-up"
-                  >
-                    <span className="size-1.5 rounded-full bg-md-error shrink-0" aria-hidden="true" />
-                    {saveError}
-                  </div>
-                )}
-                <Button type="submit" loading={saving} className="w-full">
-                  {t('saveChanges')}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
       </div>
 
-      <AlertDialog open={confirmRetire} onOpenChange={(o) => { if (!saving) setConfirmRetire(o); }}>
-        <AlertDialogContent pending={saving}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('retireTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('retireDescription')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={saving}>{tCommon('cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              destructive
-              loading={saving}
-              loadingLabel={tCommon('saving')}
-              onClick={(e) => {
-                e.preventDefault();
-                void handleConfirmRetire();
-              }}
-            >
-              {t('retireConfirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      <NodeEditDialog
+        key={`${node?.mac ?? 'none'}-${editOpen}`}
+        node={node}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={(updated) => setNode(updated)}
+      />
+    </PageContainer>
   );
 }
 
 function ProbeStatusCard({ mac, t, noData }: { mac: string; t: ReturnType<typeof useTranslations>; noData: string }) {
+  const fmt = useFormat();
   const [probe, setProbe] = useState<model_NodeStatusCheck | null>(null);
   const [probeLoading, setProbeLoading] = useState(true);
   const [probeError, setProbeError] = useState(false);
@@ -451,6 +212,9 @@ function ProbeStatusCard({ mac, t, noData }: { mac: string; t: ReturnType<typeof
     setProbeError(false);
     sessionApi(AdminService.adminNodeStatus())
       .then((list) => {
+        // TODO: adminNodeStatus() fetches ALL nodes (full-table JOIN in probe.go).
+        // When node count grows beyond ~100 this single request grows linearly.
+        // Backend should expose a mac= query param so detail pages can fetch one node.
         const found = (list ?? []).find((n) => n.mac === mac);
         setProbe(found ?? null);
       })
@@ -518,7 +282,7 @@ function ProbeStatusCard({ mac, t, noData }: { mac: string; t: ReturnType<typeof
         <FieldRow label={t('probeDisk')} value={fmtPct(probe?.disk_pct)} noData={noData} />
         <FieldRow label={t('probeUptime')} value={fmtUptime(probe?.uptime_sec)} noData={noData} />
         <FieldRow label={t('probeLatency')} value={probe?.latency_ms != null ? `${probe.latency_ms}ms` : noData} noData={noData} />
-        <FieldRow label={t('probeCheckedAt')} value={probe?.checked_at ? new Date(probe.checked_at + 'Z').toLocaleString() : noData} noData={noData} />
+        <FieldRow label={t('probeCheckedAt')} value={probe?.checked_at ? fmt.dateTime(probe.checked_at.replace(' ', 'T') + 'Z', noData) : noData} noData={noData} />
       </CardContent>
     </Card>
   );

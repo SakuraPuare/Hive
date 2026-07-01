@@ -15,25 +15,22 @@ import {
   AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/components/ui/toast';
+import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
 import {
   RefreshCw, Trash2, Download, MoreHorizontal, Power, PowerOff,
   Server, Wifi, WifiOff, HelpCircle, AlertTriangle, X,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { createColumnHelper } from '@tanstack/react-table';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
+import { useFormat } from '@/lib/format';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatMac(mac: string | undefined | null) {
   if (!mac || mac.length !== 12) return mac ?? '';
   return mac.match(/.{2}/g)!.join(':');
-}
-
-function formatDate(s: string | undefined | null) {
-  if (!s) return '—';
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
 type ProbeStatus = 'online' | 'offline' | 'unknown';
@@ -44,31 +41,14 @@ function getProbeStatus(n: model_Node): ProbeStatus {
   return 'unknown';
 }
 
-// M3-compliant status config — §10 recipes
-const statusConfig = {
-  online: {
-    label: 'Online',
-    dot: 'bg-md-tertiary',
-    cls: 'bg-md-tertiary-container text-md-on-tertiary-container',
-  },
-  offline: {
-    label: 'Offline',
-    dot: 'bg-md-error',
-    cls: 'bg-md-error-container text-md-on-error-container',
-  },
-  unknown: {
-    label: 'Unknown',
-    dot: 'bg-md-outline',
-    cls: 'bg-muted text-muted-foreground',
-  },
-};
-
-function StatusBadge({ status }: { status: ProbeStatus }) {
-  const c = statusConfig[status];
+// Module-scope so it isn't redefined on every NodesPage render. Takes the
+// resolved (i18n-labelled) config entry since labels depend on the active
+// locale, which only the page component can read.
+function StatusBadge({ config }: { config: { label: string; dot: string; cls: string } }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${c.cls}`}>
-      <span className={`size-1.5 rounded-full shrink-0 ${c.dot}`} />
-      {c.label}
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-500 ${config.cls}`}>
+      <span className={`size-1.5 rounded-full shrink-0 ${config.dot}`} />
+      {config.label}
     </span>
   );
 }
@@ -121,6 +101,7 @@ export default function NodesPage() {
   const tCommon = useTranslations('common');
   const tNav = useTranslations('nav');
   const toast = useToast();
+  const fmt = useFormat();
 
   const [nodes, setNodes] = useState<model_Node[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,6 +116,8 @@ export default function NodesPage() {
   const [deleting, setDeleting] = useState(false);
   // Batch delete confirmation.
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  // In-place edit target (null = closed) — replaces the old whole-page nav.
+  const [editTarget, setEditTarget] = useState<model_Node | null>(null);
 
   const loadNodes = useCallback(async () => {
     setLoading(true);
@@ -149,6 +132,18 @@ export default function NodesPage() {
   }, [t]);
 
   useEffect(() => { loadNodes(); }, [loadNodes]);
+
+  // Seed statusFilter from URL query params written by dashboard deep-links
+  // (?status=online|offline|unknown). Only runs once per navigation, after
+  // Next.js hydrates router.query (router.isReady).
+  useEffect(() => {
+    if (!router.isReady) return;
+    const { status } = router.query;
+    if (status === 'online' || status === 'offline' || status === 'unknown') {
+      setStatusFilter(status);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
 
   // ── Filtering ──────────────────────────────────────────────────────────────
 
@@ -171,6 +166,13 @@ export default function NodesPage() {
     const offline = nodes.filter(n => n.probe_status === 'offline').length;
     return { all: nodes.length, online, offline, unknown: nodes.length - online - offline };
   }, [nodes]);
+
+  // M3-compliant status config — labels go through i18n
+  const statusConfig = useMemo(() => ({
+    online:   { label: t('statusOnline'),   dot: 'bg-md-tertiary', cls: 'bg-md-tertiary-container text-md-on-tertiary-container' },
+    offline:  { label: t('statusOffline'),  dot: 'bg-md-error',    cls: 'bg-md-error-container text-md-on-error-container' },
+    unknown:  { label: t('statusUnknown'),  dot: 'bg-md-outline',   cls: 'bg-muted text-muted-foreground' },
+  }), [t]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
@@ -284,7 +286,7 @@ export default function NodesPage() {
 
   const columns = useMemo(() => [
     col.display({ id: 'probe_status', header: t('colStatus'),
-      cell: ({ row }) => <StatusBadge status={getProbeStatus(row.original)} />, enableSorting: false }),
+      cell: ({ row }) => <StatusBadge config={statusConfig[getProbeStatus(row.original)]} />, enableSorting: false }),
     col.accessor('note', { header: t('colName'),
       cell: i => <span className="font-display font-600 text-foreground">{i.getValue() || '—'}</span> }),
     col.accessor('hostname', { header: t('colHostname'),
@@ -301,9 +303,9 @@ export default function NodesPage() {
     col.accessor('mac6', { header: t('colMac6'),
       cell: i => <span className="font-mono text-xs text-muted-foreground">{i.getValue() || '—'}</span>, enableSorting: false }),
     col.accessor('last_seen', { header: t('colLastSeen'),
-      cell: i => <span className="text-muted-foreground">{formatDate(i.getValue())}</span>, sortingFn: 'datetime' }),
+      cell: i => <span className="text-muted-foreground">{fmt.dateShort(i.getValue())}</span>, sortingFn: 'datetime' }),
     col.accessor('registered_at', { header: t('colRegisteredAt'),
-      cell: i => <span className="text-muted-foreground">{formatDate(i.getValue())}</span>, sortingFn: 'datetime' }),
+      cell: i => <span className="text-muted-foreground">{fmt.dateShort(i.getValue())}</span>, sortingFn: 'datetime' }),
     col.accessor('cf_url', { header: t('colCfUrl'),
       cell: i => { const v = i.getValue(); return v ? <span className="max-w-[140px] truncate block text-xs text-muted-foreground" title={v}>{v}</span> : '—'; },
       enableSorting: false }),
@@ -331,8 +333,13 @@ export default function NodesPage() {
           <DropdownMenuContent align="end" className="rounded-xl bg-popover border elevation-2 animate-scale-in">
             <DropdownMenuItem
               className="rounded-lg hover-state cursor-pointer"
-              onClick={() => router.push('/nodes/detail?mac=' + encodeURIComponent(row.original.mac!))}>
+              onSelect={() => setEditTarget(row.original)}>
               {tCommon('edit')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="rounded-lg hover-state cursor-pointer"
+              onClick={() => router.push('/nodes/detail?mac=' + encodeURIComponent(row.original.mac!))}>
+              {tCommon('viewDetails')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -345,7 +352,7 @@ export default function NodesPage() {
       ),
     }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [t, tCommon]);
+  ], [t, tCommon, fmt, statusConfig]);
 
   // Column labels for the visibility dropdown
   const columnLabels: Record<string, string> = {
@@ -358,70 +365,70 @@ export default function NodesPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <PageContainer>
       {/* ── Page header ────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">
-            {tNav('nodes')}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+      <PageHeader
+        icon={<Server />}
+        title={tNav('nodes')}
+        description={
+          <>
             {counts.all}&nbsp;{t('colStatus').toLowerCase()} &middot;&nbsp;
-            <span className="text-md-tertiary">{counts.online} online</span>
+            <span className="text-md-tertiary">{counts.online} {t('statusOnline').toLowerCase()}</span>
             &nbsp;&middot;&nbsp;
-            <span className="text-destructive">{counts.offline} offline</span>
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportCSV}
-            loading={exporting}
-            className="state-layer rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
-            {!exporting && <Download className="h-4 w-4" aria-hidden="true" />}
-            {t('exportCsv')}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={loadNodes}
-            disabled={loading}
-            aria-label={tCommon('refresh')}
-            title={tCommon('refresh')}
-            className="state-layer rounded-lg size-9 p-0 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
-          </Button>
-        </div>
-      </div>
+            <span className="text-destructive">{counts.offline} {t('statusOffline').toLowerCase()}</span>
+          </>
+        }
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportCSV}
+              loading={exporting}
+              className="state-layer rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
+              {!exporting && <Download className="h-4 w-4" aria-hidden="true" />}
+              {t('exportCsv')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadNodes}
+              disabled={loading}
+              aria-label={tCommon('refresh')}
+              title={tCommon('refresh')}
+              className="state-layer rounded-lg size-9 p-0 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            </Button>
+          </>
+        }
+      />
 
       {/* ── Stat cards ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
           icon={<Server className="size-4.5" aria-hidden="true" />}
-          label="Total"
+          label={t('statTotal')}
           value={counts.all}
           accent="primary"
           delay={0}
         />
         <StatCard
           icon={<Wifi className="size-4.5" aria-hidden="true" />}
-          label="Online"
+          label={t('statusOnline')}
           value={counts.online}
           accent="tertiary"
           delay={40}
         />
         <StatCard
           icon={<WifiOff className="size-4.5" aria-hidden="true" />}
-          label="Offline"
+          label={t('statusOffline')}
           value={counts.offline}
           accent="error"
           delay={80}
         />
         <StatCard
           icon={<HelpCircle className="size-4.5" aria-hidden="true" />}
-          label="Unknown"
+          label={t('statusUnknown')}
           value={counts.unknown}
           accent="neutral"
           delay={120}
@@ -541,9 +548,10 @@ export default function NodesPage() {
               size="sm"
               variant="outline"
               onClick={() => batchToggle('disable')}
+              loading={batchBusy}
               disabled={batchBusy}
               className="state-layer rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
-              <PowerOff className="h-3.5 w-3.5" aria-hidden="true" />
+              {!batchBusy && <PowerOff className="h-3.5 w-3.5" aria-hidden="true" />}
               {t('batchDisable')}
             </Button>
             <Button
@@ -557,6 +565,15 @@ export default function NodesPage() {
             </Button>
           </>
         }
+      />
+
+      {/* ── In-place node edit ─────────────────────────────────────────────── */}
+      <NodeEditDialog
+        key={editTarget?.mac ?? 'none'}
+        node={editTarget}
+        open={editTarget !== null}
+        onOpenChange={(o) => { if (!o) setEditTarget(null); }}
+        onSaved={() => { setEditTarget(null); loadNodes(); }}
       />
 
       {/* ── Single-row delete confirmation ─────────────────────────────────── */}
@@ -634,6 +651,6 @@ export default function NodesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }
