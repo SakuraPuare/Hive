@@ -356,7 +356,6 @@ export default function PlansPage() {
               onLabel={t('enabled')}
               offLabel={t('disabled')}
             />
-            <span className="text-sm text-foreground">{formEnabled ? t('enabled') : t('disabled')}</span>
           </div>
           {formError && (
             <p role="alert" className="flex items-center gap-1.5 rounded-lg bg-md-error-container px-3 py-2 text-sm text-md-on-error-container">
@@ -573,7 +572,7 @@ export default function PlansPage() {
               destructive
               loading={deleting}
               loadingLabel={tCommon('loading')}
-              onClick={(e) => { e.preventDefault(); handleDelete(); }}
+              onClick={handleDelete}
             >
               {tCommon('delete')}
             </AlertDialogAction>
