@@ -5,6 +5,7 @@ import { portalLogin } from '@/lib/portal-auth';
 import { getErrorMessage } from '@/lib/i18n';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { Globe, ArrowRight } from 'lucide-react';
 
 export default function PortalLoginPage() {
@@ -37,7 +38,7 @@ export default function PortalLoginPage() {
             style={{ animationDelay: '0ms' }}
           >
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-md-primary elevation-1">
-              <Globe className="h-6 w-6 text-md-on-primary" />
+              <Globe className="h-6 w-6 text-md-on-primary" aria-hidden="true" />
             </div>
             <span className="font-display text-2xl font-600 text-md-on-primary-container tracking-tight">
               {t('brand')}
@@ -73,7 +74,7 @@ export default function PortalLoginPage() {
       </div>
 
       {/* Right panel — form */}
-      <div className="flex w-full lg:w-1/2 items-center justify-center p-6 bg-background">
+      <main className="flex w-full lg:w-1/2 items-center justify-center p-6 bg-background">
         <div className="w-full max-w-[400px]">
           {/* Mobile logo */}
           <div
@@ -81,7 +82,7 @@ export default function PortalLoginPage() {
             style={{ animationDelay: '0ms' }}
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-md-primary elevation-1">
-              <Globe className="h-5 w-5 text-md-on-primary" />
+              <Globe className="h-5 w-5 text-md-on-primary" aria-hidden="true" />
             </div>
             <span className="font-display text-xl font-600 tracking-tight text-foreground">
               {t('brand')}
@@ -109,13 +110,16 @@ export default function PortalLoginPage() {
 
           {/* react-doctor-disable-next-line react-doctor/no-prevent-default -- static-export SPA against a Go API; server actions are not available */}
           <form
+            noValidate
+            aria-busy={loading}
+            aria-label={t('customerLogin')}
             onSubmit={async (e) => {
               e.preventDefault();
               setLoading(true);
               setError('');
               try {
                 await portalLogin(email, password);
-                window.location.href = '/portal/dashboard';
+                window.location.replace('/portal/dashboard');
               } catch (e) {
                 setError(getErrorMessage(e, t('loginFailed')));
               } finally {
@@ -139,7 +143,10 @@ export default function PortalLoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
+                  autoFocus
                   required
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? 'login-error' : undefined}
                   className="h-11 rounded-lg bg-md-surface-container-high border-border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0 focus-visible:border-md-primary transition-colors"
                 />
               </div>
@@ -155,7 +162,7 @@ export default function PortalLoginPage() {
                   </Label>
                   <Link
                     href="/portal/forgot-password"
-                    className="text-xs font-500 text-md-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary rounded-sm"
+                    className="-mx-2 -my-1.5 inline-flex items-center px-2 py-1.5 text-xs font-500 text-md-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary rounded-lg"
                   >
                     {t('forgotPassword')}
                   </Link>
@@ -167,6 +174,9 @@ export default function PortalLoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
                   required
+                  passwordToggleLabel={t('togglePassword')}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? 'login-error' : undefined}
                   className="h-11 rounded-lg bg-md-surface-container-high border-border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0 focus-visible:border-md-primary transition-colors"
                 />
               </div>
@@ -174,10 +184,13 @@ export default function PortalLoginPage() {
               {/* Error banner */}
               {error && (
                 <div
-                  className="flex items-start gap-3 rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container animate-slide-up"
-                  style={{ animationDelay: '0ms' }}
+                  id="login-error"
+                  role="alert"
+                  aria-live="assertive"
+                  aria-atomic="true"
+                  className="flex items-start gap-3 rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container"
                 >
-                  <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-md-error" />
+                  <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-md-error" aria-hidden="true" />
                   {error}
                 </div>
               )}
@@ -187,50 +200,27 @@ export default function PortalLoginPage() {
                 className="animate-slide-up"
                 style={{ animationDelay: '160ms' }}
               >
-                <button
+                <Button
                   type="submit"
-                  disabled={loading}
-                  className="state-layer ripple w-full h-11 inline-flex items-center justify-center gap-2
-                    rounded-lg px-5 text-sm font-500
-                    bg-md-primary text-md-on-primary elevation-1
-                    transition-shadow hover:elevation-2
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                    disabled:opacity-60 disabled:pointer-events-none"
+                  size="lg"
+                  loading={loading}
+                  aria-label={loading ? t('loggingIn') : undefined}
+                  className="w-full h-11"
                 >
                   {loading ? (
-                    <>
-                      {/* M3-style circular indeterminate spinner */}
-                      <svg
-                        className="h-4 w-4 animate-spin"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        aria-hidden="true"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12" cy="12" r="10"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                        />
-                        <path
-                          className="opacity-90"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                        />
-                      </svg>
-                    </>
+                    t('loggingIn')
                   ) : (
                     <>
                       {t('login')}
-                      <ArrowRight className="h-4 w-4" />
+                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
                     </>
                   )}
-                </button>
+                </Button>
               </div>
             </div>
           </form>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

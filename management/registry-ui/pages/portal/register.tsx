@@ -7,7 +7,15 @@ import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Globe, ArrowRight, Loader2 } from 'lucide-react';
+import { Globe, ArrowRight, Tag, X } from 'lucide-react';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type FieldErrors = {
+  email?: string;
+  nickname?: string;
+  password?: string;
+};
 
 export default function PortalRegisterPage() {
   const t = useTranslations('portal');
@@ -17,13 +25,45 @@ export default function PortalRegisterPage() {
   const [nickname, setNickname] = useState('');
   const [referralCode, setReferralCode] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
 
   // 捕获邀请链接中的推荐码 ?ref=CODE
   useEffect(() => {
     const ref = router.query.ref;
     if (typeof ref === 'string' && ref) setReferralCode(ref);
   }, [router.query.ref]);
+
+  // 提交前轻量校验,返回首个出错字段以便定位 focus
+  const validate = (): keyof FieldErrors | null => {
+    const next: FieldErrors = {};
+    if (!EMAIL_RE.test(email)) next.email = t('emailInvalid');
+    if (nickname.trim().length < 2 || nickname.trim().length > 20)
+      next.nickname = t('nicknameLength');
+    if (password.length < 8) next.password = t('passwordTooShort');
+    setFieldErrors(next);
+    return (['email', 'nickname', 'password'] as const).find((k) => next[k]) ?? null;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    const firstInvalid = validate();
+    if (firstInvalid) {
+      document.getElementById(firstInvalid)?.focus();
+      return;
+    }
+    setLoading(true);
+    try {
+      await portalRegister(email, password, nickname, referralCode);
+      setSuccess(true);
+      router.replace('/portal/dashboard');
+    } catch (err) {
+      setError(getErrorMessage(err, t('registerFailed')));
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -63,7 +103,7 @@ export default function PortalRegisterPage() {
           {/* Brand mark */}
           <div className="flex items-center gap-3 mb-10">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-md-primary">
-              <Globe className="h-6 w-6 text-md-on-primary" />
+              <Globe className="h-6 w-6 text-md-on-primary" aria-hidden="true" />
             </div>
             <span className="font-display text-2xl font-semibold text-md-on-primary-container tracking-tight">
               {t('brand')}
@@ -100,7 +140,7 @@ export default function PortalRegisterPage() {
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 mb-10 lg:hidden">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-md-primary-container">
-              <Globe className="h-5 w-5 text-md-on-primary-container" />
+              <Globe className="h-5 w-5 text-md-on-primary-container" aria-hidden="true" />
             </div>
             <span className="font-display text-xl font-semibold text-foreground tracking-tight">
               {t('brand')}
@@ -117,7 +157,7 @@ export default function PortalRegisterPage() {
               <Link
                 href="/portal/login"
                 className="font-medium text-md-primary hover:underline
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 rounded-sm"
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 rounded-lg"
               >
                 {t('goLogin')}
               </Link>
@@ -127,22 +167,40 @@ export default function PortalRegisterPage() {
           {/* Form card */}
           <div className="bg-md-surface-container-lowest border rounded-2xl p-6 elevation-1">
             {/* react-doctor-disable-next-line react-doctor/no-prevent-default -- static-export SPA against a Go API; server actions are not available */}
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                setLoading(true);
-                setError('');
-                try {
-                  await portalRegister(email, password, nickname, referralCode);
-                  window.location.href = '/portal/dashboard';
-                } catch (e) {
-                  setError(getErrorMessage(e, t('registerFailed')));
-                } finally {
-                  setLoading(false);
-                }
-              }}
-            >
+            <form noValidate aria-label={t('registerFormLabel')} onSubmit={handleSubmit}>
               <div className="space-y-5">
+                {/* Error banner — top of form, reserved space avoids layout shift */}
+                <div role="alert" aria-live="assertive" aria-atomic="true">
+                  {error && (
+                    <div
+                      id="form-error"
+                      className="rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container animate-fade-in"
+                    >
+                      {error}
+                    </div>
+                  )}
+                </div>
+
+                {/* Referral code chip — visible feedback when applied via ?ref= */}
+                {referralCode && (
+                  <div className="flex items-center justify-between gap-2 rounded-xl bg-md-secondary-container px-3.5 py-2.5 text-sm text-md-on-secondary-container">
+                    <span className="inline-flex items-center gap-2 min-w-0">
+                      <Tag className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <span className="truncate">
+                        {t('referralCodeApplied', { code: referralCode })}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setReferralCode('')}
+                      aria-label={t('removeReferralCode')}
+                      className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-md-on-secondary-container/80 transition-colors hover:bg-md-on-secondary-container/10 hover:text-md-on-secondary-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Email */}
                 <div className="space-y-1.5 animate-slide-up" style={{ animationDelay: '40ms' }}>
                   <Label htmlFor="email" className="text-sm font-medium text-foreground">
@@ -156,7 +214,9 @@ export default function PortalRegisterPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     autoComplete="email"
                     required
-                    className="h-11 rounded-lg bg-background focus-visible:ring-md-primary"
+                    aria-required={true}
+                    error={fieldErrors.email}
+                    className="bg-background focus-visible:ring-md-primary"
                   />
                 </div>
 
@@ -170,8 +230,13 @@ export default function PortalRegisterPage() {
                     placeholder={t('nicknamePlaceholder') || ''}
                     value={nickname}
                     onChange={(e) => setNickname(e.target.value)}
+                    autoComplete="nickname"
                     required
-                    className="h-11 rounded-lg bg-background focus-visible:ring-md-primary"
+                    aria-required={true}
+                    minLength={2}
+                    maxLength={20}
+                    error={fieldErrors.nickname}
+                    className="bg-background focus-visible:ring-md-primary"
                   />
                 </div>
 
@@ -187,65 +252,35 @@ export default function PortalRegisterPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete="new-password"
                     required
-                    className="h-11 rounded-lg bg-background focus-visible:ring-md-primary"
+                    aria-required={true}
+                    minLength={8}
+                    passwordToggleLabel={t('togglePasswordVisibility')}
+                    error={fieldErrors.password}
+                    helperText={t('passwordHint')}
+                    className="bg-background focus-visible:ring-md-primary"
                   />
                 </div>
 
-                {/* Error banner */}
-                {error && (
-                  <div
-                    role="alert"
-                    className="rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container animate-slide-up"
-                  >
-                    {error}
-                  </div>
-                )}
-
                 {/* Submit */}
                 <div className="animate-slide-up pt-1" style={{ animationDelay: '160ms' }}>
-                  <button
+                  <Button
                     type="submit"
-                    disabled={loading}
-                    className="state-layer ripple w-full h-11 inline-flex items-center justify-center gap-2
-                      rounded-lg text-sm font-medium
-                      bg-md-primary text-md-on-primary elevation-1
-                      transition-shadow hover:elevation-2
-                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
-                      disabled:opacity-50 disabled:pointer-events-none"
+                    size="lg"
+                    loading={loading}
+                    disabled={success}
+                    className="w-full"
                   >
                     {loading ? (
-                      /* M3-style circular indeterminate indicator */
-                      <svg
-                        className="h-5 w-5 animate-spin"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        aria-hidden
-                      >
-                        <circle
-                          cx="12" cy="12" r="10"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeDasharray="31.4"
-                          strokeDashoffset="10"
-                          opacity="0.25"
-                        />
-                        <circle
-                          cx="12" cy="12" r="10"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeDasharray="31.4"
-                          strokeDashoffset="21"
-                        />
-                      </svg>
+                      <span>{t('registering')}</span>
+                    ) : success ? (
+                      <span>{t('registerSuccess')}</span>
                     ) : (
                       <>
                         <span>{t('register')}</span>
-                        <ArrowRight className="h-4 w-4" />
+                        <ArrowRight className="h-4 w-4" aria-hidden="true" />
                       </>
                     )}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </form>

@@ -10,13 +10,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/components/ui/toast';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { RefreshCw, Plus, Ticket, AlertCircle, InboxIcon } from 'lucide-react';
+import { RefreshCw, Plus, Ticket, AlertCircle, InboxIcon, ChevronRight } from 'lucide-react';
+
+const PAGE_SIZE = 20;
 
 function formatDate(s: string) {
   const d = new Date(s);
@@ -82,18 +85,23 @@ export default function PortalTicketsPage() {
   const t = useTranslations('portal');
   const tCommon = useTranslations('common');
   const router = useRouter();
+  const toast = useToast();
   const { customer, loading: authLoading } = useCustomer();
 
   const [tickets, setTickets] = useState<model_Ticket[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const loadTickets = useCallback(async () => {
+  const loadTickets = useCallback(async (targetPage = 1) => {
     setLoading(true);
     setError('');
     try {
-      const data = await portalSessionApi(PortalService.portalTickets({}));
+      const data = await portalSessionApi(PortalService.portalTickets({ page: targetPage, limit: PAGE_SIZE }));
       setTickets(data.items ?? []);
+      setTotal(data.total ?? (data.items?.length ?? 0));
+      setPage(targetPage);
     } catch {
       setError(t('loadFailed'));
     } finally {
@@ -103,8 +111,10 @@ export default function PortalTicketsPage() {
 
   useEffect(() => {
     if (!authLoading && !customer) { router.replace('/portal/login'); return; }
-    if (!authLoading && customer) loadTickets();
+    if (!authLoading && customer) loadTickets(1);
   }, [authLoading, customer, router, loadTickets]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // New ticket dialog
   const [showNew, setShowNew] = useState(false);
@@ -113,7 +123,8 @@ export default function PortalTicketsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
-  async function handleSubmit() {
+  async function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!newSubject.trim() || !newContent.trim()) return;
     setSubmitting(true);
     setSubmitError('');
@@ -124,7 +135,8 @@ export default function PortalTicketsPage() {
       setShowNew(false);
       setNewSubject('');
       setNewContent('');
-      loadTickets();
+      toast.success(t('ticketCreated'));
+      loadTickets(1);
     } catch (e: unknown) {
       setSubmitError(getErrorMessage(e, t('submitFailed')));
     } finally {
@@ -151,57 +163,60 @@ export default function PortalTicketsPage() {
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3 animate-slide-up">
           <div className="flex size-10 items-center justify-center rounded-xl bg-md-primary-container text-md-on-primary-container">
-            <Ticket className="size-5" />
+            <Ticket className="size-5" aria-hidden="true" />
           </div>
           <div>
             <h1 className="font-display text-xl font-600 text-foreground">{t('ticketsTitle')}</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">{t('ticketsTitle')}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t('ticketsSubtitle')}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 animate-slide-up" style={{ animationDelay: '40ms' }}>
           {/* Primary action */}
-          <button
-            onClick={() => setShowNew(true)}
-            className="state-layer ripple inline-flex items-center gap-1.5 rounded-lg px-4 py-2
-              text-sm font-500 bg-md-primary text-md-on-primary elevation-1
-              transition-shadow hover:elevation-2
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-          >
-            <Plus className="size-4" />
+          <Button type="button" size="lg" className="h-11" onClick={() => setShowNew(true)}>
+            <Plus className="size-4" aria-hidden="true" />
             <span>{t('newTicket')}</span>
-          </button>
+          </Button>
 
           {/* Tonal secondary action */}
-          <button
-            onClick={loadTickets}
-            disabled={loading}
-            className="state-layer inline-flex items-center gap-1.5 rounded-lg px-4 py-2
-              text-sm font-500 bg-md-secondary-container text-md-on-secondary-container
-              disabled:opacity-40 disabled:cursor-not-allowed
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            className="h-11"
+            loading={loading}
+            onClick={() => loadTickets(page)}
           >
-            {loading
-              ? <CircularProgress className="size-4 text-md-on-secondary-container" />
-              : <RefreshCw className="size-4" />
-            }
+            {!loading && <RefreshCw className="size-4" aria-hidden="true" />}
             <span>{tCommon('refresh')}</span>
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* ── Error banner ─────────────────────────────────────── */}
       {error && (
-        <div className="flex items-center gap-3 rounded-xl px-4 py-3
-          bg-md-error-container text-md-on-error-container animate-slide-up">
-          <AlertCircle className="size-4 shrink-0" />
-          <p className="text-sm">{error}</p>
+        <div
+          role="alert"
+          className="flex items-center gap-3 rounded-xl px-4 py-3
+          bg-md-error-container text-md-on-error-container animate-slide-up"
+        >
+          <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+          <p className="text-sm flex-1">{error}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => loadTickets(page)}
+            className="border-md-on-error-container/30 text-md-on-error-container hover:bg-md-on-error-container/10"
+          >
+            {t('retry')}
+          </Button>
         </div>
       )}
 
       {/* ── Ticket table card ─────────────────────────────────── */}
       <div className="bg-card border rounded-xl overflow-hidden animate-slide-up" style={{ animationDelay: '80ms' }}>
-        <Table>
+        <Table aria-label={t('ticketsTitle')}>
           <TableHeader>
             <TableRow className="border-b bg-md-surface-container-high/60">
               <TableHead className="w-16 text-xs font-500 uppercase tracking-wide text-muted-foreground">
@@ -216,14 +231,15 @@ export default function PortalTicketsPage() {
               <TableHead className="text-xs font-500 uppercase tracking-wide text-muted-foreground">
                 {t('colCreatedAt')}
               </TableHead>
+              <TableHead className="w-10" aria-label={t('colActions')} />
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               /* Loading state — M3 circular progress centered */
               <TableRow>
-                <TableCell colSpan={4} className="py-16">
-                  <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                <TableCell colSpan={5} className="py-16">
+                  <div className="flex flex-col items-center gap-3 text-muted-foreground" role="status" aria-live="polite">
                     <CircularProgress className="size-7 text-md-primary" />
                     <p className="text-sm">{tCommon('loading')}</p>
                   </div>
@@ -232,110 +248,179 @@ export default function PortalTicketsPage() {
             ) : tickets.length === 0 ? (
               /* Empty state */
               <TableRow>
-                <TableCell colSpan={4} className="py-16">
-                  <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                <TableCell colSpan={5} className="py-16">
+                  <div className="flex flex-col items-center gap-4 text-muted-foreground" role="status">
                     <div className="flex size-12 items-center justify-center rounded-full bg-md-surface-container-high">
-                      <InboxIcon className="size-6 text-muted-foreground" />
+                      <InboxIcon className="size-6 text-muted-foreground" aria-hidden="true" />
                     </div>
                     <p className="text-sm">{t('noTickets')}</p>
+                    <Button type="button" size="lg" className="h-11" onClick={() => setShowNew(true)}>
+                      <Plus className="size-4" aria-hidden="true" />
+                      <span>{t('createFirstTicket')}</span>
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
             ) : (
-              tickets.map((ticket, i) => (
-                <TableRow
-                  key={ticket.id}
-                  className="cursor-pointer hover-state border-b border-md-outline-variant/40 last:border-0
-                    focus-visible:outline-none focus-visible:bg-md-surface-container-high
-                    animate-slide-up"
-                  style={{ animationDelay: `${120 + i * 30}ms` }}
-                  onClick={() => router.push(`/portal/tickets/${ticket.id}`)}
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && router.push(`/portal/tickets/${ticket.id}`)}
-                >
-                  <TableCell className="text-xs font-500 text-muted-foreground font-display">
-                    #{ticket.id}
-                  </TableCell>
-                  <TableCell className="font-500 text-foreground">
-                    {ticket.subject}
-                  </TableCell>
-                  <TableCell>
-                    <StatusChip status={ticket.status ?? ''} />
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {formatDate(ticket.created_at ?? '')}
-                  </TableCell>
-                </TableRow>
-              ))
+              tickets.map((ticket, i) => {
+                const go = () => router.push(`/portal/tickets/${ticket.id}`);
+                return (
+                  <TableRow
+                    key={ticket.id}
+                    role="link"
+                    aria-label={t('viewTicket', { id: ticket.id ?? '', subject: ticket.subject ?? '' })}
+                    className="cursor-pointer hover-state border-b border-md-outline-variant/40 last:border-0
+                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-md-primary
+                      animate-slide-up"
+                    style={{ animationDelay: `${120 + i * 30}ms` }}
+                    onClick={go}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+                    }}
+                  >
+                    <TableCell className="text-xs font-500 text-muted-foreground font-display">
+                      #{ticket.id}
+                    </TableCell>
+                    <TableCell className="font-500 text-foreground">
+                      {ticket.subject}
+                    </TableCell>
+                    <TableCell>
+                      <StatusChip status={ticket.status ?? ''} />
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(ticket.created_at ?? '')}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <ChevronRight className="size-4" aria-hidden="true" />
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
+
+        {/* ── Pager / count ─────────────────────────────────── */}
+        {!loading && tickets.length > 0 && (
+          <div className="flex items-center justify-between gap-4 border-t border-md-outline-variant/40 px-4 py-3">
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              {t('showingTickets', { count: tickets.length, total })}
+            </p>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => loadTickets(page - 1)}
+                >
+                  {t('prevPage')}
+                </Button>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {t('pageOf', { page, total: totalPages })}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => loadTickets(page + 1)}
+                >
+                  {t('nextPage')}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── New ticket dialog ─────────────────────────────────── */}
       <Dialog open={showNew} onOpenChange={setShowNew}>
-        <DialogContent className="rounded-2xl border bg-card elevation-3 animate-scale-in sm:max-w-md">
+        <DialogContent
+          size="md"
+          pending={submitting}
+          className="rounded-2xl border bg-card elevation-3 animate-scale-in"
+        >
           <DialogHeader>
             <DialogTitle className="font-display text-lg font-600 text-foreground">
               {t('newTicket')}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-5 py-1">
-            <div className="space-y-1.5">
-              <Label className="text-sm font-500 text-foreground">{t('subject')}</Label>
-              <Input
-                value={newSubject}
-                onChange={(e) => setNewSubject(e.target.value)}
-                placeholder={t('subjectPlaceholder')}
-                className="rounded-lg bg-md-surface-container-high border focus-visible:ring-md-primary"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm font-500 text-foreground">{t('content')}</Label>
-              <Textarea
-                value={newContent}
-                onChange={(e) => setNewContent(e.target.value)}
-                placeholder={t('contentPlaceholder')}
-                rows={5}
-                className="rounded-lg bg-md-surface-container-high border focus-visible:ring-md-primary resize-none"
-              />
-            </div>
-
-            {submitError && (
-              <div className="flex items-center gap-2 rounded-lg px-3 py-2.5
-                bg-md-error-container text-md-on-error-container text-sm">
-                <AlertCircle className="size-4 shrink-0" />
-                <span>{submitError}</span>
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-5 py-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="new-subject" className="text-sm font-500 text-foreground">
+                  {t('subject')}
+                  <span className="text-md-error" aria-hidden="true">*</span>
+                </Label>
+                <Input
+                  id="new-subject"
+                  autoFocus
+                  required
+                  value={newSubject}
+                  onChange={(e) => setNewSubject(e.target.value)}
+                  placeholder={t('subjectPlaceholder')}
+                  className="rounded-lg bg-md-surface-container-high border focus-visible:ring-md-primary"
+                />
               </div>
-            )}
-          </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-content" className="text-sm font-500 text-foreground">
+                  {t('content')}
+                  <span className="text-md-error" aria-hidden="true">*</span>
+                </Label>
+                <Textarea
+                  id="new-content"
+                  required
+                  value={newContent}
+                  onChange={(e) => setNewContent(e.target.value)}
+                  onSubmit={() => handleSubmit()}
+                  submitHint={t('submitHint')}
+                  placeholder={t('contentPlaceholder')}
+                  minRows={5}
+                  className="rounded-lg bg-md-surface-container-high border focus-visible:ring-md-primary"
+                />
+              </div>
 
-          <DialogFooter className="gap-2 pt-1">
-            {/* Outlined / text cancel */}
-            <button
-              onClick={() => setShowNew(false)}
-              className="state-layer inline-flex items-center justify-center rounded-lg px-4 py-2
-                text-sm font-500 border border-md-outline-variant text-foreground
-                bg-transparent hover:bg-md-surface-container-high
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
-              {tCommon('cancel')}
-            </button>
+              {submitError && (
+                <div
+                  role="alert"
+                  className="flex items-center gap-2 rounded-lg px-3 py-2.5
+                  bg-md-error-container text-md-on-error-container text-sm"
+                >
+                  <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+                  <span>{submitError}</span>
+                </div>
+              )}
+            </div>
 
-            {/* Primary submit */}
-            <button
-              onClick={handleSubmit}
-              disabled={submitting || !newSubject.trim() || !newContent.trim()}
-              className="state-layer ripple inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2
-                text-sm font-500 bg-md-primary text-md-on-primary elevation-1
-                disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
-            >
-              {submitting && <CircularProgress className="size-4 text-md-on-primary" />}
-              <span>{submitting ? t('submitting') : t('submit')}</span>
-            </button>
-          </DialogFooter>
+            <DialogFooter className="gap-2 pt-1">
+              {/* Outlined / text cancel */}
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="h-11"
+                disabled={submitting}
+                onClick={() => setShowNew(false)}
+              >
+                {tCommon('cancel')}
+              </Button>
+
+              {/* Primary submit */}
+              <Button
+                type="submit"
+                size="lg"
+                className="h-11"
+                loading={submitting}
+                disabled={!newSubject.trim() || !newContent.trim()}
+              >
+                <span>{submitting ? t('submitting') : t('submit')}</span>
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

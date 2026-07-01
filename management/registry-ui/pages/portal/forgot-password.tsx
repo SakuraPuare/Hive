@@ -14,8 +14,11 @@ export default function PortalForgotPasswordPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
+  const [fieldError, setFieldError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+
+  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
   return (
     <div className="flex min-h-screen">
@@ -31,7 +34,7 @@ export default function PortalForgotPasswordPage() {
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20">
           <div className="flex items-center gap-3 mb-8 animate-slide-up" style={{ animationDelay: '0ms' }}>
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-md-primary/20">
-              <Globe className="h-7 w-7 text-md-on-primary-container" />
+              <Globe className="h-7 w-7 text-md-on-primary-container" aria-hidden="true" />
             </div>
             <span className="font-display text-2xl font-600 text-md-on-primary-container tracking-tight">{t('brand')}</span>
           </div>
@@ -46,7 +49,7 @@ export default function PortalForgotPasswordPage() {
           {/* Mobile logo */}
           <div className="flex items-center gap-2.5 mb-10 lg:hidden">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-md-primary-container">
-              <Globe className="h-5 w-5 text-md-on-primary-container" />
+              <Globe className="h-5 w-5 text-md-on-primary-container" aria-hidden="true" />
             </div>
             <span className="font-display text-xl font-600 tracking-tight">{t('brand')}</span>
           </div>
@@ -74,7 +77,15 @@ export default function PortalForgotPasswordPage() {
                 onClick={() => router.push('/portal/reset-password')}
               >
                 {t('goReset')}
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full h-11 text-sm font-500 mt-3 text-md-primary"
+                onClick={() => setSent(false)}
+              >
+                {t('editEmail')}
               </Button>
               <p className="mt-6 text-center text-sm text-muted-foreground">
                 <Link href="/portal/login" className="font-500 text-md-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary rounded-sm">
@@ -93,8 +104,14 @@ export default function PortalForgotPasswordPage() {
               <form
                 className="animate-slide-up"
                 style={{ animationDelay: '60ms' }}
+                aria-busy={loading}
                 onSubmit={async (e) => {
                   e.preventDefault();
+                  if (!isValidEmail(email)) {
+                    setFieldError(t('emailInvalid'));
+                    return;
+                  }
+                  setFieldError('');
                   setLoading(true);
                   setError('');
                   try {
@@ -111,21 +128,36 @@ export default function PortalForgotPasswordPage() {
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-sm font-500 text-foreground">{t('email')}</Label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
                       <Input
                         id="email"
                         type="email"
                         placeholder="you@example.com"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          if (fieldError) setFieldError('');
+                        }}
+                        onBlur={() => {
+                          if (email && !isValidEmail(email)) setFieldError(t('emailInvalid'));
+                        }}
                         autoComplete="email"
+                        autoFocus
                         required
+                        aria-required="true"
+                        aria-invalid={!!(error || fieldError)}
+                        aria-describedby={fieldError ? 'email-field-error' : error ? 'email-error' : undefined}
                         className="h-11 pl-10 rounded-lg bg-md-surface-container-high border-input focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-0"
                       />
                     </div>
+                    {fieldError && (
+                      <p id="email-field-error" role="alert" aria-atomic="true" className="text-sm text-md-error">
+                        {fieldError}
+                      </p>
+                    )}
                   </div>
-                  {error && (
-                    <div className="rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container">
+                  {error && !fieldError && (
+                    <div id="email-error" role="alert" aria-atomic="true" className="rounded-xl bg-md-error-container px-4 py-3 text-sm text-md-on-error-container">
                       {error}
                     </div>
                   )}
@@ -135,11 +167,14 @@ export default function PortalForgotPasswordPage() {
                     disabled={loading}
                   >
                     {loading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        <span>{t('sending')}</span>
+                      </>
                     ) : (
                       <>
                         {t('sendCode')}
-                        <ArrowRight className="ml-2 h-4 w-4" />
+                        <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
                       </>
                     )}
                   </Button>
