@@ -17,6 +17,12 @@ export default function PortalLoginPage() {
 
   return (
     <div className="flex min-h-screen bg-background">
+      <a
+        href="#login-form"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-lg focus:bg-md-primary focus:px-4 focus:py-2 focus:text-md-on-primary"
+      >
+        {t('skipToContent')}
+      </a>
       {/* Left panel — branding, M3 primary-container surface */}
       <div className="hidden lg:flex lg:w-1/2 bg-md-primary-container relative overflow-hidden">
         {/* Subtle dot pattern using on-primary-container at low opacity */}
@@ -74,7 +80,7 @@ export default function PortalLoginPage() {
       </div>
 
       {/* Right panel — form */}
-      <main className="flex w-full lg:w-1/2 items-center justify-center p-6 bg-background">
+      <main id="login-form" className="flex w-full lg:w-1/2 items-center justify-center p-6 bg-background">
         <div className="w-full max-w-[400px]">
           {/* Mobile logo */}
           <div
