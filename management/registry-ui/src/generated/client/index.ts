@@ -51,6 +51,7 @@ export type { handler_PortalReplyTicketRequest } from './models/handler_PortalRe
 export type { handler_PortalSubscription } from './models/handler_PortalSubscription';
 export type { handler_PortalTicketDetail } from './models/handler_PortalTicketDetail';
 export type { handler_PortalTicketListResponse } from './models/handler_PortalTicketListResponse';
+export type { handler_PortalUpdateMeRequest } from './models/handler_PortalUpdateMeRequest';
 export type { handler_PrometheusTarget } from './models/handler_PrometheusTarget';
 export type { handler_ResetCustomerPasswordRequest } from './models/handler_ResetCustomerPasswordRequest';
 export type { handler_ResetPasswordRequest } from './models/handler_ResetPasswordRequest';

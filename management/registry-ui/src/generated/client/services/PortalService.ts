@@ -14,6 +14,7 @@ import type { handler_PortalReplyTicketRequest } from '../models/handler_PortalR
 import type { handler_PortalSubscription } from '../models/handler_PortalSubscription';
 import type { handler_PortalTicketDetail } from '../models/handler_PortalTicketDetail';
 import type { handler_PortalTicketListResponse } from '../models/handler_PortalTicketListResponse';
+import type { handler_PortalUpdateMeRequest } from '../models/handler_PortalUpdateMeRequest';
 import type { handler_StatusResponse } from '../models/handler_StatusResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
@@ -29,6 +30,32 @@ export class PortalService {
             method: 'GET',
             url: '/portal/me',
             errors: {
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 更新当前客户资料
+     * 客户更新自己的昵称等资料字段
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static portalUpdateMe({
+        requestBody,
+    }: {
+        /**
+         * 更新字段
+         */
+        requestBody: handler_PortalUpdateMeRequest,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/portal/me',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
                 401: `Unauthorized`,
                 500: `Internal Server Error`,
             },

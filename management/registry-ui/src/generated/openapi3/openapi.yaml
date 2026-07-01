@@ -3235,6 +3235,46 @@ paths:
       summary: 获取当前客户信息
       tags:
         - portal
+    patch:
+      description: 客户更新自己的昵称等资料字段
+      operationId: PortalUpdateMe
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/handler.PortalUpdateMeRequest"
+        description: 更新字段
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - CustomerSessionCookie: []
+      summary: 更新当前客户资料
+      tags:
+        - portal
   /portal/orders:
     get:
       operationId: PortalOrders
@@ -4313,6 +4353,12 @@ components:
         total:
           example: 5
           type: integer
+      type: object
+    handler.PortalUpdateMeRequest:
+      properties:
+        nickname:
+          example: alice
+          type: string
       type: object
     handler.PrometheusTarget:
       properties:
