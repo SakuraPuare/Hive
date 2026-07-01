@@ -476,7 +476,7 @@ export default function CustomersPage() {
                 id="create-email"
                 type="email"
                 autoFocus
-                autoComplete="off"
+                autoComplete="email"
                 aria-required="true"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
