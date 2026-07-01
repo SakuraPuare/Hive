@@ -61,6 +61,7 @@ function UpstreamMultiSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const hintId = useId();
+  const listboxId = useId();
 
   function toggle(mac: string) {
     onChange(selected.includes(mac) ? selected.filter((m) => m !== mac) : [...selected, mac]);
@@ -82,6 +83,7 @@ function UpstreamMultiSelect({
           size="sm"
           role="combobox"
           aria-expanded={open}
+          aria-controls={listboxId}
           aria-haspopup="dialog"
           aria-describedby={hintId}
           disabled={disabled}
@@ -96,6 +98,7 @@ function UpstreamMultiSelect({
       </PopoverTrigger>
       <span id={hintId} className="sr-only">{hint}</span>
       <PopoverContent
+        id={listboxId}
         className="w-[260px] rounded-xl border border-border bg-popover p-0 elevation-2 animate-scale-in"
         align="start"
       >
