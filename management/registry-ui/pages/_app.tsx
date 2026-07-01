@@ -7,6 +7,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PortalLayout } from '@/components/portal/PortalLayout';
 import { LocaleProvider, useLocale, type Locale } from '@/lib/locale';
+import { ToastProvider } from '@/components/ui/toast';
 import '@/styles/globals.css';
 import zhMessages from '../messages/zh.json';
 import enMessages from '../messages/en.json';
@@ -66,7 +67,9 @@ export default function App({ Component, pageProps }: AppProps) {
       <IntlWrapper>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <div className={`${robotoFlex.variable} ${lexend.variable}`}>
-            {content}
+            <ToastProvider>
+              {content}
+            </ToastProvider>
           </div>
         </ThemeProvider>
       </IntlWrapper>

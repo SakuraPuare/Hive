@@ -474,3 +474,23 @@
   from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
 }
+
+/* =========================================================================
+   REDUCED-MOTION GUARD — global WCAG 2.3.3 (Animation from Interactions)
+   safeguard. When the user requests reduced motion at the OS level, all
+   entrance animations (fade-in / slide-up / scale-in), spinners, staggered
+   `animation-delay` reveals, transitions and smooth scrolling are collapsed
+   to a near-instant duration. Keyframes above are left intact: the final
+   visual state is preserved (opacity 1 / no transform) because the animation
+   still runs, just imperceptibly fast — so no page loses its end state.
+   ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
