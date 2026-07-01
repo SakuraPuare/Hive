@@ -945,7 +945,13 @@
     "setNicknameComingSoon": "设置昵称（即将支持）",
     "comingSoon": "即将支持",
     "firstPage": "首页",
-    "lastPage": "末页"
+    "lastPage": "末页",
+    "editNickname": "编辑昵称",
+    "editNicknameDesc": "设置一个用于展示的昵称。",
+    "nicknameRequired": "请输入昵称",
+    "nicknameTooLong": "昵称最多 {max} 个字符",
+    "nicknameUpdated": "昵称已更新",
+    "nicknameUpdateFailed": "昵称更新失败"
   },
   "announcements": {
     "title": "公告管理",

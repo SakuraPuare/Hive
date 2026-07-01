@@ -1,4 +1,4 @@
-import React, { createContext, use, useState, useEffect, useMemo } from 'react';
+import React, { createContext, use, useState, useEffect, useMemo, useCallback } from 'react';
 import { PortalAuthService, PortalService } from '@/src/generated/client';
 import type { handler_PortalMeResponse } from '@/src/generated/client';
 import type { model_CustomerSubscription } from '@/src/generated/client/models/model_CustomerSubscription';
@@ -12,6 +12,8 @@ type CustomerContextValue = {
   customer: Customer | null;
   subscriptions: CustomerSubscription[];
   loading: boolean;
+  /** Re-fetch /portal/me (e.g. after a profile update). Resolves when done. */
+  refresh: () => Promise<void>;
 };
 
 const CustomerContext = createContext<CustomerContextValue | undefined>(undefined);
@@ -22,19 +24,23 @@ export function CustomerProvider({ children }: { children: React.ReactNode }) {
   const [subscriptions, setSubscriptions] = useState<CustomerSubscription[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    PortalService.portalMe()
-      .then((data) => {
-        setCustomer(data ?? null);
-        setSubscriptions(data.subscriptions ?? []);
-      })
-      .catch(() => setCustomer(null))
-      .finally(() => setLoading(false));
+  const refresh = useCallback(async () => {
+    try {
+      const data = await PortalService.portalMe();
+      setCustomer(data ?? null);
+      setSubscriptions(data.subscriptions ?? []);
+    } catch {
+      setCustomer(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => { refresh(); }, [refresh]);
+
   const value = useMemo(
-    () => ({ customer, subscriptions, loading }),
-    [customer, subscriptions, loading]
+    () => ({ customer, subscriptions, loading, refresh }),
+    [customer, subscriptions, loading, refresh]
   );
 
   return (
@@ -57,19 +63,25 @@ export function useCustomer(): CustomerContextValue {
   const [loading, setLoading] = useState(true);
   const skip = ctx !== undefined;
 
+  const refresh = useCallback(async () => {
+    try {
+      const data = await PortalService.portalMe();
+      setCustomer(data ?? null);
+      setSubscriptions(data.subscriptions ?? []);
+    } catch {
+      setCustomer(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (skip) return;
-    PortalService.portalMe()
-      .then((data) => {
-        setCustomer(data ?? null);
-        setSubscriptions(data.subscriptions ?? []);
-      })
-      .catch(() => setCustomer(null))
-      .finally(() => setLoading(false));
-  }, [skip]);
+    refresh();
+  }, [skip, refresh]);
 
   if (ctx !== undefined) return ctx;
-  return { customer, subscriptions, loading };
+  return { customer, subscriptions, loading, refresh };
 }
 
 export async function portalLogin(email: string, password: string) {

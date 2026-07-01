@@ -945,7 +945,13 @@
     "setNicknameComingSoon": "Set nickname (coming soon)",
     "comingSoon": "Coming soon",
     "firstPage": "First page",
-    "lastPage": "Last page"
+    "lastPage": "Last page",
+    "editNickname": "Edit nickname",
+    "editNicknameDesc": "Set a display nickname for your account.",
+    "nicknameRequired": "Nickname is required",
+    "nicknameTooLong": "Nickname must be at most {max} characters",
+    "nicknameUpdated": "Nickname updated",
+    "nicknameUpdateFailed": "Failed to update nickname"
   },
   "announcements": {
     "title": "Announcements",

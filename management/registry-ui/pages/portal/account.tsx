@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
-import { PortalAuthService } from '@/src/generated/client';
+import { PortalAuthService, PortalService } from '@/src/generated/client';
 import { useCustomer } from '@/lib/portal-auth';
 import { useLocale } from '@/lib/locale';
 import { getErrorMessage } from '@/lib/i18n';
@@ -17,16 +17,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { useToast } from '@/components/ui/toast';
-import { User, Mail, Calendar, Shield, LifeBuoy, Plus, KeyRound } from 'lucide-react';
+import { User, Mail, Calendar, Shield, LifeBuoy, Plus, KeyRound, Pencil } from 'lucide-react';
 
 const MIN_PASSWORD_LEN = 8;
+const MAX_NICKNAME_LEN = 40;
 const RESEND_COOLDOWN = 60;
 
 /** First 1–2 full code points (CJK keeps two chars, emoji not split across a surrogate pair). */
@@ -214,9 +209,10 @@ export default function PortalAccountPage() {
   const tCommon = useTranslations('common');
   const router = useRouter();
   const { locale } = useLocale();
-  const { customer, loading } = useCustomer();
+  const { customer, loading, refresh } = useCustomer();
   const headingRef = React.useRef<HTMLHeadingElement>(null);
   const [pwOpen, setPwOpen] = React.useState(false);
+  const [nicknameOpen, setNicknameOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!loading && !customer) {
@@ -263,7 +259,7 @@ export default function PortalAccountPage() {
   const email = customer.email ?? '';
 
   return (
-    <TooltipProvider>
+    <>
       <main className="space-y-5" aria-labelledby="account-title">
         {/* ── Page header ── */}
         <div className="animate-slide-up">
@@ -295,11 +291,22 @@ export default function PortalAccountPage() {
             </div>
             <div className="min-w-0 space-y-0.5">
               {customer.nickname ? (
-                <p className="font-display text-xl font-600 text-foreground truncate">
-                  {customer.nickname}
-                </p>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <p className="font-display text-xl font-600 text-foreground truncate">
+                    {customer.nickname}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setNicknameOpen(true)}
+                    aria-label={t('editNickname')}
+                  >
+                    <Pencil aria-hidden="true" className="h-4 w-4" />
+                  </Button>
+                </div>
               ) : (
-                <SetNicknameCta t={t} />
+                <SetNicknameCta t={t} onClick={() => setNicknameOpen(true)} />
               )}
               <p className="text-sm text-muted-foreground truncate">{customer.email}</p>
             </div>
@@ -341,7 +348,22 @@ export default function PortalAccountPage() {
                 {t('accountNickname')}
               </dt>
               <dd className="text-sm text-foreground">
-                {customer.nickname || <SetNicknameCta t={t} />}
+                {customer.nickname ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="truncate">{customer.nickname}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setNicknameOpen(true)}
+                      aria-label={t('editNickname')}
+                    >
+                      <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+                    </Button>
+                  </span>
+                ) : (
+                  <SetNicknameCta t={t} onClick={() => setNicknameOpen(true)} />
+                )}
               </dd>
             </div>
 
@@ -444,37 +466,121 @@ export default function PortalAccountPage() {
         </div>
 
         <ChangePasswordDialog key={pwOpen ? 'open' : 'closed'} open={pwOpen} onOpenChange={setPwOpen} email={email} />
+        <EditNicknameDialog
+          key={nicknameOpen ? 'nick-open' : 'nick-closed'}
+          open={nicknameOpen}
+          onOpenChange={setNicknameOpen}
+          currentNickname={customer.nickname ?? ''}
+          onSaved={refresh}
+        />
       </main>
-    </TooltipProvider>
+    </>
+  );
+}
+
+/** "Set nickname" CTA — opens the edit dialog for customers who haven't set one. */
+function SetNicknameCta({ t, onClick }: { t: ReturnType<typeof useTranslations>; onClick: () => void }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={onClick}
+      className="-ml-2 text-md-primary"
+    >
+      <Plus aria-hidden="true" className="h-4 w-4" />
+      {t('setNickname')}
+    </Button>
   );
 }
 
 /**
- * "Set nickname" CTA. There is no authenticated profile-update endpoint yet,
- * so this surfaces the gap as a disabled affordance with an explanatory
- * tooltip rather than a dead button or a fabricated API call.
+ * Edit-nickname dialog. Wired to PATCH /portal/me (PortalService.portalUpdateMe),
+ * refreshing the shared customer context on success.
  */
-function SetNicknameCta({ t }: { t: ReturnType<typeof useTranslations> }) {
+function EditNicknameDialog({
+  open,
+  onOpenChange,
+  currentNickname,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  currentNickname: string;
+  onSaved: () => Promise<void> | void;
+}) {
+  const t = useTranslations('portal');
+  const tCommon = useTranslations('common');
+  const toast = useToast();
+  const [nickname, setNickname] = React.useState(currentNickname);
+  const [error, setError] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = nickname.trim();
+    if (!trimmed) {
+      setError(t('nicknameRequired'));
+      return;
+    }
+    if (trimmed.length > MAX_NICKNAME_LEN) {
+      setError(t('nicknameTooLong', { max: MAX_NICKNAME_LEN }));
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await PortalService.portalUpdateMe({ requestBody: { nickname: trimmed } });
+      await onSaved();
+      toast.success(t('nicknameUpdated'));
+      onOpenChange(false);
+    } catch (err) {
+      setError(getErrorMessage(err, t('nicknameUpdateFailed')));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        {/* Disabled buttons swallow pointer events, so wrap in a focusable span for tooltip + AT. */}
-        <span tabIndex={0} className="inline-flex rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled
-            tabIndex={-1}
-            aria-label={t('setNicknameComingSoon')}
-            className="-ml-2 text-md-primary"
-          >
-            <Plus aria-hidden="true" className="h-4 w-4" />
-            {t('setNickname')}
-          </Button>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{t('comingSoon')}</TooltipContent>
-    </Tooltip>
+    <Dialog open={open} onOpenChange={(next) => !saving && onOpenChange(next)}>
+      <DialogContent size="sm" pending={saving} closeLabel={tCommon('cancel')}>
+        <DialogHeader>
+          <DialogTitle>{currentNickname ? t('editNickname') : t('setNickname')}</DialogTitle>
+          <DialogDescription>{t('editNicknameDesc')}</DialogDescription>
+        </DialogHeader>
+
+        {/* react-doctor-disable-next-line react-doctor/no-prevent-default -- static-export SPA against a Go API */}
+        <form className="space-y-4" noValidate onSubmit={handleSubmit} aria-busy={saving}>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-nickname" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">
+              {t('accountNickname')}
+            </Label>
+            <Input
+              id="edit-nickname"
+              type="text"
+              value={nickname}
+              autoFocus
+              maxLength={MAX_NICKNAME_LEN}
+              autoComplete="nickname"
+              aria-required="true"
+              error={error || undefined}
+              onChange={(e) => {
+                setNickname(e.target.value);
+                if (error) setError('');
+              }}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+              {tCommon('cancel')}
+            </Button>
+            <Button type="submit" loading={saving} disabled={saving}>
+              {tCommon('save')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
