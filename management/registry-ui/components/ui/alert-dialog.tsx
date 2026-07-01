@@ -54,9 +54,12 @@ function AlertDialogOverlay({
 
 function AlertDialogContent({
   className,
+  children,
   pending = false,
+  description,
   size = "sm",
   onEscapeKeyDown,
+  "aria-describedby": ariaDescribedBy,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
   /**
@@ -66,15 +69,29 @@ function AlertDialogContent({
    * needs guarding here.
    */
   pending?: boolean
+  /**
+   * Optional description rendered as an AlertDialogDescription and
+   * automatically wired via aria-describedby. Convenience for callers that do
+   * not render their own AlertDialogDescription. When omitted, behavior is
+   * unchanged and any explicit aria-describedby / hand-written
+   * AlertDialogDescription keeps working.
+   */
+  description?: React.ReactNode
   /** Max-width scale. Defaults to "sm" (confirmation dialogs are compact). */
   size?: keyof typeof alertDialogSizes
 }) {
+  const generatedDescId = React.useId()
+  const describedBy = description ? generatedDescId : ariaDescribedBy
+
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
         data-pending={pending ? "" : undefined}
+        {...(describedBy !== undefined
+          ? { "aria-describedby": describedBy }
+          : {})}
         onEscapeKeyDown={(event) => {
           if (pending) event.preventDefault()
           onEscapeKeyDown?.(event)
@@ -85,7 +102,14 @@ function AlertDialogContent({
           className
         )}
         {...props}
-      />
+      >
+        {description ? (
+          <AlertDialogDescription id={generatedDescId}>
+            {description}
+          </AlertDialogDescription>
+        ) : null}
+        {children}
+      </AlertDialogPrimitive.Content>
     </AlertDialogPortal>
   )
 }
