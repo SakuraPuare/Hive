@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PortalRegisterPage from '@/pages/portal/register';
+import { mockRouter } from '@/test/setup';
 
 const mockPortalRegister = vi.fn();
 
@@ -12,7 +13,7 @@ vi.mock('@/lib/portal-auth', () => ({
 describe('PortalRegisterPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    Object.defineProperty(window, 'location', { writable: true, value: { href: '' } });
+    mockRouter.replace.mockClear();
   });
 
   it('renders register form with email, nickname, and password fields', () => {
@@ -41,14 +42,14 @@ describe('PortalRegisterPage', () => {
 
     await user.type(screen.getByLabelText('portal.email'), 'new@example.com');
     await user.type(screen.getByLabelText('portal.nickname'), 'NewUser');
-    await user.type(screen.getByLabelText('portal.password'), 'pass123');
+    await user.type(screen.getByLabelText('portal.password'), 'password123');
     await user.click(screen.getByRole('button', { name: 'portal.register' }));
 
     await waitFor(() => {
       // 4th arg is the optional referral code, empty when not supplied via ?ref=
-      expect(mockPortalRegister).toHaveBeenCalledWith('new@example.com', 'pass123', 'NewUser', '');
+      expect(mockPortalRegister).toHaveBeenCalledWith('new@example.com', 'password123', 'NewUser', '');
     });
-    expect(window.location.href).toBe('/portal/dashboard');
+    expect(mockRouter.replace).toHaveBeenCalledWith('/portal/dashboard');
   });
 
   it('shows error message on registration failure', async () => {
@@ -59,7 +60,7 @@ describe('PortalRegisterPage', () => {
 
     await user.type(screen.getByLabelText('portal.email'), 'dup@example.com');
     await user.type(screen.getByLabelText('portal.nickname'), 'Dup');
-    await user.type(screen.getByLabelText('portal.password'), 'pass');
+    await user.type(screen.getByLabelText('portal.password'), 'password123');
     await user.click(screen.getByRole('button', { name: 'portal.register' }));
 
     await waitFor(() => {
@@ -74,8 +75,8 @@ describe('PortalRegisterPage', () => {
     render(<PortalRegisterPage />);
 
     await user.type(screen.getByLabelText('portal.email'), 'a@b.com');
-    await user.type(screen.getByLabelText('portal.nickname'), 'n');
-    await user.type(screen.getByLabelText('portal.password'), 'x');
+    await user.type(screen.getByLabelText('portal.nickname'), 'nick');
+    await user.type(screen.getByLabelText('portal.password'), 'password123');
     await user.click(screen.getByRole('button', { name: 'portal.register' }));
 
     await waitFor(() => {
@@ -91,12 +92,14 @@ describe('PortalRegisterPage', () => {
     render(<PortalRegisterPage />);
 
     await user.type(screen.getByLabelText('portal.email'), 'a@b.com');
-    await user.type(screen.getByLabelText('portal.nickname'), 'n');
-    await user.type(screen.getByLabelText('portal.password'), 'x');
+    await user.type(screen.getByLabelText('portal.nickname'), 'nick');
+    await user.type(screen.getByLabelText('portal.password'), 'password123');
     await user.click(screen.getByRole('button', { name: 'portal.register' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '' })).toBeDisabled();
+      // While loading the button keeps its label visible (now the
+      // "registering" i18n string) and is implicitly disabled.
+      expect(screen.getByRole('button', { name: 'portal.registering' })).toBeDisabled();
     });
 
     await act(async () => { resolveRegister!({ id: 1 }); });

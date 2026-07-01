@@ -85,7 +85,8 @@ describe('PortalDashboardPage', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [expiredSub], loading: false });
     await renderAndSettle(<PortalDashboardPage />);
 
-    expect(screen.getByText('portal.expired')).toBeInTheDocument();
+    // Expired now appears both in the status badge and as the days-remaining stat label.
+    expect(screen.getAllByText('portal.expired').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders traffic progress bar', async () => {
@@ -123,7 +124,11 @@ describe('PortalDashboardPage', () => {
 
     fireEvent.click(screen.getByText('portal.copyClash'));
     expect(writeText).toHaveBeenCalledWith('http://localhost/c/abc123');
-    expect(screen.getByText('portal.copied')).toBeInTheDocument();
+    // Copy now resolves asynchronously before the button flips to the "copied"
+    // state; "copied" appears both in the button and the sr-only live region.
+    await waitFor(() => {
+      expect(screen.getAllByText('portal.copied').length).toBeGreaterThanOrEqual(1);
+    });
   });
 
   it('copies VLESS link to clipboard', async () => {

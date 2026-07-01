@@ -88,7 +88,10 @@ describe('AnnouncementsPage', () => {
       expect(screen.getByText('announcements.noData')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('announcements.create'));
+    // The empty state now renders its own "create" CTA in addition to the
+    // toolbar button, so there are two matching elements. Click the first
+    // (toolbar) create button to open the dialog.
+    await user.click(screen.getAllByText('announcements.create')[0]);
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('announcements.titlePlaceholder')).toBeInTheDocument();

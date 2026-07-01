@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import PortalPlansPage from '@/pages/portal/plans';
 import { mockRouter } from '@/test/setup';
+// Toast is globally mocked in test/setup.tsx as a stable singleton; alias the
+// import to a non-hook name so we can grab the spy object at module scope
+// (replaces the old window.alert assertion path).
+import { useToast as getMockToast } from '@/components/ui/toast';
+const mockToast = getMockToast();
 
 const mockPortalPlans = vi.fn();
 const mockPortalCreateOrder = vi.fn();
@@ -125,7 +130,7 @@ describe('PortalPlansPage', () => {
     });
   });
 
-  it('calls buy API and redirects to orders on success', async () => {
+  it('opens confirm dialog, calls buy API and redirects to orders on success', async () => {
     mockPortalPlans.mockResolvedValueOnce(mockPlans);
     mockPortalCreateOrder.mockResolvedValueOnce({ order_no: 'ORD-001' });
 
@@ -135,16 +140,25 @@ describe('PortalPlansPage', () => {
       expect(screen.getByText('Basic')).toBeInTheDocument();
     });
 
+    // Buy is now a two-step flow: clicking "buy" opens a confirmation
+    // AlertDialog; the API is only called after confirming.
     const buyButtons = screen.getAllByText('portal.buy');
     fireEvent.click(buyButtons[0]);
+
+    const confirmButton = await screen.findByText('portal.confirmPurchaseAction');
+    expect(mockPortalCreateOrder).not.toHaveBeenCalled();
+
+    fireEvent.click(confirmButton);
 
     await waitFor(() => {
       expect(mockPortalCreateOrder).toHaveBeenCalledWith({ requestBody: { plan_id: 1 } });
     });
+    // Success now surfaces via toast + redirect (no alert).
+    expect(mockToast.success).toHaveBeenCalledWith('portal.purchaseSuccess');
     expect(mockRouter.push).toHaveBeenCalledWith('/portal/orders');
   });
 
-  it('shows alert on 401 when buying', async () => {
+  it('shows error dialog on 401 when buying', async () => {
     mockPortalPlans.mockResolvedValueOnce(mockPlans);
     mockPortalCreateOrder.mockRejectedValueOnce({ error: 'Unauthorized' });
 
@@ -157,12 +171,17 @@ describe('PortalPlansPage', () => {
     const buyButtons = screen.getAllByText('portal.buy');
     fireEvent.click(buyButtons[0]);
 
+    const confirmButton = await screen.findByText('portal.confirmPurchaseAction');
+    fireEvent.click(confirmButton);
+
+    // Failure now surfaces via an error AlertDialog (not window.alert).
     await waitFor(() => {
-      expect(global.alert).toHaveBeenCalledWith('Unauthorized');
+      expect(screen.getByText('Unauthorized')).toBeInTheDocument();
     });
+    expect(global.alert).not.toHaveBeenCalled();
   });
 
-  it('shows alert on buy failure', async () => {
+  it('shows error dialog on buy failure', async () => {
     mockPortalPlans.mockResolvedValueOnce(mockPlans);
     mockPortalCreateOrder.mockRejectedValueOnce({ error: 'Server error' });
 
@@ -175,8 +194,12 @@ describe('PortalPlansPage', () => {
     const buyButtons = screen.getAllByText('portal.buy');
     fireEvent.click(buyButtons[0]);
 
+    const confirmButton = await screen.findByText('portal.confirmPurchaseAction');
+    fireEvent.click(confirmButton);
+
     await waitFor(() => {
-      expect(global.alert).toHaveBeenCalledWith('Server error');
+      expect(screen.getByText('Server error')).toBeInTheDocument();
     });
+    expect(global.alert).not.toHaveBeenCalled();
   });
 });

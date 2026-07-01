@@ -25,6 +25,10 @@ vi.mock('@/lib/openapi-session', () => ({
   portalSessionApi: (p: any) => p,
 }));
 
+vi.mock('@/components/ui/toast', () => ({
+  useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+}));
+
 const mockTickets = [
   { id: 1, subject: 'Cannot connect', status: 'open', created_at: '2025-06-01T10:00:00Z' },
   { id: 2, subject: 'Billing issue', status: 'replied', created_at: '2025-06-02T10:00:00Z' },

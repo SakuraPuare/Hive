@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { PortalLayout } from '@/components/portal/PortalLayout';
 import { mockRouter } from '@/test/setup';
 
@@ -70,37 +71,55 @@ describe('PortalLayout', () => {
     expect(screen.queryByText('TestUser')).not.toBeInTheDocument();
   });
 
-  it('opens user dropdown and calls logout', async () => {
+  it('renders the desktop account menu trigger', () => {
     render(<PortalLayout><div /></PortalLayout>);
 
-    // Click user name to open dropdown
-    fireEvent.click(screen.getByText('TestUser'));
+    // Radix dropdown trigger is labelled and present; its menu contents are
+    // portalled on open (exercised via the mobile logout path below, since
+    // jsdom cannot render Radix `asChild` menu items).
+    expect(screen.getByRole('button', { name: 'portal.userMenu' })).toBeInTheDocument();
+  });
 
-    // Logout button should appear
-    const logoutButtons = screen.getAllByText('portal.logout');
-    // Click the one in the dropdown (desktop)
-    fireEvent.click(logoutButtons[0]);
+  it('confirms before logging out and redirects on success', async () => {
+    const user = userEvent.setup();
+    render(<PortalLayout><div /></PortalLayout>);
+
+    // Open the mobile menu (plain markup) and click its logout button
+    await user.click(screen.getByLabelText('portal.openMenu'));
+    const mobileLogout = screen.getAllByText('portal.logout').find(
+      (el) => el.closest('button') !== null
+    );
+    await user.click(mobileLogout!.closest('button')!);
+
+    // Logout is gated behind a confirmation alertdialog — not fired yet
+    expect(mockPortalLogout).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('alertdialog');
+
+    // Confirm
+    const confirmBtn = within(dialog).getByRole('button', { name: 'portal.logout' });
+    await user.click(confirmBtn);
 
     await waitFor(() => {
-      expect(mockPortalLogout).toHaveBeenCalled();
+      expect(mockPortalLogout).toHaveBeenCalledTimes(1);
     });
-    expect(window.location.href).toBe('/portal/login');
+    expect(mockRouter.replace).toHaveBeenCalledWith('/portal/login');
   });
 
   it('toggles mobile menu', () => {
     render(<PortalLayout><div /></PortalLayout>);
 
-    const toggleBtn = screen.getByLabelText('Toggle menu');
+    const toggleBtn = screen.getByLabelText('portal.openMenu');
     fireEvent.click(toggleBtn);
 
-    // Mobile nav should now be visible — check for mobile-specific logout
-    // The mobile menu renders nav items again
+    // Mobile nav should now be visible — desktop + mobile nav items
     const allDashboardLinks = screen.getAllByText('portal.navDashboard');
-    // Desktop + mobile = at least 2
     expect(allDashboardLinks.length).toBeGreaterThanOrEqual(2);
 
+    // Hamburger now reflects expanded state
+    expect(screen.getByLabelText('portal.closeMenu')).toBeInTheDocument();
+
     // Close mobile menu
-    fireEvent.click(toggleBtn);
+    fireEvent.click(screen.getByLabelText('portal.closeMenu'));
   });
 
   it('renders theme toggle', () => {

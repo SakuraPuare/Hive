@@ -10,9 +10,14 @@ vi.mock('@/lib/portal-auth', () => ({
 }));
 
 describe('PortalLoginPage', () => {
+  const mockReplace = vi.fn();
+
   beforeEach(() => {
     vi.clearAllMocks();
-    Object.defineProperty(window, 'location', { writable: true, value: { href: '' } });
+    Object.defineProperty(window, 'location', {
+      writable: true,
+      value: { href: '', replace: mockReplace },
+    });
   });
 
   it('renders login form with email and password fields', () => {
@@ -45,7 +50,7 @@ describe('PortalLoginPage', () => {
     await waitFor(() => {
       expect(mockPortalLogin).toHaveBeenCalledWith('test@example.com', 'password123');
     });
-    expect(window.location.href).toBe('/portal/dashboard');
+    expect(window.location.replace).toHaveBeenCalledWith('/portal/dashboard');
   });
 
   it('shows error message on login failure', async () => {
@@ -90,7 +95,7 @@ describe('PortalLoginPage', () => {
     await user.click(screen.getByRole('button', { name: 'portal.login' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'portal.loggingIn' })).toBeDisabled();
     });
 
     await act(async () => { resolveLogin!({ ok: true }); });

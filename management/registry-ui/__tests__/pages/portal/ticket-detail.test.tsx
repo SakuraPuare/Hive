@@ -207,7 +207,7 @@ describe('PortalTicketDetailPage', () => {
     });
   });
 
-  it('has back button that navigates to tickets list', async () => {
+  it('has back button that links to tickets list', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
     mockPortalGetTicket.mockResolvedValueOnce(mockTicketDetail);
 
@@ -217,8 +217,9 @@ describe('PortalTicketDetailPage', () => {
       expect(screen.getByText('common.back')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('common.back'));
-    expect(mockRouter.push).toHaveBeenCalledWith('/portal/tickets');
+    // Back is now a next/link rendering an <a href> rather than a router.push handler
+    const backLink = screen.getByText('common.back').closest('a');
+    expect(backLink).toHaveAttribute('href', '/portal/tickets');
   });
 
   it('renders author names in replies', async () => {

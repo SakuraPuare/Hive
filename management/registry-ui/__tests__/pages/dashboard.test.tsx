@@ -91,6 +91,8 @@ describe('Dashboard', () => {
 
     // All stats should be 0
     expect(screen.getAllByText('0').length).toBe(4);
-    expect(screen.getByText('dashboard.noNodesThisWeek')).toBeInTheDocument();
+    // With zero nodes the empty state distinguishes "no nodes yet" (with a
+    // view-nodes CTA) from "no recent nodes this week".
+    expect(screen.getByText('dashboard.noNodesYet')).toBeInTheDocument();
   });
 });
