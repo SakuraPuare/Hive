@@ -4,8 +4,9 @@ import {
   SubscriptionService,
 } from '@/src/generated/client';
 import type { model_Node, model_SubscriptionGroup } from '@/src/generated/client';
-import { apiPath, sessionApi } from '@/lib/openapi-session';
+import { apiPath, apiUrl, sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
+import { useClipboard } from '@/lib/use-clipboard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -28,10 +29,14 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/components/ui/toast';
-import { Download } from 'lucide-react';
+import { BookOpen, Download, QrCode } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useTranslations } from 'next-intl';
 import { useCurrentUser } from '@/lib/auth';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 
 export default function Subscriptions() {
   const t = useTranslations('subscriptions');
@@ -92,20 +97,28 @@ export default function Subscriptions() {
     } finally {
       setGroupsLoading(false);
     }
+    // tCommon intentionally omitted: useTranslations returns a new identity each
+    // render, so including it would make loadGroups unstable and re-fire the
+    // effect that calls it, causing an infinite update loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (user?.can('subscription:read')) loadGroups();
   }, [user, loadGroups]);
 
+  const { copy: copyToClipboard } = useClipboard();
   const [copiedId, setCopiedId] = useState<number | null>(null);
-  function copyLink(group: model_SubscriptionGroup) {
-    const url = `${apiPath('/s/' + group.token!)}`;
-    navigator.clipboard.writeText(url).then(() => {
+  async function copyLink(group: model_SubscriptionGroup) {
+    const url = apiUrl('/s/' + group.token!);
+    const ok = await copyToClipboard(url);
+    if (ok) {
       setCopiedId(group.id ?? null);
       setTimeout(() => setCopiedId(null), 1500);
       toast.success(t('linkCopied'));
-    });
+    } else {
+      toast.error(t('linkCopyFailed'));
+    }
   }
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -173,17 +186,29 @@ export default function Subscriptions() {
   const [nodeSearch, setNodeSearch] = useState('');
   const [savingNodes, setSavingNodes] = useState(false);
   const [saveNodesError, setSaveNodesError] = useState('');
+  const [nodesLoading, setNodesLoading] = useState(false);
+  const [nodesLoadError, setNodesLoadError] = useState('');
 
   async function openEditNodes(group: model_SubscriptionGroup) {
     setEditGroup(group);
     setSaveNodesError('');
     setNodeSearch('');
-    const [nodes, macs] = await Promise.all([
-      sessionApi(AdminService.nodesList({})),
-      sessionApi(AdminService.adminGetSubscriptionGroupNodes({ id: group.id! })),
-    ]);
-    setAllNodes(nodes);
-    setSelectedMacs(new Set(macs));
+    setAllNodes([]);
+    setSelectedMacs(new Set());
+    setNodesLoading(true);
+    setNodesLoadError('');
+    try {
+      const [nodes, macs] = await Promise.all([
+        sessionApi(AdminService.nodesList({})),
+        sessionApi(AdminService.adminGetSubscriptionGroupNodes({ id: group.id! })),
+      ]);
+      setAllNodes(nodes);
+      setSelectedMacs(new Set(macs));
+    } catch (e: unknown) {
+      setNodesLoadError(getErrorMessage(e, t('groupNodesLoadFailed')));
+    } finally {
+      setNodesLoading(false);
+    }
   }
 
   function toggleMac(mac: string) {
@@ -227,14 +252,12 @@ export default function Subscriptions() {
   });
 
   return (
-    <div className="space-y-8">
-      {/* Page header */}
-      <div className="animate-slide-up">
-        <h1 className="font-display text-3xl font-600 tracking-tight text-foreground">
-          {tNav('subscriptions')}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t('vlessDesc')}</p>
-      </div>
+    <PageContainer width="wide">
+      <PageHeader
+        icon={<BookOpen />}
+        title={tNav('subscriptions')}
+        description={t('vlessDesc')}
+      />
 
       {/* Subscription format cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -449,8 +472,8 @@ export default function Subscriptions() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <code className="max-w-[200px] truncate rounded-lg bg-md-surface-container-high px-2 py-1 text-xs text-foreground font-mono">
-                            {apiPath('/s/' + g.token)}
+                          <code className="max-w-[200px] truncate rounded-lg bg-md-surface-container-high px-2 py-1 text-xs text-foreground font-mono" title={apiUrl('/s/' + g.token)}>
+                            {apiUrl('/s/' + g.token)}
                           </code>
                           <Button
                             variant="ghost"
@@ -464,6 +487,26 @@ export default function Subscriptions() {
                           >
                             {copiedId === g.id ? t('copied') : t('copyLink')}
                           </Button>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={t('showQr')}
+                                className="state-layer size-6 p-0 rounded-lg text-muted-foreground focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
+                              >
+                                <QrCode className="size-3.5" aria-hidden="true" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-4" align="end">
+                              <div className="flex flex-col items-center gap-2">
+                                <div className="rounded-lg bg-white p-3">
+                                  <QRCodeSVG value={apiUrl('/s/' + g.token)} size={160} level="M" />
+                                </div>
+                                <p className="max-w-[180px] text-center text-xs text-muted-foreground">{t('qrHint')}</p>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
                         </div>
                       </td>
                       {canWrite && (
@@ -574,10 +617,41 @@ export default function Subscriptions() {
               onChange={(e) => setNodeSearch(e.target.value)}
               placeholder={t('searchNodes')}
               autoFocus
+              disabled={nodesLoading}
               className="rounded-lg border bg-md-surface-container-high focus-visible:ring-2 focus-visible:ring-md-primary"
             />
             <div className="max-h-72 overflow-y-auto space-y-0.5 rounded-xl border bg-md-surface-container p-2">
-              {filteredNodes.length === 0 ? (
+              {nodesLoading ? (
+                <div role="status" aria-busy="true" className="flex items-center justify-center py-8">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="relative h-8 w-8">
+                      <svg
+                        aria-hidden="true"
+                        className="h-8 w-8 animate-spin"
+                        viewBox="0 0 40 40"
+                        fill="none"
+                        style={{ animationDuration: '1.2s', animationTimingFunction: 'var(--ease-standard)' }}
+                      >
+                        <circle cx="20" cy="20" r="16" stroke="hsl(var(--md-outline-variant))" strokeWidth="4" />
+                        <circle cx="20" cy="20" r="16" stroke="hsl(var(--md-primary))" strokeWidth="4" strokeLinecap="round" strokeDasharray="60 40" strokeDashoffset="0" />
+                      </svg>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
+                  </div>
+                </div>
+              ) : nodesLoadError ? (
+                <div className="flex flex-col items-center gap-3 px-2 py-6">
+                  <p className="text-sm text-md-on-error-container text-center">{nodesLoadError}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="state-layer h-7 rounded-lg px-3 text-xs font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
+                    onClick={() => editGroup && openEditNodes(editGroup)}
+                  >
+                    {tCommon('retry')}
+                  </Button>
+                </div>
+              ) : filteredNodes.length === 0 ? (
                 <p className="text-sm text-muted-foreground px-2 py-3 text-center">{tNodes('noMatchingNodes')}</p>
               ) : (
                 filteredNodes.map((n, i) => {
@@ -626,6 +700,7 @@ export default function Subscriptions() {
             </Button>
             <Button
               loading={savingNodes}
+              disabled={nodesLoading || !!nodesLoadError}
               className="state-layer ripple rounded-lg px-4 text-sm font-500 bg-md-primary text-md-on-primary elevation-1 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
               onClick={handleSaveNodes}
             >
@@ -676,6 +751,6 @@ export default function Subscriptions() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

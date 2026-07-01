@@ -26,18 +26,29 @@ vi.mock('@/src/generated/client', () => ({
 vi.mock('@/lib/openapi-session', () => ({
   sessionApi: (p: Promise<any>) => p,
   apiPath: (path: string) => `/api${path.startsWith('/') ? path : `/${path}`}`,
+  apiUrl: (path: string) => `https://test.local/api${path.startsWith('/') ? path : `/${path}`}`,
   API_PREFIX: '/api',
 }));
 
+// qrcode.react eagerly touches browser APIs unavailable in jsdom; stub it so
+// the subscriptions page renders in tests (the QR is exercised in the browser).
+vi.mock('qrcode.react', () => ({
+  QRCodeSVG: () => null,
+}));
+
+// Hoist to a stable reference so useEffect([user, loadGroups]) in the page
+// doesn't see a new object each render and loop infinitely.
+const mockUser = {
+  id: 1,
+  username: 'admin',
+  roles: ['superadmin'],
+  permissions: ['subscription:write', 'subscription:read'],
+  can: (perm: string) => ['subscription:write', 'subscription:read'].includes(perm),
+};
+
 vi.mock('@/lib/auth', () => ({
   useCurrentUser: () => ({
-    user: {
-      id: 1,
-      username: 'admin',
-      roles: ['superadmin'],
-      permissions: ['subscription:write', 'subscription:read'],
-      can: (perm: string) => ['subscription:write', 'subscription:read'].includes(perm),
-    },
+    user: mockUser,
     loading: false,
   }),
 }));
