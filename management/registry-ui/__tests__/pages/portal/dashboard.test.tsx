@@ -159,9 +159,10 @@ describe('PortalDashboardPage', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [mockSub, sub2], loading: false });
     await renderAndSettle(<PortalDashboardPage />);
 
-    // Both cards show their plan_id fallback titles.
-    expect(screen.getByText(/42/)).toBeInTheDocument();
-    expect(screen.getByText(/7/)).toBeInTheDocument();
+    // Both cards show their plan_id fallback titles. Match the `#<id>` format
+    // exactly — a bare /7/ also matches the 2027 expiry year and other numerics.
+    expect(screen.getByText(/#42/)).toBeInTheDocument();
+    expect(screen.getByText(/#7/)).toBeInTheDocument();
   });
 
   it('fetches announcements on mount', async () => {
