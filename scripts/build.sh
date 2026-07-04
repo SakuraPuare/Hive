@@ -343,6 +343,11 @@ cd "${ARMBIAN_DIR}"
 #   COMPRESS_MAX_THREADS — 解除默认 16 线程上限，按本机核数吃满（-6 每线程 ~94MB，
 #       64 线程约 6GB，在 xz 10GiB memlimit 内安全）。
 COMPRESS_THREADS="${COMPRESS_THREADS:-$(nproc)}"
+# KERNEL_GIT=full：钉死完整 git tree，不走 Armbian 的交互式自动判定。默认无 bare
+# tree 时框架会弹 60 秒倒计时问 full/shallow，非交互构建（CI / make）会卡住或误选。
+# full（≈2.7GiB）跨 legacy/current/edge 三分支共用一棵树，切版本 / 打补丁只做增量拉
+# 取；shallow 省一次性带宽但换版本常需重拉，且 bisect / 部分 patch 受限。本仓三机型
+# 反复构建，full 长期更省，故显式钉死消除倒计时。
 time ./compile.sh build \
     BOARD="${BOARD}" \
     BRANCH="${BRANCH}" \
@@ -355,6 +360,7 @@ time ./compile.sh build \
     IMAGE_XZ_COMPRESSION_RATIO=6 \
     COMPRESS_MAX_THREADS="${COMPRESS_THREADS}" \
     PATCHES_TO_GIT=yes \
+    KERNEL_GIT=full \
     UBOOT_GIT_CACHE_TTL="${GIT_CACHE_TTL_SECONDS}" \
     KERNEL_GIT_CACHE_TTL="${GIT_CACHE_TTL_SECONDS}" \
     UBOOT_MIRROR="${UBOOT_MIRROR}" \
