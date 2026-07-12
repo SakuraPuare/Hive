@@ -481,6 +481,50 @@ func (h *Handler) HandleListSubscriptions(w http.ResponseWriter, r *http.Request
 	h.jsonOK(w, items)
 }
 
+// SubscriptionListItem is one row of GET /admin/subscriptions — a subscription
+// joined with its customer email and plan name, for admin pickers (e.g. binding
+// a gateway device to a subscription).
+type SubscriptionListItem struct {
+	ID            uint   `json:"id"`
+	CustomerID    uint   `json:"customer_id"`
+	CustomerEmail string `json:"customer_email"`
+	PlanID        uint   `json:"plan_id"`
+	PlanName      string `json:"plan_name"`
+	Status        string `json:"status"`
+	ExpiresAt     string `json:"expires_at"`
+}
+
+// HandleListAllSubscriptions godoc
+// @Summary      列出所有订阅
+// @ID           AdminListAllSubscriptions
+// @Description  返回所有客户订阅（含客户邮箱与套餐名），用于后台选择器
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Produce      json
+// @Param        status query string false "按状态筛选"
+// @Success      200 {array}  SubscriptionListItem
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/subscriptions [get]
+func (h *Handler) HandleListAllSubscriptions(w http.ResponseWriter, r *http.Request) {
+	items := make([]SubscriptionListItem, 0)
+	q := "SELECT cs.id, cs.customer_id, c.email AS customer_email, cs.plan_id, " +
+		"p.name AS plan_name, cs.status, cs.expires_at " +
+		"FROM customer_subscriptions cs " +
+		"JOIN customers c ON c.id = cs.customer_id " +
+		"JOIN plans p ON p.id = cs.plan_id"
+	var args []any
+	if status := r.URL.Query().Get("status"); status != "" {
+		q += " WHERE cs.status = ?"
+		args = append(args, status)
+	}
+	q += " ORDER BY cs.id DESC"
+	if err := h.DB.Raw(q, args...).Scan(&items).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	h.jsonOK(w, items)
+}
+
 // HandleUpdateSubscription godoc
 // @Summary      更新订阅
 // @ID           AdminUpdateSubscription
