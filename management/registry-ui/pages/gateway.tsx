@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { AdminService } from '@/src/generated/client';
-import type { model_Node, handler_NodeUpdateRequest } from '@/src/generated/client';
+import type { model_Node, handler_NodeUpdateRequest, handler_SubscriptionListItem } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
@@ -40,9 +40,13 @@ type GatewayField =
   | 'gateway_enabled'
   | 'gateway_direction'
   | 'gateway_upstream_mode'
-  | 'gateway_upstream_nodes';
+  | 'gateway_upstream_nodes'
+  | 'bound_subscription_id';
 
 type GatewayPatch = Partial<Pick<model_Node, GatewayField>>;
+
+// 全局订阅列表项（后端 GET /admin/subscriptions 返回，含客户邮箱与套餐名）。
+type SubItem = handler_SubscriptionListItem;
 
 // ── Multi-select for manual upstream nodes ───────────────────────────────────
 // Maintains local draft state; flushes to onPatch with a 300ms debounce to
@@ -238,6 +242,7 @@ export default function GatewayPage() {
   const canWrite = !!user?.can('node:write');
 
   const [nodes, setNodes] = useState<model_Node[]>([]);
+  const [subs, setSubs] = useState<SubItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   // P1 fix: Set instead of scalar so concurrent row saves are tracked independently.
@@ -264,6 +269,18 @@ export default function GatewayPage() {
   }, [t]);
 
   useEffect(() => { loadNodes(true); }, [loadNodes]);
+
+  // 加载全局订阅列表（供绑定下拉）。失败不阻塞网关表格，仅让绑定列显示空。
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await sessionApi(AdminService.adminListAllSubscriptions({}));
+        setSubs(list ?? []);
+      } catch {
+        setSubs([]);
+      }
+    })();
+  }, []);
 
   const directionLabel = useMemo(
     () => Object.fromEntries(DIRECTIONS.map((d) => [d, t(`direction.${d}`)])),
@@ -369,6 +386,7 @@ export default function GatewayPage() {
       <div className="animate-slide-up" style={{ animationDelay: '80ms' }}>
         <GatewayTable
           nodes={nodes}
+          subs={subs}
           loading={loading}
           canWrite={canWrite}
           savingMacs={savingMacs}
@@ -386,9 +404,10 @@ export default function GatewayPage() {
 // ── Table ────────────────────────────────────────────────────────────────────
 
 function GatewayTable({
-  nodes, loading, canWrite, savingMacs, directionLabel, modeLabel, onPatch, t, tCommon,
+  nodes, subs, loading, canWrite, savingMacs, directionLabel, modeLabel, onPatch, t, tCommon,
 }: {
   nodes: model_Node[];
+  subs: SubItem[];
   loading: boolean;
   canWrite: boolean;
   savingMacs: Set<string>;
@@ -451,6 +470,9 @@ function GatewayTable({
             </TableHead>
             <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
               {t('colUpstreams')}
+            </TableHead>
+            <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground py-3">
+              {t('colBoundSub')}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -595,6 +617,22 @@ function GatewayTable({
                     <Badge variant="secondary">{t('autoUpstream')}</Badge>
                   )}
                 </TableCell>
+
+                {/* Bound subscription (billing) */}
+                <TableCell className="py-3">
+                  <BoundSubSelect
+                    subs={subs}
+                    value={(n as { bound_subscription_id?: number }).bound_subscription_id ?? null}
+                    disabled={rowDisabled}
+                    unboundLabel={t('subUnbound')}
+                    searchPlaceholder={t('subSearch')}
+                    emptyLabel={t('subNone')}
+                    unbindLabel={t('subUnbind')}
+                    onChange={(id) =>
+                      onPatch(mac, { bound_subscription_id: id } as GatewayPatch)
+                    }
+                  />
+                </TableCell>
               </TableRow>
             );
           })}
@@ -625,5 +663,82 @@ function DisabledHint({
       </TooltipTrigger>
       <TooltipContent>{hint}</TooltipContent>
     </Tooltip>
+  );
+}
+
+// ── Bound-subscription single-select ─────────────────────────────────────────
+// Binds a gateway device to one customer subscription (for billing). Searchable
+// popover; selecting sends bound_subscription_id, the Unbind item sends null.
+function BoundSubSelect({
+  subs, value, disabled, unboundLabel, searchPlaceholder, emptyLabel, unbindLabel, onChange,
+}: {
+  subs: SubItem[];
+  value: number | null;
+  disabled?: boolean;
+  unboundLabel: string;
+  searchPlaceholder: string;
+  emptyLabel: string;
+  unbindLabel: string;
+  onChange: (id: number | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const listboxId = useId();
+
+  const selected = value != null ? subs.find((s) => s.id === value) : undefined;
+  const subLabel = (s: SubItem) =>
+    `${s.customer_email || '—'} · ${s.plan_name || '—'} · #${s.id}`;
+  const label = value == null ? unboundLabel : (selected ? subLabel(selected) : `#${value}`);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          role="combobox"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-controls={open ? listboxId : undefined}
+          disabled={disabled}
+          className="w-full max-w-[240px] justify-between rounded-lg border-border bg-card font-normal
+            text-sm text-foreground hover:bg-md-surface-container-high
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2
+            disabled:pointer-events-none disabled:opacity-40"
+        >
+          <span className="truncate">{label}</span>
+          <ChevronDown aria-hidden="true" className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        id={listboxId}
+        className="w-[300px] rounded-xl border border-border bg-popover p-0 elevation-2 animate-scale-in"
+        align="start"
+      >
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} clearable clearLabel={emptyLabel} />
+          <CommandList className="max-h-64">
+            <CommandEmpty>{emptyLabel}</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="__unbind__"
+                onSelect={() => { onChange(null); setOpen(false); }}
+              >
+                <span className="text-muted-foreground">{unbindLabel}</span>
+              </CommandItem>
+              {subs.map((s) => (
+                <CommandItem
+                  key={s.id}
+                  value={`${subLabel(s)}`}
+                  onSelect={() => { onChange(s.id ?? null); setOpen(false); }}
+                >
+                  <span className="truncate">{subLabel(s)}</span>
+                  {s.id === value && <span className="sr-only">✓</span>}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }

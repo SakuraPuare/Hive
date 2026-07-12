@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
-import { Menu, X, LayoutDashboard, Package, MessageSquare, ShoppingCart, LogOut, ChevronDown, Globe, Gift, Megaphone, User } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Package, MessageSquare, ShoppingCart, LogOut, ChevronDown, Globe, Gift, Megaphone, User, Router as RouterIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { ThemeColorPicker } from '@/components/layout/ThemeColorPicker';
@@ -45,6 +45,7 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: '/portal/dashboard', label: t('navDashboard'), icon: LayoutDashboard },
     { href: '/portal/plans', label: t('navPlans'), icon: Package },
+    { href: '/portal/devices', label: t('navDevices'), icon: RouterIcon },
     { href: '/portal/orders', label: t('navOrders'), icon: ShoppingCart },
     { href: '/portal/tickets', label: t('navTickets'), icon: MessageSquare },
     { href: '/portal/referral', label: t('navReferral'), icon: Gift },
