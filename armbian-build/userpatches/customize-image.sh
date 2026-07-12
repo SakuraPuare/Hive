@@ -100,12 +100,18 @@ https://pkg.cloudflareclient.com/ ${RELEASE} main" \
 # ─────────────────────────────────────────────
 # 3. 安装运行时依赖（单次 update + install）
 # ─────────────────────────────────────────────
-apt-get update -q
+# apt-get update 容错：cloudflare-warp 源在部分构建环境（如国内 runner）可能不可达，
+# 若因此让 update 非零退出会在 set -e 下拖垮整个构建。核心包索引若真缺失，
+# 后面的 install 仍会硬失败，所以这里 `|| true` 是安全的。
+apt-get update -q || true
+# 核心运行时依赖 + tailscale（主管理通道，必需）。python3 供 hive-regen-hostkeys.sh
+# 构造确定性 SSH host key 用；缺它会导致离线首启无 host key。这批任一失败即中止构建。
 apt-get install -y --no-install-recommends \
     curl \
     jq \
     ca-certificates \
     gnupg \
+    python3 \
     prometheus-node-exporter \
     ufw \
     fail2ban \
