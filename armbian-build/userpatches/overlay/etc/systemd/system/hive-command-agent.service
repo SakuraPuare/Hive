@@ -1,0 +1,11 @@
+[Unit]
+Description=Hive remote command agent (pull queued commands from registry -> execute -> ack)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hive-command-agent
+# 失败不影响节点本身，下个 timer 周期会重试
+SuccessExitStatus=0
+Nice=10

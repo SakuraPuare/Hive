@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# hive-command-agent —— 从 registry 拉取本节点待执行的远程命令，执行白名单动作并回传结果
+#
+# 工作原理：
+#   1. GET /nodes/{mac}/commands（Bearer API_SECRET）→ 领取本机 pending 命令（registry 端置 sent）
+#   2. 对每条命令按 action 白名单映射到具体 systemctl/reboot 调用
+#   3. POST /nodes/{mac}/commands/{id}/ack 回传 done/failed + 结果文本
+#   4. reboot 特殊处理：先 ACK done 再关机（否则重启后命令仍是 sent，且无法回传）
+#
+# 由 hive-command-agent.timer 每 ~60s 触发。所有失败都不致命（下轮重试）。
+# 安全：action 白名单在 registry 端和此处双重校验，未知 action 一律 failed 且不执行任何命令。
+set -uo pipefail
+
+CONFIG_ENV="/etc/hive/config.env"
+NODE_INFO="/etc/hive/node-info"
+
+log() { echo "[hive-command-agent] $*"; logger -t "hive-command-agent" "$*" 2>/dev/null || true; }
+
+[ -f "${CONFIG_ENV}" ] && source "${CONFIG_ENV}" 2>/dev/null
+[ -f "${NODE_INFO}" ]  && source "${NODE_INFO}"  2>/dev/null
+
+if [ -z "${NODE_REGISTRY_URL:-}" ]; then log "NODE_REGISTRY_URL 未配置，跳过"; exit 0; fi
+if [ -z "${NODE_REGISTRY_API_SECRET:-}" ]; then log "API_SECRET 未配置，跳过"; exit 0; fi
+if [ -z "${MAC:-}" ]; then log "MAC 未知（node-info 缺失），跳过"; exit 0; fi
+
+MAC_NORM=$(echo "${MAC}" | tr 'A-F' 'a-f' | tr -cd 'a-f0-9')
+MAC_NORM="${MAC_NORM: -12}"
+AUTH="Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"
+BASE="${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/commands"
+
+# ── 领取待执行命令 ─────────────────────────────────────────────────────
+RESP=$(curl -sf --max-time 15 -H "${AUTH}" "${BASE}" 2>/dev/null) || { log "拉取命令失败（registry 不可达？）"; exit 0; }
+[ -z "${RESP}" ] || [ "${RESP}" = "[]" ] && exit 0
+command -v jq >/dev/null 2>&1 || { log "缺 jq，无法解析命令"; exit 0; }
+
+# ack <id> <status> <result>
+ack() {
+    local id="$1" status="$2" result="$3"
+    curl -sf --max-time 15 -H "${AUTH}" -H "Content-Type: application/json" \
+        -d "$(jq -n --arg s "$status" --arg r "$result" '{status:$s,result:$r}')" \
+        "${BASE}/${id}/ack" >/dev/null 2>&1 \
+        && log "已回传 #${id} ${status}" || log "回传 #${id} 失败（下轮由 registry 端超时兜底）"
+}
+
+# 逐条执行。jq -c 每行一个对象，避免命令里空格/换行破坏循环。
+echo "${RESP}" | jq -c '.[]' 2>/dev/null | while read -r cmd; do
+    id=$(echo "$cmd" | jq -r '.id')
+    action=$(echo "$cmd" | jq -r '.action')
+    [ -z "$id" ] || [ "$id" = "null" ] && continue
+    log "执行命令 #${id}: ${action}"
+    case "$action" in
+        reboot)
+            # 先 ACK 再重启：重启后无法回传，且命令会永远卡 sent。
+            ack "$id" "done" "rebooting"
+            sleep 1
+            systemctl reboot || reboot
+            ;;
+        restart-xray)
+            out=$(systemctl restart hive-xray 2>&1) \
+                && ack "$id" "done" "hive-xray restarted" \
+                || ack "$id" "failed" "${out:0:900}"
+            ;;
+        restart-mihomo)
+            out=$(systemctl restart hive-mihomo 2>&1) \
+                && ack "$id" "done" "hive-mihomo restarted" \
+                || ack "$id" "failed" "${out:0:900}"
+            ;;
+        resync)
+            out=$( { /usr/local/bin/hive-xray-sync; /usr/local/bin/hive-clash-sync; } 2>&1 ) \
+                && ack "$id" "done" "resynced xray+clash" \
+                || ack "$id" "failed" "${out:0:900}"
+            ;;
+        *)
+            # 未知 action：不执行任何命令，直接 failed（防越权 / 陈旧客户端）。
+            ack "$id" "failed" "unsupported action: ${action}"
+            ;;
+    esac
+done
+
+exit 0

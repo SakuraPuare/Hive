@@ -183,6 +183,10 @@ if [ -f "/usr/local/bin/hive-gateway.sh" ]; then
     chmod +x /usr/local/bin/hive-gateway.sh
     echo ">>> hive-gateway.sh: OK"
 fi
+if [ -f "/usr/local/bin/hive-command-agent" ]; then
+    chmod +x /usr/local/bin/hive-command-agent
+    echo ">>> hive-command-agent: OK"
+fi
 if [ -f "/usr/local/bin/hive-clash-sync" ]; then
     chmod +x /usr/local/bin/hive-clash-sync
     echo ">>> hive-clash-sync: OK"
@@ -345,6 +349,10 @@ fi
 if [ -f "/etc/systemd/system/hive-clash-sync.timer" ]; then
     systemctl enable hive-clash-sync.timer
     echo ">>> hive-clash-sync.timer enabled"
+fi
+if [ -f "/etc/systemd/system/hive-command-agent.timer" ]; then
+    systemctl enable hive-command-agent.timer
+    echo ">>> hive-command-agent.timer enabled"
 fi
 # MetaCubeXD 面板静态资源校验（由 download-binaries.sh 预置，Mihomo external-ui 托管）
 if [ -d "/var/www/metacubexd" ] && [ -n "$(ls -A /var/www/metacubexd 2>/dev/null)" ]; then
