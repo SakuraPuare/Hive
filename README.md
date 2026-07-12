@@ -239,7 +239,7 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 
 ## 已知限制
 
-- **FRP 端口碰撞**：50000 端口分配 100 台设备碰撞概率约 0.1%，发生时 FRP 不可用，但不影响 Tailscale / EasyTier 主通道
+- **FRP 端口碰撞**：端口从全 MAC 的 md5 派生到 10000–59999（宽 50000），100 台设备至少一次碰撞概率约 10%（生日问题 C(100,2)/50000）；碰撞时该 FRP 应急隧道不可用，但不影响 Tailscale / EasyTier 主通道
 - **SSH 密码登录**：当前开启（`PasswordAuthentication yes`），provision 导入 GitHub 公钥后建议手动关闭或通过 Ansible 批量改为 `no`
 - **CF Tunnel 重建**：重刷镜像且本地 `cert.json` 丢失时会删除旧 Tunnel 并重建，Tunnel ID 变化（VLESS 链接中的 hostname 不变）
 - **Tailscale tag 权限**：必须在 ACL Policy 中声明 `tagOwners`，否则 `tailscale up --advertise-tags=tag:hive` 会失败

@@ -100,9 +100,12 @@ echo ">>> Camouflage URL: ${CAMOUFLAGE_URL}"
 # 3. 三套管理通道地址（全部从 MAC6 确定性推导）
 # ─────────────────────────────────────────────
 
-# FRP 端口：MAC 全段 md5 哈希 → 10000-60000
-PORT_OFFSET=$(echo "$MAC" | md5sum | tr -dc '0-9' | cut -c1-4)
-FRP_PORT=$((10000 + 10#$PORT_OFFSET % 50000))
+# FRP 端口：MAC 全段 md5 哈希 → 10000-59999
+# 取 md5 前 8 位十六进制转十进制再 %50000，均匀覆盖整个 50000 宽度区间。
+# （旧实现 `tr -dc '0-9' | cut -c1-4` 只截前 4 个十进制字符，值域 0-9999，
+#   %50000 恒等于自身，实际范围塌缩到 10000-19999、碰撞率飙升，已修正。）
+PORT_HEX=$(printf '%s' "$MAC" | md5sum | cut -c1-8)
+FRP_PORT=$((10000 + 0x${PORT_HEX} % 50000))
 sed -i "s/%%FRP_PORT%%/${FRP_PORT}/g"  /etc/frp/frpc.toml
 sed -i "s/%%HOSTNAME%%/${HOSTNAME}/g"  /etc/frp/frpc.toml
 echo ">>> FRP port: ${FRP_PORT}"

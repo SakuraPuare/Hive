@@ -15,8 +15,13 @@ if [ -z "$input" ]; then
     exit 1
 fi
 
-# 统一处理：取最后 6 个十六进制字符
-MAC6=$(echo "$input" | tr -d ':' | tr '[:upper:]' '[:lower:]' | grep -o '.\{6\}$')
+# 归一化：去冒号、转小写
+MAC_NORM=$(echo "$input" | tr -d ':' | tr '[:upper:]' '[:lower:]' | tr -cd 'a-f0-9')
+# 取最后 6 个十六进制字符作 MAC6
+MAC6=$(echo "$MAC_NORM" | grep -o '.\{6\}$')
+# 仅当输入是完整 12 位 MAC 时才有全 MAC（FRP 端口精确计算需要它）
+MAC_FULL=""
+[ ${#MAC_NORM} -eq 12 ] && MAC_FULL="$MAC_NORM"
 
 if [ ${#MAC6} -ne 6 ]; then
     echo "ERROR: could not parse MAC6 from: $input"
@@ -31,11 +36,14 @@ ET_B2=$(printf "%d" "0x${MAC6:2:2}")
 ET_B3=$(printf "%d" "0x${MAC6:4:2}")
 EASYTIER_IP="10.${ET_B1}.${ET_B2}.${ET_B3}"
 
-# ── FRP 端口（全 MAC 哈希，需要补全 MAC——此处仅从 MAC6 估算）──
-# 注意：provision-node.sh 使用完整 12 位 MAC 做哈希
-# 此脚本只有 MAC6，结果仅供参考；精确值在节点的 /etc/hive/node-info 里
-PORT_OFFSET=$(echo "$MAC6" | md5sum | tr -dc '0-9' | cut -c1-4)
-FRP_PORT_APPROX=$((10000 + 10#$PORT_OFFSET % 50000))
+# ── FRP 端口（provision 用完整 12 位 MAC 的 md5 前 8 位 hex % 50000 + 10000）──
+# 只有传入完整 MAC 才能精确算出；仅给 MAC6 时无法推导（md5(MAC6) 与 md5(fullMAC) 无关）。
+if [ -n "$MAC_FULL" ]; then
+    PORT_HEX=$(printf '%s' "$MAC_FULL" | md5sum | cut -c1-8)
+    FRP_PORT=$((10000 + 0x${PORT_HEX} % 50000))
+else
+    FRP_PORT="N/A"
+fi
 
 # ── 从 .env 读取 VPS 地址（若存在）──────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -54,10 +62,12 @@ printf "│  NODE: %-40s│\n" "$HOSTNAME"
 echo "├─────────────────────────────────────────────────┤"
 printf "│  Tailscale  ssh root@%-27s│\n" "${HOSTNAME}"
 printf "│  EasyTier   ssh root@%-27s│\n" "${EASYTIER_IP}"
-printf "│  FRP        ssh -p %-4s root@%-19s│\n" "${FRP_PORT_APPROX}*" "${VPS_ADDR}"
-printf "│  CF Proxy   https://%-28s│\n" "${MAC6}.${CF_DOMAIN_LABEL}"
+printf "│  FRP        ssh -p %-6s root@%-17s│\n" "${FRP_PORT}" "${VPS_ADDR}"
+printf "│  CF Proxy   https://%-28s│\n" "${HOSTNAME}.${CF_DOMAIN_LABEL}"
 echo "├─────────────────────────────────────────────────┤"
-echo "│  * FRP port computed from MAC6 only (approx).  │"
-echo "│    Exact port: cat /etc/hive/node-info on node  │"
+if [ "$FRP_PORT" = "N/A" ]; then
+echo "│  FRP port needs full MAC (pass aa:bb:cc:dd:ee:ff)│"
+echo "│  or read exact port: cat /etc/hive/node-info    │"
+fi
 echo "└─────────────────────────────────────────────────┘"
 echo ""
