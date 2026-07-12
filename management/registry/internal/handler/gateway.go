@@ -4,8 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"hive/registry/internal/model"
 )
@@ -82,12 +84,38 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// 计费绑定：若本网关绑定了某客户订阅，且该订阅有效（未停用/未过期/未超量），
+	// 则上游代理统一使用该订阅的 UUID —— 网关走上游 Hive 节点的流量落到 sub-<id>
+	// 客户端，被 traffic.go 计入该订阅。订阅无效或未绑定则回退节点级 UUID（不计费）。
+	overrideUUID := ""
+	if self.BoundSubscriptionID != nil && *self.BoundSubscriptionID != 0 {
+		var srow struct {
+			Status       string
+			XrayUUID     string
+			TrafficUsed  int64
+			TrafficLimit int64
+			ExpiresAt    time.Time
+		}
+		if err := h.DB.Raw(
+			"SELECT status, xray_uuid, traffic_used, traffic_limit, expires_at "+
+				"FROM customer_subscriptions WHERE id = ?", *self.BoundSubscriptionID,
+		).Scan(&srow).Error; err != nil {
+			log.Printf("gateway: query bound subscription %d for node %s: %v", *self.BoundSubscriptionID, mac, err)
+		} else if srow.XrayUUID != "" {
+			expStr := srow.ExpiresAt.UTC().Format(model.TimeLayout)
+			if ok, _ := checkSubscriptionValid(srow.Status, srow.TrafficUsed, srow.TrafficLimit, expStr); ok {
+				overrideUUID = srow.XrayUUID
+			}
+			// 无效时保持 overrideUUID="" → 回退节点级 UUID（等同不计费的普通网关）
+		}
+	}
+
 	yaml := buildGatewayClashYAML(
 		fmt.Sprintf("gateway %s", self.Hostname),
 		h.Config.XrayPath,
 		gatewaySecret(mac),
 		"/var/www/metacubexd",
-		mac, direction, upstreamMode, upstreamMACs, all,
+		mac, direction, upstreamMode, upstreamMACs, all, overrideUUID,
 	)
 
 	w.Header().Set("Content-Type", "text/yaml; charset=utf-8")

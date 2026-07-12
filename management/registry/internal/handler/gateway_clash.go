@@ -46,7 +46,10 @@ var localDirectProcesses = []string{"xray", "cloudflared", "warp-svc", "easytier
 //	allNodes   — every enabled exit node in the cluster (candidate upstreams).
 //	direction  — domestic / overseas / global / direct (see model.Node).
 //	upstreamMode / upstreamMACs — auto (url-test over all) or manual (selected subset).
-func buildGatewayClashYAML(title, xrayPath, secret, dashboardPath, selfMAC, direction, upstreamMode string, upstreamMACs []string, allNodes []model.Node) string {
+//	overrideUUID — when non-empty, every upstream proxy uses this UUID instead of
+//	  the node's own xray_uuid (billing: gateway bound to a customer subscription,
+//	  its egress traffic lands on sub-<id> and is metered against that subscription).
+func buildGatewayClashYAML(title, xrayPath, secret, dashboardPath, selfMAC, direction, upstreamMode string, upstreamMACs []string, allNodes []model.Node, overrideUUID string) string {
 	manualSet := map[string]bool{}
 	for _, m := range upstreamMACs {
 		m = strings.ToLower(strings.TrimSpace(m))
@@ -65,11 +68,15 @@ func buildGatewayClashYAML(title, xrayPath, secret, dashboardPath, selfMAC, dire
 		if host == "" || n.XrayUUID == "" {
 			continue
 		}
+		uuid := n.XrayUUID
+		if overrideUUID != "" {
+			uuid = overrideUUID // billing: route egress through the bound subscription's UUID
+		}
 		name := buildNodeName(n)
 		proxies = append(proxies, clashProxy{
 			Name:   yamlStr(name),
 			Server: host,
-			UUID:   n.XrayUUID,
+			UUID:   uuid,
 		})
 		// manual mode: only the selected MACs populate the 手动选择 group;
 		// auto mode: all candidates are eligible (url-test picks the fastest).
