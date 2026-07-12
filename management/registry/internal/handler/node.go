@@ -57,8 +57,12 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 认领码：仅在首次注册（或历史节点尚无 code）时铸造一次；重刷/重注册保持稳定，
+	// 不覆盖既有 code（避免把已认领设备的码悄悄换掉）。明文只在本次响应回传一次。
+	claimCodePlain := ""
+
 	if existing.MAC != "" {
-		if err := h.DB.Model(&model.Node{}).Where("mac = ?", body.MAC).Updates(map[string]any{
+		updates := map[string]any{
 			"mac6":           body.MAC6,
 			"hostname":       body.Hostname,
 			"cf_url":         body.CFURL,
@@ -67,29 +71,50 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 			"mesh_tunnel_id": body.MeshTunnelID,
 			"mesh_ip":        body.MeshIP,
 			"last_seen":      now,
-		}).Error; err != nil {
+		}
+		// 历史节点（v18 之前注册）无 claim_code_hash，补铸一次。
+		if existing.ClaimCodeHash == "" {
+			if code, err := generateClaimCode(); err == nil {
+				claimCodePlain = code
+				updates["claim_code_hash"] = hashClaimCode(code)
+			}
+		}
+		if err := h.DB.Model(&model.Node{}).Where("mac = ?", body.MAC).Updates(updates).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return
 		}
-		h.jsonOK(w, map[string]any{
+		resp := map[string]any{
 			"status":        "updated",
 			"hostname":      body.Hostname,
 			"registered_at": existing.RegisteredAt,
-		})
+		}
+		if claimCodePlain != "" {
+			resp["claim_code"] = claimCodePlain
+		}
+		h.jsonOK(w, resp)
 	} else {
+		claimHash := ""
+		if code, err := generateClaimCode(); err == nil {
+			claimCodePlain = code
+			claimHash = hashClaimCode(code)
+		}
 		if err := h.DB.Exec(
-			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, xray_uuid, mesh_tunnel_id, mesh_ip, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)",
-			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, body.XrayUUID, body.MeshTunnelID, body.MeshIP, now, now,
+			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, xray_uuid, mesh_tunnel_id, mesh_ip, claim_code_hash, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)",
+			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, body.XrayUUID, body.MeshTunnelID, body.MeshIP, claimHash, now, now,
 		).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return
 		}
 		middleware.RefreshNodeGauge(h.DB)
-		h.jsonOK(w, map[string]any{
+		resp := map[string]any{
 			"status":        "registered",
 			"hostname":      body.Hostname,
 			"registered_at": now,
-		})
+		}
+		if claimCodePlain != "" {
+			resp["claim_code"] = claimCodePlain
+		}
+		h.jsonOK(w, resp)
 	}
 }
 
@@ -208,6 +233,7 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		"region": true, "mesh_tunnel_id": true, "mesh_ip": true,
 		"gateway_enabled": true, "gateway_direction": true,
 		"gateway_upstream_mode": true, "gateway_upstream_nodes": true,
+		"bound_subscription_id": true,
 	}
 	updates := make(map[string]any)
 	for k, v := range body {
