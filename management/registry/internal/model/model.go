@@ -34,13 +34,38 @@ type Node struct {
 	GatewayDirection     string `json:"gateway_direction"`      // 分流方向：domestic（境内,墙外走代理）/ overseas（境外,墙内走代理）/ global（全走代理）/ direct（全直连）
 	GatewayUpstreamMode  string `json:"gateway_upstream_mode"`  // 上游选择：auto（url-test 自动选最快）/ manual（手选）
 	GatewayUpstreamNodes string `json:"gateway_upstream_nodes"` // manual 模式下选定的上游节点 MAC，逗号分隔
+
+	// 网关设备计费绑定：非空时，本网关走上游 Hive 节点的流量按此客户订阅的
+	// UUID 下发（email sub-<id>），被 traffic.go 计入该订阅；为空则沿用节点级
+	// UUID（node-*，不计费）。
+	BoundSubscriptionID *uint `json:"bound_subscription_id"`
+
+	// 设备归属：owner_customer_id 非空即"这台设备属于某客户"，客户可在门户查看/管理。
+	// claim_code_hash 只存哈希、不出 JSON（明文仅在注册响应回传一次）。
+	OwnerCustomerID *uint   `json:"owner_customer_id"`
+	ClaimedAt       *string `json:"claimed_at"`
+	ClaimCodeHash   string  `json:"-"`
+}
+
+// DeviceCommand 是设备远程命令队列的一行（node_commands 表）。
+type DeviceCommand struct {
+	ID        uint64  `json:"id"`
+	NodeMAC   string  `json:"node_mac"`
+	Action    string  `json:"action"`
+	Params    string  `json:"params"`
+	Status    string  `json:"status"`
+	Result    string  `json:"result"`
+	CreatedBy string  `json:"created_by"`
+	CreatedAt string  `json:"created_at"`
+	SentAt    *string `json:"sent_at"`
+	AckedAt   *string `json:"acked_at"`
 }
 
 // NodeCols SELECT 列顺序，用于 LEFT JOIN 查询
-const NodeCols = "n.mac, n.mac6, n.hostname, n.cf_url, n.tunnel_id, n.tailscale_ip, n.easytier_ip, n.frp_port, n.xray_uuid, n.mesh_tunnel_id, n.mesh_ip, n.location, n.note, n.registered_at, n.last_seen, n.enabled, n.status, n.weight, n.region, n.gateway_enabled, n.gateway_direction, n.gateway_upstream_mode, n.gateway_upstream_nodes, COALESCE(nsc.status, 'unknown') AS probe_status"
+const NodeCols = "n.mac, n.mac6, n.hostname, n.cf_url, n.tunnel_id, n.tailscale_ip, n.easytier_ip, n.frp_port, n.xray_uuid, n.mesh_tunnel_id, n.mesh_ip, n.location, n.note, n.registered_at, n.last_seen, n.enabled, n.status, n.weight, n.region, n.gateway_enabled, n.gateway_direction, n.gateway_upstream_mode, n.gateway_upstream_nodes, n.bound_subscription_id, n.owner_customer_id, n.claimed_at, COALESCE(nsc.status, 'unknown') AS probe_status"
 
 // NodeColsPlain 用于不需要 JOIN 的场景
-const NodeColsPlain = "mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, mesh_tunnel_id, mesh_ip, location, note, registered_at, last_seen, enabled, status, weight, region, gateway_enabled, gateway_direction, gateway_upstream_mode, gateway_upstream_nodes"
+const NodeColsPlain = "mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, mesh_tunnel_id, mesh_ip, location, note, registered_at, last_seen, enabled, status, weight, region, gateway_enabled, gateway_direction, gateway_upstream_mode, gateway_upstream_nodes, bound_subscription_id, owner_customer_id, claimed_at"
 
 // ── User & Auth ──────────────────────────────────────────────────────────────
 

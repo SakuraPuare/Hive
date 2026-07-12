@@ -444,6 +444,46 @@ ALTER TABLE nodes ADD COLUMN gateway_upstream_mode  VARCHAR(8)  NOT NULL DEFAULT
 ALTER TABLE nodes ADD COLUMN gateway_upstream_nodes VARCHAR(2048) NOT NULL DEFAULT ''      COMMENT 'manual 模式选定的上游节点 MAC, 逗号分隔';
 `,
 	},
+	{
+		version: 17,
+		desc:    "nodes: bind gateway device to a customer subscription for billing",
+		up: `
+ALTER TABLE nodes ADD COLUMN bound_subscription_id INT UNSIGNED NULL DEFAULT NULL COMMENT '网关设备绑定的客户订阅 id；非空时网关上游流量按此订阅计费';
+ALTER TABLE nodes ADD CONSTRAINT fk_nodes_bound_sub FOREIGN KEY (bound_subscription_id) REFERENCES customer_subscriptions(id) ON DELETE SET NULL;
+`,
+	},
+	{
+		version: 18,
+		desc:    "device ownership: nodes.owner_customer_id + claim code",
+		up: `
+ALTER TABLE nodes ADD COLUMN owner_customer_id INT UNSIGNED NULL DEFAULT NULL COMMENT '设备归属客户 id；NULL=未认领。一台设备至多一个客户';
+ALTER TABLE nodes ADD COLUMN claimed_at        DATETIME     NULL DEFAULT NULL COMMENT '被客户认领的时间';
+ALTER TABLE nodes ADD COLUMN claim_code_hash   CHAR(64)     NOT NULL DEFAULT '' COMMENT '认领码的 sha256(hex)，明文只在注册响应回传一次、永不落库';
+ALTER TABLE nodes ADD CONSTRAINT fk_nodes_owner FOREIGN KEY (owner_customer_id) REFERENCES customers(id) ON DELETE SET NULL;
+ALTER TABLE nodes ADD INDEX idx_owner (owner_customer_id);
+`,
+	},
+	{
+		version: 19,
+		desc:    "device command queue: node_commands",
+		up: `
+CREATE TABLE IF NOT EXISTS node_commands (
+    id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    node_mac      VARCHAR(12)  NOT NULL COMMENT '目标节点 MAC',
+    action        VARCHAR(32)  NOT NULL COMMENT '白名单动作: reboot/restart-xray/restart-mihomo/resync',
+    params        VARCHAR(512) NOT NULL DEFAULT '' COMMENT 'JSON 参数，多数动作为空',
+    status        ENUM('pending','sent','done','failed','expired') NOT NULL DEFAULT 'pending',
+    result        VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '节点 ACK 回传的执行结果/错误',
+    created_by    VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '发起者: customer:<id> 或 admin:<username>',
+    created_at    DATETIME     NOT NULL,
+    sent_at       DATETIME     NULL DEFAULT NULL COMMENT '节点领取时间',
+    acked_at      DATETIME     NULL DEFAULT NULL COMMENT 'ACK 回传时间',
+    FOREIGN KEY (node_mac) REFERENCES nodes(mac) ON DELETE CASCADE,
+    INDEX idx_mac_status (node_mac, status),
+    INDEX idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备远程命令队列（客户/管理员 enqueue，节点主动拉取执行）';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.
