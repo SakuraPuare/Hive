@@ -43,7 +43,12 @@ COUNTRY="${HOTSPOT_COUNTRY:-CN}"        # 5GHz AP 必需的国家码
 # mode, RADAR"）。ch149/153/157/161/165 在 CN 为非 DFS、允许 AP 主动发射，是唯一可靠选择。
 # （FCC 域下 ch36 才免 DFS——旧默认 36 的注释是按美国域写的，对 CN 不成立。）
 CH5G="${HOTSPOT_5G_CHANNEL:-149}"       # 5G 信道（CN 非 DFS：149/153/157/161/165）
+WIDTH_5G="${HOTSPOT_5G_WIDTH:-80}"      # 5G 频宽 20|40|80，默认 80（DFS/无效组合自动降级）
 PREFER="${HOTSPOT_PREFER_BAND:-5}"      # 单 radio 卡只能开一频时的偏好：5 或 2.4，默认 5（优先 5G WPA3）
+
+# ip_forward 兜底：常态由 /etc/sysctl.d/99-hive.conf 开，此处仅热插拔场景兜底
+# （5G 客户端上网靠 Mihomo TUN auto-route 转发，需 ip_forward=1）。
+sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
 
 # ── 1. 取节点身份 MAC（与 hostname/SSH 同源：第一块非 lo 有线网卡）────────
 get_node_mac() {
@@ -199,12 +204,143 @@ write_kf() {
     log "已写入 $kf"
 }
 
+# ── 6b. 5G hostapd 后端辅助函数 ───────────────────────────────────────
+# 5G 用独立 hostapd（NM 内建 wpa_supplicant 在 MT7922 上开 80MHz 会 HT_SCAN 失败）。
+HOSTAPD_CONF="/etc/hostapd/hive-5g.conf"
+DNSMASQ_CONF="/etc/hive/dnsmasq-5g.conf"
+HOTSPOT_5G_ENV="/etc/hive/hotspot-5g.env"
+AP5G_IP4="10.42.1.1/24"
+
+# derive_5g_params <channel> <width> → 输出 "SEG0 DIR"（DIR=PLUS/MINUS/NONE），无效组合输出空
+# 80MHz 中心频率 seg0 索引 + HT40 方向：ch149/153/157/161 同属一个 80MHz 块（中心 5775=idx155）。
+derive_5g_params() {
+    local ch="$1" w="$2" base seg0 idx dir
+    case "$w" in
+        20) echo "$ch NONE"; return 0 ;;
+        40)
+            case "$ch" in
+                36|44|52|60|100|108|116|124|132|140|149|157|165) echo "$((ch+2)) PLUS" ;;
+                40|48|56|64|104|112|120|128|136|144|153|161)      echo "$((ch-2)) MINUS" ;;
+                *) echo "" ;;
+            esac ; return 0 ;;
+        80)
+            case "$ch" in
+                36|40|44|48)     base=36;  seg0=42  ;;
+                52|56|60|64)     base=52;  seg0=58  ;;   # DFS
+                100|104|108|112) base=100; seg0=106 ;;   # DFS
+                116|120|124|128) base=116; seg0=122 ;;   # DFS
+                132|136|140|144) base=132; seg0=138 ;;   # DFS
+                149|153|157|161) base=149; seg0=155 ;;
+                *) echo ""; return 0 ;;                  # 165 单信道无法 80MHz
+            esac
+            idx=$(( (ch - base) / 4 ))
+            [ $((idx % 2)) -eq 0 ] && dir=PLUS || dir=MINUS
+            echo "$seg0 $dir" ; return 0 ;;
+    esac
+}
+
+# generate_hostapd_conf <iface> <ssid> <psk> <channel> <width> → 写 $HOSTAPD_CONF（chmod 600）
+# 约束：20MHz 时 ht_capab 不能含 [HT40±]（否则 hostapd 拒启）；80MHz 必须同时给 vht+he 两个 seg0。
+generate_hostapd_conf() {
+    local iface="$1" ssid="$2" psk="$3" ch="$4" w="$5"
+    local params seg0 dir htc="[SHORT-GI-20][SHORT-GI-40]" vhtcw hecw
+    params=$(derive_5g_params "$ch" "$w")
+    if [ -z "$params" ]; then w=20; params="$ch NONE"; log "5G ch$ch@${5}MHz 无效组合，降级 20MHz"; fi
+    seg0=${params%% *}; dir=${params##* }
+    case "$dir" in PLUS) htc="[HT40+]$htc";; MINUS) htc="[HT40-]$htc";; esac
+    case "$w" in 80) vhtcw=1; hecw=1;; *) vhtcw=0; hecw=0;; esac
+    mkdir -p /etc/hostapd
+    umask 077
+    {
+        echo "interface=$iface"
+        echo "driver=nl80211"
+        echo "ssid=$ssid"
+        echo "country_code=$COUNTRY"
+        echo "ieee80211d=1"
+        echo "hw_mode=a"
+        echo "channel=$ch"
+        echo "wmm_enabled=1"
+        echo "ieee80211n=1"
+        echo "ht_capab=$htc"
+        echo "ieee80211ac=1"
+        echo "vht_oper_chwidth=$vhtcw"
+        [ "$vhtcw" = 1 ] && echo "vht_oper_centr_freq_seg0_idx=$seg0"
+        echo "ieee80211ax=1"
+        echo "he_oper_chwidth=$hecw"
+        [ "$hecw" = 1 ] && echo "he_oper_centr_freq_seg0_idx=$seg0"
+        echo "wpa=2"
+        echo "wpa_key_mgmt=SAE"
+        echo "rsn_pairwise=CCMP"
+        echo "ieee80211w=2"
+        echo "sae_password=$psk"
+    } > "$HOSTAPD_CONF"
+    chmod 600 "$HOSTAPD_CONF"
+    log "已写入 $HOSTAPD_CONF (ch$ch/${w}MHz seg0=$seg0 $dir)"
+}
+
+# release_iface_from_nm <iface> <mac>：把 5G 卡从 NM 彻底摘管，防 autoconnect 抢接口。
+# 仅 `nmcli device set managed no` 不持久（NM reload/重启后重新纳管）→ 必须写 conf.d 按 MAC。
+release_iface_from_nm() {
+    local iface="$1" mac="$2"
+    nmcli connection down "$CONN_5G"   >/dev/null 2>&1 || true
+    nmcli connection delete "$CONN_5G" >/dev/null 2>&1 || true
+    rm -f "$KF_DIR/$CONN_5G.nmconnection" 2>/dev/null
+    mkdir -p /etc/NetworkManager/conf.d
+    printf '[keyfile]\nunmanaged-devices=mac:%s\n' "$(upper "$mac")" \
+        > /etc/NetworkManager/conf.d/99-hive-hotspot-5g.conf
+    nmcli general reload 2>/dev/null || nmcli connection reload 2>/dev/null || true
+    nmcli device set "$iface" managed no >/dev/null 2>&1 || true
+}
+
+# write_5g_env <iface>：供两个 systemd unit（EnvironmentFile）与 setup-firewall.sh 读取。
+# 先把上轮 env 备份为 .prev，供 apply_ufw_5g 在接口改名时清理旧规则。
+write_5g_env() {
+    local iface="$1"
+    mkdir -p /etc/hive
+    [ -f "$HOTSPOT_5G_ENV" ] && cp -f "$HOTSPOT_5G_ENV" "${HOTSPOT_5G_ENV}.prev" 2>/dev/null || true
+    {
+        echo "AP_IFACE=$iface"
+        echo "AP_IP4=$AP5G_IP4"
+        echo "HOTSPOT_COUNTRY=$COUNTRY"
+    } > "$HOTSPOT_5G_ENV"
+    chmod 644 "$HOTSPOT_5G_ENV"
+}
+
+# write_dnsmasq_conf <iface>：只绑 AP 口的独立 dnsmasq 实例（DHCP + DNS→Mihomo）。
+# bind-interfaces + listen-address 三重隔离，不抢系统 53/67、2.4G NM dnsmasq、Mihomo。
+write_dnsmasq_conf() {
+    local iface="$1"
+    mkdir -p /etc/hive
+    {
+        echo "interface=$iface"
+        echo "bind-interfaces"
+        echo "listen-address=10.42.1.1"
+        echo "dhcp-range=10.42.1.50,10.42.1.200,255.255.255.0,12h"
+        echo "dhcp-option=3,10.42.1.1"      # 网关
+        echo "dhcp-option=6,10.42.1.1"      # DNS 指向本机
+        echo "no-resolv"
+        echo "server=127.0.0.1#1053"        # 转发给 Mihomo DNS（fake-ip 分流→走代理）
+    } > "$DNSMASQ_CONF"
+    chmod 644 "$DNSMASQ_CONF"
+}
+
+# apply_ufw_5g <new_iface>：按接口名静态放行 forward/DHCP/DNS；接口改名时清旧规则。
+apply_ufw_5g() {
+    command -v ufw >/dev/null 2>&1 || return 0
+    local new="$1" old
+    old=$(grep -E '^AP_IFACE=' "${HOTSPOT_5G_ENV}.prev" 2>/dev/null | cut -d= -f2)
+    if [ -n "$old" ] && [ "$old" != "$new" ]; then
+        ufw route delete allow in on "$old" 2>/dev/null || true
+        ufw delete allow in on "$old" to any port 67 proto udp 2>/dev/null || true
+        ufw delete allow in on "$old" to any port 53 2>/dev/null || true
+    fi
+    ufw route allow in on "$new" comment 'hive-hotspot-5g forward' 2>/dev/null || true
+    ufw allow in on "$new" to any port 67 proto udp comment 'hive-hotspot-5g DHCP' 2>/dev/null || true
+    ufw allow in on "$new" to any port 53 comment 'hive-hotspot-5g DNS' 2>/dev/null || true
+}
+
+# 2.4G 仍走 NM shared（WPA2-PSK）。5G 改走独立 hostapd（WPA3-SAE 在 hostapd 配置里）。
 SEC_WPA2=$'[wifi-security]\nkey-mgmt=wpa-psk\nproto=rsn\npairwise=ccmp\ngroup=ccmp\npsk='"$PSK"
-# WPA3-SAE：key-mgmt=sae + pmf=required（管理帧保护强制，SAE 必需）
-# 注意：keyfile(.nmconnection) 里 pmf 只接受字符串 default/required/optional/disabled，
-#       不接受数字（数字 1/2 仅 nmcli 命令行用）。写 pmf=2 会被 NM 判非法、拒绝加载整个连接，
-#       导致 `nmcli up` 报 "unknown connection"、AP 起不来（2026-06-20 实测 MT7922 定位）。
-SEC_WPA3=$'[wifi-security]\nkey-mgmt=sae\nproto=rsn\npmf=required\npairwise=ccmp\ngroup=ccmp\npsk='"$PSK"
 
 DONE_2G=""; DONE_5G=""
 if [ "$i2" -ge 0 ]; then
@@ -213,10 +349,36 @@ if [ "$i2" -ge 0 ]; then
 else
     rm -f "$KF_DIR/$CONN_2G.nmconnection" 2>/dev/null
 fi
+# 5G 走独立 hostapd（不写 NM keyfile）：摘管 → 生成配置 → 拉起两个常驻单元 → 干净失败处理。
 if [ "$i5" -ge 0 ]; then
-    write_kf x "$CONN_5G" "$UUID_5G" "$SSID_5G" "${C_MAC[$i5]}" a "$SEC_WPA3" "10.42.1.1/24"
-    DONE_5G="${C_IF[$i5]}"
+    IF5="${C_IF[$i5]}"; MAC5="${C_MAC[$i5]}"
+    release_iface_from_nm "$IF5" "$MAC5"
+    generate_hostapd_conf "$IF5" "$SSID_5G" "$PSK" "$CH5G" "$WIDTH_5G"
+    write_5g_env "$IF5"
+    write_dnsmasq_conf "$IF5"
+    apply_ufw_5g "$IF5"
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl restart hive-hotspot-5g.service 2>/dev/null || true
+    sleep 2
+    if systemctl is-active --quiet hive-hotspot-5g.service; then
+        systemctl restart hive-hotspot-5g-dnsmasq.service 2>/dev/null || true
+        DONE_5G="$IF5"
+        log "5G hostapd 已启动：$SSID_5G on $IF5 @ ch$CH5G/${WIDTH_5G}MHz"
+    else
+        # 无回退：干净失败，不留半吊子（NM 已摘管、又无 hostapd，接口不能悬空）。
+        log "ERROR: hostapd 未能在 $IF5 起 5G AP，清理并放弃（不回退 NM）"
+        journalctl -u hive-hotspot-5g -n 20 --no-pager 2>/dev/null \
+            | while read -r l; do log "  hostapd: $l"; done
+        systemctl stop hive-hotspot-5g.service hive-hotspot-5g-dnsmasq.service 2>/dev/null || true
+        ip addr flush dev "$IF5" 2>/dev/null || true
+        DONE_5G=""
+    fi
 else
+    # 无 5G 卡：停单元、清生成的配置、把接口交还 NM（删 unmanaged conf.d）。
+    systemctl stop hive-hotspot-5g.service hive-hotspot-5g-dnsmasq.service 2>/dev/null || true
+    rm -f "$HOSTAPD_CONF" "$DNSMASQ_CONF" "$HOTSPOT_5G_ENV" \
+          /etc/NetworkManager/conf.d/99-hive-hotspot-5g.conf 2>/dev/null
+    nmcli general reload 2>/dev/null || true
     rm -f "$KF_DIR/$CONN_5G.nmconnection" 2>/dev/null
 fi
 
@@ -229,13 +391,13 @@ grep -q '^MAC=' "$NODE_INFO" 2>/dev/null || echo "MAC=${NODE_MAC}" >> "$NODE_INF
 {
     echo "WIFI_PSK=${PSK}"
     [ -n "$DONE_2G" ] && { echo "WIFI_SSID_2G=${SSID_2G}"; echo "WIFI_IFACE_2G=${DONE_2G}"; }
-    [ -n "$DONE_5G" ] && { echo "WIFI_SSID_5G=${SSID_5G}"; echo "WIFI_IFACE_5G=${DONE_5G}"; }
+    [ -n "$DONE_5G" ] && { echo "WIFI_SSID_5G=${SSID_5G}"; echo "WIFI_IFACE_5G=${DONE_5G}"; echo "WIFI_5G_WIDTH=${WIDTH_5G}"; }
     # 兼容旧字段（MOTD/test 单频展示用）：优先 2.4G，否则 5G
     if [ -n "$DONE_2G" ]; then echo "WIFI_SSID=${SSID_2G}"; echo "WIFI_IFACE=${DONE_2G}";
     elif [ -n "$DONE_5G" ]; then echo "WIFI_SSID=${SSID_5G}"; echo "WIFI_IFACE=${DONE_5G}"; fi
 } >> "$NODE_INFO"
 
-# ── 8. 让 NM 重载并激活（每个频段一张卡，互不干扰）────────────────────
+# ── 8. 让 NM 重载并激活 2.4G（5G 已由上方 hostapd 单元拉起，不走 NM）───────
 nmcli connection reload 2>/dev/null || true
 bring_up() {  # $1=conn_id $2=iface
     [ -n "$2" ] || return
@@ -250,7 +412,6 @@ bring_up() {  # $1=conn_id $2=iface
     fi
 }
 bring_up "$CONN_2G" "$DONE_2G"
-bring_up "$CONN_5G" "$DONE_5G"
 
 log "完成。2.4G=[${SSID_2G}@${DONE_2G:-none}] 5G=[${SSID_5G}@${DONE_5G:-none}] PSK=$PSK"
 exit 0

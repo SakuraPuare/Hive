@@ -1,0 +1,24 @@
+[Unit]
+Description=Hive 5GHz Hotspot DHCP/DNS (dnsmasq)
+Documentation=https://github.com/SakuraPuare/hive
+# hostapd 只管无线电层，不管 IP/DHCP/DNS。本单元补齐这三样（原 NM method=shared 包办）。
+# BindsTo+PartOf hostapd：hostapd 崩溃/重启会 down/up 接口冲掉 IP，本单元跟随重启 →
+#   ExecStartPre 重加 IP，不会 IP 泄漏/失配。故 IP 放这里（hostapd 之后），不放 hostapd 单元。
+After=hive-hotspot-5g.service
+Requires=hive-hotspot-5g.service
+BindsTo=hive-hotspot-5g.service
+PartOf=hive-hotspot-5g.service
+ConditionPathExists=/etc/hive/dnsmasq-5g.conf
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/hive/hotspot-5g.env
+# 静态 IP（10.42.1.1/24）：hostapd 之后加；ip addr replace 幂等。客户端网关/DNS 均指向它。
+ExecStartPre=/sbin/ip addr replace ${AP_IP4} dev ${AP_IFACE}
+# --conf-file 显式指定：不读 /etc/dnsmasq.conf 与 /etc/dnsmasq.d/*，只绑 5G AP 口。
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/etc/hive/dnsmasq-5g.conf
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

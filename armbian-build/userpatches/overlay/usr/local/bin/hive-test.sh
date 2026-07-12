@@ -173,8 +173,22 @@ if [ "$WLAN_PRESENT" = "1" ]; then
         return 0
     }
     GOT=0
+    # 2.4G：仍走 NM shared，沿用原 check_ap
     check_ap "hive-hotspot-2g" "2.4g" "${WIFI_SSID_2G}" && GOT=1
-    check_ap "hive-hotspot-5g" "5g"   "${WIFI_SSID_5G}" && GOT=1
+    # 5G：走独立 hostapd（非 NM），查 hostapd + dnsmasq 服务态 + 接口 IP
+    if systemctl is-active --quiet hive-hotspot-5g && systemctl is-active --quiet hive-hotspot-5g-dnsmasq; then
+        ifc="${WIFI_IFACE_5G}"
+        ip=$(ip -4 addr show "$ifc" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1)
+        w=$(iw dev "$ifc" info 2>/dev/null | awk '/width/{print $6; exit}')
+        if [ "$ip" = "10.42.1.1" ]; then
+            pass "wifi-5g" "hostapd SSID=${WIFI_SSID_5G:-?} on ${ifc:-?} @ ${ip} width=${w:-?}MHz"
+        else
+            warn "wifi-5g" "hostapd/dnsmasq active 但接口无 10.42.1.1（ip=${ip:-none}）"
+        fi
+        GOT=1
+    elif [ -n "${WIFI_SSID_5G:-}" ]; then
+        warn "wifi-5g" "配置了 5G 但 hostapd/dnsmasq 未运行（try: systemctl status hive-hotspot-5g）"
+    fi
     [ "$GOT" = "1" ] || warn "wifi-hotspot" "wireless NIC present but no hotspot connection (try: hive-hotspot.sh)"
 fi
 

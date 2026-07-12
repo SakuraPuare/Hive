@@ -116,11 +116,21 @@ apt-get install -y --no-install-recommends \
     net-tools \
     vim \
     wpasupplicant \
+    hostapd \
     dnsmasq-base \
     iw \
     nftables \
     tailscale \
     cloudflare-warp
+
+# hostapd：5G 热点用独立 hostapd 托管（NM 内建 wpa_supplicant 在 MT7922 上开 80MHz 会失败）。
+#   屏蔽发行版自带的 hostapd.service（读 /etc/default/hostapd、DAEMON_CONF 空会空跑/报错）——
+#   我们用自定义 unit hive-hotspot-5g.service 显式指定配置。
+# dnsmasq：仅装 dnsmasq-base（提供 /usr/sbin/dnsmasq 二进制、无自启 service），
+#   不装完整 dnsmasq 包——完整包带的默认 service 监听全接口 53/67，会与 2.4G 的 NM 内建
+#   dnsmasq(10.42.0.1)、systemd-resolved(127.0.0.53) 抢端口。5G 的 DHCP/DNS 由
+#   hive-hotspot-5g-dnsmasq.service 用 --conf-file + bind-interfaces 只绑 AP 口驱动。
+systemctl mask hostapd.service 2>/dev/null || true
 
 # WiFi 热点固件（AX210 需 iwlwifi-ty-*，MT7921/MT7922 需 mediatek/WIFI_*MT79*）。
 # 非致命：基础镜像通常已带 armbian-firmware；缺失则尝试补装，失败不中止构建。
@@ -152,6 +162,18 @@ if ls /lib/firmware/mediatek/WIFI_*MT7922* >/dev/null 2>&1; then
     echo ">>> MT7922 firmware present: OK"
 else
     echo ">>> WARNING: MT7922 firmware missing — MT7921/7922 WiFi/热点将无法启用"
+fi
+
+# 监管域数据库签名：Debian 的 wireless-regdb 默认 alternative 指向 regulatory.db-debian
+# （priority 100），但 Armbian 内核（mainline 系）编进去的是上游 sforshee 证书，验签失败
+# → 内核弃用 regdb、监管域卡在 world 00 → 5GHz AP 因 PASSIVE-SCAN(no-IR) 起不来
+#   （2026-07-04 MT7922/rockchip64 实测：dmesg "regulatory.db ... signature invalid"，
+#    iw reg set CN 静默失败、iw reg get 恒为 country 00，5G 热点 supplicant-timeout）。
+# 强制切到 upstream 签名，使内核能加载 regdb、iw reg set <国家码> 真正生效。slave 的 .p7s 自动跟切。
+if update-alternatives --list regulatory.db 2>/dev/null | grep -q upstream; then
+    update-alternatives --set regulatory.db /lib/firmware/regulatory.db-upstream \
+        && echo ">>> regulatory.db → upstream 签名（匹配 Armbian mainline 内核证书）" \
+        || echo ">>> WARNING: 无法切换 regulatory.db 到 upstream，5GHz 热点可能起不来"
 fi
 
 # 清理 apt 缓存，减少镜像体积
@@ -209,6 +231,15 @@ if [ -f "/etc/NetworkManager/dispatcher.d/90-hive-hotspot" ]; then
     chmod 755 /etc/NetworkManager/dispatcher.d/90-hive-hotspot
     echo ">>> NM dispatcher 90-hive-hotspot: OK"
 fi
+# 5G hostapd/dnsmasq 两个 unit：仅设属主权限，不 enable——由 hive-hotspot.sh 按需
+# systemctl restart 拉起（ConditionPathExists 防无配置空跑），开机自启经 hive-hotspot.service 间接保证。
+for u in hive-hotspot-5g.service hive-hotspot-5g-dnsmasq.service; do
+    if [ -f "/etc/systemd/system/$u" ]; then
+        chown root:root "/etc/systemd/system/$u"
+        chmod 644 "/etc/systemd/system/$u"
+        echo ">>> systemd unit $u: OK"
+    fi
+done
 
 if [ -f "/usr/local/bin/provision-node.sh" ]; then
     chmod +x /usr/local/bin/provision-node.sh

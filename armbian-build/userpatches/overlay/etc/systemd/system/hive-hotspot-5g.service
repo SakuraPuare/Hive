@@ -1,0 +1,21 @@
+[Unit]
+Description=Hive 5GHz Hotspot (hostapd, 80MHz VHT/HE)
+Documentation=https://github.com/SakuraPuare/hive
+# hostapd 独立托管 5G AP（NM 内建 wpa_supplicant 在 MT7922 上开 80MHz 会 HT_SCAN 失败）。
+# NM 必须先就绪：hive-hotspot.sh 靠 nmcli 把 5G 卡摘管（unmanaged），避免 NM autoconnect 抢接口。
+After=NetworkManager.service
+Wants=NetworkManager.service
+# 无配置文件（无 5G 卡 / 未生成）时不空跑，由 hive-hotspot.sh 生成后 restart 拉起。
+ConditionPathExists=/etc/hostapd/hive-5g.conf
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/hive/hotspot-5g.env
+# regdom 必须在 hostapd 启动前设好（5GHz AP 依赖）；iw reg set 异步，脚本 restart 前亦设一次双保险。
+ExecStartPre=/bin/sh -c 'command -v iw >/dev/null 2>&1 && iw reg set "${HOTSPOT_COUNTRY:-CN}" || true'
+ExecStart=/usr/sbin/hostapd /etc/hostapd/hive-5g.conf
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
