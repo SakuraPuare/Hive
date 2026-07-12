@@ -278,6 +278,8 @@ echo "生成优化内核配置: ${BASE_KERNEL_CONFIG} → userpatches/config/ker
 echo "渲染配置模板..."
 
 # /etc/hive/config.env — 所有共享凭证烧入镜像
+# SSH 公钥来源默认值：.env 未设 SSH_IMPORT_GITHUB 时回退历史值，避免渲染成空串。
+export SSH_IMPORT_GITHUB="${SSH_IMPORT_GITHUB:-SakuraPuare}"
 envsubst < "${ROOT_DIR}/configs/hive/config.env.tpl" \
     > "${ARMBIAN_DIR}/userpatches/overlay/etc/hive/config.env"
 

@@ -58,11 +58,26 @@ systemctl restart ssh.service 2>/dev/null || systemctl restart ssh 2>/dev/null |
 echo ">>> Identity set. Ed25519 fingerprint bound to MAC ${MAC}"
 
 # ── 导入 GitHub 公钥作为 root authorized_keys ─────────────────────
-echo ">>> Importing SSH public keys from GitHub..."
+# 来源由 config.env 的 SSH_IMPORT_GITHUB 配置（逗号分隔多用户）；留空则跳过。
+# 拉取失败非致命：root 仍可用预设密码登录，不因网络抖动中止整个 provision。
 mkdir -p /root/.ssh && chmod 700 /root/.ssh
-curl -fsSL https://github.com/SakuraPuare.keys >> /root/.ssh/authorized_keys
-chmod 600 /root/.ssh/authorized_keys
-echo ">>> $(wc -l < /root/.ssh/authorized_keys) authorized keys installed."
+if [ -n "${SSH_IMPORT_GITHUB:-}" ]; then
+    echo ">>> Importing SSH public keys from GitHub: ${SSH_IMPORT_GITHUB}"
+    IFS=',' read -ra GH_USERS <<< "${SSH_IMPORT_GITHUB}"
+    for gh_user in "${GH_USERS[@]}"; do
+        gh_user=$(echo "$gh_user" | tr -d ' ')
+        [ -z "$gh_user" ] && continue
+        if curl -fsSL "https://github.com/${gh_user}.keys" >> /root/.ssh/authorized_keys; then
+            echo ">>> imported keys for ${gh_user}"
+        else
+            echo ">>> WARN: failed to fetch keys for ${gh_user} (non-fatal)"
+        fi
+    done
+    chmod 600 /root/.ssh/authorized_keys
+    echo ">>> $(wc -l < /root/.ssh/authorized_keys 2>/dev/null || echo 0) authorized keys installed."
+else
+    echo ">>> SSH_IMPORT_GITHUB empty, skipping GitHub key import (password login only)."
+fi
 
 # ─────────────────────────────────────────────
 # 2. xray UUID（确定性，基于 MAC，重刷不变）
