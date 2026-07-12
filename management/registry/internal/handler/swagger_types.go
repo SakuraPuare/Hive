@@ -88,6 +88,13 @@ type NodeUpdateRequest struct {
 	Region       *string `json:"region,omitempty" example:"asia"`
 	MeshTunnelID *string `json:"mesh_tunnel_id,omitempty" example:"704320e0-f87b-4ca8-a45e-481c1fcd7462"`
 	MeshIP       *string `json:"mesh_ip,omitempty" example:"100.96.0.10"`
+	// 透明代理网关字段（此前 spec 漏标，前端靠 as 强转绕过）
+	GatewayEnabled       *bool   `json:"gateway_enabled,omitempty" example:"true"`
+	GatewayDirection     *string `json:"gateway_direction,omitempty" example:"domestic"`
+	GatewayUpstreamMode  *string `json:"gateway_upstream_mode,omitempty" example:"auto"`
+	GatewayUpstreamNodes *string `json:"gateway_upstream_nodes,omitempty" example:"aabbccddeeff,001122334455"`
+	// 网关计费绑定：设为某客户订阅 id 后本网关上游流量按该订阅计费；设为 null 解绑
+	BoundSubscriptionID *uint `json:"bound_subscription_id,omitempty" example:"42"`
 }
 
 // ── customer swagger types ───────────────────────────────────────────────────

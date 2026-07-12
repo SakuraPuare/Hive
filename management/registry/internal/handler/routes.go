@@ -27,6 +27,9 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("GET /nodes/{mac}/xray-users", h.HandleNodeXrayUsers)
 	// 节点拉取本机网关角色的 Mihomo 配置（设备端调用，Bearer token 认证）
 	mux.HandleFunc("GET /nodes/{mac}/clash-config", h.HandleNodeClashConfig)
+	// 远程命令队列（设备端：拉取待执行 + 回传结果，Bearer token 认证）
+	mux.HandleFunc("GET /nodes/{mac}/commands", h.HandleNodePullCommands)
+	mux.HandleFunc("POST /nodes/{mac}/commands/{id}/ack", h.HandleNodeAckCommand)
 
 	// ── 节点查询 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /nodes", perm("node:read")(h.HandleListNodes))
@@ -35,6 +38,12 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// ── 节点管理 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("PATCH /nodes/{mac}", perm("node:write")(h.HandleUpdateNode))
 	mux.HandleFunc("DELETE /nodes/{mac}", perm("node:delete")(h.HandleDeleteNode))
+	// 设备归属（管理员分配/解除）
+	mux.HandleFunc("POST /admin/nodes/{mac}/assign", perm("node:write")(h.HandleAdminAssignDevice))
+	mux.HandleFunc("POST /admin/nodes/{mac}/unassign", perm("node:write")(h.HandleAdminUnassignDevice))
+	// 设备远程命令（管理员下发/查历史）
+	mux.HandleFunc("POST /admin/nodes/{mac}/commands", perm("node:write")(h.HandleAdminEnqueueCommand))
+	mux.HandleFunc("GET /admin/nodes/{mac}/commands", perm("node:read")(h.HandleAdminListCommands))
 
 	// ── 管理端登录（Cookie 会话）────────────────────────────────────────────
 	mux.HandleFunc("POST /admin/login", loginRL.Wrap(h.HandleAdminLogin))
@@ -124,6 +133,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("POST /admin/customers/{id}/subscriptions", perm("customer:write")(h.HandleCreateSubscription))
 	mux.HandleFunc("GET /admin/customers/{id}/subscriptions", perm("customer:read")(h.HandleListSubscriptions))
 	mux.HandleFunc("GET /admin/customers/{id}/traffic", perm("customer:read")(h.HandleGetCustomerTraffic))
+	mux.HandleFunc("GET /admin/subscriptions", perm("customer:read")(h.HandleListAllSubscriptions))
 	mux.HandleFunc("PATCH /admin/subscriptions/{id}", perm("customer:write")(h.HandleUpdateSubscription))
 	mux.HandleFunc("DELETE /admin/subscriptions/{id}", perm("customer:delete")(h.HandleDeleteSubscription))
 	mux.HandleFunc("POST /admin/subscriptions/{id}/reset-token", perm("customer:write")(h.HandleResetSubscriptionToken))
@@ -175,6 +185,14 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("GET /portal/tickets", cust(h.HandlePortalTickets))
 	mux.HandleFunc("GET /portal/tickets/{id}", cust(h.HandlePortalGetTicket))
 	mux.HandleFunc("POST /portal/tickets/{id}/reply", cust(h.HandlePortalReplyTicket))
+
+	// ── 客户门户 — 我的设备 ──────────────────────────────────────────────────
+	mux.HandleFunc("GET /portal/devices", cust(h.HandlePortalListDevices))
+	mux.HandleFunc("GET /portal/devices/{mac}", cust(h.HandlePortalGetDevice))
+	mux.HandleFunc("POST /portal/devices/claim", cust(h.HandlePortalClaimDevice))
+	mux.HandleFunc("POST /portal/devices/{mac}/unbind", cust(h.HandlePortalUnbindDevice))
+	mux.HandleFunc("GET /portal/devices/{mac}/commands", cust(h.HandlePortalListCommands))
+	mux.HandleFunc("POST /portal/devices/{mac}/commands", cust(h.HandlePortalEnqueueCommand))
 
 	// ── 客户门户 — 邀请返利 ──────────────────────────────────────────────────
 	mux.HandleFunc("GET /portal/referral", cust(h.HandlePortalReferral))
