@@ -2,6 +2,8 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { handler_enqueueCommandRequest } from '../models/handler_enqueueCommandRequest';
+import type { handler_PortalClaimRequest } from '../models/handler_PortalClaimRequest';
 import type { handler_PortalCreateOrderRequest } from '../models/handler_PortalCreateOrderRequest';
 import type { handler_PortalCreateOrderResponse } from '../models/handler_PortalCreateOrderResponse';
 import type { handler_PortalCreateTicketRequest } from '../models/handler_PortalCreateTicketRequest';
@@ -16,10 +18,158 @@ import type { handler_PortalTicketDetail } from '../models/handler_PortalTicketD
 import type { handler_PortalTicketListResponse } from '../models/handler_PortalTicketListResponse';
 import type { handler_PortalUpdateMeRequest } from '../models/handler_PortalUpdateMeRequest';
 import type { handler_StatusResponse } from '../models/handler_StatusResponse';
+import type { model_DeviceCommand } from '../models/model_DeviceCommand';
+import type { model_Node } from '../models/model_Node';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class PortalService {
+    /**
+     * 列出我的设备
+     * 返回当前登录客户名下认领的所有设备
+     * @returns model_Node OK
+     * @throws ApiError
+     */
+    public static portalListDevices(): CancelablePromise<Array<model_Node>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/portal/devices',
+            errors: {
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 获取我的单台设备详情
+     * @returns model_Node OK
+     * @throws ApiError
+     */
+    public static portalGetDevice({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<model_Node> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/portal/devices/{mac}',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 我的设备命令历史
+     * @returns model_DeviceCommand OK
+     * @throws ApiError
+     */
+    public static portalListDeviceCommands({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<Array<model_DeviceCommand>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/portal/devices/{mac}/commands',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 给我的设备下发命令
+     * 客户对自己名下设备下发一条白名单命令（reboot/restart-xray/restart-mihomo/resync）。节点下次心跳周期拉取执行并回传结果。
+     * @returns number OK
+     * @throws ApiError
+     */
+    public static portalEnqueueDeviceCommand({
+        mac,
+        requestBody,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+        /**
+         * 命令
+         */
+        requestBody: handler_enqueueCommandRequest,
+    }): CancelablePromise<Record<string, number>> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/portal/devices/{mac}/commands',
+            path: {
+                'mac': mac,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 解绑我的设备
+     * 客户把设备从自己名下解绑；解绑后设备恢复未认领状态，认领码重新生效。
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static portalUnbindDevice({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/portal/devices/{mac}/unbind',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 认领设备
+     * 客户输入设备认领码（MOTD/贴纸上显示）把设备绑定到自己名下。一次性：已被认领的设备无法再认领。
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static portalClaimDevice({
+        requestBody,
+    }: {
+        /**
+         * 认领码
+         */
+        requestBody: handler_PortalClaimRequest,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/portal/devices/claim',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                409: `Conflict`,
+            },
+        });
+    }
     /**
      * 获取当前客户信息
      * @returns handler_PortalMeResponse OK

@@ -2,10 +2,12 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { handler_ackCommandRequest } from '../models/handler_ackCommandRequest';
 import type { handler_NodeRegisterRequest } from '../models/handler_NodeRegisterRequest';
 import type { handler_NodeRegisterResponse } from '../models/handler_NodeRegisterResponse';
 import type { handler_NodeXrayUsersResponse } from '../models/handler_NodeXrayUsersResponse';
 import type { handler_StatusResponse } from '../models/handler_StatusResponse';
+import type { model_DeviceCommand } from '../models/model_DeviceCommand';
 import type { model_HeartbeatRequest } from '../models/model_HeartbeatRequest';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
@@ -39,6 +41,70 @@ export class NodesService {
                 401: `Unauthorized`,
                 404: `Not Found`,
                 500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 节点拉取待执行命令
+     * 节点定时轮询本机 MAC 的 pending 命令。返回前把它们置为 sent 并记录 sent_at；超过 TTL 的 pending 惰性标记 expired、不再下发。设备鉴权（Bearer API_SECRET）。
+     * @returns model_DeviceCommand OK
+     * @throws ApiError
+     */
+    public static nodePullCommands({
+        mac,
+    }: {
+        /**
+         * node MAC
+         */
+        mac: string,
+    }): CancelablePromise<Array<model_DeviceCommand>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/nodes/{mac}/commands',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                401: `Unauthorized`,
+            },
+        });
+    }
+    /**
+     * 节点回传命令执行结果
+     * 节点执行完命令后回传 done/failed 与结果文本。仅能 ACK 本机 MAC 且处于 sent 的命令。设备鉴权（Bearer API_SECRET）。
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static nodeAckCommand({
+        mac,
+        id,
+        requestBody,
+    }: {
+        /**
+         * node MAC
+         */
+        mac: string,
+        /**
+         * command id
+         */
+        id: number,
+        /**
+         * 执行结果
+         */
+        requestBody: handler_ackCommandRequest,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/nodes/{mac}/commands/{id}/ack',
+            path: {
+                'mac': mac,
+                'id': id,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
             },
         });
     }

@@ -977,6 +977,139 @@ paths:
       summary: 获取节点状态列表
       tags:
         - admin
+  "/admin/nodes/{mac}/assign":
+    post:
+      description: 管理员把设备（节点）归属到指定客户名下。会设置 owner_customer_id 与 claimed_at。
+      operationId: AdminAssignDevice
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/handler.AssignDeviceRequest"
+        description: 目标客户
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - AdminSessionCookie: []
+      summary: 分配设备给客户
+      tags:
+        - admin
+  "/admin/nodes/{mac}/commands":
+    get:
+      operationId: AdminListDeviceCommands
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/model.DeviceCommand"
+                type: array
+      security:
+        - AdminSessionCookie: []
+      summary: 设备命令历史（管理员）
+      tags:
+        - admin
+    post:
+      operationId: AdminEnqueueDeviceCommand
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      requestBody:
+        $ref: "#/components/requestBodies/handler.enqueueCommandRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                additionalProperties:
+                  format: int64
+                  type: integer
+                type: object
+        "400":
+          description: Bad Request
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - AdminSessionCookie: []
+      summary: 给设备下发命令（管理员）
+      tags:
+        - admin
+  "/admin/nodes/{mac}/unassign":
+    post:
+      description: 管理员解除设备归属，恢复未认领状态（认领码重新生效）。
+      operationId: AdminUnassignDevice
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.StatusResponse"
+        "404":
+          description: Not Found
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - AdminSessionCookie: []
+      summary: 解除设备归属
+      tags:
+        - admin
   /admin/orders:
     get:
       description: 分页获取订单列表，支持按客户和状态筛选
@@ -1914,6 +2047,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/handler.ErrorResponse"
       summary: 重置订阅组 Token
+      tags:
+        - admin
+  /admin/subscriptions:
+    get:
+      description: 返回所有客户订阅（含客户邮箱与套餐名），用于后台选择器
+      operationId: AdminListAllSubscriptions
+      parameters:
+        - description: 按状态筛选
+          in: query
+          name: status
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/handler.SubscriptionListItem"
+                type: array
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - AdminSessionCookie: []
+      summary: 列出所有订阅
       tags:
         - admin
   "/admin/subscriptions/{id}":
@@ -2988,6 +3151,87 @@ paths:
       summary: Gateway Mihomo config for a node
       tags:
         - nodes
+  "/nodes/{mac}/commands":
+    get:
+      description: 节点定时轮询本机 MAC 的 pending 命令。返回前把它们置为 sent 并记录 sent_at；超过 TTL 的
+        pending 惰性标记 expired、不再下发。设备鉴权（Bearer API_SECRET）。
+      operationId: NodePullCommands
+      parameters:
+        - description: node MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/model.DeviceCommand"
+                type: array
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: 节点拉取待执行命令
+      tags:
+        - nodes
+  "/nodes/{mac}/commands/{id}/ack":
+    post:
+      description: 节点执行完命令后回传 done/failed 与结果文本。仅能 ACK 本机 MAC 且处于 sent 的命令。设备鉴权（Bearer
+        API_SECRET）。
+      operationId: NodeAckCommand
+      parameters:
+        - description: node MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+        - description: command id
+          in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/handler.ackCommandRequest"
+        description: 执行结果
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: 节点回传命令执行结果
+      tags:
+        - nodes
   "/nodes/{mac}/xray-users":
     get:
       description: >-
@@ -3124,6 +3368,191 @@ paths:
       summary: 获取公开公告列表
       tags:
         - portal-public
+  /portal/devices:
+    get:
+      description: 返回当前登录客户名下认领的所有设备
+      operationId: PortalListDevices
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/model.Node"
+                type: array
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - CustomerSessionCookie: []
+      summary: 列出我的设备
+      tags:
+        - portal
+  "/portal/devices/{mac}":
+    get:
+      operationId: PortalGetDevice
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/model.Node"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - CustomerSessionCookie: []
+      summary: 获取我的单台设备详情
+      tags:
+        - portal
+  "/portal/devices/{mac}/commands":
+    get:
+      operationId: PortalListDeviceCommands
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/model.DeviceCommand"
+                type: array
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - CustomerSessionCookie: []
+      summary: 我的设备命令历史
+      tags:
+        - portal
+    post:
+      description: 客户对自己名下设备下发一条白名单命令（reboot/restart-xray/restart-mihomo/resync）。节点下次心跳周期拉取执行并回传结果。
+      operationId: PortalEnqueueDeviceCommand
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      requestBody:
+        $ref: "#/components/requestBodies/handler.enqueueCommandRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                additionalProperties:
+                  format: int64
+                  type: integer
+                type: object
+        "400":
+          description: Bad Request
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - CustomerSessionCookie: []
+      summary: 给我的设备下发命令
+      tags:
+        - portal
+  "/portal/devices/{mac}/unbind":
+    post:
+      description: 客户把设备从自己名下解绑；解绑后设备恢复未认领状态，认领码重新生效。
+      operationId: PortalUnbindDevice
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.StatusResponse"
+        "404":
+          description: Not Found
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - CustomerSessionCookie: []
+      summary: 解绑我的设备
+      tags:
+        - portal
+  /portal/devices/claim:
+    post:
+      description: 客户输入设备认领码（MOTD/贴纸上显示）把设备绑定到自己名下。一次性：已被认领的设备无法再认领。
+      operationId: PortalClaimDevice
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/handler.PortalClaimRequest"
+        description: 认领码
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.StatusResponse"
+        "400":
+          description: Bad Request
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - CustomerSessionCookie: []
+      summary: 认领设备
+      tags:
+        - portal
   /portal/forgot-password:
     post:
       description: 向指定邮箱发送 6 位验证码，15 分钟有效
@@ -3802,6 +4231,14 @@ paths:
 servers:
   - url: /
 components:
+  requestBodies:
+    handler.enqueueCommandRequest:
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/handler.enqueueCommandRequest"
+      description: 命令
+      required: true
   securitySchemes:
     AdminSessionCookie:
       description: '"HttpOnly session cookie for admin UI"'
@@ -3881,6 +4318,12 @@ components:
           type: boolean
         title:
           type: string
+      type: object
+    handler.AssignDeviceRequest:
+      properties:
+        customer_id:
+          example: 42
+          type: integer
       type: object
     handler.ChangePasswordRequest:
       properties:
@@ -4099,6 +4542,10 @@ components:
       type: object
     handler.NodeUpdateRequest:
       properties:
+        bound_subscription_id:
+          description: 网关计费绑定：设为某客户订阅 id 后本网关上游流量按该订阅计费；设为 null 解绑
+          example: 42
+          type: integer
         easytier_ip:
           example: 10.0.0.1
           type: string
@@ -4108,6 +4555,19 @@ components:
         frp_port:
           example: 7000
           type: integer
+        gateway_direction:
+          example: domestic
+          type: string
+        gateway_enabled:
+          description: 透明代理网关字段（此前 spec 漏标，前端靠 as 强转绕过）
+          example: true
+          type: boolean
+        gateway_upstream_mode:
+          example: auto
+          type: string
+        gateway_upstream_nodes:
+          example: aabbccddeeff,001122334455
+          type: string
         location:
           example: Tokyo
           type: string
@@ -4158,6 +4618,12 @@ components:
           type: string
         slug:
           example: node:read
+          type: string
+      type: object
+    handler.PortalClaimRequest:
+      properties:
+        code:
+          example: K7QF-2M9X
           type: string
       type: object
     handler.PortalCreateOrderRequest:
@@ -4481,6 +4947,23 @@ components:
         upload_bytes:
           type: integer
       type: object
+    handler.SubscriptionListItem:
+      properties:
+        customer_email:
+          type: string
+        customer_id:
+          type: integer
+        expires_at:
+          type: string
+        id:
+          type: integer
+        plan_id:
+          type: integer
+        plan_name:
+          type: string
+        status:
+          type: string
+      type: object
     handler.TicketDetailResponse:
       properties:
         replies:
@@ -4618,6 +5101,26 @@ components:
         uuid:
           type: string
       type: object
+    handler.ackCommandRequest:
+      properties:
+        result:
+          description: stdout/err snippet or error text
+          example: ok
+          type: string
+        status:
+          description: done | failed
+          example: done
+          type: string
+      type: object
+    handler.enqueueCommandRequest:
+      properties:
+        action:
+          example: restart-xray
+          type: string
+        params:
+          example: ""
+          type: string
+      type: object
     model.Announcement:
       properties:
         content:
@@ -4698,6 +5201,29 @@ components:
         xray_uuid:
           type: string
       type: object
+    model.DeviceCommand:
+      properties:
+        acked_at:
+          type: string
+        action:
+          type: string
+        created_at:
+          type: string
+        created_by:
+          type: string
+        id:
+          type: integer
+        node_mac:
+          type: string
+        params:
+          type: string
+        result:
+          type: string
+        sent_at:
+          type: string
+        status:
+          type: string
+      type: object
     model.HeartbeatRequest:
       properties:
         cpu_pct:
@@ -4736,7 +5262,15 @@ components:
       type: object
     model.Node:
       properties:
+        bound_subscription_id:
+          description: |-
+            网关设备计费绑定：非空时，本网关走上游 Hive 节点的流量按此客户订阅的
+            UUID 下发（email sub-<id>），被 traffic.go 计入该订阅；为空则沿用节点级
+            UUID（node-*，不计费）。
+          type: integer
         cf_url:
+          type: string
+        claimed_at:
           type: string
         easytier_ip:
           type: string
@@ -4775,6 +5309,11 @@ components:
           type: string
         note:
           type: string
+        owner_customer_id:
+          description: |-
+            设备归属：owner_customer_id 非空即"这台设备属于某客户"，客户可在门户查看/管理。
+            claim_code_hash 只存哈希、不出 JSON（明文仅在注册响应回传一次）。
+          type: integer
         probe_status:
           type: string
         region:

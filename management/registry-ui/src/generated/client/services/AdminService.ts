@@ -6,6 +6,7 @@ import type { handler_AdminLoginRequest } from '../models/handler_AdminLoginRequ
 import type { handler_AdminReferralListResponse } from '../models/handler_AdminReferralListResponse';
 import type { handler_AnnouncementListResponse } from '../models/handler_AnnouncementListResponse';
 import type { handler_AnnouncementRequest } from '../models/handler_AnnouncementRequest';
+import type { handler_AssignDeviceRequest } from '../models/handler_AssignDeviceRequest';
 import type { handler_ChangePasswordRequest } from '../models/handler_ChangePasswordRequest';
 import type { handler_CreateCustomerRequest } from '../models/handler_CreateCustomerRequest';
 import type { handler_CreateGroupRequest } from '../models/handler_CreateGroupRequest';
@@ -21,6 +22,7 @@ import type { handler_CreateUserRequest } from '../models/handler_CreateUserRequ
 import type { handler_CustomerDetail } from '../models/handler_CustomerDetail';
 import type { handler_CustomerListResponse } from '../models/handler_CustomerListResponse';
 import type { handler_CustomerTrafficResponse } from '../models/handler_CustomerTrafficResponse';
+import type { handler_enqueueCommandRequest } from '../models/handler_enqueueCommandRequest';
 import type { handler_MeResponse } from '../models/handler_MeResponse';
 import type { handler_NodeUpdateRequest } from '../models/handler_NodeUpdateRequest';
 import type { handler_OrderListResponse } from '../models/handler_OrderListResponse';
@@ -37,6 +39,7 @@ import type { handler_SetPermissionsRequest } from '../models/handler_SetPermiss
 import type { handler_SetPlanLinesRequest } from '../models/handler_SetPlanLinesRequest';
 import type { handler_SetRolesRequest } from '../models/handler_SetRolesRequest';
 import type { handler_StatusResponse } from '../models/handler_StatusResponse';
+import type { handler_SubscriptionListItem } from '../models/handler_SubscriptionListItem';
 import type { handler_TicketDetailResponse } from '../models/handler_TicketDetailResponse';
 import type { handler_TicketListResponse } from '../models/handler_TicketListResponse';
 import type { handler_TicketReplyRequest } from '../models/handler_TicketReplyRequest';
@@ -52,6 +55,7 @@ import type { handler_UserWithRoles } from '../models/handler_UserWithRoles';
 import type { model_Announcement } from '../models/model_Announcement';
 import type { model_AuditLog } from '../models/model_AuditLog';
 import type { model_CustomerSubscription } from '../models/model_CustomerSubscription';
+import type { model_DeviceCommand } from '../models/model_DeviceCommand';
 import type { model_Line } from '../models/model_Line';
 import type { model_Node } from '../models/model_Node';
 import type { model_NodeStatusCheck } from '../models/model_NodeStatusCheck';
@@ -814,6 +818,117 @@ export class AdminService {
         });
     }
     /**
+     * 分配设备给客户
+     * 管理员把设备（节点）归属到指定客户名下。会设置 owner_customer_id 与 claimed_at。
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static adminAssignDevice({
+        mac,
+        requestBody,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+        /**
+         * 目标客户
+         */
+        requestBody: handler_AssignDeviceRequest,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/nodes/{mac}/assign',
+            path: {
+                'mac': mac,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 设备命令历史（管理员）
+     * @returns model_DeviceCommand OK
+     * @throws ApiError
+     */
+    public static adminListDeviceCommands({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<Array<model_DeviceCommand>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/nodes/{mac}/commands',
+            path: {
+                'mac': mac,
+            },
+        });
+    }
+    /**
+     * 给设备下发命令（管理员）
+     * @returns number OK
+     * @throws ApiError
+     */
+    public static adminEnqueueDeviceCommand({
+        mac,
+        requestBody,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+        /**
+         * 命令
+         */
+        requestBody: handler_enqueueCommandRequest,
+    }): CancelablePromise<Record<string, number>> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/nodes/{mac}/commands',
+            path: {
+                'mac': mac,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 解除设备归属
+     * 管理员解除设备归属，恢复未认领状态（认领码重新生效）。
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static adminUnassignDevice({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/nodes/{mac}/unassign',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
      * 获取订单列表
      * 分页获取订单列表，支持按客户和状态筛选
      * @returns handler_OrderListResponse OK
@@ -1508,6 +1623,31 @@ export class AdminService {
             errors: {
                 400: `Bad Request`,
                 404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * 列出所有订阅
+     * 返回所有客户订阅（含客户邮箱与套餐名），用于后台选择器
+     * @returns handler_SubscriptionListItem OK
+     * @throws ApiError
+     */
+    public static adminListAllSubscriptions({
+        status,
+    }: {
+        /**
+         * 按状态筛选
+         */
+        status?: string,
+    }): CancelablePromise<Array<handler_SubscriptionListItem>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/subscriptions',
+            query: {
+                'status': status,
+            },
+            errors: {
                 500: `Internal Server Error`,
             },
         });

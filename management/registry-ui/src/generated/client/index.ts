@@ -7,11 +7,13 @@ export { CancelablePromise, CancelError } from './core/CancelablePromise';
 export { OpenAPI } from './core/OpenAPI';
 export type { OpenAPIConfig } from './core/OpenAPI';
 
+export type { handler_ackCommandRequest } from './models/handler_ackCommandRequest';
 export type { handler_AdminLoginRequest } from './models/handler_AdminLoginRequest';
 export type { handler_AdminReferralItem } from './models/handler_AdminReferralItem';
 export type { handler_AdminReferralListResponse } from './models/handler_AdminReferralListResponse';
 export type { handler_AnnouncementListResponse } from './models/handler_AnnouncementListResponse';
 export type { handler_AnnouncementRequest } from './models/handler_AnnouncementRequest';
+export type { handler_AssignDeviceRequest } from './models/handler_AssignDeviceRequest';
 export type { handler_ChangePasswordRequest } from './models/handler_ChangePasswordRequest';
 export type { handler_CreateCustomerRequest } from './models/handler_CreateCustomerRequest';
 export type { handler_CreateGroupRequest } from './models/handler_CreateGroupRequest';
@@ -27,6 +29,7 @@ export type { handler_CreateUserRequest } from './models/handler_CreateUserReque
 export type { handler_CustomerDetail } from './models/handler_CustomerDetail';
 export type { handler_CustomerListResponse } from './models/handler_CustomerListResponse';
 export type { handler_CustomerTrafficResponse } from './models/handler_CustomerTrafficResponse';
+export type { handler_enqueueCommandRequest } from './models/handler_enqueueCommandRequest';
 export type { handler_ErrorResponse } from './models/handler_ErrorResponse';
 export type { handler_ForgotPasswordRequest } from './models/handler_ForgotPasswordRequest';
 export type { handler_MeResponse } from './models/handler_MeResponse';
@@ -36,6 +39,7 @@ export type { handler_NodeUpdateRequest } from './models/handler_NodeUpdateReque
 export type { handler_NodeXrayUsersResponse } from './models/handler_NodeXrayUsersResponse';
 export type { handler_OrderListResponse } from './models/handler_OrderListResponse';
 export type { handler_PermissionItem } from './models/handler_PermissionItem';
+export type { handler_PortalClaimRequest } from './models/handler_PortalClaimRequest';
 export type { handler_PortalCreateOrderRequest } from './models/handler_PortalCreateOrderRequest';
 export type { handler_PortalCreateOrderResponse } from './models/handler_PortalCreateOrderResponse';
 export type { handler_PortalCreateTicketRequest } from './models/handler_PortalCreateTicketRequest';
@@ -65,6 +69,7 @@ export type { handler_SetPermissionsRequest } from './models/handler_SetPermissi
 export type { handler_SetPlanLinesRequest } from './models/handler_SetPlanLinesRequest';
 export type { handler_SetRolesRequest } from './models/handler_SetRolesRequest';
 export type { handler_StatusResponse } from './models/handler_StatusResponse';
+export type { handler_SubscriptionListItem } from './models/handler_SubscriptionListItem';
 export type { handler_SubTraffic } from './models/handler_SubTraffic';
 export type { handler_TicketDetailResponse } from './models/handler_TicketDetailResponse';
 export type { handler_TicketListResponse } from './models/handler_TicketListResponse';
@@ -83,6 +88,7 @@ export type { model_Announcement } from './models/model_Announcement';
 export type { model_AuditLog } from './models/model_AuditLog';
 export type { model_Customer } from './models/model_Customer';
 export type { model_CustomerSubscription } from './models/model_CustomerSubscription';
+export type { model_DeviceCommand } from './models/model_DeviceCommand';
 export type { model_HeartbeatRequest } from './models/model_HeartbeatRequest';
 export type { model_Line } from './models/model_Line';
 export type { model_Node } from './models/model_Node';
