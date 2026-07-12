@@ -15,10 +15,10 @@ import (
 // reboot call; anything outside this set is rejected at enqueue time so an
 // attacker who reaches the enqueue endpoint can't run arbitrary strings.
 var commandActions = map[string]bool{
-	"reboot":          true,
-	"restart-xray":    true, // systemctl restart hive-xray
-	"restart-mihomo":  true, // systemctl restart hive-mihomo (gateway role)
-	"resync":          true, // re-pull configs: hive-xray-sync + hive-clash-sync
+	"reboot":         true,
+	"restart-xray":   true, // systemctl restart hive-xray
+	"restart-mihomo": true, // systemctl restart hive-mihomo (gateway role)
+	"resync":         true, // re-pull configs: hive-xray-sync + hive-clash-sync
 }
 
 // commandTTL bounds how long a pending command stays claimable. Past this the
@@ -37,8 +37,8 @@ type enqueueCommandRequest struct {
 
 // ackCommandRequest is the body a node posts back after executing a command.
 type ackCommandRequest struct {
-	Status string `json:"status" example:"done"`   // done | failed
-	Result string `json:"result" example:"ok"`      // stdout/err snippet or error text
+	Status string `json:"status" example:"done"` // done | failed
+	Result string `json:"result" example:"ok"`   // stdout/err snippet or error text
 }
 
 // enqueueCommand validates the action and inserts one pending row for mac,
