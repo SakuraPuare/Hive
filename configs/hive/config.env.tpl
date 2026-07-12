@@ -31,11 +31,15 @@ NODE_REGISTRY_API_SECRET=${REGISTRY_API_SECRET}
 # ===== 伪装跳转目标（CF Pages 或任意 URL）=====
 CAMOUFLAGE_URL=${CAMOUFLAGE_URL}
 
+# ===== 节点 SSH 授权公钥来源（GitHub 用户名，逗号分隔；留空则不导入）=====
+SSH_IMPORT_GITHUB=${SSH_IMPORT_GITHUB}
+
 # ===== WiFi 热点（插无线网卡自动开热点）=====
 # 单卡（单 radio）只能开一个频段：默认优先 5G(WPA3)，卡不支持 5G 才回退 2.4G(WPA2)。
 # 两张卡时自动双频：5G(WPA3) + 2.4G(WPA2) 各占一张。留空则用脚本内默认值。
-HOTSPOT_COUNTRY=${HOTSPOT_COUNTRY}            # 5GHz 国家码，默认 CN（36-48 免 DFS）
-HOTSPOT_5G_CHANNEL=${HOTSPOT_5G_CHANNEL}      # 5G 信道，默认 36（免 DFS）
+HOTSPOT_COUNTRY=${HOTSPOT_COUNTRY}            # 5GHz 国家码，默认 CN（ch149@80MHz@33dBm，比 US 30dBm 功率更高）
+HOTSPOT_5G_CHANNEL=${HOTSPOT_5G_CHANNEL}      # 5G 信道，默认 149（CN 非 DFS，可开 80MHz）
+HOTSPOT_5G_WIDTH=${HOTSPOT_5G_WIDTH}          # 5G 频宽 20|40|80，默认 80（160 因驱动 AP-DFS+客户端锁 6G 不提供）
 HOTSPOT_PREFER_BAND=${HOTSPOT_PREFER_BAND}    # 单卡偏好频段：5 或 2.4，默认 5（优先 5G WPA3）
 
 # ===== 透明代理网关（路由器角色，LAN/WiFi 设备连上即自动走代理）=====
