@@ -359,11 +359,15 @@ if [ -n "${TS_ACCESS_TOKEN}" ]; then
     done
 fi
 
+# --timeout=30s：tailscale up 默认会一直阻塞到节点上线。代理网关网络抽风时它会
+# 无限挂起，把整段首启拖到 systemd 300s 超时被 kill（历史事故根因）。加超时后连不上
+# 就返回、继续往下走；tailscaled 会在后台自行重试上线，非致命。
 tailscale up \
+    --timeout=30s \
     --authkey="${TS_AUTHKEY}" \
     --hostname="${HOSTNAME}" \
     --accept-dns=false \
-    || echo ">>> Tailscale up failed (will retry on next boot via tailscaled)"
+    || echo ">>> Tailscale up failed/timed out (tailscaled 会后台重试，non-fatal)"
 
 # ─────────────────────────────────────────────
 # 7.5. Cloudflare Mesh（WARP Connector）
@@ -466,8 +470,18 @@ if [ -n "${NODE_REGISTRY_URL}" ]; then
           \"xray_uuid\":    \"${UUID}\",
           \"mesh_tunnel_id\": \"${MESH_TUNNEL_ID:-}\",
           \"mesh_ip\":      \"${MESH_IP:-}\"
-        }" && echo ">>> Registered with Node Registry." \
-        || echo ">>> Registry unavailable (non-fatal)."
+        }"
+    for reg_try in $(seq 1 6); do
+        if curl -4 -sf --max-time 15 -X POST "${NODE_REGISTRY_URL}/nodes/register" \
+            -H "Content-Type: application/json" \
+            ${NODE_REGISTRY_API_SECRET:+-H "Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"} \
+            -d "${REG_JSON}" >/dev/null; then
+            echo ">>> Registered with Node Registry."
+            break
+        fi
+        echo ">>> register 第 ${reg_try}/6 次失败（registry 抖动？），5s 后重试..."
+        sleep 5
+    done
 fi
 
 # ─────────────────────────────────────────────
