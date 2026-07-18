@@ -108,21 +108,21 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-50 border-b border-md-outline-variant bg-md-surface/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 md:px-6">
           {/* Logo + desktop nav */}
-          <div className="flex items-center gap-8">
-            <Link href="/portal/dashboard" className="state-layer flex items-center gap-2.5 rounded-full py-1.5 pl-1.5 pr-3">
+          <div className="flex items-center gap-4 xl:gap-6">
+            <Link href="/portal/dashboard" className="state-layer flex shrink-0 items-center gap-2.5 rounded-full py-1.5 pl-1.5 pr-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-md-primary text-md-on-primary elevation-1">
                 <Globe className="h-[18px] w-[18px]" aria-hidden="true" />
               </div>
               <span className="font-display text-base font-600 tracking-tight text-foreground">{t('brand')}</span>
             </Link>
-            <nav className="hidden md:flex items-center gap-1" aria-label={t('brand')}>
+            <nav className="hidden lg:flex items-center gap-0.5" aria-label={t('brand')}>
               {navItems.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}
                   aria-current={isActive(href) ? 'page' : undefined}
                   className={cn(
-                    'state-layer flex items-center gap-2 rounded-full px-4 py-2 text-sm font-500 transition-colors',
+                    'state-layer flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-2 text-sm font-500 transition-colors',
                     isActive(href)
                       ? 'bg-md-secondary-container text-md-on-secondary-container'
                       : 'text-md-on-surface-variant hover:text-foreground'
@@ -137,19 +137,19 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
 
           {/* Right side — order mirrors admin AppLayout: locale, color, theme, user */}
           <div className="flex items-center gap-2">
-            <div className="hidden md:block">
+            <div className="hidden lg:block">
               <LocaleToggle groupLabel={t('language')} />
             </div>
             <ThemeColorPicker />
             <ThemeToggle />
             {/* User dropdown (desktop) */}
             {loading ? (
-              <div className="hidden md:flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3" aria-hidden="true">
+              <div className="hidden lg:flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3" aria-hidden="true">
                 <div className="h-8 w-8 animate-pulse rounded-full bg-md-surface-container-high" />
                 <div className="h-3.5 w-20 animate-pulse rounded-full bg-md-surface-container-high" />
               </div>
             ) : customer ? (
-              <div className="hidden md:block">
+              <div className="hidden lg:block">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
@@ -190,7 +190,7 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
             {/* Mobile hamburger */}
             <button
               type="button"
-              className="state-layer md:hidden flex items-center justify-center h-12 w-12 rounded-full text-md-on-surface-variant transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 focus-visible:ring-offset-md-surface"
+              className="state-layer lg:hidden flex items-center justify-center h-12 w-12 rounded-full text-md-on-surface-variant transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2 focus-visible:ring-offset-md-surface"
               onClick={() => setMobileOpen((v) => !v)}
               aria-label={mobileOpen ? t('closeMenu') : t('openMenu')}
               aria-expanded={mobileOpen}
@@ -206,13 +206,13 @@ function PortalLayoutInner({ children }: { children: React.ReactNode }) {
           <>
             <div
               aria-hidden="true"
-              className="fixed inset-x-0 bottom-0 top-16 z-40 bg-md-scrim/30 md:hidden"
+              className="fixed inset-x-0 bottom-0 top-16 z-40 bg-md-scrim/30 lg:hidden"
               onClick={() => setMobileOpen(false)}
             />
             <div
               id="portal-mobile-nav"
               ref={mobilePanelRef}
-              className="relative z-50 border-t border-md-outline-variant bg-md-surface md:hidden animate-slide-up"
+              className="relative z-50 border-t border-md-outline-variant bg-md-surface lg:hidden animate-slide-up"
             >
               <nav className="flex flex-col p-3 space-y-1" aria-label={t('brand')}>
                 {navItems.map(({ href, label, icon: Icon }, i) => (
