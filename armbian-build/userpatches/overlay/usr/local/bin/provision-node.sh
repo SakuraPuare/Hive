@@ -116,11 +116,20 @@ echo ">>> FRP port: ${FRP_PORT}"
 # provision 不落 DONE_MARKER、下次开机自动重试)。同一 MAC 重刷镜像会领回同一 IP。
 EASYTIER_IP=""
 if [ -n "${NODE_REGISTRY_URL}" ]; then
-    ET_ALLOC_RESP=$(curl -sf -X POST "${NODE_REGISTRY_URL}/nodes/allocate-easytier" \
-        -H "Content-Type: application/json" \
-        ${NODE_REGISTRY_API_SECRET:+-H "Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"} \
-        -d "{\"mac\": \"${MAC}\"}" || true)
-    EASYTIER_IP=$(echo "$ET_ALLOC_RESP" | jq -r '.easytier_ip // empty' 2>/dev/null)
+    # -4 强制 IPv4：全局代理网关 + 有 IPv6 的现场，默认会挑 IPv6+Mihomo 那条半开死路
+    # （TLS 握手成功但响应回不来，超时 → 注册失败）。IPv4 走 Mihomo 上游中继实测可通。
+    # 带重试：代理网关上游中继会间歇抽风（偶发 SSL 握手失败 http=000），单次抖动
+    # 不该让「拿号」这个 FATAL 步骤把整个首启置备打断。最多 6 次、间隔 5s。
+    for et_try in $(seq 1 6); do
+        ET_ALLOC_RESP=$(curl -4 -sf --max-time 15 -X POST "${NODE_REGISTRY_URL}/nodes/allocate-easytier" \
+            -H "Content-Type: application/json" \
+            ${NODE_REGISTRY_API_SECRET:+-H "Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"} \
+            -d "{\"mac\": \"${MAC}\"}" || true)
+        EASYTIER_IP=$(echo "$ET_ALLOC_RESP" | jq -r '.easytier_ip // empty' 2>/dev/null)
+        [ -n "${EASYTIER_IP}" ] && break
+        echo ">>> allocate-easytier 第 ${et_try}/6 次失败（registry 抖动？），5s 后重试..."
+        sleep 5
+    done
 fi
 if [ -z "${EASYTIER_IP}" ]; then
     echo "!!! FATAL: EasyTier IP allocation failed (registry unreachable or pool exhausted)."
@@ -442,10 +451,10 @@ sed -i "s/^TAILSCALE_HOST=.*/TAILSCALE_HOST=${HOSTNAME}\nTAILSCALE_IP=${TAILSCAL
     /etc/hive/node-info
 
 if [ -n "${NODE_REGISTRY_URL}" ]; then
-    curl -sf -X POST "${NODE_REGISTRY_URL}/nodes/register" \
-        -H "Content-Type: application/json" \
-        ${NODE_REGISTRY_API_SECRET:+-H "Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"} \
-        -d "{
+    # -4 强制 IPv4：同 allocate-easytier，避开 IPv6+Mihomo 半开死路。
+    # 带重试：代理网关上游中继间歇抽风，单次抖动不该让节点漏注册（漏了要等下次
+    # 重刷才补，因为下面会 touch DONE_MARKER 自禁用）。最多 6 次、间隔 5s。
+    REG_JSON="{
           \"mac\":          \"${MAC}\",
           \"mac6\":         \"${MAC6}\",
           \"hostname\":     \"${HOSTNAME}\",
