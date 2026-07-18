@@ -8,14 +8,6 @@
 # 即完全跳过网络、彻底规避抖动。强制刷新：删除该目录，或设 BIN_CACHE_REFRESH=1。
 set -e
 
-# 支持通过环境变量覆盖，默认使用 latest（仅 xray / cloudflared）
-XRAY_VER="${XRAY_VER:-latest}"               # e.g. v26.2.6 或 latest
-CLOUDFLARED_VER="${CLOUDFLARED_VER:-latest}" # e.g. 2026.2.0 或 latest
-FRP_VER="${FRP_VER:-0.69.1}"
-EASYTIER_VER="${EASYTIER_VER:-v2.6.4}"
-XRAY_EXPORTER_VER="${XRAY_EXPORTER_VER:-v0.2.0}" # compassvpn/xray-exporter
-MIHOMO_VER="${MIHOMO_VER:-v1.19.27}"             # MetaCubeX/mihomo（Clash.Meta 内核，透明代理网关）
-METACUBEXD_VER="${METACUBEXD_VER:-v1.256.0}"     # MetaCubeX/metacubexd（Clash API Web 面板）
 
 DEST="armbian-build/userpatches/overlay/usr/local/bin"
 mkdir -p "$DEST"
@@ -44,32 +36,46 @@ fetch_raw() {
   printf '%s' "$cached"
 }
 
+# resolve_latest_tag <owner/repo> <cache_key>：解析 GitHub releases/latest 重定向得到实际
+# tag（如 v0.70.0），stdout 回显。结果缓存到 <key>.tag，网络失败时回退缓存，保证离线可用
+# （前提是曾解析过）。用于文件名内嵌版本号、无法走静态 latest 直链的仓库（frp / easytier）。
+resolve_latest_tag() {
+  local repo="$1" tagcache="$BIN_CACHE/$2.tag" url tag
+  url=$(curl -fsI -o /dev/null -w '%{redirect_url}' \
+        --retry 5 --retry-delay 3 --retry-all-errors --retry-connrefused \
+        --connect-timeout 20 --max-time 120 \
+        "https://github.com/${repo}/releases/latest" 2>/dev/null || true)
+  tag="${url##*/tag/}"
+  if [ -n "$tag" ] && [ "$tag" != "$url" ]; then
+    printf '%s' "$tag" > "$tagcache"
+    printf '%s' "$tag"; return 0
+  fi
+  if [ -s "$tagcache" ]; then
+    echo "    [tag 解析失败，回退缓存] $2" >&2
+    cat "$tagcache"; return 0
+  fi
+  echo "    [错误] 无法解析 $repo 的 latest tag，且无缓存" >&2
+  return 1
+}
+
 # ── xray-core ──────────────────────────────────────────────────────────
-echo ">>> xray ${XRAY_VER}..."
-if [ "$XRAY_VER" = "latest" ]; then
-  XRAY_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-arm64-v8a.zip"
-else
-  XRAY_URL="https://github.com/XTLS/Xray-core/releases/download/${XRAY_VER}/Xray-linux-arm64-v8a.zip"
-fi
-f=$(fetch_raw "$XRAY_URL" "xray-${XRAY_VER}.zip")
+echo ">>> xray latest..."
+f=$(fetch_raw "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-arm64-v8a.zip" "xray-latest.zip")
 unzip -jo "$f" "xray" -d "${DEST}"
 chmod +x "${DEST}/xray"
 echo "    xray: OK"
 
 # ── cloudflared ────────────────────────────────────────────────────────
-echo ">>> cloudflared ${CLOUDFLARED_VER}..."
-if [ "$CLOUDFLARED_VER" = "latest" ]; then
-  CLOUDFLARED_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64"
-else
-  CLOUDFLARED_URL="https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VER}/cloudflared-linux-arm64"
-fi
-f=$(fetch_raw "$CLOUDFLARED_URL" "cloudflared-${CLOUDFLARED_VER}")
+echo ">>> cloudflared latest..."
+f=$(fetch_raw "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64" "cloudflared-latest")
 cp -f "$f" "${DEST}/cloudflared"
 chmod +x "${DEST}/cloudflared"
 echo "    cloudflared: OK"
 
 # ── frpc ───────────────────────────────────────────────────────────────
 # https://github.com/fatedier/frp/
+# 文件名内嵌版本号（frp_0.70.0_linux_arm64），故先解析 latest 得到 tag
+FRP_VER=$(resolve_latest_tag "fatedier/frp" "frp"); FRP_VER="${FRP_VER#v}"
 echo ">>> frpc ${FRP_VER}..."
 f=$(fetch_raw "https://github.com/fatedier/frp/releases/download/v${FRP_VER}/frp_${FRP_VER}_linux_arm64.tar.gz" "frp-${FRP_VER}.tar.gz")
 tar xzf "$f" --strip-components=1 -C "${DEST}" "frp_${FRP_VER}_linux_arm64/frpc"
@@ -78,6 +84,8 @@ echo "    frpc: OK"
 
 # ── easytier-core ──────────────────────────────────────────────────────
 # https://github.com/EasyTier/EasyTier
+# 文件名内嵌 tag（easytier-linux-aarch64-v2.6.4），故先解析 latest 得到 tag
+EASYTIER_VER=$(resolve_latest_tag "EasyTier/EasyTier" "easytier")
 echo ">>> easytier ${EASYTIER_VER}..."
 f=$(fetch_raw "https://github.com/EasyTier/EasyTier/releases/download/${EASYTIER_VER}/easytier-linux-aarch64-${EASYTIER_VER}.zip" "easytier-${EASYTIER_VER}.zip")
 unzip -jo "$f" "*/easytier-core" -d "${DEST}"
@@ -87,6 +95,8 @@ echo "    easytier-core: OK"
 # ── mihomo ─────────────────────────────────────────────────────────────
 # https://github.com/MetaCubeX/mihomo
 # Clash.Meta 内核，做透明代理网关；arm64 资产为 gzip 单文件
+# 文件名内嵌版本（mihomo-linux-arm64-v1.19.28.gz），故先解析 latest 得到 tag
+MIHOMO_VER=$(resolve_latest_tag "MetaCubeX/mihomo" "mihomo")
 echo ">>> mihomo ${MIHOMO_VER}..."
 f=$(fetch_raw "https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VER}/mihomo-linux-arm64-${MIHOMO_VER}.gz" "mihomo-${MIHOMO_VER}.gz")
 gunzip -c "$f" > "${DEST}/mihomo"
@@ -96,17 +106,17 @@ echo "    mihomo: OK"
 # ── metacubexd ─────────────────────────────────────────────────────────
 # https://github.com/MetaCubeX/metacubexd
 # Clash API 的 Web 仪表盘（静态资源），解压到 var/www，由 nginx 托管
-echo ">>> metacubexd ${METACUBEXD_VER}..."
+echo ">>> metacubexd latest..."
 mkdir -p "${WWW_METACUBEXD}"
-f=$(fetch_raw "https://github.com/MetaCubeX/metacubexd/releases/download/${METACUBEXD_VER}/compressed-dist.tgz" "metacubexd-${METACUBEXD_VER}.tgz")
+f=$(fetch_raw "https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz" "metacubexd-latest.tgz")
 tar xzf "$f" -C "${WWW_METACUBEXD}"
 echo "    metacubexd: OK"
 
 # ── xray-exporter ──────────────────────────────────────────────────────
 # https://github.com/compassvpn/xray-exporter
 # 读取 Xray StatsService(gRPC) 并暴露 per-user Prometheus 指标，供计费使用
-echo ">>> xray-exporter ${XRAY_EXPORTER_VER}..."
-f=$(fetch_raw "https://github.com/compassvpn/xray-exporter/releases/download/${XRAY_EXPORTER_VER}/xray-exporter-linux-arm64" "xray-exporter-${XRAY_EXPORTER_VER}")
+echo ">>> xray-exporter latest..."
+f=$(fetch_raw "https://github.com/compassvpn/xray-exporter/releases/latest/download/xray-exporter-linux-arm64" "xray-exporter-latest")
 cp -f "$f" "${DEST}/xray-exporter"
 chmod +x "${DEST}/xray-exporter"
 echo "    xray-exporter: OK"
