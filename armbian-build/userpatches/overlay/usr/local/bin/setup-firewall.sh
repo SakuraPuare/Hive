@@ -54,8 +54,8 @@ ufw allow from 192.168.0.0/16 to any port 22 comment 'SSH - Local Network'
 ufw allow from 10.0.0.0/8 to any port 22 comment 'SSH - Private Network'
 ufw allow from 172.16.0.0/12 to any port 22 comment 'SSH - Private Network'
 
-# Tailscale 网络范围 (100.x.x.x)
-ufw allow from 100.0.0.0/8 to any port 22 comment 'SSH - Tailscale'
+# Tailscale 网络范围（CGNAT 段 100.64.0.0/10，非整个 100/8——后者含公网可路由地址）
+ufw allow from 100.64.0.0/10 to any port 22 comment 'SSH - Tailscale'
 
 # 如果需要允许特定公网 IP，取消注释并修改：
 # ufw allow from YOUR_OFFICE_IP to any port 22 comment 'SSH - Office IP'
@@ -66,10 +66,10 @@ ufw allow from 100.0.0.0/8 to any port 22 comment 'SSH - Tailscale'
 
 # Prometheus Node Exporter (9100) - 仅 Tailscale 网络
 echo "配置监控服务..."
-ufw allow from 100.0.0.0/8 to any port 9100 comment 'Node Exporter - Tailscale Only'
+ufw allow from 100.64.0.0/10 to any port 9100 comment 'Node Exporter - Tailscale Only'
 
 # Xray Exporter (9550) - per-user 流量指标，仅 Tailscale 网络
-ufw allow from 100.0.0.0/8 to any port 9550 comment 'Xray Exporter - Tailscale Only'
+ufw allow from 100.64.0.0/10 to any port 9550 comment 'Xray Exporter - Tailscale Only'
 
 # 如果有其他监控系统，取消注释并调整：
 # ufw allow from YOUR_MONITORING_IP to any port 9100 comment 'Node Exporter - Monitoring'
