@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -79,6 +80,16 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 				updates["claim_code_hash"] = hashClaimCode(code)
 			}
 		}
+		// EasyTier 静态发号：老节点若 easytier_ip 为空则幂等补分配回填（迁移过渡期）。
+		easytierIP := existing.EasytierIP
+		if easytierIP == "" {
+			if ip, err := h.allocateEasytierIP(body.MAC); err == nil {
+				easytierIP = ip
+				updates["easytier_ip"] = ip
+			} else {
+				log.Printf("register: easytier alloc for %s failed (non-fatal): %v", body.MAC, err)
+			}
+		}
 		if err := h.DB.Model(&model.Node{}).Where("mac = ?", body.MAC).Updates(updates).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return
@@ -91,6 +102,9 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		if claimCodePlain != "" {
 			resp["claim_code"] = claimCodePlain
 		}
+		if easytierIP != "" {
+			resp["easytier_ip"] = easytierIP
+		}
 		h.jsonOK(w, resp)
 	} else {
 		claimHash := ""
@@ -98,9 +112,17 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 			claimCodePlain = code
 			claimHash = hashClaimCode(code)
 		}
+		// EasyTier 静态发号：新节点分配一个 172.20.1.0+ 的固定 IP（按 MAC 幂等）。
+		// 失败不阻断注册，落空串，节点后续可经 allocate-easytier 重取。
+		easytierIP := ""
+		if ip, err := h.allocateEasytierIP(body.MAC); err == nil {
+			easytierIP = ip
+		} else {
+			log.Printf("register: easytier alloc for %s failed (non-fatal): %v", body.MAC, err)
+		}
 		if err := h.DB.Exec(
-			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, xray_uuid, mesh_tunnel_id, mesh_ip, claim_code_hash, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)",
-			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, body.XrayUUID, body.MeshTunnelID, body.MeshIP, claimHash, now, now,
+			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, xray_uuid, mesh_tunnel_id, mesh_ip, claim_code_hash, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)",
+			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, easytierIP, body.XrayUUID, body.MeshTunnelID, body.MeshIP, claimHash, now, now,
 		).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return
@@ -113,6 +135,9 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		}
 		if claimCodePlain != "" {
 			resp["claim_code"] = claimCodePlain
+		}
+		if easytierIP != "" {
+			resp["easytier_ip"] = easytierIP
 		}
 		h.jsonOK(w, resp)
 	}

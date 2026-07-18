@@ -68,17 +68,31 @@ func (h *Handler) HandlePrometheusTargets(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	targets := make([]PrometheusTarget, 0, len(rows))
+	// 双路互备:每个节点吐两个 target —— Tailscale 与 EasyTier。
+	// transport 标签区分两条链路;probe 侧按 instance(=hostname)用 MAX 折叠,
+	// 任一链路通即判 online,且不重复计 cpu/mem 等指标。
+	// EasyTier target 仅当 easytier_ip 已迁到 172.20 段才吐(未迁节点天然灰度)。
+	targets := make([]PrometheusTarget, 0, len(rows)*2)
+	baseLabels := func(row prometheusNodeRow, transport string) map[string]string {
+		return map[string]string{
+			"hostname":  row.Hostname,
+			"cf_url":    row.CFURL,
+			"location":  row.Location,
+			"mac6":      row.MAC6,
+			"transport": transport,
+		}
+	}
 	for _, row := range rows {
 		targets = append(targets, PrometheusTarget{
 			Targets: []string{row.Hostname + ":9100"},
-			Labels: map[string]string{
-				"hostname": row.Hostname,
-				"cf_url":   row.CFURL,
-				"location": row.Location,
-				"mac6":     row.MAC6,
-			},
+			Labels:  baseLabels(row, "tailscale"),
 		})
+		if strings.HasPrefix(row.EasytierIP, "172.20.") {
+			targets = append(targets, PrometheusTarget{
+				Targets: []string{row.EasytierIP + ":9100"},
+				Labels:  baseLabels(row, "easytier"),
+			})
+		}
 	}
 	h.jsonOK(w, targets)
 }

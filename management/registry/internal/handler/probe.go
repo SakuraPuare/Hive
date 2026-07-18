@@ -143,7 +143,13 @@ func (h *Handler) promQueryInstant(query string) map[string]float64 {
 // promQueryInstantByLabel runs an instant query and aggregates result values keyed
 // by the given metric label. When stripPort is true, a trailing ":port" is removed
 // from the label value (useful for the "instance" label). Values for the same key
-// are summed.
+// are reduced with MAX.
+//
+// MAX (not SUM) is deliberate: with dual-path monitoring a node has two series per
+// metric (transport=tailscale + transport=easytier) that collapse to the same
+// instance=hostname key. For up{} MAX means "online if EITHER path is up"
+// (max(1,0)=1, max(1,1)=1) — the intended互备 semantics — and it stops cpu/mem/disk
+// from being double-counted. For latency MAX reports the slower path (conservative).
 func (h *Handler) promQueryInstantByLabel(query, label string, stripPort bool) map[string]float64 {
 	result := make(map[string]float64)
 
@@ -191,7 +197,9 @@ func (h *Handler) promQueryInstantByLabel(query, label string, stripPort bool) m
 		if math.IsNaN(val) || math.IsInf(val, 0) {
 			continue
 		}
-		result[key] += val
+		if existing, ok := result[key]; !ok || val > existing {
+			result[key] = val
+		}
 	}
 
 	return result

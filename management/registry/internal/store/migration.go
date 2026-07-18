@@ -484,6 +484,19 @@ CREATE TABLE IF NOT EXISTS node_commands (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备远程命令队列（客户/管理员 enqueue，节点主动拉取执行）';
 `,
 	},
+	{
+		version: 20,
+		desc:    "easytier static IP allocation pool (172.20.0.0/16, per-MAC idempotent)",
+		up: `
+CREATE TABLE IF NOT EXISTS easytier_allocations (
+    ip_int        INT UNSIGNED PRIMARY KEY COMMENT '172.20.0.0/16 内 IP 的 32 位整数值，PRIMARY KEY 杜绝重号',
+    mac           VARCHAR(12)  NOT NULL UNIQUE COMMENT '设备 MAC（12 位无冒号 hex），UNIQUE 杜绝一机多号；infra 保留位此列为占位串',
+    reserved      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1=infra 保留段占位（172.20.0.0/24），发号器跳过',
+    allocated_at  DATETIME     NOT NULL COMMENT '分配时间',
+    INDEX idx_mac (mac)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='EasyTier 静态发号池：按 MAC 幂等分配 172.20.1.0+ 的固定 IP，取代 MAC 自算/DHCP';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

@@ -22,6 +22,8 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 
 	// ── 节点注册（设备端调用，Bearer token 认证）──────────────────────────
 	mux.HandleFunc("POST /nodes/register", h.HandleRegister)
+	// EasyTier IP 早期分配（provision 首步调用，仅需 MAC，幂等）
+	mux.HandleFunc("POST /nodes/allocate-easytier", h.HandleAllocateEasytier)
 	mux.HandleFunc("POST /nodes/heartbeat", h.HandleHeartbeat)
 	// 节点拉取本机应下发的 Xray 用户列表（设备端调用，Bearer token 认证）
 	mux.HandleFunc("GET /nodes/{mac}/xray-users", h.HandleNodeXrayUsers)

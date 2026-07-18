@@ -73,6 +73,7 @@ type NodeRegisterResponse struct {
 	Status       string `json:"status" example:"registered"`
 	Hostname     string `json:"hostname" example:"node-01"`
 	RegisteredAt string `json:"registered_at" example:"2025-01-01 00:00:00"`
+	EasytierIP   string `json:"easytier_ip,omitempty" example:"172.20.1.5"`
 }
 
 // NodeUpdateRequest is the request body for PATCH /nodes/{mac}.
@@ -80,7 +81,7 @@ type NodeUpdateRequest struct {
 	Location     *string `json:"location,omitempty" example:"Tokyo"`
 	Note         *string `json:"note,omitempty" example:"primary node"`
 	TailscaleIP  *string `json:"tailscale_ip,omitempty" example:"100.64.0.1"`
-	EasytierIP   *string `json:"easytier_ip,omitempty" example:"10.0.0.1"`
+	EasytierIP   *string `json:"easytier_ip,omitempty" example:"172.20.1.5"`
 	FRPPort      *int    `json:"frp_port,omitempty" example:"7000"`
 	Enabled      *bool   `json:"enabled,omitempty" example:"true"`
 	Status       *string `json:"status,omitempty" example:"online"`
