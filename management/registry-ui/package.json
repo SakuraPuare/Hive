@@ -46,6 +46,7 @@
     "eslint-config-next": "^16.2.9",
     "jsdom": "^29.1.1",
     "openapi-typescript-codegen": "^0.31.0",
+    "playwright": "^1.61.1",
     "postcss": "^8.5.16",
     "react-doctor": "^0.5.8",
     "swagger2openapi": "^7.0.8",
