@@ -42,7 +42,8 @@ MAC_NORM=$(echo "${MAC}" | tr 'A-F' 'a-f' | tr -cd 'a-f0-9')
 MAC_NORM="${MAC_NORM: -12}"
 
 # ── 1. 拉取配置到临时文件 ──────────────────────────────────────────────
-if ! curl -sf --max-time 15 \
+# -4 强制 IPv4：避开 IPv6+Mihomo 半开死路（详见 provision-node.sh 注册段注释）。
+if ! curl -4 -sf --max-time 15 \
         ${NODE_REGISTRY_API_SECRET:+-H "Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"} \
         "${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/clash-config" -o "${TMP_FILE}" 2>/dev/null; then
     log "拉取 Mihomo 配置失败（registry 不可达？），保持现状"

@@ -29,14 +29,15 @@ AUTH="Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"
 BASE="${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/commands"
 
 # ── 领取待执行命令 ─────────────────────────────────────────────────────
-RESP=$(curl -sf --max-time 15 -H "${AUTH}" "${BASE}" 2>/dev/null) || { log "拉取命令失败（registry 不可达？）"; exit 0; }
+# -4 强制 IPv4：避开 IPv6+Mihomo 半开死路（详见 provision-node.sh 注册段注释）。
+RESP=$(curl -4 -sf --max-time 15 -H "${AUTH}" "${BASE}" 2>/dev/null) || { log "拉取命令失败（registry 不可达？）"; exit 0; }
 [ -z "${RESP}" ] || [ "${RESP}" = "[]" ] && exit 0
 command -v jq >/dev/null 2>&1 || { log "缺 jq，无法解析命令"; exit 0; }
 
 # ack <id> <status> <result>
 ack() {
     local id="$1" status="$2" result="$3"
-    curl -sf --max-time 15 -H "${AUTH}" -H "Content-Type: application/json" \
+    curl -4 -sf --max-time 15 -H "${AUTH}" -H "Content-Type: application/json" \
         -d "$(jq -n --arg s "$status" --arg r "$result" '{status:$s,result:$r}')" \
         "${BASE}/${id}/ack" >/dev/null 2>&1 \
         && log "已回传 #${id} ${status}" || log "回传 #${id} 失败（下轮由 registry 端超时兜底）"
