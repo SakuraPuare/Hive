@@ -37,6 +37,7 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		Hostname     string `json:"hostname"`
 		CFURL        string `json:"cf_url"`
 		TunnelID     string `json:"tunnel_id"`
+		FRPPort      int    `json:"frp_port"`
 		XrayUUID     string `json:"xray_uuid"`
 		MeshTunnelID string `json:"mesh_tunnel_id"`
 		MeshIP       string `json:"mesh_ip"`
@@ -68,6 +69,7 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 			"hostname":       body.Hostname,
 			"cf_url":         body.CFURL,
 			"tunnel_id":      body.TunnelID,
+			"frp_port":       body.FRPPort,
 			"xray_uuid":      body.XrayUUID,
 			"mesh_tunnel_id": body.MeshTunnelID,
 			"mesh_ip":        body.MeshIP,
@@ -121,8 +123,8 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 			log.Printf("register: easytier alloc for %s failed (non-fatal): %v", body.MAC, err)
 		}
 		if err := h.DB.Exec(
-			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, xray_uuid, mesh_tunnel_id, mesh_ip, claim_code_hash, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)",
-			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, easytierIP, body.XrayUUID, body.MeshTunnelID, body.MeshIP, claimHash, now, now,
+			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, frp_port, tailscale_ip, easytier_ip, xray_uuid, mesh_tunnel_id, mesh_ip, claim_code_hash, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)",
+			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, body.FRPPort, easytierIP, body.XrayUUID, body.MeshTunnelID, body.MeshIP, claimHash, now, now,
 		).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return
