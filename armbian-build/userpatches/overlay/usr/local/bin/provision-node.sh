@@ -110,13 +110,24 @@ sed -i "s/%%FRP_PORT%%/${FRP_PORT}/g"  /etc/frp/frpc.toml
 sed -i "s/%%HOSTNAME%%/${HOSTNAME}/g"  /etc/frp/frpc.toml
 echo ">>> FRP port: ${FRP_PORT}"
 
-# EasyTier IP：MAC6 的三个字节直接映射到 10.x.x.x
-# 例：MAC6=a4b2c1 → 10.164.178.193/8
-ET_B1=$(printf "%d" "0x${MAC6:0:2}")
-ET_B2=$(printf "%d" "0x${MAC6:2:2}")
-ET_B3=$(printf "%d" "0x${MAC6:4:2}")
-EASYTIER_IP="10.${ET_B1}.${ET_B2}.${ET_B3}"
-echo ">>> EasyTier IP: ${EASYTIER_IP}"
+# EasyTier IP：向 registry 请求静态发号（按 MAC 幂等，172.20.0.0/16 池，0 冲突）。
+# 取代旧的“MAC6 自算 10.x”——那套会与 K8S 的 Pod/Service 段(10.x)撞、且不防冲突。
+# 出厂激活时 registry 必然可达；拿不到号则 EasyTier 无法起,视为致命(fail-closed:
+# provision 不落 DONE_MARKER、下次开机自动重试)。同一 MAC 重刷镜像会领回同一 IP。
+EASYTIER_IP=""
+if [ -n "${NODE_REGISTRY_URL}" ]; then
+    ET_ALLOC_RESP=$(curl -sf -X POST "${NODE_REGISTRY_URL}/nodes/allocate-easytier" \
+        -H "Content-Type: application/json" \
+        ${NODE_REGISTRY_API_SECRET:+-H "Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"} \
+        -d "{\"mac\": \"${MAC}\"}" || true)
+    EASYTIER_IP=$(echo "$ET_ALLOC_RESP" | jq -r '.easytier_ip // empty' 2>/dev/null)
+fi
+if [ -z "${EASYTIER_IP}" ]; then
+    echo "!!! FATAL: EasyTier IP allocation failed (registry unreachable or pool exhausted)."
+    echo "!!! Response: ${ET_ALLOC_RESP:-<none>}"
+    exit 1
+fi
+echo ">>> EasyTier IP (registry-allocated): ${EASYTIER_IP}"
 
 # Tailscale：hostname 固定为 hive-<mac6>，MagicDNS 自动解析
 # IP 由 Tailscale 云分配（不可预测），但 hostname 始终可达
@@ -228,7 +239,7 @@ HOSTNAME=${HOSTNAME}
 MAC=${MAC}
 MAC6=${MAC6}
 
-# 三套管理通道（全部从 MAC6 确定性推导）
+# 管理通道（EASYTIER_IP 由 registry 静态发号，FRP_PORT 从 MAC 派生）
 EASYTIER_IP=${EASYTIER_IP}
 FRP_PORT=${FRP_PORT}
 TAILSCALE_HOST=${HOSTNAME}

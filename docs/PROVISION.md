@@ -112,16 +112,21 @@ FRP_PORT=$((10000 + 10#$PORT_OFFSET % 50000))
 
 ## 六、EasyTier IP 分配
 
+向 registry 请求静态发号（按 MAC 幂等，从 `172.20.0.0/16` 池分配）：
+
 ```bash
-ET_B1=$(printf "%d" "0x${MAC6:0:2}")
-ET_B2=$(printf "%d" "0x${MAC6:2:2}")
-ET_B3=$(printf "%d" "0x${MAC6:4:2}")
-EASYTIER_IP="10.${ET_B1}.${ET_B2}.${ET_B3}"
+EASYTIER_IP=$(curl -sf -X POST "${NODE_REGISTRY_URL}/nodes/allocate-easytier" \
+  -H "Authorization: Bearer ${NODE_REGISTRY_API_SECRET}" \
+  -d "{\"mac\": \"${MAC}\"}" | jq -r '.easytier_ip')
 ```
 
-示例：MAC6=`a4b2c1` → EasyTier IP=`10.164.178.193`
+示例：MAC=`d63a6092c179` → EasyTier IP=`172.20.1.5`（首次分配后落库，重刷镜像领回同一 IP）
 
-**注意**：EasyTier IP 仅在 `10.0.0.0/8` 内部使用，不对外暴露。理论碰撞风险与 MAC 末 6 位相同（2^24 ≈ 1600 万）。
+**注意**：
+- EasyTier IP 在 `172.20.0.0/16` 内部使用，不对外暴露。
+- **0 冲突**：由 registry 权威发号（`PRIMARY KEY(ip)` + `UNIQUE(mac)`），不再有 MAC 自算的碰撞风险。
+- 旧版按 MAC6 自算 `10.x` 已废弃——那会与 K8S 的 Pod(10.244/16)/Service(10.96/12)段撞。
+- `172.20.0.0/24` 为 infra 保留段（relay/阿里云/集群 pod 手动指派），自动发号从 `172.20.1.0` 起。
 
 ---
 

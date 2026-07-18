@@ -64,12 +64,15 @@ ufw allow from 100.64.0.0/10 to any port 22 comment 'SSH - Tailscale'
 # 监控和管理服务
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Prometheus Node Exporter (9100) - 仅 Tailscale 网络
+# Prometheus Node Exporter (9100) - Tailscale + EasyTier 双路监控互备
 echo "配置监控服务..."
-ufw allow from 100.64.0.0/10 to any port 9100 comment 'Node Exporter - Tailscale Only'
+ufw allow from 100.64.0.0/10 to any port 9100 comment 'Node Exporter - Tailscale'
+# EasyTier 网段 (172.20.0.0/16)：Prometheus 经集群内 easytier pod 走这条路抓
+ufw allow from 172.20.0.0/16 to any port 9100 comment 'Node Exporter - EasyTier'
 
-# Xray Exporter (9550) - per-user 流量指标，仅 Tailscale 网络
-ufw allow from 100.64.0.0/10 to any port 9550 comment 'Xray Exporter - Tailscale Only'
+# Xray Exporter (9550) - per-user 流量指标，Tailscale + EasyTier
+ufw allow from 100.64.0.0/10 to any port 9550 comment 'Xray Exporter - Tailscale'
+ufw allow from 172.20.0.0/16 to any port 9550 comment 'Xray Exporter - EasyTier'
 
 # 如果有其他监控系统，取消注释并调整：
 # ufw allow from YOUR_MONITORING_IP to any port 9100 comment 'Node Exporter - Monitoring'

@@ -30,11 +30,10 @@ fi
 
 HOSTNAME="hive-${MAC6}"
 
-# ── EasyTier IP（MAC6 三字节映射）──────────────────────────
-ET_B1=$(printf "%d" "0x${MAC6:0:2}")
-ET_B2=$(printf "%d" "0x${MAC6:2:2}")
-ET_B3=$(printf "%d" "0x${MAC6:4:2}")
-EASYTIER_IP="10.${ET_B1}.${ET_B2}.${ET_B3}"
+# ── EasyTier IP：registry 静态发号，本地无法推导，须查 registry ──────────
+# （旧版按 MAC6 自算 10.x 已废弃——现由 registry 从 172.20.0.0/16 池按 MAC 幂等发号）
+# 用 .env 里的 NODE_REGISTRY_URL + 管理 token 查 GET /nodes/{mac}；查不到显示占位。
+EASYTIER_IP="(query registry)"
 
 # ── FRP 端口（provision 用完整 12 位 MAC 的 md5 前 8 位 hex % 50000 + 10000）──
 # 只有传入完整 MAC 才能精确算出；仅给 MAC6 时无法推导（md5(MAC6) 与 md5(fullMAC) 无关）。
@@ -54,6 +53,16 @@ if [ -f "${ROOT_DIR}/.env" ]; then
     source "${ROOT_DIR}/.env" 2>/dev/null || true
     [ -n "${FRP_SERVER_ADDR:-}" ] && VPS_ADDR="$FRP_SERVER_ADDR"
     [ -n "${CF_DOMAIN:-}"       ] && CF_DOMAIN_LABEL="$CF_DOMAIN"
+fi
+
+# 有完整 MAC + registry 地址 + 管理 token 时,查 registry 拿真实 EasyTier IP。
+# GET /nodes/{mac} 是 admin 权限,需 .env 里的 NODE_REGISTRY_ADMIN_TOKEN(或等价)。
+if [ -n "$MAC_FULL" ] && [ -n "${NODE_REGISTRY_URL:-}" ] && command -v jq >/dev/null 2>&1; then
+    _auth=""
+    [ -n "${NODE_REGISTRY_ADMIN_TOKEN:-}" ] && _auth="-H \"Authorization: Bearer ${NODE_REGISTRY_ADMIN_TOKEN}\""
+    _resp=$(eval curl -sf "${NODE_REGISTRY_URL}/nodes/${MAC_FULL}" $_auth 2>/dev/null || true)
+    _ip=$(echo "$_resp" | jq -r '.easytier_ip // empty' 2>/dev/null)
+    [ -n "$_ip" ] && EASYTIER_IP="$_ip"
 fi
 
 echo ""
