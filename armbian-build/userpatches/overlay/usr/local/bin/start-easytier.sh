@@ -50,4 +50,5 @@ exec /usr/local/bin/easytier-core \
     --network-secret "${EASYTIER_SECRET}" \
     "${PEER_ARGS[@]}" \
     --ipv4           "${EASYTIER_IP}/16" \
-    --hostname       "${HOSTNAME}"
+    --hostname       "${HOSTNAME}" \
+    --relay-network-whitelist "${EASYTIER_NETWORK_NAME}"
