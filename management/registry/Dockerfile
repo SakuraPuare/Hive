@@ -2,7 +2,7 @@
 # Hive Node Registry — Go service (management plane)
 # Build context: management/registry  (see homelab CI build-template `context` param)
 
-FROM golang:1.25-alpine AS build
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 # Cache modules first
 COPY go.mod go.sum ./
