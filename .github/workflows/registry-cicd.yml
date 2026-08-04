@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.server_url == 'https://github.com'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: actions/setup-go@v5
         with:
@@ -76,7 +76,7 @@ jobs:
         node-version: [20, 22, 24]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: actions/setup-node@v4
         with:
@@ -129,7 +129,7 @@ jobs:
       github.event_name != 'pull_request'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: actions/setup-go@v5
         with:

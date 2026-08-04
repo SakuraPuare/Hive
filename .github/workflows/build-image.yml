@@ -41,7 +41,7 @@ jobs:
     if: github.server_url != 'https://github.com'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # ── 板子选择 gate（替代 job 级 if 里的 matrix 判据，见上方说明）──────────
       # release 或 dispatch+all → 全编；dispatch+单块 → 只有选中那块 build=true。
