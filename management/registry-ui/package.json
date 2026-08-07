@@ -51,7 +51,7 @@
     "react-doctor": "^0.5.8",
     "swagger2openapi": "^7.0.8",
     "tailwindcss": "^4.3.2",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.0",
     "vitest": "^4.1.9",
     "zod": "^4.4.3"
   },
