@@ -24,7 +24,7 @@ import (
 //   - 172.20.1.0 .. 172.20.255.254  auto pool for Hive field devices.
 const (
 	easytierPoolBase  = "172.20.0.0"
-	easytierPoolStart = "172.20.1.0"   // first auto-allocatable address
+	easytierPoolStart = "172.20.1.0" // first auto-allocatable address
 	easytierPoolEnd   = "172.20.255.254"
 )
 
