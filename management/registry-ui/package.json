@@ -48,7 +48,7 @@
     "openapi-typescript-codegen": "^0.31.0",
     "playwright": "^1.61.1",
     "postcss": "^8.5.16",
-    "react-doctor": "^0.5.8",
+    "react-doctor": "^0.9.0",
     "swagger2openapi": "^7.0.8",
     "tailwindcss": "^4.3.2",
     "typescript": "^6.0.3",
