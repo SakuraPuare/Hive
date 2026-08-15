@@ -1,5 +1,6 @@
-import { SystemService, OpenAPI } from '../src/generated/client';
-import type { handler_StatusResponse } from '../src/generated/client';
+import { SystemService } from '../src/generated/client/services/SystemService';
+import { OpenAPI } from '../src/generated/client/core/OpenAPI';
+import type { handler_StatusResponse } from '../src/generated/client/models/handler_StatusResponse';
 import { ApiError } from '../src/generated/client/core/ApiError';
 
 const rawApiBase = process.env.NEXT_PUBLIC_API_BASE?.trim();
