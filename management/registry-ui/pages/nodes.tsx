@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { createColumnHelper } from '@tanstack/react-table';
+import type { DataTableFeatures } from '@/components/ui/data-table';
 import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { useFormat } from '@/lib/format';
@@ -89,7 +90,7 @@ function StatCard({ icon, label, value, accent = 'neutral', delay = 0 }: StatCar
 
 // ── Columns ──────────────────────────────────────────────────────────────────
 
-const col = createColumnHelper<model_Node>();
+const col = createColumnHelper<DataTableFeatures, model_Node>();
 
 type StatusFilter = 'all' | 'online' | 'offline' | 'unknown';
 
@@ -303,9 +304,9 @@ export default function NodesPage() {
     col.accessor('mac6', { header: t('colMac6'),
       cell: i => <span className="font-mono text-xs text-muted-foreground">{i.getValue() || '—'}</span>, enableSorting: false }),
     col.accessor('last_seen', { header: t('colLastSeen'),
-      cell: i => <span className="text-muted-foreground">{fmt.dateShort(i.getValue())}</span>, sortingFn: 'datetime' }),
+      cell: i => <span className="text-muted-foreground">{fmt.dateShort(i.getValue())}</span>, sortFn: 'datetime' }),
     col.accessor('registered_at', { header: t('colRegisteredAt'),
-      cell: i => <span className="text-muted-foreground">{fmt.dateShort(i.getValue())}</span>, sortingFn: 'datetime' }),
+      cell: i => <span className="text-muted-foreground">{fmt.dateShort(i.getValue())}</span>, sortFn: 'datetime' }),
     col.accessor('cf_url', { header: t('colCfUrl'),
       cell: i => { const v = i.getValue(); return v ? <span className="max-w-[140px] truncate block text-xs text-muted-foreground" title={v}>{v}</span> : '—'; },
       enableSorting: false }),

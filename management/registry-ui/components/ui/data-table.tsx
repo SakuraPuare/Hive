@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  useReactTable, getCoreRowModel, getSortedRowModel, getPaginationRowModel,
-  flexRender,
-  type ColumnDef, type SortingState, type VisibilityState, type RowSelectionState,
-  type TableOptions, type Header, type Row, type RowData,
+  useTable, flexRender, tableFeatures, stockFeatures,
+  createCoreRowModel, createSortedRowModel, createPaginatedRowModel,
+  sortFn_datetime, sortFn_alphanumeric, sortFn_basic, sortFn_text,
+  type ColumnDef, type SortingState, type ColumnVisibilityState,
+  type RowSelectionState, type PaginationState, type RowData,
 } from '@tanstack/react-table';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,23 +26,24 @@ import {
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 
-// Opt-in per-column metadata. Callers mark a column with `meta.stopRowClick`
-// to keep its clicks from bubbling into onRowClick (e.g. links / switches /
-// menus living inside a navigable row). The '__select' and 'actions' columns
-// keep stopping propagation by default for backward compatibility.
-declare module '@tanstack/react-table' {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- must mirror TanStack's ColumnMeta signature
-  interface ColumnMeta<TData extends RowData, TValue> {
-    /** When true, clicks inside this column's cells do not trigger onRowClick. */
-    stopRowClick?: boolean;
-  }
-}
+type ColumnMeta = { stopRowClick?: boolean };
+
+const features = tableFeatures({
+  ...stockFeatures,
+  coreRowModel: createCoreRowModel(),
+  sortedRowModel: createSortedRowModel(),
+  paginatedRowModel: createPaginatedRowModel(),
+  sortFns: { datetime: sortFn_datetime, alphanumeric: sortFn_alphanumeric, basic: sortFn_basic, text: sortFn_text },
+  columnMeta: {} as ColumnMeta,
+});
+
+export type DataTableFeatures = typeof features;
 
 const DEFAULT_PAGE_SIZE = 20;
 
-interface DataTableProps<TData> {
+interface DataTableProps<TData extends RowData> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TanStack columns hold heterogeneous cell value types
-  columns: ColumnDef<TData, any>[];
+  columns: ColumnDef<DataTableFeatures, TData, any>[];
   data: TData[];
   loading?: boolean;
   /** 'skeleton' preserves column widths (default); 'spinner' shows a centered spinner. */
@@ -135,10 +137,10 @@ interface DataTableProps<TData> {
   caption?: React.ReactNode;
 
   defaultSorting?: SortingState;
-  defaultVisibility?: VisibilityState;
+  defaultVisibility?: ColumnVisibilityState;
 }
 
-export function DataTable<TData>({
+export function DataTable<TData extends RowData>({
   columns,
   data,
   loading = false,
@@ -193,9 +195,9 @@ export function DataTable<TData>({
   defaultVisibility,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>(defaultSorting);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [pagination, setPagination] = useState({
+  const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: manualPagination ? (controlledPageIndex ?? 0) : 0,
     pageSize,
   });
@@ -242,9 +244,9 @@ export function DataTable<TData>({
   const allColumns = React.useMemo(() => {
     if (!enableSelection) return columns;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches the heterogeneous ColumnDef array above
-    const selectCol: ColumnDef<TData, any> = {
+    const selectCol: ColumnDef<DataTableFeatures, TData, any> = {
       id: '__select',
-      header: ({ table }) => (
+      header: ({ table }: any) => (
         <Checkbox
           checked={
             table.getIsAllPageRowsSelected()
@@ -253,16 +255,16 @@ export function DataTable<TData>({
                 ? 'indeterminate'
                 : false
           }
-          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+          onCheckedChange={(v: boolean) => table.toggleAllPageRowsSelected(!!v)}
           aria-label={selectAllLabel}
         />
       ),
-      cell: ({ row }) => (
+      cell: ({ row }: any) => (
         <Checkbox
           checked={row.getIsSelected()}
-          onCheckedChange={(v) => row.toggleSelected(!!v)}
+          onCheckedChange={(v: boolean) => row.toggleSelected(!!v)}
           aria-label={selectRowLabel}
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
         />
       ),
       enableSorting: false,
@@ -272,14 +274,15 @@ export function DataTable<TData>({
     return [selectCol, ...columns];
   }, [columns, enableSelection, selectAllLabel, selectRowLabel]);
 
-  const tableOptions: TableOptions<TData> = {
+  const table = useTable({
+    features,
     data,
     columns: allColumns,
     state: { sorting, columnVisibility, rowSelection, pagination },
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
-    onPaginationChange: (updater) => {
+    onPaginationChange: (updater: any) => {
       setPagination((prev) => {
         const next = typeof updater === 'function' ? updater(prev) : updater;
         if (manualPagination && next.pageIndex !== prev.pageIndex) {
@@ -288,22 +291,18 @@ export function DataTable<TData>({
         return next;
       });
     },
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
     ...(manualPagination
       ? { manualPagination: true as const, pageCount: controlledPageCount ?? -1 }
-      : { getPaginationRowModel: getPaginationRowModel() }),
+      : {}),
     autoResetPageIndex: !manualPagination,
     enableRowSelection: enableSelection,
     ...(getRowId ? { getRowId } : {}),
-  };
-
-  const table = useReactTable(tableOptions);
+  } as any) as any;
 
   // Notify parent of selection changes
   useEffect(() => {
     if (!onSelectionChange) return;
-    const selected = table.getSelectedRowModel().rows.map(r => r.original);
+    const selected = table.getSelectedRowModel().rows.map((r: any) => r.original);
     onSelectionChange(selected);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowSelection]);
@@ -313,7 +312,7 @@ export function DataTable<TData>({
 
   // Build toggleable columns list (exclude __select and actions)
   const toggleableColumns = table.getAllColumns().filter(
-    col => col.getCanHide() && col.id !== '__select'
+    (col: any) => col.getCanHide() && col.id !== '__select'
   );
 
   const labelForColumn = (id: string) => columnLabels?.[id] ?? id;
@@ -324,7 +323,7 @@ export function DataTable<TData>({
 
   // Pagination range read-out. In manual mode `data` is just the current page,
   // so the grand total comes from `rowCount` and the page offset from pageIndex.
-  const pageIndex = table.getState().pagination.pageIndex;
+  const pageIndex = table.state.pagination.pageIndex;
   const total = manualPagination ? (rowCount ?? data.length) : data.length;
   const from = total === 0 ? 0 : pageIndex * currentPageSize + 1;
   const to = manualPagination
@@ -373,11 +372,11 @@ export function DataTable<TData>({
             <DropdownMenuContent align="end" className="w-[200px] max-h-[400px] overflow-y-auto rounded-xl elevation-2">
               <DropdownMenuLabel className="font-display">{toggleColumnsLabel}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {toggleableColumns.map((col) => (
+              {toggleableColumns.map((col: any) => (
                 <DropdownMenuCheckboxItem
                   key={col.id}
                   checked={col.getIsVisible()}
-                  onCheckedChange={(v) => col.toggleVisibility(!!v)}
+                  onCheckedChange={(v: boolean) => col.toggleVisibility(!!v)}
                 >
                   {labelForColumn(col.id)}
                 </DropdownMenuCheckboxItem>
@@ -418,9 +417,9 @@ export function DataTable<TData>({
           <Table aria-label={ariaLabel}>
             {caption && <caption className="sr-only">{caption}</caption>}
             <TableHeader>
-              {table.getHeaderGroups().map((hg) => (
+              {table.getHeaderGroups().map((hg: any) => (
                 <TableRow key={hg.id} className="border-b border-md-outline-variant bg-md-surface-container-high/50 hover:bg-md-surface-container-high/50">
-                  {hg.headers.map((header: Header<TData, unknown>) => {
+                  {hg.headers.map((header: any) => {
                     const canSort = header.column.getCanSort();
                     const sorted = header.column.getIsSorted();
                     const ariaSort = sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none';
@@ -497,7 +496,7 @@ export function DataTable<TData>({
                   </TableCell>
                 </TableRow>
               ) : (
-                table.getRowModel().rows.map((row: Row<TData>, i) => {
+                table.getRowModel().rows.map((row: any, i: number) => {
                   const clickable = Boolean(onRowClick);
                   const handleActivate = clickable ? () => onRowClick!(row.original) : undefined;
                   return (
@@ -510,7 +509,7 @@ export function DataTable<TData>({
                       className={`border-b border-md-outline-variant/60 transition-colors hover:bg-md-on-surface/[0.04] data-[state=selected]:bg-md-primary-container/40 ${isFirstRender ? 'animate-slide-up' : ''} ${clickable ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-md-primary/50' : ''}`}
                       style={isFirstRender ? { animationDelay: `${Math.min(i, 12) * 30}ms` } : undefined}
                       onClick={handleActivate}
-                      onKeyDown={clickable ? (e) => {
+                      onKeyDown={clickable ? (e: React.KeyboardEvent) => {
                         if (e.target !== e.currentTarget) return;
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
@@ -518,7 +517,7 @@ export function DataTable<TData>({
                         }
                       } : undefined}
                     >
-                      {row.getVisibleCells().map((cell) => {
+                      {row.getVisibleCells().map((cell: any) => {
                         const meta = cell.column.columnDef.meta;
                         const stop = meta?.stopRowClick
                           ?? (cell.column.id === '__select' || cell.column.id === 'actions');
@@ -526,7 +525,7 @@ export function DataTable<TData>({
                           <TableCell
                             key={cell.id}
                             className="py-3"
-                            onClick={stop ? (e) => e.stopPropagation() : undefined}
+                            onClick={stop ? (e: React.MouseEvent) => e.stopPropagation() : undefined}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </TableCell>

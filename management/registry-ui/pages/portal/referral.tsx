@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { createColumnHelper } from '@tanstack/react-table';
+import type { DataTableFeatures } from '@/components/ui/data-table';
 import { useCustomer } from '@/lib/portal-auth';
 import { portalSessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
@@ -28,7 +29,7 @@ const money = (c?: number) => '¥' + ((c ?? 0) / 100).toFixed(2);
 
 type StatusFilter = 'all' | 'settled' | 'pending';
 
-const col = createColumnHelper<handler_PortalReferralRecord>();
+const col = createColumnHelper<DataTableFeatures, handler_PortalReferralRecord>();
 
 export default function PortalReferralPage() {
   const t = useTranslations('portal');
