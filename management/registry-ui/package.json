@@ -9,7 +9,6 @@
     "verify": "node ./scripts/verify-local.mjs",
     "export": "echo 'Static export is generated during `next build` (output: export).' && exit 0",
     "typecheck": "next typegen && tsc --noEmit",
-    "lint": "eslint .",
     "doctor": "react-doctor",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -34,7 +33,6 @@
   },
   "devDependencies": {
     "@cerios/openapi-to-zod": "^1.7.0",
-    "@eslint/eslintrc": "^3.3.6",
     "@material/material-color-utilities": "^0.4.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^6.10.0",

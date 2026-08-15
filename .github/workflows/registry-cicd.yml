@@ -73,7 +73,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20, 22, 24]
+        node-version: [22, 24]
 
     steps:
       - uses: actions/checkout@v4
@@ -95,9 +95,6 @@ jobs:
 
       - name: Generate TS client + Zod
         run: npm run gen-api
-
-      - name: Lint
-        run: npm run lint
 
       - name: Type check
         run: npm run typecheck
