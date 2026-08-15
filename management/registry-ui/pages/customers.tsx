@@ -91,14 +91,14 @@ export default function CustomersPage() {
   // updates after the user stops typing, so it is safe as a load dependency.
   const [emailFilter, setEmailFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [initialized, setInitialized] = useState(false);
+  const initialized = useRef(false);
   // Tracks whether the first URL-sync cycle has run (skip it to avoid a
   // redundant router.replace immediately after hydration).
   const syncUrl = useRef(false);
 
   // ── Restore filter / page / limit from URL once router.query is populated ──
   useEffect(() => {
-    if (!router.isReady || initialized) return;
+    if (!router.isReady || initialized.current) return;
     const q = router.query;
     if (typeof q.email === 'string') setEmailFilter(q.email);
     if (typeof q.status === 'string') setStatusFilter(q.status);
@@ -110,12 +110,12 @@ export default function CustomersPage() {
       const l = parseInt(q.limit, 10);
       if ([20, 50, 100].includes(l)) setLimit(l);
     }
-    setInitialized(true);
-  }, [router.isReady, router.query, initialized]);
+    initialized.current = true;
+  }, [router.isReady, router.query]);
 
   // ── Sync filter/page/limit changes to URL so the browser Back button restores state ──
   useEffect(() => {
-    if (!initialized) return;
+    if (!initialized.current) return;
     // Skip the very first sync triggered by hydration to avoid a redundant replace
     if (!syncUrl.current) {
       syncUrl.current = true;
@@ -129,7 +129,7 @@ export default function CustomersPage() {
     router.replace({ query }, undefined, { shallow: true });
     // router is stable; we intentionally re-run only when filter state changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialized, emailFilter, statusFilter, page, limit]);
+  }, [emailFilter, statusFilter, page, limit]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -169,9 +169,9 @@ export default function CustomersPage() {
   }, [page, limit, emailFilter, statusFilter, t]);
 
   useEffect(() => {
-    if (!initialized) return;
+    if (!initialized.current) return;
     loadCustomers();
-  }, [loadCustomers, initialized]);
+  }, [loadCustomers]);
 
   function resetCreateForm() {
     setNewEmail('');

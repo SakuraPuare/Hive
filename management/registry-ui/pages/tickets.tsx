@@ -47,12 +47,12 @@ export default function TicketsPage() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [statusFilter, setStatusFilterState] = useState('');
-  const [initialized, setInitialized] = useState(false);
+  const initialized = useRef(false);
   const syncUrl = useRef(false);
 
   // ── Restore filter / page / limit from URL once router.query is populated ──
   useEffect(() => {
-    if (!router.isReady || initialized) return;
+    if (!router.isReady || initialized.current) return;
     const q = router.query;
     if (typeof q.status === 'string') setStatusFilterState(q.status);
     if (typeof q.page === 'string') {
@@ -63,12 +63,12 @@ export default function TicketsPage() {
       const l = parseInt(q.limit, 10);
       if ([20, 50, 100].includes(l)) setLimit(l);
     }
-    setInitialized(true);
-  }, [router.isReady, router.query, initialized]);
+    initialized.current = true;
+  }, [router.isReady, router.query]);
 
   // ── Sync filter/page/limit changes to URL ──
   useEffect(() => {
-    if (!initialized) return;
+    if (!initialized.current) return;
     if (!syncUrl.current) {
       syncUrl.current = true;
       return;
@@ -79,7 +79,7 @@ export default function TicketsPage() {
     if (limit !== 20) query.limit = limit;
     router.replace({ query }, undefined, { shallow: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialized, statusFilter, page, limit]);
+  }, [statusFilter, page, limit]);
 
   const setStatusFilter = useCallback((status: string) => {
     setStatusFilterState(status);
@@ -111,9 +111,9 @@ export default function TicketsPage() {
   }, [statusFilter, page, limit, t]);
 
   useEffect(() => {
-    if (!initialized) return;
+    if (!initialized.current) return;
     if (!authLoading && user?.can('ticket:read')) loadTickets();
-  }, [authLoading, user, loadTickets, initialized]);
+  }, [authLoading, user, loadTickets]);
 
   useEffect(() => {
     if (!authLoading && user && !user.can('ticket:read')) router.replace('/dashboard');
