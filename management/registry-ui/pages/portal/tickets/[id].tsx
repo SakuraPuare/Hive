@@ -49,7 +49,7 @@ export default function PortalTicketDetailPage() {
     } catch {
       setError(t('loadFailed'));
     } finally {
-      if (!silent) setLoading(false);
+      setLoading(false);
     }
   }, [id, t]);
 
@@ -194,7 +194,7 @@ export default function PortalTicketDetailPage() {
             const isAdmin = reply.is_admin;
             return (
               <div
-                key={reply.id ?? i}
+                key={reply.id ?? `reply-${reply.created_at}`}
                 className={`flex ${isAdmin ? 'justify-start' : 'justify-end'} animate-slide-up`}
                 style={{ animationDelay: `${i * 40}ms` }}
               >

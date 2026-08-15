@@ -8,6 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Globe, ArrowRight, Mail } from 'lucide-react';
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 export default function PortalForgotPasswordPage() {
   const t = useTranslations('portal');
   const [email, setEmail] = useState('');
@@ -15,8 +19,6 @@ export default function PortalForgotPasswordPage() {
   const [fieldError, setFieldError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
-
-  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
   return (
     <div className="flex min-h-screen">

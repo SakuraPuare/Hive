@@ -62,6 +62,7 @@ export default function PortalRegisterPage() {
     } catch (err) {
       setSuccess(false);
       setError(getErrorMessage(err, t('registerFailed')));
+    } finally {
       setLoading(false);
     }
   };

@@ -89,12 +89,10 @@ export default function Login() {
                   const body = { username, password } as handler_AdminLoginRequest;
                   await sessionApi(AdminService.adminLogin({ requestBody: body }));
                   toast.success(t('loginSuccess'));
-                  router.replace('/dashboard');
-                  // Keep loading=true until navigation completes to prevent
-                  // double-submit in the window between success and route change.
-                  return;
+                  await router.replace('/dashboard');
                 } catch (e: unknown) {
                   setError(getErrorMessage(e, t('loginFailed')));
+                } finally {
                   setLoading(false);
                 }
               }}

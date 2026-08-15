@@ -209,7 +209,7 @@ export default function PortalLandingPage() {
             <div className="grid gap-6 sm:grid-cols-3">
               {plans.map((plan, idx) => (
                 <div
-                  key={plan.id ?? idx}
+                  key={plan.id ?? `plan-${plan.name}`}
                   className="animate-slide-up"
                   style={{ animationDelay: `${idx * 60}ms` }}
                 >
@@ -296,7 +296,7 @@ export default function PortalLandingPage() {
               const Icon = f.icon;
               return (
                 <div
-                  key={idx}
+                  key={f.title}
                   className="animate-slide-up"
                   style={{ animationDelay: `${idx * 60}ms` }}
                 >

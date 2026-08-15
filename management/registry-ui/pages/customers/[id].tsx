@@ -384,7 +384,7 @@ export default function CustomerDetail() {
                   { label: t('colCreatedAt'), value: fmt.dateTime(customer.created_at) },
                   { label: 'ID', value: String(customer.id ?? '—') },
                 ].map((item, i) => (
-                  <div key={i} className="animate-slide-up" style={{ animationDelay: `${60 + i * 40}ms` }}>
+                  <div key={item.label} className="animate-slide-up" style={{ animationDelay: `${60 + i * 40}ms` }}>
                     <p className="text-xs font-500 text-muted-foreground mb-1">{item.label}</p>
                     <p className="text-sm font-500 text-foreground break-all">{item.value}</p>
                   </div>
@@ -607,7 +607,7 @@ export default function CustomerDetail() {
             {editError && (
               <p className="text-xs text-md-error" role="alert">{editError}</p>
             )}
-            <button type="submit" className="sr-only" tabIndex={-1} />
+            <button type="submit" className="sr-only" tabIndex={-1} aria-label={tCommon('save')} />
           </form>
           <DialogFooter className="gap-2 pt-2">
             <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
@@ -648,7 +648,7 @@ export default function CustomerDetail() {
             {pwdError && (
               <p className="text-xs text-md-error" role="alert">{pwdError}</p>
             )}
-            <button type="submit" className="sr-only" tabIndex={-1} />
+            <button type="submit" className="sr-only" tabIndex={-1} aria-label={t('resetPassword')} />
           </form>
           <DialogFooter className="gap-2 pt-2">
             <Button variant="outline" onClick={() => setPwdOpen(false)} disabled={savingPwd}>

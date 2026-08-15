@@ -153,10 +153,8 @@ export default function PortalAnnouncementsPage() {
         if (controller.signal.aborted) return;
         setError(getErrorMessage(e, t('announcementsLoadFailed')));
       } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-          setRefreshing(false);
-        }
+        setLoading(false);
+        setRefreshing(false);
       }
     },
     [t],
@@ -254,7 +252,7 @@ export default function PortalAnnouncementsPage() {
         <ul role="list" aria-label={t('announcementsTitle')} className="space-y-4">
           {sorted.map((a, i) => (
             <AnnouncementCard
-              key={a.id ?? i}
+              key={a.id ?? `announcement-${a.created_at}`}
               announcement={a}
               index={i}
               t={t}

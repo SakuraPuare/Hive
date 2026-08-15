@@ -28,7 +28,7 @@ function FieldRow({ label, value, mono, noData }: { label: string; value?: strin
 
 function formatMac(mac: string | undefined | null) {
   if (!mac || mac.length !== 12) return mac ?? '';
-  return mac.match(/.{2}/g)!.join(':');
+  return (mac.match(/.{2}/g) ?? []).join(':');
 }
 
 export default function NodeDetail() {
