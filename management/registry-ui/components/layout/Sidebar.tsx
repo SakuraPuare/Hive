@@ -17,13 +17,31 @@ interface SidebarContentProps {
   onNavigate?: () => void;
 }
 
+// Fixed-height skeleton rows while the current user resolves, so the nav
+// doesn't first paint perm:null items then reflow once permissions load.
+function renderSkeleton() {
+  return (
+    <div aria-hidden="true" className="space-y-1">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="flex min-h-12 items-center gap-3 rounded-full px-4 py-3">
+          <div className="h-5 w-5 shrink-0 animate-pulse rounded-md bg-md-surface-container-highest" />
+          <div
+            className="h-3.5 animate-pulse rounded-full bg-md-surface-container-highest"
+            style={{ width: `${55 + ((i * 7) % 30)}%` }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * The shared sidebar body: brand + permission-gated nav.
  * Rendered both inside the static desktop rail (<Sidebar>) and the mobile
  * drawer (<SidebarDrawer>) so active state and markup stay in sync.
  * (Locale switching lives in the top bar, see AppLayout.)
  */
-export function SidebarContent({ onNavigate }: SidebarContentProps) {
+function SidebarContent({ onNavigate }: SidebarContentProps) {
   const router = useRouter();
   const { user, loading } = useCurrentUser();
   const tAuth = useTranslations('auth');
@@ -80,21 +98,6 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
     );
   };
 
-  // Fixed-height skeleton rows while the current user resolves, so the nav
-  // doesn't first paint perm:null items then reflow once permissions load.
-  const renderSkeleton = () => (
-    <div aria-hidden="true" className="space-y-1">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="flex min-h-12 items-center gap-3 rounded-full px-4 py-3">
-          <div className="h-5 w-5 shrink-0 animate-pulse rounded-md bg-md-surface-container-highest" />
-          <div
-            className="h-3.5 animate-pulse rounded-full bg-md-surface-container-highest"
-            style={{ width: `${55 + ((i * 7) % 30)}%` }}
-          />
-        </div>
-      ))}
-    </div>
-  );
 
   return (
     <>
