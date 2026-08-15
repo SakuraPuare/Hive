@@ -73,6 +73,7 @@ function UpstreamMultiSelect({
   // Local draft: checkbox clicks update this immediately; onChange is flushed
   // after a 300ms debounce so rapid multi-select produces a single PATCH.
   const [draft, setDraft] = useState<string[]>(selected);
+  const draftSet = useMemo(() => new Set(draft), [draft]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hintId = useId();
   const listboxId = useId();
@@ -87,13 +88,11 @@ function UpstreamMultiSelect({
   }, [selected]);
 
   function toggle(mac: string) {
-    setDraft((prev) => {
-      const next = prev.includes(mac) ? prev.filter((m) => m !== mac) : [...prev, mac];
-      // Debounce flush: cancel any pending timer and schedule a new one.
-      if (debounceRef.current != null) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => { onChange(next); }, 300);
-      return next;
-    });
+    const next = draftSet.has(mac) ? draft.filter((m) => m !== mac) : [...draft, mac];
+    setDraft(next);
+    // Debounce flush: cancel any pending timer and schedule a new one (side effects outside updater).
+    if (debounceRef.current != null) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { onChange(next); }, 300);
   }
 
   // Flush immediately when the popover closes to avoid dangling timers.
@@ -109,10 +108,10 @@ function UpstreamMultiSelect({
   const label =
     draft.length === 0
       ? placeholder
-      : candidates
-          .filter((n) => draft.includes(n.mac ?? ''))
-          .map((n) => n.hostname || n.note || n.mac)
-          .join(', ');
+      : candidates.reduce<string[]>((acc, n) => {
+          if (draftSet.has(n.mac ?? '')) acc.push(n.hostname || n.note || n.mac || '');
+          return acc;
+        }, []).join(', ');
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -154,7 +153,7 @@ function UpstreamMultiSelect({
             <CommandGroup>
               {candidates.map((n) => {
                 const mac = n.mac ?? '';
-                const checked = draft.includes(mac);
+                const checked = draftSet.has(mac);
                 return (
                   <CommandItem
                     key={mac}
@@ -186,10 +185,13 @@ function UpstreamMultiSelect({
 const INTRO_STORAGE_KEY = 'gateway-intro-collapsed';
 
 function IntroCard({ t }: { t: ReturnType<typeof useTranslations> }) {
-  const [open, setOpen] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return localStorage.getItem(INTRO_STORAGE_KEY) !== 'true';
-  });
+  const [open, setOpen] = useState(true);
+
+  // Sync from localStorage after hydration to avoid server/client mismatch.
+  useEffect(() => {
+    const stored = localStorage.getItem(INTRO_STORAGE_KEY);
+    if (stored === 'true') setOpen(false);
+  }, []);
 
   function handleOpenChange(v: boolean) {
     setOpen(v);
@@ -264,7 +266,7 @@ export default function GatewayPage() {
     } catch (e: unknown) {
       setError(getErrorMessage(e, t('loadFailed')));
     } finally {
-      if (isInitial) setLoading(false);
+      setLoading(false);
     }
   }, [t]);
 
@@ -669,6 +671,11 @@ function DisabledHint({
 // ── Bound-subscription single-select ─────────────────────────────────────────
 // Binds a gateway device to one customer subscription (for billing). Searchable
 // popover; selecting sends bound_subscription_id, the Unbind item sends null.
+
+function boundSubLabel(s: SubItem): string {
+  return `${s.customer_email || '—'} · ${s.plan_name || '—'} · #${s.id}`;
+}
+
 function BoundSubSelect({
   subs, value, disabled, unboundLabel, searchPlaceholder, emptyLabel, unbindLabel, onChange,
 }: {
@@ -685,9 +692,7 @@ function BoundSubSelect({
   const listboxId = useId();
 
   const selected = value != null ? subs.find((s) => s.id === value) : undefined;
-  const subLabel = (s: SubItem) =>
-    `${s.customer_email || '—'} · ${s.plan_name || '—'} · #${s.id}`;
-  const label = value == null ? unboundLabel : (selected ? subLabel(selected) : `#${value}`);
+  const label = value == null ? unboundLabel : (selected ? boundSubLabel(selected) : `#${value}`);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -728,10 +733,10 @@ function BoundSubSelect({
               {subs.map((s) => (
                 <CommandItem
                   key={s.id}
-                  value={`${subLabel(s)}`}
+                  value={`${boundSubLabel(s)}`}
                   onSelect={() => { onChange(s.id ?? null); setOpen(false); }}
                 >
-                  <span className="truncate">{subLabel(s)}</span>
+                  <span className="truncate">{boundSubLabel(s)}</span>
                   {s.id === value && <span className="sr-only">✓</span>}
                 </CommandItem>
               ))}

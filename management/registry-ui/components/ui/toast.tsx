@@ -127,21 +127,24 @@ export function ToastProvider({
       const duration = options?.duration ?? fallbackDuration
       const item: ToastItem = { id, message, variant, duration, action: options?.action }
 
+      // Compute evictions outside the updater so side effects stay pure.
+      let evicted: ToastItem[] = []
       setToasts((prev) => {
         const next = [...prev, item]
-        // Evict oldest beyond max (and clear their timers).
         while (next.length > max) {
           const removed = next.shift()
-          if (removed) {
-            const t = timers.current.get(removed.id)
-            if (t) {
-              clearTimeout(t)
-              timers.current.delete(removed.id)
-            }
-          }
+          if (removed) evicted.push(removed)
         }
         return next
       })
+      // Clean up timers for evicted toasts (side effect outside updater).
+      for (const removed of evicted) {
+        const t = timers.current.get(removed.id)
+        if (t) {
+          clearTimeout(t)
+          timers.current.delete(removed.id)
+        }
+      }
 
       if (duration && duration > 0) {
         const timer = setTimeout(() => dismiss(id), duration)
