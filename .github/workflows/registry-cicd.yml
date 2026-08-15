@@ -90,6 +90,10 @@ jobs:
           name: registry-openapi-${{ github.sha }}
           path: management/registry/openapi
 
+      - name: Pin npm 10 (Node 24 ships npm 11 whose stricter ci breaks our lockfile)
+        if: matrix.node-version >= 24
+        run: npm install -g npm@10
+
       - name: Install registry-ui deps
         run: npm ci
 
