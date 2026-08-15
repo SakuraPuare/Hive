@@ -55,6 +55,6 @@
   "overrides": {
     "@swc/helpers": "0.5.23",
     "postcss": "^8.5.26",
-    "typescript-eslint": "8.65.0"
+    "typescript-eslint": "8.67.0"
   }
 }
