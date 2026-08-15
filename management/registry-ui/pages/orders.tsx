@@ -57,21 +57,22 @@ function formatAmount(cents: number) {
 }
 
 // M3 status chip recipes — §10 of DESIGN_SYSTEM
+const STATUS_RECIPES: Record<string, string> = {
+  paid: 'bg-md-tertiary-container text-md-on-tertiary-container',
+  pending: 'bg-[hsl(43_96%_50%/0.15)] text-[hsl(38_92%_30%)] dark:text-[hsl(43_96%_70%)]',
+  cancelled: 'bg-muted text-muted-foreground',
+  refunded: 'bg-md-error-container text-md-on-error-container',
+};
+const STATUS_DOT_RECIPES: Record<string, string> = {
+  paid: 'bg-md-tertiary',
+  pending: 'bg-[hsl(43_96%_50%)]',
+  cancelled: 'bg-md-outline',
+  refunded: 'bg-md-error',
+};
+
 function StatusChip({ status, label }: { status: string; label: string }) {
-  const recipes: Record<string, string> = {
-    paid: 'bg-md-tertiary-container text-md-on-tertiary-container',
-    pending: 'bg-[hsl(43_96%_50%/0.15)] text-[hsl(38_92%_30%)] dark:text-[hsl(43_96%_70%)]',
-    cancelled: 'bg-muted text-muted-foreground',
-    refunded: 'bg-md-error-container text-md-on-error-container',
-  };
-  const dotRecipes: Record<string, string> = {
-    paid: 'bg-md-tertiary',
-    pending: 'bg-[hsl(43_96%_50%)]',
-    cancelled: 'bg-md-outline',
-    refunded: 'bg-md-error',
-  };
-  const cls = recipes[status] ?? 'bg-muted text-muted-foreground';
-  const dotCls = dotRecipes[status] ?? 'bg-md-outline';
+  const cls = STATUS_RECIPES[status] ?? 'bg-muted text-muted-foreground';
+  const dotCls = STATUS_DOT_RECIPES[status] ?? 'bg-md-outline';
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${cls}`}>
       <span className={`size-1.5 rounded-full ${dotCls}`} aria-hidden="true" />
@@ -101,25 +102,25 @@ export default function OrdersPage() {
   // affordance instead of a sentinel `value="all"` option.
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
-  const [initialized, setInitialized] = useState(false);
+  const initialized = useRef(false);
   const hasLoadedOnce = useRef(false);
 
   // ── Restore filter + page from URL on first ready render ──
   useEffect(() => {
-    if (!router.isReady || initialized) return;
+    if (!router.isReady || initialized.current) return;
     const q = router.query;
     if (typeof q.status === 'string') setStatusFilter(q.status);
     if (typeof q.page === 'string') {
       const p = parseInt(q.page, 10);
       if (Number.isFinite(p) && p > 0) setPage(p);
     }
-    setInitialized(true);
-  }, [router.isReady, router.query, initialized]);
+    initialized.current = true;
+  }, [router.isReady, router.query]);
 
   // ── Persist filter + page to URL (shallow) ──
   const syncUrl = useRef(false);
   useEffect(() => {
-    if (!initialized) return;
+    if (!initialized.current) return;
     // skip the very first sync triggered by restore to avoid a redundant replace
     if (!syncUrl.current) {
       syncUrl.current = true;
@@ -129,7 +130,7 @@ export default function OrdersPage() {
     if (statusFilter) query.status = statusFilter;
     if (page > 1) query.page = String(page);
     router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
-  }, [statusFilter, page, initialized, router]);
+  }, [statusFilter, page, router]);
 
   const loadOrders = useCallback(async () => {
     // Subsequent refreshes keep existing rows visible (opacity-60 overlay)
@@ -158,8 +159,8 @@ export default function OrdersPage() {
   }, [statusFilter, page, t]);
 
   useEffect(() => {
-    if (!authLoading && user?.can('order:read') && initialized) loadOrders();
-  }, [authLoading, user, loadOrders, initialized]);
+    if (!authLoading && user?.can('order:read') && initialized.current) loadOrders();
+  }, [authLoading, user, loadOrders]);
 
   useEffect(() => {
     if (!authLoading && user && !user.can('order:read')) router.replace('/dashboard');

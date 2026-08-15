@@ -96,6 +96,7 @@ export default function UsersPage() {
   const [rolesOpen, setRolesOpen] = useState(false);
   const [rolesTarget, setRolesTarget] = useState<AdminUser | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const selectedRolesSet = useMemo(() => new Set(selectedRoles), [selectedRoles]);
   const [savingRoles, setSavingRoles] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
@@ -247,7 +248,7 @@ export default function UsersPage() {
   }
 
   function selectAllRoles() {
-    setSelectedRoles(allRoles.map((r) => r.name ?? '').filter(Boolean));
+    setSelectedRoles(allRoles.flatMap((r) => r.name ? [r.name] : []));
   }
 
   function clearAllRoles() {
@@ -783,7 +784,7 @@ export default function UsersPage() {
           <div className="space-y-1.5 py-2">
             {allRoles.map((r) => {
               const name = r.name ?? '';
-              const checked = selectedRoles.includes(name);
+              const checked = selectedRolesSet.has(name);
               const descId = r.description ? `role-desc-${r.id}` : undefined;
               return (
                 <label

@@ -24,6 +24,7 @@ const CPU_CRIT = 90;
 const LATENCY_WARNING_MS = 200;
 
 type FilterKey = 'all' | 'online' | 'offline';
+const FILTER_KEYS: FilterKey[] = ['all', 'online', 'offline'];
 type SortKey =
   | 'hostname' | 'status' | 'cpu' | 'mem' | 'disk' | 'uptime' | 'latency' | 'checkedAt';
 type SortState = { key: SortKey | null; dir: 'asc' | 'desc' };
@@ -188,7 +189,6 @@ export default function NodeStatusPage() {
   const onlineCount = data.filter((n) => n.status === 'online').length;
   const offlineCount = data.filter((n) => n.status === 'offline').length;
 
-  const filters: FilterKey[] = ['all', 'online', 'offline'];
 
   const filtered = useMemo(() => {
     const base = filter === 'all' ? data : data.filter((n) => n.status === filter);
@@ -237,13 +237,13 @@ export default function NodeStatusPage() {
   // Roving keyboard nav for the segmented filter (ARIA radiogroup pattern).
   const onFilterKeyDown = (e: React.KeyboardEvent, idx: number) => {
     let next = idx;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % filters.length;
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (idx - 1 + filters.length) % filters.length;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % FILTER_KEYS.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (idx - 1 + FILTER_KEYS.length) % FILTER_KEYS.length;
     else if (e.key === 'Home') next = 0;
-    else if (e.key === 'End') next = filters.length - 1;
+    else if (e.key === 'End') next = FILTER_KEYS.length - 1;
     else return;
     e.preventDefault();
-    setFilter(filters[next]);
+    setFilter(FILTER_KEYS[next]);
     filterRefs.current[next]?.focus();
   };
 
@@ -353,7 +353,7 @@ export default function NodeStatusPage() {
           aria-label={t('filterLabel')}
           className="flex rounded-xl border bg-card isolate text-sm"
         >
-          {filters.map((f, idx) => {
+          {FILTER_KEYS.map((f, idx) => {
             const selected = filter === f;
             const count = f === 'online' ? onlineCount : f === 'offline' ? offlineCount : data.length;
             return (
@@ -485,7 +485,7 @@ export default function NodeStatusPage() {
               ) : (
                 filtered.map((n, i) => (
                   <TableRow
-                    key={n.mac ?? (n.hostname ? `hostname-${n.hostname}` : `idx-${i}`)}
+                    key={n.mac ?? n.hostname ?? `node-${n.checked_at}`}
                     className="border-b border-md-outline-variant/50 animate-slide-up hover:bg-transparent"
                     style={{ animationDelay: `${i * 30}ms` }}
                   >

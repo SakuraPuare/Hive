@@ -31,7 +31,7 @@ import { useFormat } from '@/lib/format';
 
 function formatMac(mac: string | undefined | null) {
   if (!mac || mac.length !== 12) return mac ?? '';
-  return mac.match(/.{2}/g)!.join(':');
+  return (mac.match(/.{2}/g) ?? []).join(':');
 }
 
 type ProbeStatus = 'online' | 'offline' | 'unknown';
@@ -93,6 +93,33 @@ function StatCard({ icon, label, value, accent = 'neutral', delay = 0 }: StatCar
 const col = createColumnHelper<DataTableFeatures, model_Node>();
 
 type StatusFilter = 'all' | 'online' | 'offline' | 'unknown';
+
+// ── Actions (module-scope pure helpers) ─────────────────────────────────────
+
+// Best-effort human label for a node in confirmations/feedback.
+function nodeLabel(n: model_Node) {
+  return n.note || n.hostname || formatMac(n.mac) || n.mac || '—';
+}
+
+// Run an async op over many nodes with bounded concurrency, collecting
+// per-node failures so callers can report partial success.
+async function runBatch(
+  targets: model_Node[],
+  op: (n: model_Node) => Promise<unknown>,
+): Promise<{ ok: number; failed: model_Node[] }> {
+  const CONCURRENCY = 5;
+  const failed: model_Node[] = [];
+  let ok = 0;
+  for (let i = 0; i < targets.length; i += CONCURRENCY) {
+    const slice = targets.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(slice.map(op));
+    results.forEach((r, idx) => {
+      if (r.status === 'fulfilled') ok += 1;
+      else failed.push(slice[idx]);
+    });
+  }
+  return { ok, failed };
+}
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -177,31 +204,6 @@ export default function NodesPage() {
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
-  // Best-effort human label for a node in confirmations/feedback.
-  function nodeLabel(n: model_Node) {
-    return n.note || n.hostname || formatMac(n.mac) || n.mac || '—';
-  }
-
-  // Run an async op over many nodes with bounded concurrency, collecting
-  // per-node failures so callers can report partial success.
-  async function runBatch(
-    targets: model_Node[],
-    op: (n: model_Node) => Promise<unknown>,
-  ): Promise<{ ok: number; failed: model_Node[] }> {
-    const CONCURRENCY = 5;
-    const failed: model_Node[] = [];
-    let ok = 0;
-    for (let i = 0; i < targets.length; i += CONCURRENCY) {
-      const slice = targets.slice(i, i + CONCURRENCY);
-      const results = await Promise.allSettled(slice.map(op));
-      results.forEach((r, idx) => {
-        if (r.status === 'fulfilled') ok += 1;
-        else failed.push(slice[idx]);
-      });
-    }
-    return { ok, failed };
-  }
-
   function reportBatch(ok: number, failed: model_Node[], successMsg: string) {
     if (failed.length === 0) {
       toast.success(successMsg);
@@ -272,11 +274,13 @@ export default function NodesPage() {
       const rows = filteredNodes.map(n => headers.map(h => String((n as Record<string, unknown>)[h] ?? '')));
       const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(','))].join('\n');
       const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
+      a.href = url;
       a.download = `nodes-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
-      URL.revokeObjectURL(a.href);
+      // Revoke after a tick so the browser can start the download first.
+      setTimeout(() => URL.revokeObjectURL(url), 100);
       toast.success(t('exportSuccess', { count: filteredNodes.length }));
     } finally {
       setExporting(false);
