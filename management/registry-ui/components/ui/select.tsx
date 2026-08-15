@@ -153,9 +153,9 @@ function SelectTrigger({
       {children}
       <span className="flex shrink-0 items-center gap-1">
         {clearable && !loading && (
-          <span
+          <button
+            type="button"
             data-slot="select-clear"
-            role="button"
             tabIndex={-1}
             aria-label={clearLabel}
             onPointerDown={handleClear}
@@ -165,7 +165,7 @@ function SelectTrigger({
             className="pointer-events-auto -mr-1 flex size-6 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-md-surface-container-highest hover:text-foreground group-data-[placeholder]/select-trigger:hidden"
           >
             <XIcon className="size-3.5" aria-hidden="true" />
-          </span>
+          </button>
         )}
         {loading ? (
           <SelectSpinner />

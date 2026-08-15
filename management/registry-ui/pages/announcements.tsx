@@ -577,14 +577,15 @@ export default function AnnouncementsPage() {
                     offLabel={t('pinned')}
                     aria-labelledby={pinnedLabelId}
                   />
-                  <span
+                  <button
+                    type="button"
                     id={pinnedLabelId}
-                    className="text-sm font-500 flex items-center gap-1.5 cursor-pointer select-none"
+                    className="text-sm font-500 flex items-center gap-1.5 cursor-pointer select-none bg-transparent border-none p-0"
                     onClick={() => setForm((f) => ({ ...f, pinned: !f.pinned }))}
                   >
                     <Pin className="size-3.5 text-muted-foreground" aria-hidden="true" />
                     {t('pinned')}
-                  </span>
+                  </button>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <Switch
@@ -594,14 +595,15 @@ export default function AnnouncementsPage() {
                     offLabel={t('published')}
                     aria-labelledby={publishedLabelId}
                   />
-                  <span
+                  <button
+                    type="button"
                     id={publishedLabelId}
-                    className="text-sm font-500 flex items-center gap-1.5 cursor-pointer select-none"
+                    className="text-sm font-500 flex items-center gap-1.5 cursor-pointer select-none bg-transparent border-none p-0"
                     onClick={() => setForm((f) => ({ ...f, published: !f.published }))}
                   >
                     <Globe className="size-3.5 text-muted-foreground" aria-hidden="true" />
                     {t('published')}
-                  </span>
+                  </button>
                 </div>
               </div>
 
