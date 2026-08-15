@@ -197,23 +197,16 @@ export function DataTable<TData extends RowData>({
   const [sorting, setSorting] = useState<SortingState>(defaultSorting);
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: manualPagination ? (controlledPageIndex ?? 0) : 0,
+  const [internalPageIndex, setInternalPageIndex] = useState(0);
+
+  // Compute pagination state directly during render — avoids syncing props
+  // into state via useEffect. In manual mode the pageIndex is owned by the
+  // caller; in client mode we track it internally.
+  const pagination: PaginationState = {
+    pageIndex: manualPagination ? (controlledPageIndex ?? 0) : internalPageIndex,
     pageSize,
-  });
-
-  // In manual mode the page index is owned by the caller; mirror it in.
-  useEffect(() => {
-    if (!manualPagination) return;
-    setPagination((p) =>
-      p.pageIndex === (controlledPageIndex ?? 0) ? p : { ...p, pageIndex: controlledPageIndex ?? 0 });
-  }, [manualPagination, controlledPageIndex]);
-
-  // Keep the reactive page size in sync if the prop changes.
-  useEffect(() => {
-    setPagination((p) => (p.pageSize === pageSize ? p : { ...p, pageSize }));
-  }, [pageSize]);
-  const currentPageSize = pagination.pageSize;
+  };
+  const currentPageSize = pageSize;
 
   // Animate row entrance on initial mount only (not on every sort/page/filter).
   // prefers-reduced-motion is handled globally in globals.css.
@@ -283,13 +276,11 @@ export function DataTable<TData extends RowData>({
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
     onPaginationChange: (updater: any) => {
-      setPagination((prev) => {
-        const next = typeof updater === 'function' ? updater(prev) : updater;
-        if (manualPagination && next.pageIndex !== prev.pageIndex) {
-          onPageChange?.(next.pageIndex);
-        }
-        return next;
-      });
+      const next = typeof updater === 'function' ? updater(pagination) : updater;
+      setInternalPageIndex(next.pageIndex);
+      if (manualPagination && next.pageIndex !== pagination.pageIndex) {
+        onPageChange?.(next.pageIndex);
+      }
     },
     ...(manualPagination
       ? { manualPagination: true as const, pageCount: controlledPageCount ?? -1 }
@@ -552,7 +543,7 @@ export function DataTable<TData extends RowData>({
                 <span className="whitespace-nowrap">{rowsPerPageLabel}</span>
                 <Select
                   value={String(currentPageSize)}
-                  onValueChange={(v) => setPagination((p) => ({ ...p, pageIndex: 0, pageSize: Number(v) }))}
+                  onValueChange={() => { setInternalPageIndex(0); if (manualPagination) onPageChange?.(0); }}
                 >
                   <SelectTrigger size="sm" className="w-[72px]" aria-label={rowsPerPageLabel}>
                     <SelectValue />
