@@ -80,7 +80,7 @@ describe('PortalOrdersPage', () => {
     await waitFor(() => {
       expect(screen.getAllByText(/29.99/).length).toBeGreaterThanOrEqual(1);
     });
-    expect(screen.getByText(/9.99/)).toBeInTheDocument();
+    expect(screen.getByText(/¥9.99$/)).toBeInTheDocument();
   });
 
   it('displays status badges', async () => {
