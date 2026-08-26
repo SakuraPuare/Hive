@@ -35,6 +35,7 @@ func (h *Handler) HandleSubscriptionVless(w http.ResponseWriter, r *http.Request
 		name := buildNodeName(n)
 		params := url.Values{}
 		params.Set("type", "ws")
+		params.Set("host", host)
 		params.Set("security", "tls")
 		params.Set("sni", host)
 		params.Set("path", fmt.Sprintf("/%s?ed=2560", h.Config.XrayPath))
