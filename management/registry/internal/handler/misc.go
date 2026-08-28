@@ -200,8 +200,8 @@ func (h *Handler) HandleRoot(w http.ResponseWriter, r *http.Request) {
 <div class="stat">Nodes: <b>%d</b> total, <b>%d</b> online</div>
 <hr>
 <a href="/api/nodes">All Nodes (JSON)</a>
-<a href="/api/subscription">VLESS Subscription</a>
-<a href="/api/subscription/clash">Clash Subscription</a>
+<a href="/api/subscription">Subscription (auto-detect)</a>
+<a href="/api/subscription?flag=clash">Clash Subscription</a>
 <a href="/api/prometheus-targets">Prometheus Targets</a>
 <a href="/api/labels">Print Labels</a>
 <a href="/health">Health</a>

@@ -319,7 +319,7 @@ export default function Subscriptions() {
               className="state-layer rounded-lg text-sm font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
               asChild
             >
-              <a href={apiPath('/subscription/clash')} target="_blank" rel="noopener noreferrer">
+              <a href={apiPath('/subscription?flag=clash')} target="_blank" rel="noopener noreferrer">
                 <Download className="mr-2 h-4 w-4" aria-hidden="true" />
                 {tCommon('download')}
               </a>
