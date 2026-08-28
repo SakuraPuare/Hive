@@ -41,7 +41,7 @@ jobs:
     if: github.server_url != 'https://github.com'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # ── 板子选择 gate（替代 job 级 if 里的 matrix 判据，见上方说明）──────────
       # release 或 dispatch+all → 全编；dispatch+单块 → 只有选中那块 build=true。
@@ -207,7 +207,7 @@ jobs:
       # artifact API，必须用 @v3。GitHub 上 v3 同样可用。
       - name: Upload artifact
         if: steps.gate.outputs.build == 'true' && github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
         with:
           name: ${{ matrix.profile }}-${{ steps.image.outputs.name }}
           path: ${{ steps.image.outputs.path }}
@@ -215,7 +215,7 @@ jobs:
       # ── release 触发：附加到对应的 GitHub Release ────────────────────────
       - name: Upload to release
         if: steps.gate.outputs.build == 'true' && github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: ${{ steps.image.outputs.path }}
 
