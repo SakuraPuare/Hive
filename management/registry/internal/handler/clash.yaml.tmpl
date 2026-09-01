@@ -94,23 +94,19 @@ proxies:
       early-data-header-name: Sec-WebSocket-Protocol
 {{ end }}
 proxy-groups:
-  - name: 默认
+  - name: 境外
     type: select
-    proxies: [自动选择,直连,香港,台湾,日本,新加坡,美国,巴西,其它地区,全部节点]
+    proxies: [境外自动选择,直连,香港,台湾,日本,新加坡,美国,巴西,其它地区,大陆,全部节点]
+
+  - name: 境内
+    type: select
+    proxies: [直连,大陆,境外自动选择,香港,台湾,日本,新加坡,美国,巴西,其它地区,全部节点]
 
 {{ range .ServiceGroups }}
   - name: {{ .Name }}
     type: select
-    proxies: [{{ .First }},自动选择,直连,香港,台湾,日本,新加坡,美国,巴西,其它地区,全部节点]
+    proxies: [{{ .First }},境外自动选择,{{ if eq .First "境外" }}境内{{ else }}境外{{ end }},大陆,香港,台湾,日本,新加坡,美国,巴西,其它地区,全部节点]
 {{ end }}
-  - name: 国内
-    type: select
-    proxies: [直连,自动选择,香港,台湾,日本,新加坡,美国,巴西,其它地区,全部节点]
-
-  - name: 其他
-    type: select
-    proxies: [自动选择,直连,香港,台湾,日本,新加坡,美国,巴西,其它地区,全部节点]
-
 {{ range .RegionGroups }}
   - name: {{ .Name }}
     type: url-test
@@ -126,10 +122,11 @@ proxy-groups:
     include-all: true
     exclude-type: direct
 
-  - name: 自动选择
+  - name: 境外自动选择
     type: url-test
     include-all: true
     exclude-type: direct
+    filter: "(?i)^(?!.*(?:中国|cn|china))"
     tolerance: 10
     url: http://www.gstatic.com/generate_204
     interval: 300
@@ -161,11 +158,11 @@ rules:
   - RULE-SET,bilibili_domain,哔哩哔哩
   - RULE-SET,bahamut_domain,巴哈姆特
   - RULE-SET,spotify_domain,Spotify
-  - RULE-SET,cn_domain,国内
+  - RULE-SET,cn_domain,境内
   - RULE-SET,geolocation-!cn,其他
   - RULE-SET,google_ip,Google
   - RULE-SET,netflix_ip,NETFLIX
   - RULE-SET,telegram_ip,Telegram
   - RULE-SET,twitter_ip,Twitter
-  - RULE-SET,cn_ip,国内
+  - RULE-SET,cn_ip,境内
   - MATCH,其他
