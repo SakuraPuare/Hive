@@ -76,9 +76,8 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// ── 审计日志 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /admin/audit-logs", perm("audit:read")(h.HandleListAuditLogs))
 
-	// ── 订阅（管理员 session 认证）──────────────────────────────────────
-	mux.HandleFunc("GET /subscription", perm("subscription:read")(h.HandleSubscriptionVless))
-	mux.HandleFunc("GET /subscription/clash", perm("subscription:read")(h.HandleSubscriptionClash))
+	// ── 订阅（管理员 session 认证，按 UA/flag 自动适配格式）────────────
+	mux.HandleFunc("GET /subscription", perm("subscription:read")(h.HandleSubscription))
 
 	// ── 公开订阅分组（无需认证）────────────────────────────────────────────
 	mux.HandleFunc("GET /s/{token}", h.HandlePublicGroupClash)

@@ -111,7 +111,7 @@ func TestAdminSubscriptionClash(t *testing.T) {
 	resetDB(t)
 	insertSubTestNode(t, "aabbccddeeff")
 
-	resp := doJSON("GET", "/subscription/clash", nil, adminCookie())
+	resp := doJSON("GET", "/subscription?flag=meta", nil, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 
 	body := readBody(resp)
@@ -128,7 +128,7 @@ func TestAdminSubscriptionClash_Bearer(t *testing.T) {
 	resetDB(t)
 	insertSubTestNode(t, "aabbccddeeff")
 
-	resp := doJSON("GET", "/subscription/clash", nil, adminCookie())
+	resp := doJSON("GET", "/subscription?flag=clash", nil, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 
 	body := readBody(resp)
@@ -139,7 +139,7 @@ func TestAdminSubscriptionClash_Bearer(t *testing.T) {
 
 func TestAdminSubscriptionClash_Unauthorized(t *testing.T) {
 	resetDB(t)
-	resp := doJSON("GET", "/subscription/clash", nil, nil)
+	resp := doJSON("GET", "/subscription?flag=clash", nil, nil)
 	assertStatus(t, resp, http.StatusUnauthorized)
 }
 
