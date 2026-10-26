@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"log"
+	"encoding/hex"
 	"net/http"
 	"strconv"
 	"strings"
@@ -64,7 +64,10 @@ func (a *Auth) ParseSession(r *http.Request) (username, role string, valid bool)
 		return "", "", false
 	}
 
-	parts := strings.SplitN(payload, ".", 3)
+	parts := strings.Split(payload, ".")
+	if len(parts) >= 3 {
+		parts = []string{parts[0], strings.Join(parts[1:len(parts)-1], "."), parts[len(parts)-1]}
+	}
 	if len(parts) != 3 {
 		return "", "", false
 	}
@@ -157,40 +160,37 @@ func (a *Auth) ParseCustomerSession(r *http.Request) (customerID uint, valid boo
 	return uint(cid), true
 }
 
-// RequireDeviceAuth checks Bearer token for device API endpoints.
-// Returns true if auth passed, false if it wrote an error response.
-func (a *Auth) RequireDeviceAuth(w http.ResponseWriter, r *http.Request) bool {
-	if a.Config.APISecret == "" {
-		log.Println("WARN: API_SECRET is empty, denying device auth request")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"server misconfigured: API_SECRET not set"}`))
-		return false
+// RequireDeviceAuth verifies a per-device credential and binds it to the MAC.
+// Body-based routes supply the decoded MAC explicitly. Shared image secrets are
+// deliberately never accepted here.
+func (a *Auth) RequireDeviceAuth(w http.ResponseWriter, r *http.Request, bodyMAC ...string) bool {
+	mac := r.PathValue("mac")
+	if len(bodyMAC) > 0 {
+		mac = bodyMAC[0]
 	}
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"missing or invalid Authorization header"}`))
-		return false
+	mac = strings.ToLower(mac)
+	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if ok && token != "" && mac != "" && a.DB != nil {
+		sum := sha256.Sum256([]byte(token))
+		var stored string
+		err := a.DB.Raw("SELECT token_hash FROM device_credentials WHERE mac = ?", mac).Scan(&stored).Error
+		if err == nil && stored != "" && subtle.ConstantTimeCompare([]byte(stored), []byte(hex.EncodeToString(sum[:]))) == 1 {
+			return true
+		}
 	}
-	token := strings.TrimPrefix(auth, "Bearer ")
-	if subtle.ConstantTimeCompare([]byte(token), []byte(a.Config.APISecret)) != 1 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"invalid token"}`))
-		return false
-	}
-	return true
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	w.Write([]byte(`{"error":"invalid device credential"}`))
+	return false
 }
 
 func (a *Auth) checkAPISecret(r *http.Request) bool {
-	if a.Config.APISecret == "" {
+	// An optional, server-only automation credential. Refuse unsafe reuse of the
+	// legacy shared device secret, and never accept credentials in query strings.
+	secret := a.Config.AdminAPISecret
+	if secret == "" || secret == a.Config.APISecret {
 		return false
 	}
-	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if token == "" || token == r.Header.Get("Authorization") {
-		token = r.URL.Query().Get("token")
-	}
-	return token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(a.Config.APISecret)) == 1
+	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	return ok && token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
 }

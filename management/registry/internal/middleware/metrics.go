@@ -47,115 +47,25 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
-func NormalizePath(path string) string {
-	switch {
-	case len(path) > 7 && path[:7] == "/nodes/":
-		return "/nodes/{mac}"
-	case len(path) > 13 && path[:13] == "/admin/users/":
-		if len(path) > 13 {
-			rest := path[13:]
-			if rest == "roles" || len(rest) > 0 && rest[len(rest)-1] == 's' {
-				return "/admin/users/{id}/roles"
-			}
-			if rest == "password" || (len(rest) > 0 && rest[len(rest)-1] == 'd') {
-				return "/admin/users/{id}/password"
-			}
-			return "/admin/users/{id}"
-		}
-		return path
-	case len(path) > 13 && path[:13] == "/admin/roles/":
-		return "/admin/roles/{id}/permissions"
-	case len(path) > 28 && path[:28] == "/admin/subscription-groups/":
-		rest := path[28:]
-		for i, c := range rest {
-			if c == '/' {
-				suffix := rest[i:]
-				if suffix == "/nodes" {
-					return "/admin/subscription-groups/{id}/nodes"
-				}
-				if suffix == "/reset-token" {
-					return "/admin/subscription-groups/{id}/reset-token"
-				}
-				return "/admin/subscription-groups/{id}"
-			}
-		}
-		return "/admin/subscription-groups/{id}"
-	case len(path) > 13 && path[:13] == "/admin/lines/":
-		rest := path[13:]
-		for i, c := range rest {
-			if c == '/' {
-				suffix := rest[i:]
-				if suffix == "/nodes" {
-					return "/admin/lines/{id}/nodes"
-				}
-				if suffix == "/reset-token" {
-					return "/admin/lines/{id}/reset-token"
-				}
-				return "/admin/lines/{id}"
-			}
-		}
-		return "/admin/lines/{id}"
-	case len(path) > 3 && path[:3] == "/s/":
-		return "/s/{token}"
-	case len(path) > 3 && path[:3] == "/l/":
-		return "/l/{token}"
-	case len(path) > 3 && path[:3] == "/c/":
-		if strings.Contains(path, "/vless") {
-			return "/c/{token}/vless"
-		}
-		return "/c/{token}"
-	case len(path) > 13 && path[:13] == "/admin/plans/":
-		rest := path[13:]
-		for i, c := range rest {
-			if c == '/' {
-				suffix := rest[i:]
-				if suffix == "/lines" {
-					return "/admin/plans/{id}/lines"
-				}
-				return "/admin/plans/{id}"
-			}
-		}
-		return "/admin/plans/{id}"
-	case len(path) > 14 && path[:14] == "/admin/orders/":
-		return "/admin/orders/{id}"
-	case len(path) > 19 && path[:19] == "/admin/promo-codes/":
-		return "/admin/promo-codes/{id}"
-	case len(path) > 15 && path[:15] == "/admin/tickets/":
-		rest := path[15:]
-		for i, c := range rest {
-			if c == '/' {
-				suffix := rest[i:]
-				if suffix == "/replies" {
-					return "/admin/tickets/{id}/replies"
-				}
-				if suffix == "/close" {
-					return "/admin/tickets/{id}/close"
-				}
-			}
-		}
-		return "/admin/tickets/{id}"
-	case len(path) > 20 && path[:20] == "/admin/risk-events/":
-		return "/admin/risk-events/{id}"
-	case len(path) > 17 && path[:17] == "/admin/customers/":
-		rest := path[17:]
-		for i, c := range rest {
-			if c == '/' {
-				suffix := rest[i:]
-				if suffix == "/subscriptions" {
-					return "/admin/customers/{id}/subscriptions"
-				}
-				if suffix == "/traffic" {
-					return "/admin/customers/{id}/traffic"
-				}
-				if suffix == "/password" {
-					return "/admin/customers/{id}/password"
-				}
-				return "/admin/customers/{id}"
-			}
-		}
-		return "/admin/customers/{id}"
+// Metric labels come exclusively from registered ServeMux patterns, never request URLs.
+func metricPath(r *http.Request) string {
+	if r.Pattern == "" {
+		return "unmatched"
 	}
-	return path
+	_, path, found := strings.Cut(r.Pattern, " ")
+	if found {
+		return path
+	}
+	return r.Pattern
+}
+
+func metricMethod(method string) string {
+	switch method {
+	case "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "CONNECT", "TRACE":
+		return method
+	default:
+		return "OTHER"
+	}
 }
 
 // WithMetrics wraps a handler with Prometheus metrics recording.
@@ -170,11 +80,12 @@ func WithMetrics(next http.Handler) http.Handler {
 		sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
 		next.ServeHTTP(sw, r)
 
-		path := NormalizePath(r.URL.Path)
+		path := metricPath(r)
+		method := metricMethod(r.Method)
 		duration := time.Since(start).Seconds()
 
-		HttpRequestsTotal.WithLabelValues(r.Method, path, strconv.Itoa(sw.code)).Inc()
-		HttpRequestDuration.WithLabelValues(r.Method, path).Observe(duration)
+		HttpRequestsTotal.WithLabelValues(method, path, strconv.Itoa(sw.code)).Inc()
+		HttpRequestDuration.WithLabelValues(method, path).Observe(duration)
 	})
 }
 

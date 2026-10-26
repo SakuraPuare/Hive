@@ -497,6 +497,20 @@ CREATE TABLE IF NOT EXISTS easytier_allocations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='EasyTier 静态发号池：按 MAC 幂等分配 172.20.1.0+ 的固定 IP，取代 MAC 自算/DHCP';
 `,
 	},
+	{
+		version: 22,
+		desc:    "device identity, reset attempt limits and durable RBAC bootstrap",
+		up: `
+CREATE TABLE device_credentials (
+    mac VARCHAR(32) NOT NULL PRIMARY KEY,
+    token_hash CHAR(64) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+ALTER TABLE password_reset_codes ADD COLUMN attempts INT UNSIGNED NOT NULL DEFAULT 0;
+ALTER TABLE password_reset_codes ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE users ADD COLUMN rbac_initialized BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE customers MODIFY COLUMN status ENUM('active','suspended','deleted','banned') NOT NULL DEFAULT 'active';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

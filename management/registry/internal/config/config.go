@@ -12,6 +12,7 @@ import (
 type Config struct {
 	ListenAddr          string
 	APISecret           string
+	AdminAPISecret      string
 	AdminUser           string
 	AdminPass           string
 	AdminSessionSecret  string
@@ -52,6 +53,7 @@ func Load() *Config {
 	return &Config{
 		ListenAddr:          listenAddr(Getenv("LISTEN_ADDR", ""), Getenv("PORT", "8080")),
 		APISecret:           Getenv("API_SECRET", ""),
+		AdminAPISecret:      Getenv("ADMIN_API_SECRET", ""),
 		AdminUser:           Getenv("ADMIN_USER", "admin"),
 		AdminPass:           Getenv("ADMIN_PASS", ""),
 		AdminSessionSecret:  Getenv("ADMIN_SESSION_SECRET", ""),

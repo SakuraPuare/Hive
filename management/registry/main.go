@@ -45,8 +45,8 @@ func main() {
 	// Missing secrets would silently disable auth, so we fail fast.
 	if os.Getenv("HIVE_ENV") != "dev" {
 		var missing []string
-		if cfg.APISecret == "" {
-			missing = append(missing, "API_SECRET")
+		if cfg.AdminAPISecret != "" && cfg.AdminAPISecret == cfg.APISecret {
+			log.Fatal("ADMIN_API_SECRET must differ from the legacy device API_SECRET")
 		}
 		if cfg.AdminSessionSecret == "" {
 			missing = append(missing, "ADMIN_SESSION_SECRET")

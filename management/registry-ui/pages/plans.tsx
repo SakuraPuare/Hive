@@ -428,7 +428,7 @@ export default function PlansPage() {
   const router = useRouter();
   const toast = useToast();
   const { user, loading: authLoading } = useCurrentUser();
-  const canWrite = user?.can('subscription:write') ?? false;
+  const canWrite = user?.can('plan:write') ?? false;
 
   // ── Plans list ──────────────────────────────────────────────────────
   const [plans, setPlans] = useState<model_Plan[]>([]);
@@ -449,7 +449,7 @@ export default function PlansPage() {
 
   useEffect(() => {
     if (!authLoading && !user) { router.replace('/login'); return; }
-    if (!authLoading && user && !user.can('subscription:read')) { router.replace('/dashboard'); return; }
+    if (!authLoading && user && !user.can('plan:read')) { router.replace('/dashboard'); return; }
     if (!authLoading && user) loadPlans();
   }, [authLoading, user, router, loadPlans]);
 

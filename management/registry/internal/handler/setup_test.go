@@ -2,6 +2,8 @@ package handler
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -36,6 +38,7 @@ func TestMain(m *testing.M) {
 	testCfg = &config.Config{
 		ListenAddr:          ":0",
 		APISecret:           "test-api-secret",
+		AdminAPISecret:      "test-admin-api-secret",
 		AdminUser:           "admin",
 		AdminPass:           "admin123",
 		AdminSessionSecret:  "test-session-secret-32bytes!!",
@@ -114,6 +117,7 @@ func resetDB(t *testing.T) {
 	t.Helper()
 	testDB.Exec("SET FOREIGN_KEY_CHECKS = 0")
 	for _, table := range []string{
+		"device_credentials", "referrals", "node_commands", "easytier_allocations",
 		"ticket_replies", "tickets", "traffic_logs", "customer_subscriptions",
 		"orders", "promo_codes", "risk_events", "password_reset_codes", "customers",
 		"plan_lines", "plans",
@@ -123,7 +127,7 @@ func resetDB(t *testing.T) {
 		"audit_logs",
 		"announcements",
 		"user_permissions", "user_roles", "role_permissions",
-		"users",
+		"users", "roles", "permissions",
 	} {
 		testDB.Exec("TRUNCATE TABLE `" + table + "`")
 	}
@@ -342,4 +346,16 @@ func createTestUser(t *testing.T, username, password, role string) uint {
 		testDB.Exec("INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)", uid, roleID)
 	}
 	return uid
+}
+
+// Issue a real MAC-scoped test credential; the shared legacy API secret is never
+// silently translated by doBearer, so negative authorization tests remain real.
+func deviceToken(t *testing.T, mac string) string {
+	t.Helper()
+	token := "test-device-token:" + mac
+	hash := sha256.Sum256([]byte(token))
+	if err := testDB.Exec("INSERT INTO device_credentials (mac, token_hash) VALUES (?, ?) ON DUPLICATE KEY UPDATE token_hash=VALUES(token_hash)", mac, hex.EncodeToString(hash[:])).Error; err != nil {
+		t.Fatal(err)
+	}
+	return token
 }

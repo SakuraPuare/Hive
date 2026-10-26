@@ -3272,6 +3272,47 @@ paths:
       summary: List Xray users for a node
       tags:
         - nodes
+  /nodes/allocate-easytier:
+    post:
+      description: >-
+        Idempotently allocates (or returns the existing) 172.20.0.0/16 EasyTier
+
+        IP for the given MAC. Called by provision-node.sh as its first step so the
+
+        device can start EasyTier with a stable, collision-free static IP.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+        description: MAC only
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Allocate EasyTier IP for a MAC
+      tags:
+        - nodes
   /nodes/heartbeat:
     post:
       operationId: NodeHeartbeat
@@ -4530,6 +4571,9 @@ components:
       type: object
     handler.NodeRegisterResponse:
       properties:
+        easytier_ip:
+          example: 172.20.1.5
+          type: string
         hostname:
           example: node-01
           type: string
@@ -4547,7 +4591,7 @@ components:
           example: 42
           type: integer
         easytier_ip:
-          example: 10.0.0.1
+          example: 172.20.1.5
           type: string
         enabled:
           example: true

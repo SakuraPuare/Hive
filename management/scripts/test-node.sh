@@ -5,6 +5,7 @@
 # 用法：
 #   test-node.sh <hostname|mac6>        # 测试单个节点
 #   test-node.sh --all                  # 测试所有已注册节点
+#   HIVE_TEST_SUBSCRIPTION_UUID=<客户UUID> test-node.sh <node> # 客户套餐内的代理测试
 
 set -euo pipefail
 
@@ -13,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 REGISTRY_URL="http://${REGISTRY_LISTEN_ADDR:-127.0.0.1:8080}"
 AUTH_ARGS=()
-[ -n "${REGISTRY_API_SECRET:-}" ] && AUTH_ARGS=(-H "Authorization: Bearer ${REGISTRY_API_SECRET}")
+[ -n "${ADMIN_API_SECRET:-}" ] && AUTH_ARGS=(-H "Authorization: Bearer ${ADMIN_API_SECRET}")
 
 PASS=0; FAIL=0; WARN=0
 
@@ -46,7 +47,10 @@ test_node() {
     tailscale_ip=$(echo "$node_json"| jq -r '.tailscale_ip // empty')
     easytier_ip=$(echo "$node_json" | jq -r '.easytier_ip // empty')
     frp_port=$(echo "$node_json"    | jq -r '.frp_port // empty')
-    xray_uuid=$(echo "$node_json"   | jq -r '.xray_uuid // empty')
+    xray_uuid="${HIVE_TEST_SUBSCRIPTION_UUID:-}"
+    if [ -n "$xray_uuid" ] && [[ ! "$xray_uuid" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+        echo "Invalid HIVE_TEST_SUBSCRIPTION_UUID" >&2; return 1
+    fi
     last_seen=$(echo "$node_json"   | jq -r '.last_seen // empty')
 
     PASS=0; FAIL=0; WARN=0
@@ -111,6 +115,9 @@ test_node() {
             fail "cf-tunnel" "${cf_url} → HTTP ${HTTP_CODE}"
         fi
 
+        if [ -z "${xray_uuid}" ]; then
+            warn "xray-e2e" "set HIVE_TEST_SUBSCRIPTION_UUID to a valid customer subscription UUID"
+        fi
         if [ -n "${xray_uuid}" ]; then
             CF_HOST="${cf_url#https://}"
 

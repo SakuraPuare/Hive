@@ -118,7 +118,7 @@ func BootstrapSuperadmin(db *gorm.DB, adminUser, adminPass string) {
 	}
 	now := time.Now().UTC().Format(model.TimeLayout)
 	if err := db.Exec(
-		"INSERT INTO users (username, password_hash, role, created_at, updated_at) VALUES (?, ?, 'superadmin', ?, ?)",
+		"INSERT INTO users (username, password_hash, role, created_at, updated_at, rbac_initialized) VALUES (?, ?, 'superadmin', ?, ?, FALSE)",
 		adminUser, string(hash), now, now,
 	).Error; err != nil {
 		log.Fatalf("BootstrapSuperadmin insert: %v", err)
@@ -129,51 +129,47 @@ func BootstrapSuperadmin(db *gorm.DB, adminUser, adminPass string) {
 // BootstrapRBAC idempotently seeds permissions, roles, and role_permissions,
 // and migrates existing users.role values into the user_roles table.
 func BootstrapRBAC(db *gorm.DB) {
-	now := time.Now().UTC().Format(model.TimeLayout)
-
-	// 1. Seed permissions
-	for _, p := range AllPermissions {
-		db.Exec("INSERT IGNORE INTO permissions (slug, description) VALUES (?, ?)", p.Slug, p.Desc)
-	}
-
-	// 2. Seed roles
-	for roleName := range DefaultRolePerms {
-		db.Exec("INSERT IGNORE INTO roles (name, description, created_at) VALUES (?, ?, ?)",
-			roleName, "", now)
-	}
-
-	// 3. Seed role_permissions
-	for roleName, perms := range DefaultRolePerms {
-		var roleID uint
-		db.Raw("SELECT id FROM roles WHERE name = ?", roleName).Scan(&roleID)
-		if roleID == 0 {
-			continue
-		}
-		for _, slug := range perms {
-			var permID uint
-			db.Raw("SELECT id FROM permissions WHERE slug = ?", slug).Scan(&permID)
-			if permID == 0 {
-				continue
+	err := db.Transaction(func(tx *gorm.DB) error {
+		now := time.Now().UTC().Format(model.TimeLayout)
+		var newPermissions []string
+		for _, p := range AllPermissions {
+			res := tx.Exec("INSERT IGNORE INTO permissions (slug, description) VALUES (?, ?)", p.Slug, p.Desc)
+			if res.Error != nil {
+				return res.Error
 			}
-			db.Exec("INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)", roleID, permID)
+			if res.RowsAffected > 0 {
+				newPermissions = append(newPermissions, p.Slug)
+			}
 		}
-	}
-
-	// 4. Migrate existing users.role → user_roles
-	type userRow struct {
-		ID   uint
-		Role string
-	}
-	var users []userRow
-	db.Raw("SELECT id, role FROM users").Scan(&users)
-	for _, u := range users {
-		var roleID uint
-		db.Raw("SELECT id FROM roles WHERE name = ?", u.Role).Scan(&roleID)
-		if roleID > 0 {
-			db.Exec("INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)", u.ID, roleID)
+		for roleName, defaults := range DefaultRolePerms {
+			res := tx.Exec("INSERT IGNORE INTO roles (name, description, created_at) VALUES (?, '', ?)", roleName, now)
+			if res.Error != nil {
+				return res.Error
+			}
+			perms := []string{}
+			if res.RowsAffected > 0 {
+				perms = defaults
+			} else if roleName == "superadmin" {
+				perms = newPermissions
+			}
+			for _, slug := range perms {
+				if err := tx.Exec(`INSERT IGNORE INTO role_permissions (role_id, permission_id)
+                    SELECT r.id, p.id FROM roles r JOIN permissions p ON p.slug = ? WHERE r.name = ?`, slug, roleName).Error; err != nil {
+					return err
+				}
+			}
 		}
+		// Only a newly bootstrapped account needs legacy role conversion. Existing
+		// assignments, including an intentionally empty set, survive restarts.
+		if err := tx.Exec(`INSERT IGNORE INTO user_roles (user_id, role_id)
+            SELECT u.id, r.id FROM users u JOIN roles r ON r.name = u.role WHERE u.rbac_initialized = FALSE`).Error; err != nil {
+			return err
+		}
+		return tx.Exec("UPDATE users SET rbac_initialized = TRUE WHERE rbac_initialized = FALSE").Error
+	})
+	if err != nil {
+		log.Fatalf("BootstrapRBAC: %v", err)
 	}
-
 	log.Println("RBAC bootstrapped")
 }
 

@@ -22,6 +22,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 
 	// ── 节点注册（设备端调用，Bearer token 认证）──────────────────────────
 	mux.HandleFunc("POST /nodes/register", h.HandleRegister)
+	mux.HandleFunc("POST /admin/nodes/{mac}/credential", perm("node:write")(h.HandleIssueDeviceCredential))
 	// EasyTier IP 早期分配（provision 首步调用，仅需 MAC，幂等）
 	mux.HandleFunc("POST /nodes/allocate-easytier", h.HandleAllocateEasytier)
 	mux.HandleFunc("POST /nodes/heartbeat", h.HandleHeartbeat)
@@ -174,7 +175,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("GET /portal/plans", h.HandlePortalPlans)
 	mux.HandleFunc("GET /portal/announcements", h.HandlePortalAnnouncements)
 	mux.HandleFunc("POST /portal/forgot-password", forgotPwRL.Wrap(h.HandleForgotPassword))
-	mux.HandleFunc("POST /portal/reset-password", h.HandleResetPassword)
+	mux.HandleFunc("POST /portal/reset-password", loginRL.Wrap(h.HandleResetPassword))
 
 	// ── 客户门户（需登录）────────────────────────────────────────────────────
 	cust := h.requireCustomer
@@ -212,7 +213,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.Handle("GET /metrics", promhttp.Handler())
 
 	// ── 控制台 Dashboard ─────────────────────────────────────────────────
-	mux.HandleFunc("GET /", h.HandleRoot)
+	mux.HandleFunc("GET /{$}", h.HandleRoot)
 
 	return mux
 }

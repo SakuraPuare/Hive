@@ -137,6 +137,33 @@ export class NodesService {
         });
     }
     /**
+     * Allocate EasyTier IP for a MAC
+     * Idempotently allocates (or returns the existing) 172.20.0.0/16 EasyTier
+     * IP for the given MAC. Called by provision-node.sh as its first step so the
+     * device can start EasyTier with a stable, collision-free static IP.
+     * @returns string OK
+     * @throws ApiError
+     */
+    public static postNodesAllocateEasytier({
+        requestBody,
+    }: {
+        /**
+         * MAC only
+         */
+        requestBody: Record<string, any>,
+    }): CancelablePromise<Record<string, string>> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/nodes/allocate-easytier',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
      * Node heartbeat
      * @returns handler_StatusResponse OK
      * @throws ApiError

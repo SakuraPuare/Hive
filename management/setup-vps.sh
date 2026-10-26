@@ -170,6 +170,7 @@ mv /usr/local/bin/hive-registry.new /usr/local/bin/hive-registry
 echo ">>> hive-registry built and installed"
 
 # 写入 EnvironmentFile（每次执行都刷新，确保密码等变量同步）
+ADMIN_API_SECRET="${ADMIN_API_SECRET:-$(openssl rand -hex 32)}"
 cat > /etc/hive-registry.env << EOF
 LISTEN_ADDR=${REGISTRY_LISTEN_ADDR:-127.0.0.1:8080}
 MYSQL_HOST=${REGISTRY_MYSQL_HOST:-127.0.0.1}
@@ -180,7 +181,7 @@ MYSQL_DB=${REGISTRY_MYSQL_DB:-hive_registry}
 DB_MAX_OPEN=${REGISTRY_DB_MAX_OPEN:-10}
 DB_MAX_IDLE=${REGISTRY_DB_MAX_IDLE:-3}
 XRAY_PATH=${REGISTRY_XRAY_PATH:-ray}
-API_SECRET=${REGISTRY_API_SECRET}
+ADMIN_API_SECRET=${ADMIN_API_SECRET}
 ADMIN_USER=${REGISTRY_ADMIN_USER:-admin}
 ADMIN_PASS=${REGISTRY_ADMIN_PASS}
 ADMIN_SESSION_SECRET=${REGISTRY_ADMIN_SESSION_SECRET}
@@ -188,6 +189,7 @@ CORS_ALLOW_ORIGINS=${REGISTRY_CORS_ALLOW_ORIGINS}
 ADMIN_COOKIE_SAMESITE=${REGISTRY_ADMIN_COOKIE_SAMESITE:-lax}
 EOF
 chmod 600 /etc/hive-registry.env
+
 
 # 安装或更新 systemd 服务单元
 cat > /etc/systemd/system/hive-registry.service << 'UNIT'
@@ -277,8 +279,8 @@ cd "${ROOT_DIR}"
 REGISTRY_LOCAL_URL="http://${REGISTRY_LISTEN_ADDR:-127.0.0.1:8080}"
 TARGETS_FILE="${ROOT_DIR}/management/prometheus/targets/nodes.json"
 AUTH_HEADER=""
-if [ -n "${REGISTRY_API_SECRET}" ]; then
-    AUTH_HEADER="-H \"Authorization: Bearer ${REGISTRY_API_SECRET}\""
+if [ -n "${ADMIN_API_SECRET}" ]; then
+    AUTH_HEADER="-H \"Authorization: Bearer ${ADMIN_API_SECRET}\""
 fi
 
 # cron 直连 Go 服务（不经 nginx），路径无 /api 前缀
@@ -286,7 +288,7 @@ fi
 cat > /etc/cron.d/hive-targets << EOF
 * * * * * root curl -sf ${AUTH_HEADER} -o ${TARGETS_FILE} ${REGISTRY_LOCAL_URL}/prometheus-targets
 EOF
-chmod 0644 /etc/cron.d/hive-targets
+chmod 0600 /etc/cron.d/hive-targets
 echo ">>> Cron installed: prometheus-targets refresh every minute"
 
 echo ""
@@ -300,8 +302,8 @@ echo "  Grafana PW     : ${GRAFANA_PASSWORD:-changeme}"
 echo "  Alertmanager   : ${ALERTMANAGER_EXTERNAL_URL:-http://localhost/alertmanager/}"
 echo ""
 echo "  Verify:"
-if [ -n "${REGISTRY_API_SECRET}" ]; then
-    echo "    curl -H 'Authorization: Bearer ${REGISTRY_API_SECRET}' http://localhost/api/health"
+if [ -n "${ADMIN_API_SECRET}" ]; then
+    echo '    curl -H "Authorization: Bearer ${ADMIN_API_SECRET}" http://localhost/api/health'
 else
     echo "    curl http://localhost/api/health"
 fi

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"hive/registry/internal/model"
@@ -23,13 +24,14 @@ import (
 // @Failure 500 {object} ErrorResponse
 // @Router /nodes/heartbeat [post]
 func (h *Handler) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
-	if !h.Auth.RequireDeviceAuth(w, r) {
-		return
-	}
 
 	var req model.HeartbeatRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	req.MAC = strings.ToLower(req.MAC)
+	if !h.Auth.RequireDeviceAuth(w, r, req.MAC) {
 		return
 	}
 	if req.MAC == "" {

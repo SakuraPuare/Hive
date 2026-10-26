@@ -43,20 +43,22 @@ const (
 // @Failure      500 {object} ErrorResponse
 // @Router       /nodes/allocate-easytier [post]
 func (h *Handler) HandleAllocateEasytier(w http.ResponseWriter, r *http.Request) {
-	if !h.Auth.RequireDeviceAuth(w, r) {
-		return
-	}
 	var body struct {
 		MAC string `json:"mac"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	body.MAC = strings.ToLower(body.MAC)
+	if !h.Auth.RequireDeviceAuth(w, r, body.MAC) {
 		return
 	}
 	if body.MAC == "" {
 		h.jsonErr(w, http.StatusBadRequest, "mac required")
 		return
 	}
+
 	ip, err := h.allocateEasytierIP(body.MAC)
 	if err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "allocate: "+err.Error())

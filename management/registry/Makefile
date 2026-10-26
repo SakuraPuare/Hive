@@ -26,6 +26,7 @@ openapi:
 	go run github.com/swaggo/swag/cmd/swag@v1.16.6 init \
 		--generalInfo main.go \
 		--parseDependency \
+		--outputTypes json,yaml \
 		--dir .,./internal/handler,./internal/model \
 		-o "$(OPENAPI_DIR)" \
 		--parseDepth 100

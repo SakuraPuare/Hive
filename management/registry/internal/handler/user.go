@@ -175,17 +175,22 @@ func (h *Handler) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Role != "" {
-		var cnt int64
-		if err := h.DB.Model(&model.RoleModel{}).Where("name=?", req.Role).Count(&cnt).Error; err != nil {
+		var canonicalRole string
+		if err := h.DB.Raw("SELECT name FROM roles WHERE name = ?", req.Role).Scan(&canonicalRole).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return
 		}
-		if cnt == 0 {
+		if canonicalRole == "" {
 			h.jsonErr(w, http.StatusBadRequest, "unknown role: "+req.Role)
 			return
 		}
+		req.Role = canonicalRole
 	} else {
 		req.Role = "viewer"
+	}
+	if strings.EqualFold(req.Role, "superadmin") && !h.actorIsSuperadmin(r) {
+		h.jsonErr(w, http.StatusForbidden, "only superadmin can create a superadmin")
+		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {

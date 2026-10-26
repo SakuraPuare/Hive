@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
+
 	"hive/registry/internal/middleware"
 	"hive/registry/internal/model"
 	"hive/registry/internal/store"
@@ -27,9 +29,6 @@ import (
 // @Failure 401 {object} ErrorResponse
 // @Router /nodes/register [post]
 func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
-	if !h.Auth.RequireDeviceAuth(w, r) {
-		return
-	}
 
 	var body struct {
 		MAC          string `json:"mac"`
@@ -42,8 +41,12 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		MeshTunnelID string `json:"mesh_tunnel_id"`
 		MeshIP       string `json:"mesh_ip"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	body.MAC = strings.ToLower(body.MAC)
+	if !h.Auth.RequireDeviceAuth(w, r, body.MAC) {
 		return
 	}
 	if body.MAC == "" || body.Hostname == "" || body.CFURL == "" || body.XrayUUID == "" {
@@ -296,12 +299,20 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 // @Router /nodes/{mac} [delete]
 func (h *Handler) HandleDeleteNode(w http.ResponseWriter, r *http.Request) {
 	mac := r.PathValue("mac")
-	result := h.DB.Where("mac = ?", mac).Delete(&model.Node{})
-	if result.Error != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+result.Error.Error())
+	var affected int64
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
+		result := tx.Where("mac = ?", mac).Delete(&model.Node{})
+		if result.Error != nil {
+			return result.Error
+		}
+		affected = result.RowsAffected
+		return tx.Exec("DELETE FROM device_credentials WHERE mac = ?", mac).Error
+	})
+	if err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
-	if result.RowsAffected == 0 {
+	if affected == 0 {
 		h.jsonErr(w, http.StatusNotFound, "node not found")
 		return
 	}

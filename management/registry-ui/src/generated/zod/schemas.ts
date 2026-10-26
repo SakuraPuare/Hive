@@ -8,7 +8,7 @@
 //   Circular references: 0
 //   Discriminated unions: 0
 //   With constraints: 0
-//   Generated at: 2026-07-12T18:11:13.059Z
+//   Generated at: 2026-10-26T14:21:42.793Z
 
 import { z } from "zod";
 
@@ -270,6 +270,8 @@ export const handlerNodeRegisterRequestSchema = z.object({
 export type HandlerNodeRegisterRequest = z.infer<typeof handlerNodeRegisterRequestSchema>;
 
 export const handlerNodeRegisterResponseSchema = z.object({
+/** @example "172.20.1.5" */
+  easytier_ip: z.string().optional(),
 /** @example "node-01" */
   hostname: z.string().optional(),
 /** @example "2025-01-01 00:00:00" */
@@ -282,7 +284,7 @@ export type HandlerNodeRegisterResponse = z.infer<typeof handlerNodeRegisterResp
 export const handlerNodeUpdateRequestSchema = z.object({
 /** 网关计费绑定：设为某客户订阅 id 后本网关上游流量按该订阅计费；设为 null 解绑 @example 42 */
   bound_subscription_id: z.number().int().optional(),
-/** @example "10.0.0.1" */
+/** @example "172.20.1.5" */
   easytier_ip: z.string().optional(),
 /** @example true */
   enabled: z.boolean().optional(),

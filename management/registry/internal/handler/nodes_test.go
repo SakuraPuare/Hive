@@ -14,7 +14,7 @@ func TestNodeRegister(t *testing.T) {
 		"hostname":  "test-node-1",
 		"cf_url":    "https://test.example.com",
 		"xray_uuid": "uuid-1234",
-	}, testCfg.APISecret)
+	}, deviceToken(t, "aabbccddeeff"))
 	assertStatus(t, resp, http.StatusOK)
 
 	body := parseJSON(resp)
@@ -38,11 +38,11 @@ func TestNodeRegister_Idempotent(t *testing.T) {
 	}
 
 	// 第一次注册
-	resp := doBearer("POST", "/nodes/register", payload, testCfg.APISecret)
+	resp := doBearer("POST", "/nodes/register", payload, deviceToken(t, "aabbccddeeff"))
 	assertStatus(t, resp, http.StatusOK)
 
 	// 第二次注册（幂等）— status 应为 updated
-	resp = doBearer("POST", "/nodes/register", payload, testCfg.APISecret)
+	resp = doBearer("POST", "/nodes/register", payload, deviceToken(t, "aabbccddeeff"))
 	assertStatus(t, resp, http.StatusOK)
 	body2 := parseJSON(resp)
 
@@ -67,7 +67,7 @@ func TestNodeRegister_MissingFields(t *testing.T) {
 
 	resp := doBearer("POST", "/nodes/register", map[string]any{
 		"mac": "aabbccddeeff",
-	}, testCfg.APISecret)
+	}, deviceToken(t, "aabbccddeeff"))
 	assertStatus(t, resp, http.StatusBadRequest)
 }
 
@@ -174,7 +174,7 @@ func TestHeartbeat(t *testing.T) {
 		"mem_pct":    60.0,
 		"disk_pct":   40.0,
 		"uptime_sec": 86400,
-	}, testCfg.APISecret)
+	}, deviceToken(t, "aabbccddeeff"))
 	assertStatus(t, resp, http.StatusOK)
 
 	body := parseJSON(resp)

@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export type handler_NodeRegisterResponse = {
+    easytier_ip?: string;
     hostname?: string;
     registered_at?: string;
     status?: string;
