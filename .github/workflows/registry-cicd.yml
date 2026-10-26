@@ -26,6 +26,17 @@ jobs:
     name: CI (Go)
     runs-on: ubuntu-latest
     if: github.server_url == 'https://github.com'
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: hive-test-only
+          MYSQL_DATABASE: hive_registry_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -phive-test-only"
+          --health-interval=5s --health-timeout=5s --health-retries=20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -45,6 +56,23 @@ jobs:
 
       - name: go vet
         run: go vet ./...
+
+      - name: Backend regression tests
+        env:
+          TEST_MYSQL_USER: root
+          TEST_MYSQL_PASSWORD: hive-test-only
+          TEST_MYSQL_DB: hive_registry_test
+        run: go test -race ./...
+
+      - name: Isolated device and deployment regressions
+        working-directory: .
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq openssl fdisk e2fsprogs
+          python3 scripts/test-remediation.py
+          python3 scripts/test-subscriptions.py
+          python3 scripts/test-ota.py
+          python3 scripts/test-hardware.py
 
       - name: Build (amd64)
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /dev/null .
