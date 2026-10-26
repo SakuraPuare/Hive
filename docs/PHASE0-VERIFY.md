@@ -1,112 +1,69 @@
-> 认证变更：共享 Registry 密钥已停用。设备需独立 MAC 凭证，管理自动化使用 `ADMIN_API_SECRET`；升级步骤见 [审查修复与迁移](review-remediation.md)。
+# 订阅计费与客户网关真机验证
 
-# Phase 0：新设备端到端验证清单
+本清单验证「注册 → 可信出口授权 → 客户订阅连接 → 出口计费 → 超量断开」，使用当前服务器计费协议。隔离回归不能代替真机验证；本次代码修改没有操作线上设备。
 
-在开发计费闭环 / 订阅转换 / 第三方线路之前，**必须先在一台真机上证明底座链路是通的**。
-线上 11 台仍是 `v1.0.0`，新镜像的 per-user 计费、网关代理、xray-exporter 从未在真机跑过。
-本清单验证「烧一台新设备 → 上电注册 → 订阅下发 → 流量计费 → 超量踢人」全链路。
+## 准备
 
-前置：已按 `README.md` 构建出新镜像；服务端（registry + Prometheus + Grafana）已部署（现网 `hive.sakurapuare.com` 已在线）。
+- 部署配套 Registry、前端、设备脚本和 systemd 单元。Registry 自动执行 migration 28；旧节点默认没有出口权限。
+- 准备一台**运营方独占控制**的出口，以及另一台客户网关或客户端。不要将客户拥有 root 的机器当作可信出口。
+- 每台设备单独安装 `/etc/hive/device-token`。在后台节点详情中为出口启用「出口计费权限」，把一次性服务器密钥只安装到出口的 `/etc/hive/server-token`，root 所有、权限 `0600`。
+- 节点放入测试线路，再关联测试套餐；建立有效客户订阅。也可在测试环境运行 `NODE_MAC=<出口完整12位MAC> bash management/registry/dev/phase0-verify-seed.sh` 创建测试链路；脚本不会替代管理员启用出口的步骤。
 
-以下 `<REGISTRY>` 指 `https://hive.sakurapuare.com/api`，`<SECRET>` 指 `.env` 里的 `REGISTRY_API_SECRET`。
+## 1. 注册与身份隔离
 
----
+- [ ] 两台设备都能心跳、接收 OTA；出口节点详情显示「可信出口服务器」，客户网关显示「普通设备 / 客户网关」。
+- [ ] 客户网关没有服务器密钥，`systemctl is-active xray` 返回非运行状态。
+- [ ] 普通设备 Token 请求 `POST /servers/<mac>/accounting` 返回 401，客户订阅流量没有变化。
+- [ ] 旧 `GET/POST /nodes/<mac>/xray-users` 在正确设备认证后返回 426。
+- [ ] 客户不能认领可信出口；管理员不能直接把可信出口分配给客户。
 
-## 0. 烧录并上电
+## 2. 出口授权与连接
 
-```bash
-xzcat armbian-build/build/output/images/*.img.xz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync
-```
-插卡上电，等约 2 分钟。
-
-## 1. 确认注册成功
-
-```bash
-# 记下这台的 mac6（末6位），下面处处要用
-tailscale status | grep hive-
-# 该 MAC 应出现在节点列表，且 last_seen 是刚才
-curl -s -H "Authorization: Bearer <SECRET>" "<REGISTRY>/nodes" | jq '.[] | select(.hostname|test("<mac6>")) | {hostname,last_seen,status}'
-```
-- [ ] 新节点出现在列表
-- [ ] `last_seen` 是今天（注册那一刻写的）
-
-## 2. 造测试订阅并确认下发（≤60s）
+在出口检查：
 
 ```bash
-# 在管理 VPS 上（MYSQL_* 按实际填），NODE_MAC 用完整12位
-NODE_MAC=<12位mac> bash management/registry/dev/phase0-verify-seed.sh
-```
-脚本会：把这台挂到 `P0-验证线路` → 建 `P0-验证套餐`(1 GiB) → 建客户 → 建订阅
-（token `p0sub...verify`，xray_uuid `feedface-0000-4000-8000-000000000000`）。
-
-```bash
-# 节点每 60s 拉一次它该放的用户；确认这个订阅 UUID 出现了
-curl -s -H "Authorization: Bearer <SECRET>" "<REGISTRY>/nodes/<12位mac>/xray-users" | jq
-```
-- [ ] `users[]` 里含 `feedface-0000-4000-8000-000000000000`（email `sub-<订阅id>`）
-- [ ] 拿订阅链接导入客户端，选这台节点，**能连上、能上网**
-      - Clash: `<REGISTRY>/c/p0sub00000000000000000000000000000000000000000000000000000verify`
-      - VLESS: 同上 `+ /vless`
-
-## 3. 确认流量计费（≤5min）
-
-用客户端走这台节点跑一点流量（下个几十 MB）。等 5 分钟（`traffic.go` loop 周期）。
-
-```bash
-# traffic_used 应从 0 涨上来
-curl -s -H "Authorization: Bearer <SECRET>" "<REGISTRY>/admin/traffic/summary" | jq
-# 或直接查库
-#   SELECT traffic_used FROM customer_subscriptions WHERE token LIKE 'p0sub%verify';
-```
-- [ ] 该订阅 `traffic_used` > 0（说明 xray stats → exporter → Prometheus → registry 链路通）
-- [ ] Grafana 能看到该节点 xray per-user 指标
-
-## 4. 确认超量踢人（≤60s）
-
-```sql
--- 把额度调到已用尽
-UPDATE customer_subscriptions SET traffic_limit = 1 WHERE token LIKE 'p0sub%verify';
-```
-```bash
-# 下一轮 xray-users 该订阅应消失
-curl -s -H "Authorization: Bearer <SECRET>" "<REGISTRY>/nodes/<12位mac>/xray-users" | jq
-```
-- [ ] `users[]` 里**不再有** `feedface-...`（超量被过滤）
-- [ ] 客户端 ≤60s 内断线，重连失败
-
-## 5. 网关 / 热点（视硬件）
-
-**Zero2 + USB 无线网卡：**
-```bash
-ssh root@hive-<mac6> 'cat /etc/hive/node-info | grep WIFI_'
-```
-- [ ] `WIFI_SSID*` 有值，手机能搜到 `Hive-<MAC>` 并用派生密码连上、能上网
-
-**R3S 双网口：**
-```bash
-ssh root@hive-<mac6> 'cat /etc/hive/node-info | grep GATEWAY_'
-```
-- [ ] `GATEWAY_LAN_IFACES` 有值；设备插 LAN 口能拿到 `10.42.2.x` 且能上网
-- [ ] clash-config 拉到的是真配置（非兜底全直连）：
-      `ssh root@hive-<mac6> 'grep -c proxies /etc/mihomo/config.yaml'` 且 proxies 段含上游节点
-
----
-
-## 收尾：清理验证数据
-
-```sql
-DELETE FROM customer_subscriptions WHERE token LIKE 'p0sub%verify';
-DELETE FROM customers WHERE email = 'p0-verify@hive.local';
-DELETE FROM plan_lines WHERE plan_id = (SELECT id FROM plans WHERE name='P0-验证套餐');
-DELETE FROM plans WHERE name = 'P0-验证套餐';
-DELETE FROM line_nodes WHERE line_id = (SELECT id FROM lines WHERE token LIKE 'p0%verify');
-DELETE FROM lines WHERE token LIKE 'p0%verify';
+systemctl status hive-subscription-guard.timer hive-xray-sync.timer xray
+journalctl -u hive-xray-sync.service --since '-5 min' --no-pager
+cat /run/hive-subscriptions/xray.users
 ```
 
----
+最后一个文件包含订阅连接凭据，只在可信终端检查，不要粘贴到公开日志。
 
-## 判定
+- [ ] 有效测试订阅显示为 `sub-<订阅id>`，并已加载进出口 Xray。
+- [ ] 将客户 `/c/{token}` 或 `/c/{token}/vless` 导入客户端，能通过该出口连接。
+- [ ] 导出的配置不包含普通客户设备，也不使用历史公共节点 UUID。
 
-- 1-4 全绿 → **计费底座可信**，可开工 Track 1（网关计费闭环）。
-- 5 全绿 → 本地代理硬件可信，可开工 Track 2/3。
-- 任一红 → 先修底座，别往上叠功能（详见各步骤对应的服务端/节点侧组件）。
+## 3. 确认用量由出口计入
+
+用客户端通过出口下载几十 MB，等待一至两个同步周期（通常每 15 秒一次），在后台客户订阅详情观察已用流量。
+
+- [ ] 上行、下行都计入订阅，多出口用量汇总到同一订阅。
+- [ ] 只改变客户本地统计、不产生出口流量，不会改变面板用量。
+- [ ] 停用 Prometheus 抓取不影响服务器计费；恢复抓取不会重复扣量。
+- [ ] 出口短暂无法连接 Registry 后恢复，待确认快照可以重放，已确认部分不会重复扣量。
+
+Prometheus / Grafana 指标只用于监控，不能用它们替代数据库计费结果。历史计数位置和待确认快照不能直接删除。
+
+## 4. 额度、到期与失联
+
+- [ ] 将测试订阅额度调为已用尽，下一轮同步从出口授权中移除；既有长连接关闭，重新连接失败。
+- [ ] 将到期日调为过去，已导入的旧配置也无法继续使用。
+- [ ] 暂时阻断出口到 Registry 的连接；最长 45 秒租约加守护轮询延迟后断开，不无限保留授权。
+- [ ] 撤销出口凭据后，该出口从订阅配置消失、旧凭据请求返回 401，现有连接随剩余租约结束而关闭。
+- [ ] 恢复有效订阅、服务器凭据及网络后能重新连接。
+
+测试期间留有可信管理通道，避免把用于恢复的 SSH / 管理网络一起阻断。当前撤销通过重启整个出口 Xray 实现，同出口其他用户会短暂重连。
+
+## 5. 客户网关与固件
+
+- [ ] 为客户网关绑定有效订阅，连接 LAN / Wi-Fi 后能通过可信出口上网。
+- [ ] 网关失去有效订阅或租约后出现 REJECT 规则及 IPv4/IPv6 FORWARD 阻断；不能因代理停止回退为受管网关免费转发。
+- [ ] 客户网关不持有服务器密钥，也不发送计费请求。
+- [ ] Zero2 1 GB、Zero2 2 GB、R28S 1 GB 分别按实物验收热点、网口、内存与启动。
+- [ ] A/B 客户镜像在 Xray 停止时仍可通过健康确认；出口镜像要求 Xray 正常运行。完整验收见 [OTA 文档](OTA.md)。
+
+客户拥有 root 时可以修改自己的系统和本地网络；出口上的订阅认证和计量仍由运营方控制。不得把客户可篡改的网关当作可信出口。
+
+## 清理
+
+在管理后台删除本次专用测试订阅、套餐和线路；只撤销本次临时出口的服务器权限。不要清理生产计数表、移除其他设备身份或批量修改客户额度。
