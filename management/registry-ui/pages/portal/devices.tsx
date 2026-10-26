@@ -23,10 +23,37 @@ import {
 } from '@/components/ui/alert-dialog';
 import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
-import { RefreshCw, Plus, Router as RouterIcon, AlertCircle, InboxIcon } from 'lucide-react';
+import {
+  RefreshCw, Plus, Router as RouterIcon, AlertCircle, InboxIcon,
+  Play, Square, RotateCw, Activity, Settings2, Wifi,
+} from 'lucide-react';
 
 // 白名单命令动作（与后端 commandActions 一致）。
 const COMMAND_ACTIONS = ['reboot', 'restart-xray', 'restart-mihomo', 'resync'] as const;
+
+const SERVICE_GROUPS = [
+  { key: 'proxy', services: ['xray', 'xray-exporter', 'cloudflared', 'frpc', 'easytier'] },
+  { key: 'network', services: ['hive-mihomo', 'hive-hotspot', 'hive-gateway'] },
+  { key: 'security', services: ['hive-firewall', 'hive-fail2ban'] },
+  { key: 'system', services: ['nginx', 'tailscaled', 'warp-svc'] },
+  { key: 'automation', services: ['hive-xray-sync.timer', 'hive-clash-sync.timer', 'hive-updater.timer'] },
+] as const;
+
+const SERVICE_OPERATIONS = ['start', 'stop', 'restart', 'status'] as const;
+
+type HotspotConfig = {
+  ssid2g: string;
+  ssid5g: string;
+  psk: string;
+  country: string;
+  channel5g: string;
+  width5g: string;
+  preferBand: string;
+};
+
+const DEFAULT_HOTSPOT_CONFIG: HotspotConfig = {
+  ssid2g: '', ssid5g: '', psk: '', country: 'CN', channel5g: '149', width5g: '80', preferBand: '5',
+};
 
 // 命令状态 → chip 样式。pending/sent=进行中，done=成功，failed/expired=失败。
 function CommandStatusChip({ status }: { status?: string }) {
@@ -66,6 +93,9 @@ export default function PortalDevicesPage() {
   const [cmdAction, setCmdAction] = useState<string>('resync');
   const [cmdHistory, setCmdHistory] = useState<model_DeviceCommand[]>([]);
   const [cmdSending, setCmdSending] = useState(false);
+  const [serviceSending, setServiceSending] = useState('');
+  const [hotspotConfig, setHotspotConfig] = useState<HotspotConfig>(DEFAULT_HOTSPOT_CONFIG);
+  const [hotspotSending, setHotspotSending] = useState(false);
 
   // 解绑确认
   const [unbindDevice, setUnbindDevice] = useState<model_Node | null>(null);
@@ -109,6 +139,7 @@ export default function PortalDevicesPage() {
   const openCommands = useCallback(async (device: model_Node) => {
     setCmdDevice(device);
     setCmdAction('resync');
+    setHotspotConfig(DEFAULT_HOTSPOT_CONFIG);
     setCmdHistory([]);
     try {
       const h = await portalSessionApi(PortalService.portalListDeviceCommands({ mac: device.mac! }));
@@ -135,6 +166,46 @@ export default function PortalDevicesPage() {
       setCmdSending(false);
     }
   }, [cmdDevice, cmdAction, t, toast]);
+
+  const sendServiceCommand = useCallback(async (service: string, operation: typeof SERVICE_OPERATIONS[number]) => {
+    if (!cmdDevice) return;
+    const sendingKey = `${service}:${operation}`;
+    setServiceSending(sendingKey);
+    try {
+      await portalSessionApi(PortalService.portalEnqueueDeviceCommand({
+        mac: cmdDevice.mac!,
+        requestBody: {
+          action: 'service-control',
+          params: JSON.stringify({ service, operation }),
+        },
+      }));
+      toast.success(t('serviceQueued'));
+      const h = await portalSessionApi(PortalService.portalListDeviceCommands({ mac: cmdDevice.mac! }));
+      setCmdHistory(h ?? []);
+    } catch (e) {
+      toast.error(getErrorMessage(e, t('serviceFailed')));
+    } finally {
+      setServiceSending('');
+    }
+  }, [cmdDevice, t, toast]);
+
+  const sendHotspotConfig = useCallback(async () => {
+    if (!cmdDevice) return;
+    setHotspotSending(true);
+    try {
+      await portalSessionApi(PortalService.portalEnqueueDeviceCommand({
+        mac: cmdDevice.mac!,
+        requestBody: { action: 'hotspot-config', params: JSON.stringify(hotspotConfig) },
+      }));
+      toast.success(t('hotspotQueued'));
+      const h = await portalSessionApi(PortalService.portalListDeviceCommands({ mac: cmdDevice.mac! }));
+      setCmdHistory(h ?? []);
+    } catch (e) {
+      toast.error(getErrorMessage(e, t('hotspotFailed')));
+    } finally {
+      setHotspotSending(false);
+    }
+  }, [cmdDevice, hotspotConfig, t, toast]);
 
   const confirmUnbind = useCallback(async () => {
     if (!unbindDevice) return;
@@ -283,6 +354,107 @@ export default function PortalDevicesPage() {
               ))}
             </div>
             <Button onClick={sendCommand} loading={cmdSending} className="w-full">{t('cmdSend')}</Button>
+
+            <section className="space-y-3 border-t border-md-outline-variant pt-4" aria-labelledby="hotspot-config-title">
+              <div className="flex items-center gap-2">
+                <Wifi className="size-4 text-md-primary" aria-hidden="true" />
+                <h3 id="hotspot-config-title" className="text-sm font-600">{t('hotspotConfig')}</h3>
+              </div>
+              <p className="text-xs text-muted-foreground">{t('hotspotConfigDesc')}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="hotspot-ssid-2g">{t('hotspotSsid2g')}</Label>
+                  <Input id="hotspot-ssid-2g" maxLength={32} value={hotspotConfig.ssid2g}
+                    placeholder={t('hotspotDefaultSsid')} onChange={(e) => setHotspotConfig((v) => ({ ...v, ssid2g: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hotspot-ssid-5g">{t('hotspotSsid5g')}</Label>
+                  <Input id="hotspot-ssid-5g" maxLength={32} value={hotspotConfig.ssid5g}
+                    placeholder={t('hotspotDefaultSsid')} onChange={(e) => setHotspotConfig((v) => ({ ...v, ssid5g: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hotspot-psk">{t('hotspotPassword')}</Label>
+                  <Input id="hotspot-psk" type="password" minLength={8} maxLength={63} value={hotspotConfig.psk}
+                    placeholder={t('hotspotDefaultPassword')} autoComplete="new-password"
+                    onChange={(e) => setHotspotConfig((v) => ({ ...v, psk: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hotspot-country">{t('hotspotCountry')}</Label>
+                  <Input id="hotspot-country" maxLength={2} value={hotspotConfig.country}
+                    onChange={(e) => setHotspotConfig((v) => ({ ...v, country: e.target.value.toUpperCase() }))} />
+                </div>
+                <label className="space-y-1.5 text-sm">
+                  <span className="text-sm font-500">{t('hotspotChannel5g')}</span>
+                  <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={hotspotConfig.channel5g}
+                    onChange={(e) => setHotspotConfig((v) => ({ ...v, channel5g: e.target.value }))}>
+                    {['36', '40', '44', '48', '149', '153', '157', '161', '165'].map((channel) => <option key={channel} value={channel}>{channel}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-sm">
+                  <span className="text-sm font-500">{t('hotspotWidth5g')}</span>
+                  <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={hotspotConfig.width5g}
+                    onChange={(e) => setHotspotConfig((v) => ({ ...v, width5g: e.target.value }))}>
+                    {['20', '40', '80'].map((width) => <option key={width} value={width}>{width} MHz</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5 text-sm sm:col-span-2">
+                  <span className="text-sm font-500">{t('hotspotPreferBand')}</span>
+                  <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={hotspotConfig.preferBand}
+                    onChange={(e) => setHotspotConfig((v) => ({ ...v, preferBand: e.target.value }))}>
+                    <option value="5">{t('hotspotPrefer5g')}</option>
+                    <option value="2.4">{t('hotspotPrefer2g')}</option>
+                  </select>
+                </label>
+              </div>
+              <Button onClick={sendHotspotConfig} loading={hotspotSending} className="w-full">{t('hotspotApply')}</Button>
+            </section>
+
+            <section className="space-y-3 border-t border-md-outline-variant pt-4" aria-labelledby="service-controls-title">
+              <div className="flex items-center gap-2">
+                <Settings2 className="size-4 text-md-primary" aria-hidden="true" />
+                <h3 id="service-controls-title" className="text-sm font-600">{t('serviceControls')}</h3>
+              </div>
+              <p className="text-xs text-muted-foreground">{t('serviceControlsDesc')}</p>
+              <div className="space-y-4">
+                {SERVICE_GROUPS.map((group) => (
+                  <div key={group.key} className="space-y-2">
+                    <p className="text-xs font-600 uppercase tracking-wide text-muted-foreground">{t(`serviceGroup_${group.key}` as 'serviceGroup_proxy')}</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {group.services.map((service) => (
+                        <div key={service} className="rounded-lg border border-md-outline-variant bg-md-surface-container-low p-2.5">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <span className="truncate text-sm font-500">{t(`service_${service.replaceAll('.', '_')}` as 'service_xray')}</span>
+                            <Activity className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {SERVICE_OPERATIONS.map((operation) => {
+                              const key = `${service}:${operation}`;
+                              const Icon = operation === 'start' ? Play : operation === 'stop' ? Square : operation === 'restart' ? RotateCw : Activity;
+                              return (
+                                <Button
+                                  key={operation}
+                                  type="button"
+                                  variant={operation === 'restart' ? 'secondary' : 'ghost'}
+                                  size="sm"
+                                  className="h-8 gap-1 px-2 text-xs"
+                                  disabled={!!serviceSending}
+                                  loading={serviceSending === key}
+                                  onClick={() => sendServiceCommand(service, operation)}
+                                  title={t(`serviceOp_${operation}` as 'serviceOp_restart')}
+                                >
+                                  {!serviceSending && <Icon className="size-3.5" aria-hidden="true" />}
+                                  <span className="sr-only sm:not-sr-only">{t(`serviceOp_${operation}` as 'serviceOp_restart')}</span>
+                                </Button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
 
             <div>
               <p className="mb-2 text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('cmdHistory')}</p>

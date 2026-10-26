@@ -14,7 +14,7 @@ echo ">>> customize-image.sh: RELEASE=${RELEASE} ARCH=${ARCH}"
 # ─────────────────────────────────────────────
 echo ">>> Copying overlay files to root..."
 if [ -d "/tmp/overlay" ]; then
-    cp -a /tmp/overlay/* / 2>/dev/null || true
+    cp -a --no-preserve=ownership /tmp/overlay/* /
     # cp -a 保留构建主机的 UID/GID（kent:kent），只修正 overlay 涉及的目录
     chown -R root:root /etc/hive /etc/xray /etc/frp /etc/cloudflared \
         /etc/systemd/system /etc/nginx /etc/update-motd.d \
@@ -105,7 +105,7 @@ https://pkg.cloudflareclient.com/ ${RELEASE} main" \
 # 后面的 install 仍会硬失败，所以这里 `|| true` 是安全的。
 apt-get update -q || true
 # 核心运行时依赖 + tailscale（主管理通道，必需）。python3 供 hive-regen-hostkeys.sh
-# 构造确定性 SSH host key 用；缺它会导致离线首启无 host key。这批任一失败即中止构建。
+# 生成随机 SSH host key 用；缺它会导致离线首启无 host key。这批任一失败即中止构建。
 apt-get install -y --no-install-recommends \
     curl \
     jq \
@@ -462,6 +462,7 @@ echo ">>> Sanitizing image for mass deployment..."
 truncate -s 0 /etc/machine-id
 rm -f /var/lib/dbus/machine-id
 rm -f /etc/ssh/ssh_host_*
+rm -f /etc/hive/random-hostkeys-v1 /etc/hive/xray-uuid /etc/hive/default-hotspot-psk /etc/hive/device-token
 rm -f /var/lib/tailscale/tailscaled.state 2>/dev/null || true
 journalctl --rotate 2>/dev/null && journalctl --vacuum-time=1s 2>/dev/null || true
 find /var/log -name "*.log" -delete 2>/dev/null || true

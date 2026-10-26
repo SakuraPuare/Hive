@@ -22,6 +22,7 @@ for i in $(seq 1 30); do
 done
 
 source /etc/hive/config.env
+[ ! -s /etc/hive/device-token ] || NODE_REGISTRY_API_SECRET=$(cat /etc/hive/device-token)
 
 # ─────────────────────────────────────────────
 # 1. 设备唯一标识
@@ -43,7 +44,7 @@ hostnamectl set-hostname "$HOSTNAME" 2>/dev/null \
 grep -q "$HOSTNAME" /etc/hosts || echo "127.0.1.1 $HOSTNAME" >> /etc/hosts
 systemd-machine-id-setup --commit
 
-# ── 确定性 SSH Host Key（基于 MAC，重刷镜像不改 fingerprint）────────
+# ── 随机 SSH Host Key────────
 # 已由 hive-regen-hostkeys.service 在 sshd 之前重建（不依赖网络）。此处兜底：
 # 若该服务因故未生成 ed25519 key，则现场补一次；并确保 sshd 已用上 key。
 if [ ! -s /etc/ssh/ssh_host_ed25519_key ] && [ -x /usr/local/bin/hive-regen-hostkeys.sh ]; then
@@ -55,7 +56,7 @@ systemctl reset-failed ssh.service ssh.socket 2>/dev/null || true
 systemctl restart ssh.service 2>/dev/null || systemctl restart ssh 2>/dev/null || true
 # ──────────────────────────────────────────────────────────────────────
 
-echo ">>> Identity set. Ed25519 fingerprint bound to MAC ${MAC}"
+echo ">>> Identity set. random SSH host keys ready"
 
 # ── 导入 GitHub 公钥作为 root authorized_keys ─────────────────────
 # 来源由 config.env 的 SSH_IMPORT_GITHUB 配置（逗号分隔多用户）；留空则跳过。
@@ -80,15 +81,19 @@ else
 fi
 
 # ─────────────────────────────────────────────
-# 2. xray UUID（确定性，基于 MAC，重刷不变）
+# 2. 随机生成并持久化 xray UUID
 # ─────────────────────────────────────────────
-UUID_HEX=$(printf 'hive-xray-uuid:%s' "${MAC}" | sha256sum | awk '{print $1}')
-# 取前 32 hex 构造 UUID v4 格式（设置 version=4, variant=10xx）
-UUID="${UUID_HEX:0:8}-${UUID_HEX:8:4}-4${UUID_HEX:13:3}-$(printf '%x' $(( 0x${UUID_HEX:16:2} & 0x3f | 0x80 )))${UUID_HEX:18:2}-${UUID_HEX:20:12}"
+# Keep the same random UUID across retries, without deriving it from a MAC.
+umask 077
+if [ ! -s /etc/hive/xray-uuid ]; then
+    cat /proc/sys/kernel/random/uuid > /etc/hive/xray-uuid.new
+    mv -f /etc/hive/xray-uuid.new /etc/hive/xray-uuid
+fi
+UUID=$(cat /etc/hive/xray-uuid)
 sed -i "s/%%XRAY_UUID%%/${UUID}/g" /etc/xray/config.json
-# 节点公共 client 的 email（计费按 sub-<id> 归属，node-* 仅作占位/兜底，不计费）
+# The node identity is metadata only; no static proxy clients are permitted.
 sed -i "s/%%NODE_MAC%%/${MAC}/g" /etc/xray/config.json
-echo ">>> xray UUID: ${UUID} (deterministic from MAC)"
+echo ">>> xray UUID: ${UUID} (persisted random identity)"
 
 # 伪装跳转 URL
 CAMOUFLAGE_URL="${CAMOUFLAGE_URL:-https://www.cloudflare.com/}"

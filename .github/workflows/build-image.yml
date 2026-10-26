@@ -135,7 +135,6 @@ jobs:
           FRP_AUTH_TOKEN: ${{ secrets.FRP_AUTH_TOKEN }}
           DEFAULT_ROOT_PASSWORD: ${{ secrets.DEFAULT_ROOT_PASSWORD }}
           NODE_REGISTRY_URL: ${{ secrets.NODE_REGISTRY_URL }}
-          REGISTRY_API_SECRET: ${{ secrets.REGISTRY_API_SECRET }}
           CAMOUFLAGE_URL: ${{ secrets.CAMOUFLAGE_URL }}
         run: |
           printf 'CF_API_TOKEN=%s\n'            "$CF_API_TOKEN"            > .env
@@ -151,7 +150,6 @@ jobs:
           printf 'FRP_AUTH_TOKEN=%s\n'          "$FRP_AUTH_TOKEN"          >> .env
           printf 'DEFAULT_ROOT_PASSWORD=%s\n'   "$DEFAULT_ROOT_PASSWORD"   >> .env
           printf 'NODE_REGISTRY_URL=%s\n'       "$NODE_REGISTRY_URL"       >> .env
-          printf 'REGISTRY_API_SECRET=%s\n'     "$REGISTRY_API_SECRET"     >> .env
           printf 'CAMOUFLAGE_URL=%s\n'          "$CAMOUFLAGE_URL"          >> .env
 
       # ── 按时间决定档位 ───────────────────────────────────────────────────

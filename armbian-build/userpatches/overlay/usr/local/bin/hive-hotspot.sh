@@ -21,6 +21,7 @@ CONN_2G="hive-hotspot-2g"
 CONN_5G="hive-hotspot-5g"
 NODE_INFO="/etc/hive/node-info"
 KF_DIR="/etc/NetworkManager/system-connections"
+HOTSPOT_ENV="/etc/hive/hotspot.env"
 
 log() { echo "[$LOG_TAG] $*"; logger -t "$LOG_TAG" "$*" 2>/dev/null || true; }
 upper() { echo "$1" | tr 'a-f' 'A-F'; }
@@ -35,8 +36,9 @@ if command -v flock >/dev/null 2>&1; then
 fi
 have_iw=0; command -v iw >/dev/null 2>&1 && have_iw=1
 
-# ── 配置（可在 /etc/hive/config.env 覆盖）─────────────────────────────
+# ── 配置（全局默认来自 config.env，用户热点覆盖来自 hotspot.env）────────
 [ -f /etc/hive/config.env ] && . /etc/hive/config.env 2>/dev/null
+[ -f "$HOTSPOT_ENV" ] && . "$HOTSPOT_ENV" 2>/dev/null
 COUNTRY="${HOTSPOT_COUNTRY:-CN}"        # 5GHz AP 必需的国家码
 # 5G AP 信道：默认 149（U-NII-3，5745MHz）。CN 监管域下 ch36-48(5150-5350) 整段是 DFS+RADAR，
 # wpa_supplicant 不做 DFS CAC，会拒绝在其上开 AP（实测 "Frequency 5180 not allowed for AP
@@ -77,7 +79,18 @@ NODE_MAC="${NODE_MAC: -12}"
 MAC_UP=$(upper "$NODE_MAC")
 SSID_2G="Hive-${MAC_UP}"
 SSID_5G="Hive-${MAC_UP}-5G"
-PSK=$(printf 'hive-wifi-psk:%s' "$NODE_MAC" | sha256sum | awk '{print substr($1,1,16)}')
+# Persist independently generated credentials; MAC is only an identifier.
+PSK_FILE=/etc/hive/default-hotspot-psk
+if [ ! -s "$PSK_FILE" ]; then
+    mkdir -p /etc/hive
+    (umask 077; openssl rand -hex 16 > "${PSK_FILE}.new") || exit 1
+    mv -f "${PSK_FILE}.new" "$PSK_FILE" || exit 1
+fi
+PSK=$(cat "$PSK_FILE")
+# 远程配置为空时使用已持久化的随机默认值。
+SSID_2G="${HOTSPOT_SSID_2G:-$SSID_2G}"
+SSID_5G="${HOTSPOT_SSID_5G:-$SSID_5G}"
+PSK="${HOTSPOT_PSK:-$PSK}"
 mkuuid() {  # 从种子确定性派生 RFC4122 v4 UUID
     local h; h=$(printf '%s:%s' "$1" "$NODE_MAC" | sha256sum | awk '{print $1}')
     printf '%s-%s-4%s-%x%s-%s\n' "${h:0:8}" "${h:8:4}" "${h:13:3}" \
@@ -389,12 +402,12 @@ if [ -f "$NODE_INFO" ]; then
 fi
 grep -q '^MAC=' "$NODE_INFO" 2>/dev/null || echo "MAC=${NODE_MAC}" >> "$NODE_INFO"
 {
-    echo "WIFI_PSK=${PSK}"
-    [ -n "$DONE_2G" ] && { echo "WIFI_SSID_2G=${SSID_2G}"; echo "WIFI_IFACE_2G=${DONE_2G}"; }
-    [ -n "$DONE_5G" ] && { echo "WIFI_SSID_5G=${SSID_5G}"; echo "WIFI_IFACE_5G=${DONE_5G}"; echo "WIFI_5G_WIDTH=${WIDTH_5G}"; }
+    printf 'WIFI_PSK=%q\n' "${PSK}"
+    [ -n "$DONE_2G" ] && { printf 'WIFI_SSID_2G=%q\n' "${SSID_2G}"; printf 'WIFI_IFACE_2G=%q\n' "${DONE_2G}"; }
+    [ -n "$DONE_5G" ] && { printf 'WIFI_SSID_5G=%q\n' "${SSID_5G}"; printf 'WIFI_IFACE_5G=%q\n' "${DONE_5G}"; printf 'WIFI_5G_WIDTH=%q\n' "${WIDTH_5G}"; }
     # 兼容旧字段（MOTD/test 单频展示用）：优先 2.4G，否则 5G
-    if [ -n "$DONE_2G" ]; then echo "WIFI_SSID=${SSID_2G}"; echo "WIFI_IFACE=${DONE_2G}";
-    elif [ -n "$DONE_5G" ]; then echo "WIFI_SSID=${SSID_5G}"; echo "WIFI_IFACE=${DONE_5G}"; fi
+    if [ -n "$DONE_2G" ]; then printf 'WIFI_SSID=%q\n' "${SSID_2G}"; printf 'WIFI_IFACE=%q\n' "${DONE_2G}";
+    elif [ -n "$DONE_5G" ]; then printf 'WIFI_SSID=%q\n' "${SSID_5G}"; printf 'WIFI_IFACE=%q\n' "${DONE_5G}"; fi
 } >> "$NODE_INFO"
 
 # ── 8. 让 NM 重载并激活 2.4G（5G 已由上方 hostapd 单元拉起，不走 NM）───────

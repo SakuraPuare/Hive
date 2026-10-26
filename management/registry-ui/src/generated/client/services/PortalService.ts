@@ -89,7 +89,7 @@ export class PortalService {
     }
     /**
      * 给我的设备下发命令
-     * 客户对自己名下设备下发一条白名单命令（reboot/restart-xray/restart-mihomo/resync）。节点下次心跳周期拉取执行并回传结果。
+     * 客户对自己名下设备下发白名单命令（重启、配置同步、热点配置或 allowlisted service-control）。节点下次心跳周期拉取执行并回传结果。
      * @returns number OK
      * @throws ApiError
      */

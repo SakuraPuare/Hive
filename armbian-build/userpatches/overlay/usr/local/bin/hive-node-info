@@ -1,0 +1,40 @@
+#!/bin/bash
+# Source this library, then call hive_load_node_info [path]. State files are data:
+# never evaluate shell substitutions, even in files written by older firmware.
+hive_load_node_info() {
+    local field key value
+    while IFS= read -r -d '' field; do
+        key=${field%%=*}
+        value=${field#*=}
+        printf -v "$key" '%s' "$value"
+    done < <(python3 - "${1:-/etc/hive/node-info}" <<'PY'
+import ast
+import pathlib
+import shlex
+import sys
+
+allowed = set('HOSTNAME MAC MAC6 EASYTIER_IP FRP_PORT TAILSCALE_HOST TAILSCALE_IP '
+              'CF_URL XRAY_UUID TUNNEL_ID MESH_TUNNEL_ID MESH_IP WIFI_PSK WIFI_SSID '
+              'WIFI_IFACE WIFI_SSID_2G WIFI_IFACE_2G WIFI_SSID_5G WIFI_IFACE_5G '
+              'WIFI_5G_WIDTH'.split())
+path = pathlib.Path(sys.argv[1])
+if path.is_file():
+    for line in path.read_text().splitlines():
+        key, sep, value = line.partition('=')
+        if not sep or key not in allowed:
+            continue
+        try:
+            if value.startswith("$'"):
+                decoded = ast.literal_eval(value[1:])
+                if isinstance(decoded, str):
+                    value = decoded
+            else:
+                words = shlex.split(value)
+                if len(words) == 1:
+                    value = words[0]
+        except (ValueError, SyntaxError):
+            pass  # Legacy unquoted data remains literal, never executable.
+        sys.stdout.buffer.write((key + '=' + value).encode() + b'\0')
+PY
+    )
+}

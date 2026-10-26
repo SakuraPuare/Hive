@@ -4,7 +4,7 @@ Documentation=man:ssh-keygen(1)
 # 镜像清洗删除了 host key，首启需在 sshd 之前重建，否则 sshd "no hostkeys available" 永久失败
 Before=ssh.service ssh.socket sshd.service
 # 已有 ed25519 host key 则跳过（幂等：仅首启或被清洗后执行一次）
-ConditionPathExists=!/etc/ssh/ssh_host_ed25519_key
+# The script checks a migration marker and also repairs missing keys.
 
 [Service]
 Type=oneshot

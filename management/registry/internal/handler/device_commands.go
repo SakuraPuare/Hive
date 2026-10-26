@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -15,10 +16,66 @@ import (
 // reboot call; anything outside this set is rejected at enqueue time so an
 // attacker who reaches the enqueue endpoint can't run arbitrary strings.
 var commandActions = map[string]bool{
-	"reboot":         true,
-	"restart-xray":   true, // systemctl restart hive-xray
-	"restart-mihomo": true, // systemctl restart hive-mihomo (gateway role)
-	"resync":         true, // re-pull configs: hive-xray-sync + hive-clash-sync
+	"reboot":          true,
+	"restart-xray":    true, // systemctl restart xray
+	"restart-mihomo":  true, // systemctl restart hive-mihomo (gateway role)
+	"resync":          true, // re-pull configs: hive-xray-sync + hive-clash-sync
+	"service-control": true, // params = {"service","operation"}; both are allowlisted below
+	"hotspot-config":  true, // params = Wi-Fi AP fields; validated below
+}
+
+var serviceControlServices = map[string]bool{
+	"xray": true, "xray-exporter": true, "cloudflared": true, "frpc": true, "easytier": true,
+	"hive-mihomo": true, "hive-hotspot": true, "hive-gateway": true,
+	"hive-firewall": true, "hive-fail2ban": true, "nginx": true,
+	"tailscaled": true, "warp-svc": true, "hive-xray-sync.timer": true,
+	"hive-clash-sync.timer": true, "hive-command-agent.timer": true,
+	"hive-updater.timer": true,
+}
+
+var serviceControlOperations = map[string]bool{
+	"start": true, "stop": true, "restart": true, "status": true,
+}
+
+var (
+	hotspotTextPattern    = regexp.MustCompile(`^[ -~]+$`)
+	hotspotCountryPattern = regexp.MustCompile(`^[A-Za-z]{2}$`)
+	hotspotChannels       = map[string]bool{
+		"36": true, "40": true, "44": true, "48": true, "52": true, "56": true, "60": true, "64": true,
+		"100": true, "104": true, "108": true, "112": true, "116": true, "120": true, "124": true,
+		"128": true, "132": true, "136": true, "140": true, "144": true, "149": true, "153": true,
+		"157": true, "161": true, "165": true,
+	}
+)
+
+type hotspotConfigParams struct {
+	SSID2G     string `json:"ssid2g"`
+	SSID5G     string `json:"ssid5g"`
+	PSK        string `json:"psk"`
+	Country    string `json:"country"`
+	Channel5G  string `json:"channel5g"`
+	Width5G    string `json:"width5g"`
+	PreferBand string `json:"preferBand"`
+}
+
+func validHotspotText(v string, min, max int) bool {
+	return v == "" || (len(v) >= min && len(v) <= max && hotspotTextPattern.MatchString(v))
+}
+
+func validateHotspotConfig(raw string) bool {
+	var p hotspotConfigParams
+	if json.Unmarshal([]byte(raw), &p) != nil {
+		return false
+	}
+	if !validHotspotText(p.SSID2G, 1, 32) || !validHotspotText(p.SSID5G, 1, 32) ||
+		!validHotspotText(p.PSK, 8, 63) ||
+		(p.Country != "" && !hotspotCountryPattern.MatchString(p.Country)) ||
+		(p.Channel5G != "" && !hotspotChannels[p.Channel5G]) ||
+		(p.Width5G != "" && p.Width5G != "20" && p.Width5G != "40" && p.Width5G != "80") ||
+		(p.PreferBand != "" && p.PreferBand != "5" && p.PreferBand != "2.4") {
+		return false
+	}
+	return true
 }
 
 // commandTTL bounds how long a pending command stays claimable. Past this the
@@ -50,6 +107,21 @@ func (h *Handler) enqueueCommand(w http.ResponseWriter, mac, actor string, body 
 	}
 	if len(body.Params) > 512 {
 		h.jsonErr(w, http.StatusBadRequest, "params too long")
+		return 0, false
+	}
+	if body.Action == "service-control" {
+		var params struct {
+			Service   string `json:"service"`
+			Operation string `json:"operation"`
+		}
+		if err := json.Unmarshal([]byte(body.Params), &params); err != nil ||
+			!serviceControlServices[params.Service] || !serviceControlOperations[params.Operation] {
+			h.jsonErr(w, http.StatusBadRequest, "invalid service control params")
+			return 0, false
+		}
+	}
+	if body.Action == "hotspot-config" && !validateHotspotConfig(body.Params) {
+		h.jsonErr(w, http.StatusBadRequest, "invalid hotspot config params")
 		return 0, false
 	}
 	now := time.Now().UTC().Format(model.TimeLayout)
@@ -86,7 +158,7 @@ func (h *Handler) listCommands(w http.ResponseWriter, mac string) {
 // HandlePortalEnqueueCommand godoc
 // @Summary      给我的设备下发命令
 // @ID           PortalEnqueueDeviceCommand
-// @Description  客户对自己名下设备下发一条白名单命令（reboot/restart-xray/restart-mihomo/resync）。节点下次心跳周期拉取执行并回传结果。
+// @Description  客户对自己名下设备下发白名单命令（重启、配置同步、热点配置或 allowlisted service-control）。节点下次心跳周期拉取执行并回传结果。
 // @Tags         portal
 // @Security     CustomerSessionCookie
 // @Accept       json
@@ -163,12 +235,14 @@ func (h *Handler) HandleAdminEnqueueCommand(w http.ResponseWriter, r *http.Reque
 		h.jsonErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	actor, _, _ := h.Auth.ParseSession(r)
-	id, ok := h.enqueueCommand(w, mac, actor, body, getClientIP(r))
-	if !ok {
-		return
+	enqueue := func(w http.ResponseWriter, r *http.Request) {
+		actor, _, _ := h.Auth.ParseSession(r)
+		id, ok := h.enqueueCommand(w, mac, actor, body, getClientIP(r))
+		if ok {
+			h.jsonOK(w, map[string]uint64{"id": id})
+		}
 	}
-	h.jsonOK(w, map[string]uint64{"id": id})
+	enqueue(w, r)
 }
 
 // HandleAdminListCommands godoc

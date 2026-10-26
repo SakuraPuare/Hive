@@ -1,0 +1,45 @@
+#!/bin/bash
+# Run locally on an existing node AFTER installing its independently issued
+# /etc/hive/device-token. Re-running keeps the newly generated identities.
+set -euo pipefail
+umask 077
+source /etc/hive/config.env
+source /usr/local/bin/hive-node-info
+hive_load_node_info
+NODE_REGISTRY_API_SECRET=$(cat /etc/hive/device-token)
+: "${NODE_REGISTRY_URL:?Registry URL required}"
+: "${MAC:?node-info MAC required}"
+exec 9>/run/hive-identity.lock
+flock -n 9 || exit 75
+if [ ! -s /etc/hive/xray-uuid ]; then
+    cat /proc/sys/kernel/random/uuid > /etc/hive/xray-uuid.new
+    mv -f /etc/hive/xray-uuid.new /etc/hive/xray-uuid
+fi
+uuid=$(cat /etc/hive/xray-uuid)
+tmp=$(mktemp /etc/xray/.identity.XXXXXX)
+trap 'rm -f "$tmp"' EXIT
+jq --arg uuid "$uuid" --arg mac "$MAC" --arg old "${XRAY_UUID:-}" '
+    (.inbounds[] | select(.protocol == "vless") | .settings.clients[] |
+     select(.email == ("node-" + $mac) or .id == $old) | .id) = $uuid
+' /etc/xray/config.json > "$tmp"
+xray run -test -config "$tmp"
+payload=$(jq -n --arg mac "$MAC" --arg mac6 "${MAC6:-${MAC: -6}}" \
+    --arg hostname "$HOSTNAME" --arg cf_url "$CF_URL" --arg uuid "$uuid" \
+    --arg tunnel "${TUNNEL_ID:-}" --arg mesh_tunnel "${MESH_TUNNEL_ID:-}" \
+    --arg mesh_ip "${MESH_IP:-}" --argjson frp_port "${FRP_PORT:-0}" \
+    '{mac:$mac,mac6:$mac6,hostname:$hostname,cf_url:$cf_url,xray_uuid:$uuid,
+      tunnel_id:$tunnel,mesh_tunnel_id:$mesh_tunnel,mesh_ip:$mesh_ip,frp_port:$frp_port}')
+curl -4 -fsS --max-time 30 -H "Authorization: Bearer $NODE_REGISTRY_API_SECRET" \
+    -H 'Content-Type: application/json' -d "$payload" \
+    "${NODE_REGISTRY_URL}/nodes/register" >/dev/null
+mv -f "$tmp" /etc/xray/config.json
+sed -i '/^XRAY_UUID=/d' /etc/hive/node-info
+printf 'XRAY_UUID=%q\n' "$uuid" >> /etc/hive/node-info
+# Remove the obsolete shared secret from disk after successful authentication.
+sed -i '/^NODE_REGISTRY_API_SECRET=/d' /etc/hive/config.env
+systemctl restart xray
+/usr/local/bin/hive-regen-hostkeys.sh
+systemctl restart ssh
+/usr/local/bin/hive-hotspot.sh
+/usr/local/bin/hive-clash-sync
+echo 'Device identities migrated. Record the new SSH fingerprint and Wi-Fi password locally.'

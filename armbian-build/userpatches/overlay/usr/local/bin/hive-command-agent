@@ -17,7 +17,9 @@ NODE_INFO="/etc/hive/node-info"
 log() { echo "[hive-command-agent] $*"; logger -t "hive-command-agent" "$*" 2>/dev/null || true; }
 
 [ -f "${CONFIG_ENV}" ] && source "${CONFIG_ENV}" 2>/dev/null
-[ -f "${NODE_INFO}" ]  && source "${NODE_INFO}"  2>/dev/null
+[ ! -s /etc/hive/device-token ] || NODE_REGISTRY_API_SECRET=$(cat /etc/hive/device-token)
+source /usr/local/bin/hive-node-info
+hive_load_node_info "$NODE_INFO"
 
 if [ -z "${NODE_REGISTRY_URL:-}" ]; then log "NODE_REGISTRY_URL 未配置，跳过"; exit 0; fi
 if [ -z "${NODE_REGISTRY_API_SECRET:-}" ]; then log "API_SECRET 未配置，跳过"; exit 0; fi
@@ -57,8 +59,8 @@ echo "${RESP}" | jq -c '.[]' 2>/dev/null | while read -r cmd; do
             systemctl reboot || reboot
             ;;
         restart-xray)
-            out=$(systemctl restart hive-xray 2>&1) \
-                && ack "$id" "done" "hive-xray restarted" \
+            out=$(systemctl restart xray 2>&1) \
+                && ack "$id" "done" "xray restarted" \
                 || ack "$id" "failed" "${out:0:900}"
             ;;
         restart-mihomo)
@@ -70,6 +72,83 @@ echo "${RESP}" | jq -c '.[]' 2>/dev/null | while read -r cmd; do
             out=$( { /usr/local/bin/hive-xray-sync; /usr/local/bin/hive-clash-sync; } 2>&1 ) \
                 && ack "$id" "done" "resynced xray+clash" \
                 || ack "$id" "failed" "${out:0:900}"
+            ;;
+        service-control)
+            # params 是 JSON: {"service":"xray","operation":"restart"}
+            svc=$(echo "$cmd" | jq -r '.params' | jq -r '.service // empty' 2>/dev/null)
+            op=$(echo "$cmd" | jq -r '.params' | jq -r '.operation // empty' 2>/dev/null)
+            case "$svc" in
+                xray|xray-exporter|cloudflared|frpc|easytier|hive-mihomo|hive-hotspot|hive-gateway|hive-firewall|hive-fail2ban|nginx|tailscaled|warp-svc|hive-xray-sync.timer|hive-clash-sync.timer|hive-command-agent.timer|hive-updater.timer)
+                    ;;
+                *) ack "$id" "failed" "unsupported service: ${svc}"; continue ;;
+            esac
+            case "$op" in
+                start|stop|restart|status)
+                    ;;
+                *) ack "$id" "failed" "unsupported operation: ${op}"; continue ;;
+            esac
+            if [ "$op" = "status" ]; then
+                out=$(systemctl is-active "$svc" 2>&1 || true)
+                ack "$id" "done" "${svc} status: ${out:0:850}"
+            else
+                out=$(systemctl "$op" "$svc" 2>&1) \
+                    && ack "$id" "done" "${svc} ${op}: ${out:0:850}" \
+                    || ack "$id" "failed" "${svc} ${op}: ${out:0:850}"
+            fi
+            ;;
+        hotspot-config)
+            # params 是 JSON：可选 ssid2g/ssid5g/psk/country/channel5g/width5g/preferBand。
+            # 只写入专用 hotspot.env，避免修改包含设备凭证的 config.env。
+            hs_ssid2g=$(echo "$cmd" | jq -r '.params' | jq -r '.ssid2g // empty' 2>/dev/null)
+            hs_ssid5g=$(echo "$cmd" | jq -r '.params' | jq -r '.ssid5g // empty' 2>/dev/null)
+            hs_psk=$(echo "$cmd" | jq -r '.params' | jq -r '.psk // empty' 2>/dev/null)
+            hs_country=$(echo "$cmd" | jq -r '.params' | jq -r '.country // empty' 2>/dev/null)
+            hs_channel=$(echo "$cmd" | jq -r '.params' | jq -r '.channel5g // empty' 2>/dev/null)
+            hs_width=$(echo "$cmd" | jq -r '.params' | jq -r '.width5g // empty' 2>/dev/null)
+            hs_prefer=$(echo "$cmd" | jq -r '.params' | jq -r '.preferBand // empty' 2>/dev/null)
+            valid_printable() {
+                local value="$1" min="$2" max="$3" length
+                length=${#value}
+                [ -z "$value" ] && return 0
+                [ "$length" -ge "$min" ] && [ "$length" -le "$max" ] || return 1
+                LC_ALL=C printf '%s' "$value" | LC_ALL=C grep -Eq '^[ -~]+$'
+            }
+            valid_country() { [ -z "$1" ] || [[ "$1" =~ ^[A-Za-z]{2}$ ]]; }
+            valid_channel() { [ -z "$1" ] || case "$1" in 36|40|44|48|52|56|60|64|100|104|108|112|116|120|124|128|132|136|140|144|149|153|157|161|165) return 0;; *) return 1;; esac; }
+            valid_width() { [ -z "$1" ] || case "$1" in 20|40|80) return 0;; *) return 1;; esac; }
+            valid_prefer() { [ -z "$1" ] || case "$1" in 5|2.4) return 0;; *) return 1;; esac; }
+            if ! valid_printable "$hs_ssid2g" 1 32 || ! valid_printable "$hs_ssid5g" 1 32 ||
+                ! valid_printable "$hs_psk" 8 63 ||
+                ! valid_country "$hs_country" || ! valid_channel "$hs_channel" ||
+                ! valid_width "$hs_width" || ! valid_prefer "$hs_prefer"; then
+                ack "$id" "failed" "invalid hotspot config"
+                continue
+            fi
+            hs_tmp=$(mktemp /etc/hive/hotspot.env.XXXXXX 2>/dev/null) || {
+                ack "$id" "failed" "cannot create hotspot config"
+                continue
+            }
+            umask 077
+            write_ok=0
+            {
+                printf 'HOTSPOT_SSID_2G=%q\n' "$hs_ssid2g"
+                printf 'HOTSPOT_SSID_5G=%q\n' "$hs_ssid5g"
+                printf 'HOTSPOT_PSK=%q\n' "$hs_psk"
+                printf 'HOTSPOT_COUNTRY=%q\n' "${hs_country^^}"
+                printf 'HOTSPOT_5G_CHANNEL=%q\n' "$hs_channel"
+                printf 'HOTSPOT_5G_WIDTH=%q\n' "$hs_width"
+                printf 'HOTSPOT_PREFER_BAND=%q\n' "$hs_prefer"
+            } > "$hs_tmp" && chmod 600 "$hs_tmp" && chown root:root "$hs_tmp" &&
+                mv -f "$hs_tmp" /etc/hive/hotspot.env && write_ok=1
+            if [ "$write_ok" -ne 1 ] || ! /usr/local/bin/hive-hotspot.sh >/tmp/hive-hotspot-config.$$ 2>&1; then
+                out=$(tail -c 850 /tmp/hive-hotspot-config.$$ 2>/dev/null)
+                rm -f /tmp/hive-hotspot-config.$$ "$hs_tmp"
+                ack "$id" "failed" "hotspot apply failed: ${out}"
+            else
+                out=$(tail -c 850 /tmp/hive-hotspot-config.$$ 2>/dev/null)
+                rm -f /tmp/hive-hotspot-config.$$
+                ack "$id" "done" "hotspot config applied: ${out}"
+            fi
             ;;
         *)
             # 未知 action：不执行任何命令，直接 failed（防越权 / 陈旧客户端）。

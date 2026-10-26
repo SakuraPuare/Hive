@@ -21,7 +21,8 @@ if [ ! -f "$NODE_INFO" ]; then
 fi
 
 # shellcheck source=/dev/null
-source "$NODE_INFO"
+source /usr/local/bin/hive-node-info
+hive_load_node_info "$NODE_INFO"
 # shellcheck source=/dev/null
 source "$CONFIG_ENV"
 

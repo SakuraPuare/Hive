@@ -12,7 +12,8 @@ svc_active() { systemctl is-active --quiet "$1"; }
 
 # ── 加载配置 ──────────────────────────────────────────────────────────────────
 [ -f /etc/hive/config.env ] && source /etc/hive/config.env
-[ -f /etc/hive/node-info  ] && source /etc/hive/node-info
+source /usr/local/bin/hive-node-info
+hive_load_node_info
 
 HOSTNAME="${HOSTNAME:-$(hostname)}"
 echo ""
