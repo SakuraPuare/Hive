@@ -274,3 +274,20 @@ func TestInvalidGatewaySubscriptionDoesNotFallBack(t *testing.T) {
 		t.Fatalf("invalid gateway retained upstream credentials: %s", body)
 	}
 }
+
+func TestTrafficSumsNodesAndDeduplicatesTransport(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"status":"success","data":{"result":[
+            {"metric":{"target":"sub-1","instance":"node-a","transport":"easytier"},"value":[0,"100"]},
+            {"metric":{"target":"sub-1","instance":"node-a","transport":"tailscale"},"value":[0,"100"]},
+            {"metric":{"target":"sub-1","instance":"node-b","transport":"easytier"},"value":[0,"200"]}]}}`)
+	}))
+	defer server.Close()
+	cfg := *testCfg
+	cfg.PrometheusURL = server.URL
+	h := &Handler{Config: &cfg}
+	if n := h.promQueryInstantByLabel("traffic", "target", false, true)["sub-1"]; n != 300 {
+		t.Fatalf("traffic=%v, want 300", n)
+	}
+}

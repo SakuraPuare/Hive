@@ -150,8 +150,9 @@ func (h *Handler) promQueryInstant(query string) map[string]float64 {
 // instance=hostname key. For up{} MAX means "online if EITHER path is up"
 // (max(1,0)=1, max(1,1)=1) — the intended互备 semantics — and it stops cpu/mem/disk
 // from being double-counted. For latency MAX reports the slower path (conservative).
-func (h *Handler) promQueryInstantByLabel(query, label string, stripPort bool) map[string]float64 {
+func (h *Handler) promQueryInstantByLabel(query, label string, stripPort bool, sumNodes ...bool) map[string]float64 {
 	result := make(map[string]float64)
+	perNode := make(map[[2]string]float64)
 
 	u := fmt.Sprintf("%s/api/v1/query?query=%s", h.Config.PrometheusURL, url.QueryEscape(query))
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -197,9 +198,20 @@ func (h *Handler) promQueryInstantByLabel(query, label string, stripPort bool) m
 		if math.IsNaN(val) || math.IsInf(val, 0) {
 			continue
 		}
+		if len(sumNodes) > 0 && sumNodes[0] {
+			nodeKey := [2]string{key, r.Metric["instance"]}
+			if val > perNode[nodeKey] {
+				perNode[nodeKey] = val
+			}
+			continue
+		}
 		if existing, ok := result[key]; !ok || val > existing {
 			result[key] = val
 		}
+	}
+
+	for nodeKey, value := range perNode {
+		result[nodeKey[0]] += value
 	}
 
 	return result
