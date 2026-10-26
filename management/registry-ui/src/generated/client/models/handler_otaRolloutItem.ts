@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export type handler_otaRolloutItem = {
+    artifact_missing?: boolean;
     created_at?: string;
     created_by?: string;
     done?: number;

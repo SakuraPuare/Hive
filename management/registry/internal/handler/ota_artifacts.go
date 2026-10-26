@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
+	"time"
 
 	"hive/registry/internal/store"
 )
@@ -93,21 +95,38 @@ func readOTAMetadata(f *os.File) (otaArtifactResponse, error) {
 // @Failure 413 {object} ErrorResponse
 // @Router /admin/ota/bundles [post]
 func (h *Handler) HandleAdminUploadOTA(w http.ResponseWriter, r *http.Request) {
+	h.uploadOTABundle(w, r, false)
+}
+
+// Chunk completion already holds the storage lock. Direct uploads hold it only
+// to create/publish the file; a per-file lock protects the slow network copy.
+func (h *Handler) uploadOTABundle(w http.ResponseWriter, r *http.Request, storageLocked bool) {
 	if h.Config.OTAArtifactDir == "" {
 		h.jsonErr(w, 503, "OTA storage not configured")
 		return
 	}
-	if err := os.MkdirAll(h.Config.OTAArtifactDir, 0700); err != nil {
-		h.jsonErr(w, 500, "OTA storage unavailable")
-		return
+	unlock := func() {}
+	if !storageLocked {
+		var ok bool
+		unlock, ok = h.requireOTAStorageLock(w, r)
+		if !ok {
+			return
+		}
 	}
 	f, err := os.CreateTemp(h.Config.OTAArtifactDir, ".upload-*")
 	if err != nil {
+		unlock()
 		h.jsonErr(w, 500, "cannot create upload")
 		return
 	}
 	defer os.Remove(f.Name())
 	defer f.Close()
+	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	unlock()
+	if err != nil {
+		h.jsonErr(w, 500, "cannot protect upload")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, otaUploadLimit)
 	digest := sha256.New()
 	size, err := io.Copy(io.MultiWriter(f, digest), r.Body)
@@ -132,14 +151,24 @@ func (h *Handler) HandleAdminUploadOTA(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, 500, "cannot persist upload")
 		return
 	}
-	if err := f.Close(); err != nil {
-		h.jsonErr(w, 500, "cannot close upload")
-		return
+	if !storageLocked {
+		unlock, ok := h.requireOTAStorageLock(w, r)
+		if !ok {
+			return
+		}
+		defer unlock()
 	}
 	// An existing content-addressed artifact has identical bytes. Link publishes
 	// atomically without replacing a file being downloaded by another device.
 	if err := os.Link(f.Name(), h.otaArtifactPath(meta.SHA256)); err != nil && !os.IsExist(err) {
 		h.jsonErr(w, 500, "cannot publish upload")
+		return
+	}
+	// Re-uploading identical bytes renews the grace period. Otherwise a freshly
+	// returned upload could still be deleted using the old file's timestamp.
+	now := time.Now().UTC()
+	if err := os.Chtimes(h.otaArtifactPath(meta.SHA256), now, now); err != nil {
+		h.jsonErr(w, 500, "cannot refresh artifact retention")
 		return
 	}
 	actor, _, _ := h.Auth.ParseSession(r)
@@ -152,8 +181,12 @@ func (h *Handler) validateOTASource(version, source, sha string) error {
 		return errors.New("invalid version")
 	}
 	if strings.HasPrefix(source, otaArtifactPrefix) {
-		if strings.TrimPrefix(source, otaArtifactPrefix) != sha {
+		if h.Config.OTAArtifactDir == "" || !otaSHA256Pattern.MatchString(sha) || strings.TrimPrefix(source, otaArtifactPrefix) != sha {
 			return errors.New("artifact SHA256 mismatch")
+		}
+		info, err := os.Lstat(h.otaArtifactPath(sha))
+		if err != nil || !info.Mode().IsRegular() {
+			return errors.New("uploaded bundle not found")
 		}
 		f, err := os.Open(h.otaArtifactPath(sha))
 		if err != nil {

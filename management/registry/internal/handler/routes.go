@@ -58,6 +58,8 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("GET /admin/nodes/{mac}/commands", perm("node:read")(h.HandleAdminListCommands))
 
 	// ── OTA 管理 ──────────────────────────────────────────────────────────
+	mux.HandleFunc("GET /admin/ota/storage", perm("ota:read")(h.HandleAdminOTAStorage))
+	mux.HandleFunc("POST /admin/ota/storage/cleanup", perm("ota:write")(h.HandleAdminCleanupOTA))
 	mux.HandleFunc("POST /admin/ota/bundles", perm("ota:write")(h.HandleAdminUploadOTA))
 	mux.HandleFunc("POST /admin/ota/uploads", perm("ota:write")(h.HandleCreateOTAUpload))
 	mux.HandleFunc("PUT /admin/ota/uploads/{id}/{part}", perm("ota:write")(h.HandleOTAUploadPart))

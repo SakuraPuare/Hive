@@ -1263,7 +1263,22 @@
     "useExternalUrl": "改用外部下载地址",
     "statusInstalling": "安装或试启动中",
     "statusRolledBack": "已回滚",
-    "firmwareNotice": "目标板型：{board}。系统更新会重启设备，仅适用于该板型已初始化 A/B 分区的设备。"
+    "firmwareNotice": "目标板型：{board}。系统更新会重启设备，仅适用于该板型已初始化 A/B 分区的设备。",
+    "storageManage": "存储管理",
+    "storageError": "无法读取或清理 OTA 存储",
+    "storagePolicy": "清理超过 {days} 天未使用且未被设备任务引用的包；按应用包及固件板型分别保留最近 {versions} 个版本。",
+    "storageDisabled": "历史更新包清理已关闭。",
+    "storageUploadPolicy": "启动时及每小时自动检查。废弃上传和完成回执保留 24 小时；当前任务引用的包始终保留，发布记录不会删除。",
+    "storageBundles": "更新包",
+    "storageProtected": "保留的包",
+    "storageStaging": "上传暂存",
+    "storageCandidates": "可清理项与空间",
+    "storageCleaned": "已清理 {count} 项，释放 {size}。",
+    "storageWarnings": "{count} 项检查或清理异常",
+    "storageRefresh": "刷新统计",
+    "storageClean": "清理符合规则的文件",
+    "artifactMissing": "包已清理或缺失",
+    "artifactMissingHelp": "更新包已清理或缺失。重新上传相同 SHA256 的包后，刷新即可再次分配。"
   },
   "serverRole": {
     "title": "出口计费权限",

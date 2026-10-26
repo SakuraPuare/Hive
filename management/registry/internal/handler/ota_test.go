@@ -56,8 +56,10 @@ func uploadTestOTA(t *testing.T, data []byte, authenticated bool) *http.Response
 func otaStorage(t *testing.T) {
 	t.Helper()
 	previous := testCfg.OTAArtifactDir
+	previousDays := testCfg.OTARetentionDays
+	testCfg.OTARetentionDays = 30
 	testCfg.OTAArtifactDir = t.TempDir()
-	t.Cleanup(func() { testCfg.OTAArtifactDir = previous })
+	t.Cleanup(func() { testCfg.OTAArtifactDir = previous; testCfg.OTARetentionDays = previousDays })
 }
 
 func TestOTAUploadDownloadAndAssignmentAuthorization(t *testing.T) {
@@ -80,7 +82,7 @@ func TestOTAUploadDownloadAndAssignmentAuthorization(t *testing.T) {
 	assertStatus(t, resp, 200)
 	resp.Body.Close()
 	entries, _ := os.ReadDir(testCfg.OTAArtifactDir)
-	if len(entries) != 1 {
+	if len(entries) != 2 { // bundle plus the persistent storage lock
 		t.Fatal("duplicate upload left extra files")
 	}
 	mac, other := "aabbccddeeff", "112233445566"
@@ -131,7 +133,7 @@ func TestOTARejectInvalidUploadAndSource(t *testing.T) {
 	assertStatus(t, resp, 400)
 	resp.Body.Close()
 	entries, _ := os.ReadDir(testCfg.OTAArtifactDir)
-	if len(entries) != 0 {
+	if len(entries) != 1 || entries[0].Name() != ".storage.lock" {
 		t.Fatal("invalid upload retained")
 	}
 	for _, source := range []string{"file:///etc/passwd", "https://user:pass@example.com/bundle", "registry://" + strings.Repeat("a", 64)} {
@@ -220,6 +222,16 @@ func TestOTAChunkUploadRetriesAndCompletion(t *testing.T) {
 			t.Fatal("chunked upload corrupted")
 		}
 	}
+	resp = put("0", data)
+	assertStatus(t, resp, 409)
+	resp.Body.Close()
+	// A stale receipt must not report success for a package that is gone.
+	if err := os.Remove(testH.otaArtifactPath(fmt.Sprintf("%x", sha256.Sum256(data)))); err != nil {
+		t.Fatal(err)
+	}
+	resp = doJSON("POST", base+"/complete", nil, adminCookie())
+	assertStatus(t, resp, 409)
+	resp.Body.Close()
 }
 
 func TestOTAFirmwareBoardMetadata(t *testing.T) {

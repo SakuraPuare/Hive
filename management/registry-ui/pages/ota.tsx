@@ -63,6 +63,7 @@ type Rollout = {
   failed: number;
   installing: number;
   rolled_back: number;
+  artifact_missing?: boolean;
 };
 
 type Assignment = {
@@ -77,6 +78,7 @@ type Assignment = {
 type RolloutDetail = {
   rollout: Omit<Rollout, 'total' | 'pending' | 'done' | 'failed'>;
   assignments: Assignment[];
+  artifact_missing?: boolean;
 };
 
 // ── Status badge helper ─────────────────────────────────────────────────────
@@ -256,7 +258,7 @@ export default function OtaPage() {
                 <ChevronLeft className="mr-1 h-4 w-4" /> {tCommon('back')}
               </Button>
               {user.can('ota:write') && (
-                <Button size="sm" onClick={() => {
+                <Button size="sm" disabled={detail.artifact_missing} title={detail.artifact_missing ? t('artifactMissingHelp') : undefined} onClick={() => {
                   setAssignRolloutId(ro.id);
                   setAssignOpen(true);
                 }}>
@@ -270,6 +272,7 @@ export default function OtaPage() {
           }
         />
 
+        {detail.artifact_missing && <p role="status" className="mt-4 text-sm text-muted-foreground">{t('artifactMissingHelp')}</p>}
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Card><CardContent className="py-3 text-center">
             <div className="text-2xl font-600">{assignments.length}</div>
@@ -351,6 +354,7 @@ export default function OtaPage() {
         description={t('description')}
         actions={
           <div className="flex gap-2">
+            <OTAStorageManager canWrite={user.can('ota:write')} onCleaned={fetchRollouts} />
             {user.can('ota:write') && (
               <Button size="sm" onClick={() => setCreateOpen(true)}>
                 <Plus className="mr-1 h-4 w-4" /> {t('createRollout')}
@@ -394,7 +398,7 @@ export default function OtaPage() {
             ) : rollouts.map(ro => (
               <TableRow key={ro.id}>
                 <TableCell className="font-mono text-xs">#{ro.id}</TableCell>
-                <TableCell className="font-600">v{ro.version}</TableCell>
+                <TableCell className="font-600">v{ro.version}{ro.artifact_missing && <Badge variant="warning" className="ml-2">{t('artifactMissing')}</Badge>}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1.5 text-xs">
                     <span className="text-md-tertiary">{ro.done}</span>
@@ -415,7 +419,7 @@ export default function OtaPage() {
                       <Eye className="h-4 w-4" />
                     </Button>
                     {user.can('ota:write') && (
-                      <Button variant="ghost" size="sm" onClick={() => {
+                      <Button variant="ghost" size="sm" aria-label={t('assignNodes')} disabled={ro.artifact_missing} title={ro.artifact_missing ? t('artifactMissingHelp') : undefined} onClick={() => {
                         setAssignRolloutId(ro.id);
                         setAssignOpen(true);
                       }}>
@@ -491,6 +495,82 @@ export default function OtaPage() {
 }
 
 // ── Assign Dialog (shared between list and detail views) ────────────────────
+
+type OTAStorageReport = {
+  retention_days: number;
+  keep_latest: number;
+  artifact_count: number;
+  artifact_bytes: number;
+  protected_count: number;
+  staging_bytes: number;
+  candidate_count: number;
+  candidate_bytes: number;
+  removed_count: number;
+  removed_bytes: number;
+  errors: string[];
+};
+
+function storageBytes(value: number) {
+  if (value === 0) return '0 B';
+  const unit = Math.min(3, Math.floor(Math.log(value) / Math.log(1024)));
+  return `${(value / 1024 ** unit).toFixed(unit ? 1 : 0)} ${['B', 'KiB', 'MiB', 'GiB'][unit]}`;
+}
+
+function OTAStorageManager({ canWrite, onCleaned }: { canWrite: boolean; onCleaned: () => Promise<void> }) {
+  const t = useTranslations('ota');
+  const common = useTranslations('common');
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState<OTAStorageReport | null>(null);
+  const [result, setResult] = useState<OTAStorageReport | null>(null);
+  const [error, setError] = useState('');
+
+  async function inspect(cleanup: boolean) {
+    setBusy(true);
+    setError('');
+    try {
+      if (cleanup) {
+        const removed = await otaFetch<OTAStorageReport>('/admin/ota/storage/cleanup', { method: 'POST' });
+        setResult(removed);
+        await onCleaned();
+      }
+      setReport(await otaFetch<OTAStorageReport>('/admin/ota/storage'));
+    } catch (e) {
+      setReport(null);
+      setError(getErrorMessage(e, t('storageError')));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const warnings = [...new Set([...(report?.errors ?? []), ...(result?.errors ?? [])])];
+  return <>
+    <Button variant="outline" size="sm" onClick={() => { setOpen(true); setResult(null); void inspect(false); }}>{t('storageManage')}</Button>
+    <Dialog open={open} onOpenChange={(value) => { if (!busy) setOpen(value); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>{t('storageManage')}</DialogTitle></DialogHeader>
+        {report && <div className="space-y-4 text-sm">
+          <p>{report.retention_days > 0 ? t('storagePolicy', { days: report.retention_days, versions: report.keep_latest }) : t('storageDisabled')}</p>
+          <p className="text-muted-foreground">{t('storageUploadPolicy')}</p>
+          <dl className="grid grid-cols-2 gap-2">
+            <dt>{t('storageBundles')}</dt><dd>{report.artifact_count} · {storageBytes(report.artifact_bytes)}</dd>
+            <dt>{t('storageProtected')}</dt><dd>{report.protected_count}</dd>
+            <dt>{t('storageStaging')}</dt><dd>{storageBytes(report.staging_bytes)}</dd>
+            <dt>{t('storageCandidates')}</dt><dd>{report.candidate_count} · {storageBytes(report.candidate_bytes)}</dd>
+          </dl>
+        </div>}
+        {result && <p role="status" className="text-sm">{t('storageCleaned', { count: result.removed_count, size: storageBytes(result.removed_bytes) })}</p>}
+        {warnings.length > 0 && <details className="text-sm"><summary>{t('storageWarnings', { count: warnings.length })}</summary><ul className="list-disc pl-4 break-all">{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></details>}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        {busy && <p role="status" className="text-sm">{common('loading')}</p>}
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={() => void inspect(false)}>{t('storageRefresh')}</Button>
+          {canWrite && <Button disabled={busy || !report || report.candidate_count === 0} onClick={() => void inspect(true)}>{t('storageClean')}</Button>}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>;
+}
 
 function AssignDialog({
   open, onOpenChange, loading, nodeMacs, setNodeMacs, onSubmit, t, tCommon,

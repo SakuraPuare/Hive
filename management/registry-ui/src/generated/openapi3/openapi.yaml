@@ -1455,6 +1455,36 @@ paths:
       summary: 给节点分配 OTA 版本
       tags:
         - admin
+  /admin/ota/storage:
+    get:
+      operationId: AdminOtaStorage
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.otaStorageReport"
+      security:
+        - AdminSessionCookie: []
+      summary: Preview OTA storage and safe cleanup candidates
+      tags:
+        - admin
+  /admin/ota/storage/cleanup:
+    post:
+      operationId: AdminCleanupOtaStorage
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.otaStorageReport"
+      security:
+        - AdminSessionCookie: []
+      summary: Clean expired, unreferenced OTA files using the retention policy
+      tags:
+        - admin
   /admin/ota/uploads:
     post:
       operationId: AdminCreateOtaUpload
@@ -5735,6 +5765,8 @@ components:
       type: object
     handler.otaRolloutItem:
       properties:
+        artifact_missing:
+          type: boolean
         created_at:
           type: string
         created_by:
@@ -5761,6 +5793,33 @@ components:
           type: string
         version:
           type: string
+      type: object
+    handler.otaStorageReport:
+      properties:
+        artifact_bytes:
+          type: integer
+        artifact_count:
+          type: integer
+        candidate_bytes:
+          type: integer
+        candidate_count:
+          type: integer
+        errors:
+          items:
+            type: string
+          type: array
+        keep_latest:
+          type: integer
+        protected_count:
+          type: integer
+        removed_bytes:
+          type: integer
+        removed_count:
+          type: integer
+        retention_days:
+          type: integer
+        staging_bytes:
+          type: integer
       type: object
     handler.otaUploadRequest:
       properties:

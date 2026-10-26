@@ -23,6 +23,7 @@ type Config struct {
 	XrayPath            string
 	PrometheusURL       string
 	OTAArtifactDir      string
+	OTARetentionDays    int
 
 	// DB
 	MySQLHost     string
@@ -65,6 +66,7 @@ func Load() *Config {
 		XrayPath:            Getenv("XRAY_PATH", "ray"),
 		PrometheusURL:       Getenv("PROMETHEUS_URL", "http://127.0.0.1:4230"),
 		OTAArtifactDir:      Getenv("OTA_ARTIFACT_DIR", "/var/lib/hive-registry/ota"),
+		OTARetentionDays:    otaRetentionDays(Getenv("OTA_RETENTION_DAYS", "30")),
 
 		MySQLHost:     Getenv("MYSQL_HOST", "127.0.0.1"),
 		MySQLPort:     Getenv("MYSQL_PORT", "3306"),
@@ -83,6 +85,16 @@ func Load() *Config {
 
 		ReferralRate: referralRate,
 	}
+}
+
+// Invalid retention settings disable artifact deletion instead of falling back
+// to a potentially shorter retention period. Stale upload cleanup is independent.
+func otaRetentionDays(value string) int {
+	days, err := strconv.Atoi(value)
+	if err != nil || days < 0 || days > 36500 {
+		return 0
+	}
+	return days
 }
 
 // Getenv returns the environment variable value or a default.

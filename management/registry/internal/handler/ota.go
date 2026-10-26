@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -25,12 +26,13 @@ type createRolloutRequest struct {
 
 type otaRolloutItem struct {
 	model.OtaRollout
-	Total      int `json:"total"`
-	Pending    int `json:"pending"`
-	Done       int `json:"done"`
-	Failed     int `json:"failed"`
-	Installing int `json:"installing"`
-	RolledBack int `json:"rolled_back"`
+	ArtifactMissing bool `json:"artifact_missing"`
+	Total           int  `json:"total"`
+	Pending         int  `json:"pending"`
+	Done            int  `json:"done"`
+	Failed          int  `json:"failed"`
+	Installing      int  `json:"installing"`
+	RolledBack      int  `json:"rolled_back"`
 }
 
 type otaAckRequest struct {
@@ -58,7 +60,7 @@ func (h *Handler) HandleAdminListRollouts(w http.ResponseWriter, r *http.Request
 	}
 	items := make([]otaRolloutItem, 0, len(rollouts))
 	for _, ro := range rollouts {
-		item := otaRolloutItem{OtaRollout: ro}
+		item := otaRolloutItem{OtaRollout: ro, ArtifactMissing: h.otaArtifactMissing(ro)}
 		h.DB.Raw("SELECT COUNT(*) FROM ota_assignments WHERE rollout_id = ?", ro.ID).Scan(&item.Total)
 		h.DB.Raw("SELECT COUNT(*) FROM ota_assignments WHERE rollout_id = ? AND status = 'pending'", ro.ID).Scan(&item.Pending)
 		h.DB.Raw("SELECT COUNT(*) FROM ota_assignments WHERE rollout_id = ? AND status = 'done'", ro.ID).Scan(&item.Done)
@@ -99,6 +101,11 @@ func (h *Handler) HandleAdminCreateRollout(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	body.SHA256 = strings.ToLower(body.SHA256)
+	unlock, ok := h.requireOTAStorageLock(w, r)
+	if !ok {
+		return
+	}
+	defer unlock()
 	if err := h.validateOTASource(body.Version, body.URL, body.SHA256); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -166,7 +173,7 @@ func (h *Handler) HandleAdminGetRollout(w http.ResponseWriter, r *http.Request) 
 		id,
 	).Scan(&assignments)
 
-	h.jsonOK(w, map[string]any{"rollout": ro, "assignments": assignments})
+	h.jsonOK(w, map[string]any{"rollout": ro, "assignments": assignments, "artifact_missing": h.otaArtifactMissing(ro)})
 }
 
 type assignRequest struct {
@@ -191,12 +198,6 @@ func (h *Handler) HandleAdminAssignOta(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	var cnt int64
-	h.DB.Raw("SELECT COUNT(*) FROM ota_rollouts WHERE id = ?", id).Scan(&cnt)
-	if cnt == 0 {
-		h.jsonErr(w, http.StatusNotFound, "rollout not found")
-		return
-	}
 	var body assignRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid json")
@@ -205,6 +206,31 @@ func (h *Handler) HandleAdminAssignOta(w http.ResponseWriter, r *http.Request) {
 	if len(body.NodeMACs) == 0 {
 		h.jsonErr(w, http.StatusBadRequest, "node_macs required")
 		return
+	}
+	unlock, ok := h.requireOTAStorageLock(w, r)
+	if !ok {
+		return
+	}
+	defer unlock()
+	var ro model.OtaRollout
+	if err := h.DB.Raw("SELECT id, version, url, sha256 FROM ota_rollouts WHERE id = ?", id).Scan(&ro).Error; err != nil {
+		h.jsonErr(w, 500, "cannot read rollout")
+		return
+	}
+	if ro.ID == 0 {
+		h.jsonErr(w, 404, "rollout not found")
+		return
+	}
+	if strings.HasPrefix(ro.URL, otaArtifactPrefix) {
+		if err := h.validateOTASource(ro.Version, ro.URL, ro.SHA256); err != nil {
+			h.jsonErr(w, 409, "bundle unavailable; upload it again before assigning")
+			return
+		}
+		now := time.Now().UTC()
+		if err := os.Chtimes(h.otaArtifactPath(ro.SHA256), now, now); err != nil {
+			h.jsonErr(w, 500, "cannot refresh artifact retention")
+			return
+		}
 	}
 	now := time.Now().UTC().Format(model.TimeLayout)
 	assigned := h.assignNodesToRollout(uint(id), body.NodeMACs, now)
@@ -217,6 +243,7 @@ func (h *Handler) HandleAdminAssignOta(w http.ResponseWriter, r *http.Request) {
 	h.jsonOK(w, map[string]int{"assigned": assigned})
 }
 
+// Caller holds the storage lock for managed artifacts through validation and assignment.
 func (h *Handler) assignNodesToRollout(rolloutID uint, macs []string, now string) int {
 	assigned := 0
 	for _, mac := range macs {

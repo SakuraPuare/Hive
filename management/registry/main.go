@@ -74,10 +74,11 @@ func main() {
 	defer stop()
 
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(6)
 	go func() { defer wg.Done(); h.StartProbeLoop(ctx) }()
 	go func() { defer wg.Done(); h.StartLifecycleLoop(ctx) }()
 	go func() { defer wg.Done(); h.StartTrafficLoop(ctx) }()
+	go func() { defer wg.Done(); h.StartOTAStorageLoop(ctx) }()
 	go func() { defer wg.Done(); h.StartAccountingCleanupLoop(ctx) }()
 	go func() { defer wg.Done(); ml.StartExpiryNotifier(ctx) }()
 

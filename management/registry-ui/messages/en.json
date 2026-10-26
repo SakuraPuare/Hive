@@ -1263,7 +1263,22 @@
     "useExternalUrl": "Use an external download URL",
     "statusInstalling": "Installing / trial boot",
     "statusRolledBack": "Rolled back",
-    "firmwareNotice": "Target board: {board}. Firmware installation reboots the device and requires this board to have been flashed with its A/B factory image."
+    "firmwareNotice": "Target board: {board}. Firmware installation reboots the device and requires this board to have been flashed with its A/B factory image.",
+    "storageManage": "Storage management",
+    "storageError": "Could not inspect or clean OTA storage",
+    "storagePolicy": "Remove packages unused for more than {days} days and unreferenced by device assignments. Keep the latest {versions} versions separately for applications and each firmware board.",
+    "storageDisabled": "Historical package cleanup is disabled.",
+    "storageUploadPolicy": "Checked at startup and hourly. Abandoned uploads and completion receipts expire after 24 hours. All assigned packages and rollout records are retained.",
+    "storageBundles": "Packages",
+    "storageProtected": "Retained packages",
+    "storageStaging": "Upload staging",
+    "storageCandidates": "Eligible items and space",
+    "storageCleaned": "Removed {count} items, freed {size}.",
+    "storageWarnings": "{count} inspection or cleanup errors",
+    "storageRefresh": "Refresh usage",
+    "storageClean": "Clean eligible files",
+    "artifactMissing": "Package cleaned or missing",
+    "artifactMissingHelp": "This package was cleaned or is missing. Upload the same SHA256 package again and refresh to assign it."
   },
   "serverRole": {
     "title": "Exit server accounting",

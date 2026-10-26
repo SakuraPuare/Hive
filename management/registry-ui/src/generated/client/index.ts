@@ -46,6 +46,7 @@ export type { handler_OrderListResponse } from './models/handler_OrderListRespon
 export type { handler_otaAckRequest } from './models/handler_otaAckRequest';
 export type { handler_otaArtifactResponse } from './models/handler_otaArtifactResponse';
 export type { handler_otaRolloutItem } from './models/handler_otaRolloutItem';
+export type { handler_otaStorageReport } from './models/handler_otaStorageReport';
 export type { handler_otaUploadRequest } from './models/handler_otaUploadRequest';
 export type { handler_otaUploadSession } from './models/handler_otaUploadSession';
 export type { handler_PermissionItem } from './models/handler_PermissionItem';

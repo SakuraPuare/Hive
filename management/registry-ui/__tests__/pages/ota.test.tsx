@@ -13,6 +13,7 @@ const response = (body: unknown, ok = true) => ({ ok, status: ok ? 200 : 400, js
 
 describe('OTA upload and rollout', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockResolvedValue(response([]));
@@ -54,5 +55,44 @@ describe('OTA upload and rollout', () => {
     render(<OtaPage />);
     expect(await screen.findByText('1 ota.statusInstalling')).toBeInTheDocument();
     expect(screen.getByText('1 ota.statusRolledBack')).toBeInTheDocument();
+  });
+
+  it('previews storage without deleting and cleans only through the cleanup action', async () => {
+    const events = userEvent.setup();
+    let cleaned = false;
+    const report = { retention_days: 30, keep_latest: 3, artifact_count: 4, artifact_bytes: 8 * 1024 ** 2, protected_count: 3, staging_bytes: 0, candidate_count: 1, candidate_bytes: 2 * 1024 ** 2, removed_count: 0, removed_bytes: 0, errors: [] };
+    fetchMock.mockImplementation(async (path: string) => {
+      if (path.endsWith('/storage/cleanup')) {
+        cleaned = true;
+        return response({ ...report, removed_count: 1, removed_bytes: report.candidate_bytes });
+      }
+      if (path.endsWith('/storage')) return response({ ...report, candidate_count: cleaned ? 0 : 1, candidate_bytes: cleaned ? 0 : report.candidate_bytes });
+      return response([]);
+    });
+    render(<OtaPage />);
+    await events.click(screen.getByRole('button', { name: 'ota.storageManage' }));
+    expect(await screen.findByText('1 · 2.0 MiB')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([path]) => path.endsWith('/cleanup'))).toBe(false);
+    await events.click(screen.getByRole('button', { name: 'ota.storageClean' }));
+    expect(await screen.findByText('ota.storageCleaned')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ota.storageClean' })).toBeDisabled());
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/ota/storage/cleanup', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('does not offer cleanup to an OTA reader', async () => {
+    vi.spyOn(user, 'can').mockImplementation((permission?: string) => permission !== 'ota:write');
+    const events = userEvent.setup();
+    render(<OtaPage />);
+    fetchMock.mockResolvedValueOnce(response({ retention_days: 30, keep_latest: 3, artifact_count: 0, artifact_bytes: 0, protected_count: 0, staging_bytes: 0, candidate_count: 0, candidate_bytes: 0, errors: [] }));
+    await events.click(screen.getByRole('button', { name: 'ota.storageManage' }));
+    expect(await screen.findByText('ota.storagePolicy')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'ota.storageClean' })).not.toBeInTheDocument();
+  });
+
+  it('keeps rollout history visible and disables assignment for a missing package', async () => {
+    fetchMock.mockResolvedValue(response([{ id: 1, version: '2.0', total: 0, pending: 0, installing: 0, done: 0, failed: 0, rolled_back: 0, artifact_missing: true }]));
+    render(<OtaPage />);
+    expect(await screen.findByText('ota.artifactMissing')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ota.assignNodes' })).toBeDisabled();
   });
 });

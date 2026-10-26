@@ -10,15 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 	"time"
 )
 
 const otaChunkSize = int64(16 << 20)
-
-// Serialize mutations of staging directories. Deployment must route uploads to
-// one Registry instance; published artifacts can be shared by download replicas.
-var otaUploadMu sync.Mutex
 
 type otaUploadRequest struct {
 	Size int64 `json:"size"`
@@ -62,19 +57,15 @@ func (h *Handler) HandleCreateOTAUpload(w http.ResponseWriter, r *http.Request) 
 		h.jsonErr(w, 503, "OTA storage not configured")
 		return
 	}
-	otaUploadMu.Lock()
-	defer otaUploadMu.Unlock()
+	unlock, ok := h.requireOTAStorageLock(w, r)
+	if !ok {
+		return
+	}
+	defer unlock()
 	root := filepath.Join(h.Config.OTAArtifactDir, ".uploads")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		h.jsonErr(w, 500, "OTA storage unavailable")
 		return
-	}
-	entries, _ := os.ReadDir(root)
-	for _, entry := range entries {
-		info, err := entry.Info()
-		if err == nil && info.IsDir() && time.Since(info.ModTime()) > 24*time.Hour {
-			os.RemoveAll(filepath.Join(root, entry.Name()))
-		}
 	}
 	id, err := generateToken()
 	if err != nil {
@@ -98,6 +89,9 @@ func (h *Handler) HandleCreateOTAUpload(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) otaUpload(r *http.Request) (string, otaUploadMetadata, bool) {
 	var meta otaUploadMetadata
+	if h.Config.OTAArtifactDir == "" {
+		return "", meta, false
+	}
 	id := r.PathValue("id")
 	if !otaSHA256Pattern.MatchString(id) {
 		return "", meta, false
@@ -122,11 +116,21 @@ func (h *Handler) otaUpload(r *http.Request) (string, otaUploadMetadata, bool) {
 // @Success 200 {object} StatusResponse
 // @Router /admin/ota/uploads/{id}/{part} [put]
 func (h *Handler) HandleOTAUploadPart(w http.ResponseWriter, r *http.Request) {
-	otaUploadMu.Lock()
-	defer otaUploadMu.Unlock()
+	unlock, ok := h.requireOTAStorageLock(w, r)
+	if !ok {
+		return
+	}
+	defer unlock()
 	dir, meta, ok := h.otaUpload(r)
 	if !ok {
 		h.jsonErr(w, 404, "upload not found")
+		return
+	}
+	if _, err := os.Stat(filepath.Join(dir, "result.json")); err == nil {
+		h.jsonErr(w, 409, "upload already completed")
+		return
+	} else if !os.IsNotExist(err) {
+		h.jsonErr(w, 500, "cannot read upload state")
 		return
 	}
 	part, err := strconv.ParseInt(r.PathValue("part"), 10, 64)
@@ -172,7 +176,10 @@ func (h *Handler) HandleOTAUploadPart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	os.Chtimes(dir, time.Now(), time.Now())
+	if err := os.Chtimes(dir, time.Now(), time.Now()); err != nil {
+		h.jsonErr(w, 500, "cannot renew upload session")
+		return
+	}
 	h.jsonOK(w, StatusResponse{Status: "ok"})
 }
 
@@ -185,14 +192,27 @@ func (h *Handler) HandleOTAUploadPart(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} otaArtifactResponse
 // @Router /admin/ota/uploads/{id}/complete [post]
 func (h *Handler) HandleCompleteOTAUpload(w http.ResponseWriter, r *http.Request) {
-	otaUploadMu.Lock()
-	defer otaUploadMu.Unlock()
+	unlock, ok := h.requireOTAStorageLock(w, r)
+	if !ok {
+		return
+	}
+	defer unlock()
 	dir, meta, ok := h.otaUpload(r)
 	if !ok {
 		h.jsonErr(w, 404, "upload not found")
 		return
 	}
 	if data, err := os.ReadFile(filepath.Join(dir, "result.json")); err == nil {
+		var artifact otaArtifactResponse
+		if json.Unmarshal(data, &artifact) != nil || h.validateOTASource(artifact.Version, artifact.URL, artifact.SHA256) != nil {
+			h.jsonErr(w, 409, "completed bundle unavailable; start a new upload")
+			return
+		}
+		now := time.Now().UTC()
+		if os.Chtimes(h.otaArtifactPath(artifact.SHA256), now, now) != nil || os.Chtimes(dir, now, now) != nil {
+			h.jsonErr(w, 500, "cannot renew completed upload")
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(data)
 		return
@@ -209,7 +229,7 @@ func (h *Handler) HandleCompleteOTAUpload(w http.ResponseWriter, r *http.Request
 	}
 	r.Body = io.NopCloser(io.MultiReader(parts...))
 	result := &otaUploadResult{header: make(http.Header), status: 200}
-	h.HandleAdminUploadOTA(result, r)
+	h.uploadOTABundle(result, r, true)
 	if result.status == 200 {
 		// A lost completion response can be retried without uploading again.
 		if err := os.WriteFile(filepath.Join(dir, "result.json"), result.Bytes(), 0600); err != nil {

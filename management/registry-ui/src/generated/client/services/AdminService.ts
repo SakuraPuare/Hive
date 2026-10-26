@@ -30,6 +30,7 @@ import type { handler_NodeUpdateRequest } from '../models/handler_NodeUpdateRequ
 import type { handler_OrderListResponse } from '../models/handler_OrderListResponse';
 import type { handler_otaArtifactResponse } from '../models/handler_otaArtifactResponse';
 import type { handler_otaRolloutItem } from '../models/handler_otaRolloutItem';
+import type { handler_otaStorageReport } from '../models/handler_otaStorageReport';
 import type { handler_otaUploadRequest } from '../models/handler_otaUploadRequest';
 import type { handler_otaUploadSession } from '../models/handler_otaUploadSession';
 import type { handler_PermissionItem } from '../models/handler_PermissionItem';
@@ -1193,6 +1194,28 @@ export class AdminService {
                 400: `Bad Request`,
                 404: `Not Found`,
             },
+        });
+    }
+    /**
+     * Preview OTA storage and safe cleanup candidates
+     * @returns handler_otaStorageReport OK
+     * @throws ApiError
+     */
+    public static adminOtaStorage(): CancelablePromise<handler_otaStorageReport> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/ota/storage',
+        });
+    }
+    /**
+     * Clean expired, unreferenced OTA files using the retention policy
+     * @returns handler_otaStorageReport OK
+     * @throws ApiError
+     */
+    public static adminCleanupOtaStorage(): CancelablePromise<handler_otaStorageReport> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/ota/storage/cleanup',
         });
     }
     /**

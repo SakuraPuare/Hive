@@ -173,6 +173,7 @@ echo ">>> hive-registry built and installed"
 ADMIN_API_SECRET="${ADMIN_API_SECRET:-$(openssl rand -hex 32)}"
 cat > /etc/hive-registry.env << EOF
 OTA_ARTIFACT_DIR=/var/lib/hive-registry/ota
+OTA_RETENTION_DAYS=${OTA_RETENTION_DAYS:-30}
 LISTEN_ADDR=${REGISTRY_LISTEN_ADDR:-127.0.0.1:8080}
 MYSQL_HOST=${REGISTRY_MYSQL_HOST:-127.0.0.1}
 MYSQL_PORT=${REGISTRY_MYSQL_PORT:-3306}
