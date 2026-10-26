@@ -5,8 +5,7 @@
 export type model_Node = {
     /**
      * 网关设备计费绑定：非空时，本网关走上游 Hive 节点的流量按此客户订阅的
-     * UUID 下发（email sub-<id>），被 traffic.go 计入该订阅；为空则沿用节点级
-     * UUID（node-*，不计费）。
+     * UUID 下发（email sub-<id>），由可信出口计入该订阅；未绑定或失效时拒绝转发。
      */
     bound_subscription_id?: number;
     cf_url?: string;
@@ -47,6 +46,10 @@ export type model_Node = {
     probe_status?: string;
     region?: string;
     registered_at?: string;
+    /**
+     * Only explicitly provisioned operator-controlled exit servers may meter traffic.
+     */
+    server_enabled?: boolean;
     status?: string;
     tailscale_ip?: string;
     tunnel_id?: string;

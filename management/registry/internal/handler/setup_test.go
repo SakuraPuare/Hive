@@ -117,7 +117,7 @@ func resetDB(t *testing.T) {
 	t.Helper()
 	testDB.Exec("SET FOREIGN_KEY_CHECKS = 0")
 	for _, table := range []string{
-		"node_traffic_counters", "device_credentials", "order_fulfillments", "referrals", "ota_assignments", "ota_rollouts", "node_commands", "easytier_allocations",
+		"node_traffic_counters", "server_credentials", "device_credentials", "order_fulfillments", "referrals", "ota_assignments", "ota_rollouts", "node_commands", "easytier_allocations",
 		"ticket_replies", "tickets", "traffic_logs", "customer_subscriptions",
 		"orders", "promo_codes", "risk_events", "password_reset_codes", "customers",
 		"plan_lines", "plans",
@@ -358,4 +358,17 @@ func deviceToken(t *testing.T, mac string) string {
 		t.Fatal(err)
 	}
 	return token
+}
+
+// A separate credential issued by the real administrator-only server endpoint.
+func serverToken(t *testing.T, mac string) string {
+	t.Helper()
+	resp := doJSON("POST", "/admin/nodes/"+mac+"/server-credential", nil, adminCookie())
+	assertStatus(t, resp, 200)
+	var out ServerCredentialResponse
+	decodeBody(t, resp, &out)
+	if out.Token == "" {
+		t.Fatal("empty server credential")
+	}
+	return out.Token
 }

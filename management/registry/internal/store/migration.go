@@ -593,6 +593,18 @@ ALTER TABLE customer_subscriptions ADD COLUMN suspension_reason VARCHAR(16) NOT 
 		desc:    "OTA installation and rollback states",
 		up:      `ALTER TABLE ota_assignments MODIFY COLUMN status ENUM('pending','installing','done','failed','rolled_back') NOT NULL DEFAULT 'pending';`,
 	},
+	{
+		version: 28,
+		desc:    "separate trusted exit servers from customer devices",
+		up: `
+ALTER TABLE nodes ADD COLUMN server_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE TABLE server_credentials (
+    mac VARCHAR(12) NOT NULL PRIMARY KEY,
+    token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    FOREIGN KEY (mac) REFERENCES nodes(mac) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

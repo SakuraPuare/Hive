@@ -26,7 +26,12 @@ import (
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
-// @description "Authorization: Bearer <API_SECRET>"
+// @description MAC-scoped device token: Authorization: Bearer <DEVICE_TOKEN>. Cannot be used for server accounting.
+//
+// @securityDefinitions.apikey ServerBearerAuth
+// @in header
+// @name Authorization
+// @description MAC-scoped trusted exit token: Authorization: Bearer <SERVER_TOKEN>. Issued separately from device credentials.
 
 // @securityDefinitions.apikey AdminSessionCookie
 // @in cookie

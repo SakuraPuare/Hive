@@ -329,7 +329,7 @@ type XrayUser struct {
 	Email string `json:"email"`
 }
 
-// NodeXrayUsersResponse is the body returned by POST /nodes/{mac}/xray-users.
+// NodeXrayUsersResponse is the body returned by POST /servers/{mac}/accounting.
 type NodeXrayUsersResponse struct {
 	MAC          string     `json:"mac"`
 	LeaseSeconds int        `json:"lease_seconds"`
@@ -338,7 +338,7 @@ type NodeXrayUsersResponse struct {
 
 // HandleNodeXrayUsers responds after durable accounting has committed.
 func (h *Handler) HandleNodeXrayUsers(w http.ResponseWriter, r *http.Request) {
-	if !h.Auth.RequireDeviceAuth(w, r) {
+	if !h.Auth.RequireServerAuth(w, r) {
 		return
 	}
 
@@ -366,7 +366,7 @@ func (h *Handler) HandleNodeXrayUsers(w http.ResponseWriter, r *http.Request) {
 			"JOIN plan_lines pl ON pl.plan_id = cs.plan_id "+
 			"JOIN `lines` l ON l.id = pl.line_id AND l.enabled = 1 "+
 			"JOIN line_nodes ln ON ln.line_id = pl.line_id AND ln.node_mac = ? "+
-			"JOIN nodes n ON n.mac = ln.node_mac AND n.enabled = 1 AND n.status = 'active' "+
+			"JOIN nodes n ON n.mac = ln.node_mac AND n.enabled = 1 AND n.status = 'active' AND n.server_enabled = 1 AND n.owner_customer_id IS NULL "+
 			"WHERE cs.status = 'active' "+
 			"AND cs.xray_uuid <> '' "+
 			"AND cs.expires_at > ? "+

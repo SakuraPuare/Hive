@@ -1,22 +1,29 @@
 #!/usr/bin/env bash
-# Report durable cumulative counters, then renew a <=45s authorization lease.
+# Operator exit servers report cumulative counters and renew a <=45s lease.
+# Customer gateways never use their device token for accounting.
 # A revocation restarts Xray to terminate existing connections as well as logins.
 set -euo pipefail
 umask 077
 [ ! -f /etc/hive/config.env ] || source /etc/hive/config.env
-[ ! -s /etc/hive/device-token ] || NODE_REGISTRY_API_SECRET=$(cat /etc/hive/device-token)
 source /usr/local/bin/hive-node-info
 hive_load_node_info /etc/hive/node-info
 source /usr/local/bin/hive-subscription-state
 exec 9>"$HIVE_ACCESS_DIR/xray.sync.lock"
 flock -n 9 || exit 0
+# Absence of a separately provisioned server token means customer-device mode.
+# Stop historical exit access even if its previous lease has not yet expired.
+if [ ! -s /etc/hive/server-token ]; then
+    hive_stop_xray
+    exit 0
+fi
+SERVER_TOKEN=$(cat /etc/hive/server-token)
 fail() {
     echo "[hive-xray-sync] $*"
     # A transport failure may use the remaining short lease; never extend it.
     if ! hive_lease_valid xray; then hive_stop_xray || true; fi
     exit 1
 }
-[ -n "${NODE_REGISTRY_URL:-}" ] && [ -n "${MAC:-}" ] && [ -n "${NODE_REGISTRY_API_SECRET:-}" ] || fail 'device credentials missing'
+[ -n "${NODE_REGISTRY_URL:-}" ] && [ -n "${MAC:-}" ] && [ -n "${SERVER_TOKEN:-}" ] || fail 'server credentials missing'
 systemctl is-active --quiet hive-subscription-guard.timer || fail 'subscription watchdog is not running'
 # One-time cutover: old runtime counters were billed by Prometheus. Start a
 # fresh epoch instead of charging the entire pre-upgrade lifetime again.
@@ -29,9 +36,9 @@ fi
 # Replay unacknowledged snapshots before starting a new runtime. No bytes are
 # counted twice even if a previous response was lost after its DB commit.
 post_report() {
-    curl -4 -fsS --max-time 5 -H "Authorization: Bearer $NODE_REGISTRY_API_SECRET" \
+    curl -4 -fsS --max-time 5 -H "Authorization: Bearer $SERVER_TOKEN" \
       -H 'Content-Type: application/json' --data-binary "@$1" \
-      "${NODE_REGISTRY_URL}/nodes/${MAC}/xray-users"
+      "${NODE_REGISTRY_URL%/}/servers/${MAC}/accounting"
 }
 for pending in "$HIVE_TRAFFIC_DIR"/*.json; do
     [ -f "$pending" ] || continue

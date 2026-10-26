@@ -51,7 +51,7 @@ func (h *Handler) HandleAdminAssignDevice(w http.ResponseWriter, r *http.Request
 	}
 	now := time.Now().UTC().Format(model.TimeLayout)
 	res := h.DB.Exec(
-		"UPDATE nodes SET owner_customer_id = ?, claimed_at = ? WHERE mac = ?",
+		"UPDATE nodes SET owner_customer_id = ?, claimed_at = ? WHERE mac = ? AND server_enabled = 0",
 		body.CustomerID, now, mac,
 	)
 	if res.Error != nil {
@@ -59,6 +59,15 @@ func (h *Handler) HandleAdminAssignDevice(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if res.RowsAffected == 0 {
+		var server bool
+		if err := h.DB.Raw("SELECT server_enabled FROM nodes WHERE mac = ?", mac).Scan(&server).Error; err != nil {
+			h.jsonErr(w, 500, "cannot check device role")
+			return
+		}
+		if server {
+			h.jsonErr(w, 409, "revoke the exit server credential before assigning this device")
+			return
+		}
 		h.jsonErr(w, http.StatusNotFound, "node not found")
 		return
 	}

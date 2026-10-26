@@ -44,7 +44,7 @@ elif name=='xray':
         state['clients']+=clients;save()
 elif name=='curl':
     if (root/'fail-network').exists():sys.exit(22)
-    if args[-1].endswith('/xray-users'):
+    if args[-1].endswith('/accounting'):
         report=json.loads(Path(args[args.index('--data-binary')+1][1:]).read_text())
         with (root/'reports').open('a') as f:f.write(json.dumps(report)+'\n')
         print((root/'desired.json').read_text())
@@ -77,6 +77,7 @@ class SubscriptionScripts(unittest.TestCase):
             for old,new in [('/usr/local/bin',str(self.root/'bin')),('/etc/hive',str(self.root/'etc/hive')),('/etc/xray',str(self.root/'etc/xray')),('/etc/mihomo',str(self.root/'etc/mihomo')),('/var/lib/hive',str(self.root/'var/lib/hive')),('/run/hive-subscriptions',str(self.root/'run/hive-subscriptions'))]:source=source.replace(old,new)
             p=self.root/'bin'/name;p.write_text(source);p.chmod(0o755)
         (self.root/'etc/hive/config.env').write_text('NODE_REGISTRY_URL=https://registry.invalid\nNODE_REGISTRY_API_SECRET=test-token\n')
+        (self.root/'etc/hive/server-token').write_text('server-only-token')
         (self.root/'etc/hive/node-info').write_text('MAC=aabbccddeeff\n')
         for rel in ['etc/xray/config.json','etc/mihomo/config.yaml']:shutil.copy(OVERLAY/rel,self.root/rel)
         self.state_write(dict(xray=True,mihomo=True,guard=True,epoch=1,clients=[],stats=[],connections=True,gateway_connections=True))
@@ -93,6 +94,35 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertEqual(p.returncode,expected,p.stdout+p.stderr)
         return p
     def expire(self,role): (self.root/f'run/hive-subscriptions/{role}.lease').write_text('0\n')
+
+    def test_customer_device_never_reports_even_with_device_or_legacy_key(self):
+        (self.root/'etc/hive/server-token').unlink()
+        (self.root/'etc/hive/device-token').write_text('customer-device-token')
+        self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'123'}])
+        self.run_agent('hive-xray-sync')
+        self.assertFalse(self.state()['xray'])
+        self.assertFalse(self.state()['connections'])
+        self.assertFalse((self.root/'reports').exists())
+        self.assertNotIn('curl ', (self.root/'calls').read_text())
+
+    def test_exit_uses_only_its_separate_server_credential(self):
+        (self.root/'etc/hive/device-token').write_text('customer-device-token')
+        self.run_agent('hive-xray-sync')
+        calls=(self.root/'calls').read_text()
+        self.assertIn('Authorization: Bearer server-only-token',calls)
+        self.assertIn('/servers/aabbccddeeff/accounting',calls)
+        self.assertNotIn('customer-device-token',calls)
+        self.assertNotIn('Bearer test-token',calls)
+
+    def test_removing_server_key_stops_existing_exit_without_renewal(self):
+        self.run_agent('hive-xray-sync')
+        old=(self.root/'reports').read_text()
+        (self.root/'etc/hive/server-token').unlink()
+        self.state_update(connections=True)
+        self.run_agent('hive-xray-sync')
+        self.assertEqual((self.root/'reports').read_text(),old)
+        self.assertFalse(self.state()['xray'])
+        self.assertFalse(self.state()['connections'])
 
     def test_upgrade_does_not_rebill_prometheus_history(self):
         self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'999999'}])

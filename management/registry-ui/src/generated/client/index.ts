@@ -72,6 +72,7 @@ export type { handler_ResetSubscriptionTokenResponse } from './models/handler_Re
 export type { handler_ResetTokenResponse } from './models/handler_ResetTokenResponse';
 export type { handler_RiskEventListResponse } from './models/handler_RiskEventListResponse';
 export type { handler_RoleDetail } from './models/handler_RoleDetail';
+export type { handler_ServerCredentialResponse } from './models/handler_ServerCredentialResponse';
 export type { handler_SetGroupNodesRequest } from './models/handler_SetGroupNodesRequest';
 export type { handler_SetLineNodesRequest } from './models/handler_SetLineNodesRequest';
 export type { handler_SetPermissionsRequest } from './models/handler_SetPermissionsRequest';
@@ -116,5 +117,6 @@ export { NodesService } from './services/NodesService';
 export { PortalService } from './services/PortalService';
 export { PortalAuthService } from './services/PortalAuthService';
 export { PortalPublicService } from './services/PortalPublicService';
+export { ServersService } from './services/ServersService';
 export { SubscriptionService } from './services/SubscriptionService';
 export { SystemService } from './services/SystemService';

@@ -26,9 +26,12 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// EasyTier IP 早期分配（provision 首步调用，仅需 MAC，幂等）
 	mux.HandleFunc("POST /nodes/allocate-easytier", h.HandleAllocateEasytier)
 	mux.HandleFunc("POST /nodes/heartbeat", h.HandleHeartbeat)
-	// 节点拉取本机应下发的 Xray 用户列表（设备端调用，Bearer token 认证）
+	// 旧设备计费接口停止服务；用户授权与计费仅接受独立出口凭据。
 	mux.HandleFunc("GET /nodes/{mac}/xray-users", h.HandleLegacyNodeXrayUsers)
-	mux.HandleFunc("POST /nodes/{mac}/xray-users", h.HandleNodeAccounting)
+	mux.HandleFunc("POST /nodes/{mac}/xray-users", h.HandleLegacyNodeXrayUsers)
+	mux.HandleFunc("POST /servers/{mac}/accounting", h.HandleNodeAccounting)
+	mux.HandleFunc("POST /admin/nodes/{mac}/server-credential", perm("node:write")(h.HandleIssueServerCredential))
+	mux.HandleFunc("DELETE /admin/nodes/{mac}/server-credential", perm("node:write")(h.HandleRevokeServerCredential))
 	// 节点拉取本机网关角色的 Mihomo 配置（设备端调用，Bearer token 认证）
 	mux.HandleFunc("GET /nodes/{mac}/clash-config", h.HandleNodeClashConfig)
 	// 远程命令队列（设备端：拉取待执行 + 回传结果，Bearer token 认证）

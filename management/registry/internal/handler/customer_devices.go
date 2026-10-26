@@ -24,7 +24,7 @@ func (h *Handler) ownedNode(w http.ResponseWriter, mac string, cid uint) (model.
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return n, false
 	}
-	if n.MAC == "" || n.OwnerCustomerID == nil || *n.OwnerCustomerID != cid {
+	if n.MAC == "" || n.ServerEnabled || n.OwnerCustomerID == nil || *n.OwnerCustomerID != cid {
 		h.jsonErr(w, http.StatusNotFound, "device not found")
 		return n, false
 	}
@@ -46,7 +46,7 @@ func (h *Handler) HandlePortalListDevices(w http.ResponseWriter, r *http.Request
 	nodes := make([]model.Node, 0)
 	if err := h.DB.Raw(
 		"SELECT "+model.NodeCols+" FROM nodes n LEFT JOIN node_status_checks nsc ON n.mac = nsc.mac "+
-			"WHERE n.owner_customer_id = ? ORDER BY n.hostname", cid,
+			"WHERE n.owner_customer_id = ? AND n.server_enabled = 0 ORDER BY n.hostname", cid,
 	).Scan(&nodes).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
@@ -106,7 +106,7 @@ func (h *Handler) HandlePortalClaimDevice(w http.ResponseWriter, r *http.Request
 	// 单一判定点——防止两人同时认领同一设备、以及重复认领。
 	res := h.DB.Exec(
 		"UPDATE nodes SET owner_customer_id = ?, claimed_at = ? "+
-			"WHERE claim_code_hash = ? AND claim_code_hash <> '' AND owner_customer_id IS NULL",
+			"WHERE claim_code_hash = ? AND claim_code_hash <> '' AND owner_customer_id IS NULL AND server_enabled = 0",
 		cid, now, hashClaimCode(body.Code),
 	)
 	if res.Error != nil {

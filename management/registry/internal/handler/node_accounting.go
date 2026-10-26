@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+
+	"hive/registry/internal/middleware"
 )
 
 // Short leases bound access when the registry or the accounting agent fails.
@@ -34,10 +36,10 @@ var counterEpoch = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 // high-water marks in the same transaction as billing makes retries idempotent,
 // including a lost HTTP response or a registry restart. Prometheus is observability
 // only: it must not charge these same bytes a second time.
-// @Summary Report node traffic and renew subscription authorization
+// @Summary Report trusted exit server traffic and renew subscription authorization
 // @ID NodeAccounting
-// @Tags nodes
-// @Security BearerAuth
+// @Tags servers
+// @Security ServerBearerAuth
 // @Accept json
 // @Produce json
 // @Param mac path string true "Node MAC"
@@ -46,9 +48,9 @@ var counterEpoch = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /nodes/{mac}/xray-users [post]
+// @Router /servers/{mac}/accounting [post]
 func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
-	if !h.Auth.RequireDeviceAuth(w, r) {
+	if !h.Auth.RequireServerAuth(w, r) {
 		return
 	}
 	var report NodeAccountingRequest
@@ -71,6 +73,7 @@ func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(report.Counters, func(i, j int) bool { return report.Counters[i].Name < report.Counters[j].Name })
 	mac := r.PathValue("mac")
+	errUnauthorized := errors.New("server credential revoked")
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		var node struct{ MAC string }
 		if err := tx.Raw("SELECT mac FROM nodes WHERE mac = ? FOR UPDATE", mac).Scan(&node).Error; err != nil {
@@ -79,13 +82,20 @@ func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
 		if node.MAC == "" {
 			return gorm.ErrRecordNotFound
 		}
+		ok, err := middleware.ValidServerCredential(tx, r)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errUnauthorized
+		}
 		for _, c := range report.Counters {
 			id, err := strconv.ParseUint(counterName.FindStringSubmatch(c.Name)[1], 10, 32)
 			if err != nil {
 				return err
 			}
 			var sub struct{ ID uint }
-			// Never let a device charge a subscription outside its assigned lines.
+			// Never let a server charge a subscription outside its assigned lines.
 			if err := tx.Raw("SELECT cs.id FROM customer_subscriptions cs WHERE cs.id = ? AND EXISTS (SELECT 1 FROM plan_lines pl JOIN line_nodes ln ON ln.line_id = pl.line_id WHERE pl.plan_id = cs.plan_id AND ln.node_mac = ?) FOR UPDATE", id, mac).Scan(&sub).Error; err != nil {
 				return err
 			}
@@ -108,6 +118,10 @@ func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
+	if errors.Is(err, errUnauthorized) {
+		h.jsonErr(w, 401, err.Error())
+		return
+	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		h.jsonErr(w, 404, "node not found")
 		return
@@ -124,5 +138,5 @@ func (h *Handler) HandleLegacyNodeXrayUsers(w http.ResponseWriter, r *http.Reque
 	if !h.Auth.RequireDeviceAuth(w, r) {
 		return
 	}
-	h.jsonErr(w, http.StatusUpgradeRequired, "upgrade node agent: POST cumulative counters to this endpoint")
+	h.jsonErr(w, http.StatusUpgradeRequired, "device accounting removed: provision a trusted exit server and use /servers/{mac}/accounting")
 }

@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
+import { ServerCredentialCard } from '@/components/nodes/ServerCredentialCard';
 import { ArrowLeft, RefreshCw, Pencil, Server } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useFormat } from '@/lib/format';
@@ -121,6 +122,7 @@ export default function NodeDetail() {
       />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <ServerCredentialCard key={node.mac} node={node} onChanged={(enabled) => setNode((current) => current && ({ ...current, server_enabled: enabled }))} />
         <Card className="rounded-xl border bg-card animate-slide-up" style={{ animationDelay: '40ms' }}>
           <CardHeader className="pb-2 pt-5 px-5">
             <CardTitle role="heading" aria-level={2} className="font-display text-base font-600 text-foreground">{t('identifiers')}</CardTitle>

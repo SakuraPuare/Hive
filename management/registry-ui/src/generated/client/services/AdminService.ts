@@ -39,6 +39,7 @@ import type { handler_ResetSubscriptionTokenResponse } from '../models/handler_R
 import type { handler_ResetTokenResponse } from '../models/handler_ResetTokenResponse';
 import type { handler_RiskEventListResponse } from '../models/handler_RiskEventListResponse';
 import type { handler_RoleDetail } from '../models/handler_RoleDetail';
+import type { handler_ServerCredentialResponse } from '../models/handler_ServerCredentialResponse';
 import type { handler_SetGroupNodesRequest } from '../models/handler_SetGroupNodesRequest';
 import type { handler_SetLineNodesRequest } from '../models/handler_SetLineNodesRequest';
 import type { handler_SetPermissionsRequest } from '../models/handler_SetPermissionsRequest';
@@ -906,6 +907,57 @@ export class AdminService {
             errors: {
                 400: `Bad Request`,
                 404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * Disable an exit server and revoke its credential
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static serverCredentialRevoke({
+        mac,
+    }: {
+        /**
+         * Server MAC
+         */
+        mac: string,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/admin/nodes/{mac}/server-credential',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * Enable a trusted exit server and issue or rotate its credential
+     * Only operator-controlled, unowned nodes may serve as exits. The token is returned once.
+     * @returns handler_ServerCredentialResponse OK
+     * @throws ApiError
+     */
+    public static serverCredentialIssue({
+        mac,
+    }: {
+        /**
+         * Server MAC
+         */
+        mac: string,
+    }): CancelablePromise<handler_ServerCredentialResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/nodes/{mac}/server-credential',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                400: `Bad Request`,
+                404: `Not Found`,
+                409: `Conflict`,
             },
         });
     }

@@ -34,6 +34,7 @@ func insertSubTestNode(t *testing.T, mac string) {
 func setupCustomerSubscription(t *testing.T) string {
 	t.Helper()
 	insertSubTestNode(t, "aabbccddeeff")
+	serverToken(t, "aabbccddeeff")
 
 	now := time.Now().UTC().Format(model.TimeLayout)
 
@@ -196,7 +197,7 @@ func TestNodeXrayUsers(t *testing.T) {
 	resetDB(t)
 	token := setupCustomerSubscription(t) // builds node aabbccddeeff → line → plan → sub
 
-	resp := doBearer("POST", "/nodes/aabbccddeeff/xray-users", emptyNodeReport(), deviceToken(t, "aabbccddeeff"))
+	resp := doBearer("POST", "/servers/aabbccddeeff/accounting", emptyNodeReport(), serverToken(t, "aabbccddeeff"))
 	assertStatus(t, resp, http.StatusOK)
 
 	var out struct {
@@ -227,7 +228,7 @@ func TestNodeXrayUsers(t *testing.T) {
 
 func TestNodeXrayUsers_Unauthorized(t *testing.T) {
 	resetDB(t)
-	resp := doBearer("POST", "/nodes/aabbccddeeff/xray-users", emptyNodeReport(), "wrong-secret")
+	resp := doBearer("POST", "/servers/aabbccddeeff/accounting", emptyNodeReport(), "wrong-secret")
 	assertStatus(t, resp, http.StatusUnauthorized)
 }
 
@@ -238,7 +239,7 @@ func TestNodeXrayUsers_ExcludesInvalidSubs(t *testing.T) {
 	// Expire the subscription: it must drop out of the node's user list.
 	testDB.Exec("UPDATE customer_subscriptions SET expires_at = '2020-01-01 00:00:00' WHERE token = ?", token)
 
-	resp := doBearer("POST", "/nodes/aabbccddeeff/xray-users", emptyNodeReport(), deviceToken(t, "aabbccddeeff"))
+	resp := doBearer("POST", "/servers/aabbccddeeff/accounting", emptyNodeReport(), serverToken(t, "aabbccddeeff"))
 	assertStatus(t, resp, http.StatusOK)
 
 	var out struct {

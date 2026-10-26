@@ -27,7 +27,7 @@ func (h *Handler) gatewaySecret(mac string) string {
 // @Description transparent-proxy gateway role. The upstream proxy pool is every
 // @Description enabled exit node in the cluster EXCEPT this node itself (no
 // @Description self-routing loop); the CN split-routing rule is flipped according
-// @Description to the node's gateway_direction. Device-authenticated (Bearer API_SECRET).
+// @Description to the node's gateway_direction. Authenticated with this device's MAC-scoped token.
 // @Tags nodes
 // @Security BearerAuth
 // @Produce plain
@@ -78,7 +78,7 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 	var all []model.Node
 	if err := h.DB.Raw(
 		"SELECT " + model.NodeColsPlain + " FROM nodes " +
-			"WHERE enabled = 1 AND status = 'active' AND cf_url <> '' AND xray_uuid <> '' " +
+			"WHERE enabled = 1 AND server_enabled = 1 AND owner_customer_id IS NULL AND status = 'active' AND cf_url <> '' AND xray_uuid <> '' " +
 			"ORDER BY weight DESC, hostname",
 	).Scan(&all).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
@@ -87,7 +87,7 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 
 	// 计费绑定：若本网关绑定了某客户订阅，且该订阅有效（未停用/未过期/未超量），
 	// 则上游代理统一使用该订阅的 UUID —— 网关走上游 Hive 节点的流量落到 sub-<id>
-	// 客户端，被 traffic.go 计入该订阅。已绑定或属于客户的网关失效时必须拒绝转发。
+	// 客户，由可信出口的计费接口计入该订阅。已绑定或属于客户的网关失效时必须拒绝转发。
 	overrideUUID := ""
 	blocked := true
 	lease := subscriptionLeaseSeconds

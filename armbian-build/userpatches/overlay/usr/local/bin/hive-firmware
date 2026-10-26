@@ -103,9 +103,14 @@ hive_tries 0' || return 1
         return 0
     fi
     [ "$(cat /usr/lib/hive/firmware-version)" = "$version" ] || return 1
-    for svc in NetworkManager.service nginx.service xray.service cloudflared.service easytier.service hive-subscription-guard.timer hive-updater.timer hive-command-agent.timer; do
+    for svc in NetworkManager.service nginx.service cloudflared.service easytier.service hive-subscription-guard.timer hive-updater.timer hive-command-agent.timer; do
         systemctl is-active --quiet "$svc" || return 1
     done
+    # Xray serves only operator-controlled exits. Customer images intentionally
+    # keep it stopped, which must not make a healthy A/B trial roll back.
+    if [ -s /etc/hive/server-token ]; then
+        systemctl is-active --quiet xray.service || return 1
+    fi
     # Verify the actual authenticated management path before blessing a boot.
     source /etc/hive/config.env
     source /usr/local/bin/hive-node-info

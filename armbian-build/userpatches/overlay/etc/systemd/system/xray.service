@@ -2,6 +2,7 @@
 Description=Xray Service (VLESS+WebSocket proxy)
 After=network.target
 Documentation=https://xtls.github.io
+ConditionFileNotEmpty=/etc/hive/server-token
 
 [Service]
 Type=simple

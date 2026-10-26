@@ -3,10 +3,8 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { handler_ackCommandRequest } from '../models/handler_ackCommandRequest';
-import type { handler_NodeAccountingRequest } from '../models/handler_NodeAccountingRequest';
 import type { handler_NodeRegisterRequest } from '../models/handler_NodeRegisterRequest';
 import type { handler_NodeRegisterResponse } from '../models/handler_NodeRegisterResponse';
-import type { handler_NodeXrayUsersResponse } from '../models/handler_NodeXrayUsersResponse';
 import type { handler_otaAckRequest } from '../models/handler_otaAckRequest';
 import type { handler_StatusResponse } from '../models/handler_StatusResponse';
 import type { model_DeviceCommand } from '../models/model_DeviceCommand';
@@ -21,7 +19,7 @@ export class NodesService {
      * transparent-proxy gateway role. The upstream proxy pool is every
      * enabled exit node in the cluster EXCEPT this node itself (no
      * self-routing loop); the CN split-routing rule is flipped according
-     * to the node's gateway_direction. Device-authenticated (Bearer API_SECRET).
+     * to the node's gateway_direction. Authenticated with this device's MAC-scoped token.
      * @returns string Mihomo YAML
      * @throws ApiError
      */
@@ -191,39 +189,6 @@ export class NodesService {
             url: '/nodes/{mac}/ota-version',
             path: {
                 'mac': mac,
-            },
-        });
-    }
-    /**
-     * Report node traffic and renew subscription authorization
-     * @returns handler_NodeXrayUsersResponse OK
-     * @throws ApiError
-     */
-    public static nodeAccounting({
-        mac,
-        requestBody,
-    }: {
-        /**
-         * Node MAC
-         */
-        mac: string,
-        /**
-         * Cumulative traffic counters
-         */
-        requestBody: handler_NodeAccountingRequest,
-    }): CancelablePromise<handler_NodeXrayUsersResponse> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/nodes/{mac}/xray-users',
-            path: {
-                'mac': mac,
-            },
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                400: `Bad Request`,
-                401: `Unauthorized`,
-                500: `Internal Server Error`,
             },
         });
     }

@@ -1264,5 +1264,18 @@
     "statusInstalling": "安装或试启动中",
     "statusRolledBack": "已回滚",
     "firmwareNotice": "目标板型：{board}。系统更新会重启设备，仅适用于该板型已初始化 A/B 分区的设备。"
+  },
+  "serverRole": {
+    "title": "出口计费权限",
+    "server": "可信出口服务器",
+    "device": "普通设备 / 客户网关",
+    "description": "仅为运营方控制的出口服务器启用。客户设备不能计费或获取全体订阅凭据。更换密钥后需要同步更新服务器；撤销后，现有连接在授权租约结束时断开（最长约 45 秒，另有守护轮询延迟）。",
+    "customerOwned": "客户名下的设备不能启用出口计费权限。",
+    "enable": "启用出口并生成密钥",
+    "rotate": "更换服务器密钥",
+    "revoke": "撤销出口权限",
+    "tokenHelp": "密钥仅显示一次。仅保存到对应出口的 /etc/hive/server-token（root 所有，权限 0600），不要放入客户设备或通用镜像。",
+    "hide": "隐藏密钥",
+    "failed": "更新出口权限失败"
   }
 }

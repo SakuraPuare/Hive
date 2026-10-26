@@ -449,7 +449,7 @@ func (h *Handler) serveCustomerSubscription(w http.ResponseWriter, r *http.Reque
 	}
 	filtered := make([]model.Node, 0, len(nodes))
 	for _, n := range nodes {
-		if n.Enabled && n.Status == "active" && (allowed == nil || allowed[n.MAC]) {
+		if n.ServerEnabled && n.OwnerCustomerID == nil && n.Enabled && n.Status == "active" && (allowed == nil || allowed[n.MAC]) {
 			filtered = append(filtered, n)
 		}
 	}

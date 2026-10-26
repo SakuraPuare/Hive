@@ -486,7 +486,7 @@ echo ">>> Sanitizing image for mass deployment..."
 truncate -s 0 /etc/machine-id
 rm -f /var/lib/dbus/machine-id
 rm -f /etc/ssh/ssh_host_*
-rm -f /etc/hive/random-hostkeys-v1 /etc/hive/xray-uuid /etc/hive/default-hotspot-psk /etc/hive/device-token
+rm -f /etc/hive/random-hostkeys-v1 /etc/hive/xray-uuid /etc/hive/default-hotspot-psk /etc/hive/device-token /etc/hive/server-token
 rm -f /var/lib/tailscale/tailscaled.state 2>/dev/null || true
 journalctl --rotate 2>/dev/null && journalctl --vacuum-time=1s 2>/dev/null || true
 find /var/log -name "*.log" -delete 2>/dev/null || true

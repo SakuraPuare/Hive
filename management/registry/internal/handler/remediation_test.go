@@ -47,7 +47,7 @@ func TestDeviceCredentialsAreMACScopedAndCannotAdminister(t *testing.T) {
 		resp.Body.Close()
 	}
 	resp := doBearer("POST", "/nodes/"+mac+"/xray-users", emptyNodeReport(), token)
-	assertStatus(t, resp, 200)
+	assertStatus(t, resp, 426)
 	resp.Body.Close()
 	resp = doBearer("GET", "/admin/customers", nil, testCfg.APISecret)
 	assertStatus(t, resp, 401)
@@ -62,7 +62,7 @@ func TestDeviceCredentialsAreMACScopedAndCannotAdminister(t *testing.T) {
 	assertStatus(t, resp, 401)
 	resp.Body.Close()
 	resp = doBearer("POST", "/nodes/"+mac+"/xray-users", emptyNodeReport(), rotated)
-	assertStatus(t, resp, 200)
+	assertStatus(t, resp, 426)
 	resp.Body.Close()
 }
 

@@ -1264,5 +1264,18 @@
     "statusInstalling": "Installing / trial boot",
     "statusRolledBack": "Rolled back",
     "firmwareNotice": "Target board: {board}. Firmware installation reboots the device and requires this board to have been flashed with its A/B factory image."
+  },
+  "serverRole": {
+    "title": "Exit server accounting",
+    "server": "Trusted exit server",
+    "device": "Device / customer gateway",
+    "description": "Enable only on operator-controlled exit servers. Customer devices cannot bill traffic or retrieve all subscription credentials. Update the server after rotating its key. Revocation closes connections when the lease expires (up to about 45 seconds, plus watchdog polling).",
+    "customerOwned": "Customer-owned devices cannot be enabled as exit servers.",
+    "enable": "Enable exit and issue key",
+    "rotate": "Rotate server key",
+    "revoke": "Revoke exit access",
+    "tokenHelp": "Shown once. Save only on this exit server as /etc/hive/server-token, owned by root with mode 0600. Never include it in customer devices or shared images.",
+    "hide": "Hide key",
+    "failed": "Could not update exit access"
   }
 }

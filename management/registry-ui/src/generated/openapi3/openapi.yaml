@@ -1081,6 +1081,75 @@ paths:
       summary: 给设备下发命令（管理员）
       tags:
         - admin
+  "/admin/nodes/{mac}/server-credential":
+    delete:
+      operationId: ServerCredentialRevoke
+      parameters:
+        - description: Server MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.StatusResponse"
+        "404":
+          description: Not Found
+          content:
+            "*/*":
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - AdminSessionCookie: []
+      summary: Disable an exit server and revoke its credential
+      tags:
+        - admin
+    post:
+      description: Only operator-controlled, unowned nodes may serve as exits. The
+        token is returned once.
+      operationId: ServerCredentialIssue
+      parameters:
+        - description: Server MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ServerCredentialResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - AdminSessionCookie: []
+      summary: Enable a trusted exit server and issue or rotate its credential
+      tags:
+        - admin
   "/admin/nodes/{mac}/unassign":
     post:
       description: 管理员解除设备归属，恢复未认领状态（认领码重新生效）。
@@ -3346,7 +3415,7 @@ paths:
 
         self-routing loop); the CN split-routing rule is flipped according
 
-        to the node's gateway_direction. Device-authenticated (Bearer API_SECRET).
+        to the node's gateway_direction. Authenticated with this device's MAC-scoped token.
       operationId: NodeClashConfig
       parameters:
         - description: node MAC
@@ -3561,53 +3630,6 @@ paths:
       security:
         - BearerAuth: []
       summary: 节点查询待安装 OTA 版本
-      tags:
-        - nodes
-  "/nodes/{mac}/xray-users":
-    post:
-      operationId: NodeAccounting
-      parameters:
-        - description: Node MAC
-          in: path
-          name: mac
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/handler.NodeAccountingRequest"
-        description: Cumulative traffic counters
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/handler.NodeXrayUsersResponse"
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/handler.ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/handler.ErrorResponse"
-        "500":
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/handler.ErrorResponse"
-      security:
-        - BearerAuth: []
-      summary: Report node traffic and renew subscription authorization
       tags:
         - nodes
   /nodes/allocate-easytier:
@@ -4574,6 +4596,53 @@ paths:
       summary: 公开订阅组 Clash 配置
       tags:
         - subscription
+  "/servers/{mac}/accounting":
+    post:
+      operationId: NodeAccounting
+      parameters:
+        - description: Node MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/handler.NodeAccountingRequest"
+        description: Cumulative traffic counters
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.NodeXrayUsersResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - ServerBearerAuth: []
+      summary: Report trusted exit server traffic and renew subscription authorization
+      tags:
+        - servers
   /subscription:
     get:
       description: 返回 base64 编码的 VLESS 订阅链接
@@ -4646,7 +4715,8 @@ components:
       name: hive_admin_session
       type: apiKey
     BearerAuth:
-      description: '"Authorization: Bearer <API_SECRET>"'
+      description: "MAC-scoped device token: Authorization: Bearer <DEVICE_TOKEN>.
+        Cannot be used for server accounting."
       in: header
       name: Authorization
       type: apiKey
@@ -4654,6 +4724,12 @@ components:
       description: '"HttpOnly session cookie for customer portal"'
       in: cookie
       name: hive_customer_session
+      type: apiKey
+    ServerBearerAuth:
+      description: "MAC-scoped trusted exit token: Authorization: Bearer
+        <SERVER_TOKEN>. Issued separately from device credentials."
+      in: header
+      name: Authorization
       type: apiKey
   schemas:
     handler.AdminLoginRequest:
@@ -5310,6 +5386,13 @@ components:
             type: string
           type: array
       type: object
+    handler.ServerCredentialResponse:
+      properties:
+        mac:
+          type: string
+        token:
+          type: string
+      type: object
     handler.SetGroupNodesRequest:
       properties:
         nodes:
@@ -5781,8 +5864,7 @@ components:
         bound_subscription_id:
           description: |-
             网关设备计费绑定：非空时，本网关走上游 Hive 节点的流量按此客户订阅的
-            UUID 下发（email sub-<id>），被 traffic.go 计入该订阅；为空则沿用节点级
-            UUID（node-*，不计费）。
+            UUID 下发（email sub-<id>），由可信出口计入该订阅；未绑定或失效时拒绝转发。
           type: integer
         cf_url:
           type: string
@@ -5836,6 +5918,10 @@ components:
           type: string
         registered_at:
           type: string
+        server_enabled:
+          description: Only explicitly provisioned operator-controlled exit servers may
+            meter traffic.
+          type: boolean
         status:
           type: string
         tailscale_ip:

@@ -133,6 +133,7 @@ if sys.argv[-1] == os.environ['HIVE_TEST_ROOT'] + '/etc/test-app':
         self.assertNotIn('-L', args)
 
 
+
 class FirmwareTests(unittest.TestCase):
     board = "nanopi-zero2"
     setUp = base.DeviceRegressionTests.setUp
@@ -246,6 +247,30 @@ else firmware_confirm; fi
         self.assertFalse(path.exists())
         self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), '1.0\n')
         self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-pending-ack.json').read_text())['status'], 'rolled_back')
+
+    def test_customer_firmware_confirms_with_xray_stopped(self):
+        runner = self.firmware_fixture()
+        self.run_script(runner, 'stage')
+        self.env['TEST_SLOT'] = 'B'
+        path = self.root / 'var/lib/hive/firmware-pending.json'
+        pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
+        path.write_text(json.dumps(pending))
+        self.mock('systemctl', '#!/bin/sh\n[ "$3" != xray.service ]\n')
+        self.run_script(runner, 'confirm')
+        self.assertFalse(path.exists())
+
+    def test_exit_firmware_requires_xray_before_confirmation(self):
+        runner = self.firmware_fixture()
+        (self.root / 'etc/hive/server-token').write_text('server-only-token')
+        self.run_script(runner, 'stage')
+        self.env['TEST_SLOT'] = 'B'
+        path = self.root / 'var/lib/hive/firmware-pending.json'
+        pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
+        path.write_text(json.dumps(pending))
+        self.mock('systemctl', '#!/bin/sh\n[ "$3" != xray.service ]\n')
+        self.run_script(runner, 'confirm', expected=1)
+        self.assertTrue(path.exists())
+        self.assertNotIn('hive_active B', (self.root / 'environment-writes').read_text())
 
 
 class R28SFirmwareTests(FirmwareTests):
