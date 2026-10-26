@@ -25,8 +25,9 @@ type NodeTrafficCounter struct {
 }
 
 type NodeAccountingRequest struct {
-	Epoch    string               `json:"epoch"` // Xray systemd InvocationID
-	Counters []NodeTrafficCounter `json:"counters"`
+	Generation int64                `json:"generation,omitempty,string" swaggertype:"string" example:"1"` // Monotonic per-server runtime, zero for legacy agents
+	Epoch      string               `json:"epoch"`                                                        // Xray systemd InvocationID
+	Counters   []NodeTrafficCounter `json:"counters"`
 }
 
 var counterName = regexp.MustCompile(`^user>>>sub-([1-9][0-9]*)>>>traffic>>>(uplink|downlink)$`)
@@ -47,6 +48,8 @@ var counterEpoch = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 // @Success 200 {object} NodeXrayUsersResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 410 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /servers/{mac}/accounting [post]
 func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +58,7 @@ func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
 	}
 	var report NodeAccountingRequest
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
-	if err := dec.Decode(&report); err != nil || !counterEpoch.MatchString(report.Epoch) || report.Counters == nil || len(report.Counters) > 10000 {
+	if err := dec.Decode(&report); err != nil || report.Generation < 0 || !counterEpoch.MatchString(report.Epoch) || report.Counters == nil || len(report.Counters) > 10000 {
 		h.jsonErr(w, http.StatusBadRequest, "invalid traffic report")
 		return
 	}
@@ -89,6 +92,9 @@ func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return errUnauthorized
 		}
+		if err := advanceAccountingGeneration(tx, mac, report); err != nil {
+			return err
+		}
 		for _, c := range report.Counters {
 			id, err := strconv.ParseUint(counterName.FindStringSubmatch(c.Name)[1], 10, 32)
 			if err != nil {
@@ -103,7 +109,7 @@ func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
 				continue
 			} // deleted/reassigned subscription: acknowledge stale counters
 			var previous struct{ Bytes int64 }
-			if err := tx.Raw("SELECT bytes FROM node_traffic_counters WHERE node_mac = ? AND epoch = ? AND counter_name = ?", mac, report.Epoch, c.Name).Scan(&previous).Error; err != nil {
+			if err := tx.Raw("SELECT bytes FROM node_traffic_counters WHERE node_mac = ? AND generation = ? AND epoch = ? AND counter_name = ?", mac, report.Generation, report.Epoch, c.Name).Scan(&previous).Error; err != nil {
 				return err
 			}
 			if c.Value <= previous.Bytes {
@@ -112,12 +118,20 @@ func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
 			if err := tx.Exec("UPDATE customer_subscriptions SET traffic_used = traffic_used + ?, updated_at = ? WHERE id = ?", c.Value-previous.Bytes, time.Now().UTC(), id).Error; err != nil {
 				return err
 			}
-			if err := tx.Exec("INSERT INTO node_traffic_counters (node_mac, epoch, counter_name, bytes) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE bytes = VALUES(bytes)", mac, report.Epoch, c.Name, c.Value).Error; err != nil {
+			if err := tx.Exec("INSERT INTO node_traffic_counters (node_mac, generation, epoch, counter_name, bytes) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE bytes = VALUES(bytes)", mac, report.Generation, report.Epoch, c.Name, c.Value).Error; err != nil {
 				return err
 			}
 		}
 		return nil
 	})
+	if errors.Is(err, errRetiredAccountingGeneration) {
+		h.jsonErr(w, http.StatusGone, err.Error())
+		return
+	}
+	if errors.Is(err, errAccountingGenerationConflict) {
+		h.jsonErr(w, http.StatusConflict, err.Error())
+		return
+	}
 	if errors.Is(err, errUnauthorized) {
 		h.jsonErr(w, 401, err.Error())
 		return

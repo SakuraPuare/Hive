@@ -605,6 +605,22 @@ CREATE TABLE server_credentials (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 `,
 	},
+	{
+		version: 29,
+		desc:    "bounded traffic counter history with per-server generation fences",
+		up: `
+CREATE TABLE node_accounting_state (
+    node_mac VARCHAR(12) NOT NULL PRIMARY KEY,
+    generation BIGINT NOT NULL DEFAULT 0,
+    epoch VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+    FOREIGN KEY (node_mac) REFERENCES nodes(mac) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+ALTER TABLE node_traffic_counters
+    ADD COLUMN generation BIGINT NOT NULL DEFAULT 0,
+    DROP PRIMARY KEY,
+    ADD PRIMARY KEY (node_mac, generation, epoch, counter_name);
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

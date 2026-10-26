@@ -23,7 +23,7 @@ fail() {
     if ! hive_lease_valid xray; then hive_stop_xray || true; fi
     exit 1
 }
-[ -n "${NODE_REGISTRY_URL:-}" ] && [ -n "${MAC:-}" ] && [ -n "${SERVER_TOKEN:-}" ] || fail 'server credentials missing'
+[ -n "${NODE_REGISTRY_URL:-}" ] && [ -n "${MAC:-}" ] && [ -n "$SERVER_TOKEN" ] || fail 'server credentials missing'
 systemctl is-active --quiet hive-subscription-guard.timer || fail 'subscription watchdog is not running'
 # One-time cutover: old runtime counters were billed by Prometheus. Start a
 # fresh epoch instead of charging the entire pre-upgrade lifetime again.
@@ -36,28 +36,81 @@ fi
 # Replay unacknowledged snapshots before starting a new runtime. No bytes are
 # counted twice even if a previous response was lost after its DB commit.
 post_report() {
-    curl -4 -fsS --max-time 5 -H "Authorization: Bearer $SERVER_TOKEN" \
+    local body status
+    body=$(mktemp "$HIVE_ACCESS_DIR/accounting-response.XXXXXX") || return 1
+    if ! status=$(curl -4 -sS --max-time 5 -o "$body" -w '%{http_code}' -H "Authorization: Bearer $SERVER_TOKEN" \
       -H 'Content-Type: application/json' --data-binary "@$1" \
-      "${NODE_REGISTRY_URL%/}/servers/${MAC}/accounting"
+      "${NODE_REGISTRY_URL%/}/servers/${MAC}/accounting"); then
+        rm -f "$body"; return 1
+    fi
+    case "$status" in
+        200) cat "$body"; rm -f "$body" ;;
+        410) rm -f "$body"; return 10 ;; # Permanently fenced, never bill again.
+        *) rm -f "$body"; return 1 ;;
+    esac
 }
-for pending in "$HIVE_TRAFFIC_DIR"/*.json; do
-    [ -f "$pending" ] || continue
-    post_report "$pending" >/dev/null || fail 'traffic replay failed'
-    rm -f "$pending"
-done
+replay_reports() {
+    local pending generation status order
+    # Epochs are random InvocationIDs. Replay by generation, not filename, so
+    # final snapshots always reach the panel before the next runtime fences them.
+    order=$(mktemp "$HIVE_ACCESS_DIR/accounting-order.XXXXXX") || return 1
+    for pending in "$HIVE_TRAFFIC_DIR"/*.json; do
+        [ -f "$pending" ] || continue
+        generation=$(jq -er '(.generation // "0") | select(type == "string" and test("^(0|[1-9][0-9]{0,18})$"))' "$pending") || { rm -f "$order"; return 1; }
+        printf '%s\t%s\n' "$generation" "$pending" >> "$order" || { rm -f "$order"; return 1; }
+    done
+    # An unchecked process substitution can hide sort/write failures and let a
+    # new generation retire snapshots which have never reached the server.
+    sort -n -k1,1 -o "$order" "$order" || { rm -f "$order"; return 1; }
+    while IFS=$'\t' read -r generation pending; do
+        if post_report "$pending" >/dev/null; then status=0; else status=$?; fi
+        if [ "$status" -ne 0 ] && [ "$status" -ne 10 ]; then rm -f "$order"; return 1; fi
+        if [ "$status" -eq 10 ]; then echo "[hive-xray-sync] discarded retired snapshot: ${pending##*/}" >&2; fi
+        rm -f "$pending"
+    done < "$order"
+    rm -f "$order"
+}
+prepare_generation() {
+    local state generation tmp
+    # Only called for a fresh, empty Xray runtime; never relabel existing traffic.
+    replay_reports || return 1
+    state=$(curl -4 -fsS --max-time 5 -H "Authorization: Bearer $SERVER_TOKEN" \
+      "${NODE_REGISTRY_URL%/}/servers/${MAC}/accounting/state") || return 1
+    generation=$(printf '%s' "$state" | jq -er '.generation | select(type == "string" and test("^(0|[1-9][0-9]{0,18})$"))') || return 1
+    # Keep shell arithmetic exact, including values beyond JSON's 53-bit range.
+    if [ "${#generation}" -eq 19 ] && [[ "$generation" > 9223372036854775806 ]]; then return 1; fi
+    generation=$((generation + 1))
+    tmp=$(mktemp "${HIVE_TRAFFIC_GENERATION}.XXXXXX") || return 1
+    if ! jq -n --arg epoch "$epoch" --arg generation "$generation" '{epoch:$epoch,generation:$generation}' > "$tmp" ||
+       ! sync -f "$tmp" || ! mv -f "$tmp" "$HIVE_TRAFFIC_GENERATION" || ! sync -f "${HIVE_TRAFFIC_GENERATION%/*}"; then
+        rm -f "$tmp"; return 1
+    fi
+}
+replay_reports || fail 'traffic replay failed'
 systemctl start xray || fail 'cannot start Xray'
 epoch=$(hive_xray_epoch)
-if [ "$epoch" != "$(cat "$HIVE_ACCESS_DIR/xray.applied" 2>/dev/null || true)" ]; then
+if [ "$epoch" != "$(cat "$HIVE_ACCESS_DIR/xray.applied" 2>/dev/null || true)" ] ||
+   [ "$epoch" != "$(jq -r '.epoch // empty' "$HIVE_TRAFFIC_GENERATION" 2>/dev/null || true)" ]; then
     # Also kills a legacy public client or orphaned API users after upgrading.
     hive_snapshot_traffic || { hive_stop_xray; exit 1; }
     systemctl restart xray || fail 'cannot reset Xray runtime'
     : > "$HIVE_ACCESS_DIR/xray.users"
     epoch=$(hive_xray_epoch)
+    prepare_generation || { hive_stop_xray; fail 'cannot prepare accounting generation'; }
     printf '%s\n' "$epoch" > "$HIVE_ACCESS_DIR/xray.applied"
 fi
 hive_snapshot_traffic || { hive_stop_xray; exit 1; }
 request_started=$(hive_now)
-response=$(post_report "$HIVE_TRAFFIC_DIR/$epoch.json") || fail 'traffic report failed'
+if response=$(post_report "$HIVE_TRAFFIC_DIR/$epoch.json"); then
+    :
+else
+    report_status=$?
+    # A fenced runtime must restart before obtaining a new generation. Other
+    # errors may consume the remaining lease, but cannot extend authorization.
+    rm -f "$HIVE_ACCESS_DIR/xray.applied"
+    if [ "$report_status" -eq 10 ]; then hive_stop_xray || true; fi
+    fail 'traffic report failed'
+fi
 if ! printf '%s' "$response" | jq -e '
   (.lease_seconds | type == "number" and . >= 1 and . <= 45 and floor == .) and
   (.users | type == "array") and
@@ -75,6 +128,7 @@ if [ -n "$removed" ]; then
     systemctl restart xray || { hive_stop_xray; exit 1; }
     current=''
     epoch=$(hive_xray_epoch)
+    prepare_generation || { hive_stop_xray; fail 'cannot prepare accounting generation'; }
 fi
 added=$(comm -23 <(printf '%s\n' "$desired") <(printf '%s\n' "$current") | sed '/^$/d')
 if [ -n "$added" ]; then

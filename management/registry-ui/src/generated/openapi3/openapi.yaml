@@ -4632,6 +4632,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/handler.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "410":
+          description: Gone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
         "500":
           description: Internal Server Error
           content:
@@ -4641,6 +4653,40 @@ paths:
       security:
         - ServerBearerAuth: []
       summary: Report trusted exit server traffic and renew subscription authorization
+      tags:
+        - servers
+  "/servers/{mac}/accounting/state":
+    get:
+      operationId: NodeAccountingState
+      parameters:
+        - description: Node MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.NodeAccountingState"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - ServerBearerAuth: []
+      summary: Read the trusted exit server accounting generation
       tags:
         - servers
   /subscription:
@@ -4985,6 +5031,18 @@ components:
           type: array
         epoch:
           description: Xray systemd InvocationID
+          type: string
+        generation:
+          description: Monotonic per-server runtime, zero for legacy agents
+          example: "1"
+          type: string
+      type: object
+    handler.NodeAccountingState:
+      properties:
+        epoch:
+          type: string
+        generation:
+          example: "1"
           type: string
       type: object
     handler.NodeRegisterRequest:

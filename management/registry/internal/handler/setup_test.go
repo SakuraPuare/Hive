@@ -117,7 +117,7 @@ func resetDB(t *testing.T) {
 	t.Helper()
 	testDB.Exec("SET FOREIGN_KEY_CHECKS = 0")
 	for _, table := range []string{
-		"node_traffic_counters", "server_credentials", "device_credentials", "order_fulfillments", "referrals", "ota_assignments", "ota_rollouts", "node_commands", "easytier_allocations",
+		"node_traffic_counters", "node_accounting_state", "server_credentials", "device_credentials", "order_fulfillments", "referrals", "ota_assignments", "ota_rollouts", "node_commands", "easytier_allocations",
 		"ticket_replies", "tickets", "traffic_logs", "customer_subscriptions",
 		"orders", "promo_codes", "risk_events", "password_reset_codes", "customers",
 		"plan_lines", "plans",

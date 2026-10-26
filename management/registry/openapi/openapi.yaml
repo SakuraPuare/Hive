@@ -254,6 +254,18 @@ definitions:
       epoch:
         description: Xray systemd InvocationID
         type: string
+      generation:
+        description: Monotonic per-server runtime, zero for legacy agents
+        example: "1"
+        type: string
+    type: object
+  handler.NodeAccountingState:
+    properties:
+      epoch:
+        type: string
+      generation:
+        example: "1"
+        type: string
     type: object
   handler.NodeRegisterRequest:
     properties:
@@ -5436,6 +5448,14 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "410":
+          description: Gone
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
@@ -5443,6 +5463,35 @@ paths:
       security:
       - ServerBearerAuth: []
       summary: Report trusted exit server traffic and renew subscription authorization
+      tags:
+      - servers
+  /servers/{mac}/accounting/state:
+    get:
+      operationId: NodeAccountingState
+      parameters:
+      - description: Node MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.NodeAccountingState'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - ServerBearerAuth: []
+      summary: Read the trusted exit server accounting generation
       tags:
       - servers
   /subscription:

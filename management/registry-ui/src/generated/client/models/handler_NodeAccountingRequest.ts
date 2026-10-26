@@ -9,4 +9,8 @@ export type handler_NodeAccountingRequest = {
      * Xray systemd InvocationID
      */
     epoch?: string;
+    /**
+     * Monotonic per-server runtime, zero for legacy agents
+     */
+    generation?: string;
 };

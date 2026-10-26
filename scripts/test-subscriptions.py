@@ -44,10 +44,31 @@ elif name=='xray':
         state['clients']+=clients;save()
 elif name=='curl':
     if (root/'fail-network').exists():sys.exit(22)
-    if args[-1].endswith('/accounting'):
+    if args[-1].endswith('/accounting/state'):
+        if (root/'fail-state').exists():sys.exit(22)
+        print(json.dumps({'generation':str(state.get('generation',0)), 'epoch':state.get('accounting_epoch','')}))
+    elif args[-1].endswith('/accounting'):
         report=json.loads(Path(args[args.index('--data-binary')+1][1:]).read_text())
         with (root/'reports').open('a') as f:f.write(json.dumps(report)+'\n')
-        print((root/'desired.json').read_text())
+        generation=int(report.get('generation','0')); current=state.get('generation',0)
+        status=200
+        if generation<current:status=410
+        elif generation==current and generation and report['epoch']!=state['accounting_epoch']:status=409
+        elif generation>current:
+            if generation!=current+1:status=409
+            else:state.update(generation=generation,accounting_epoch=report['epoch'])
+        if status==200:
+            counters=state.setdefault('counters',{})
+            for c in report['counters']:
+                key=str(generation)+'/'+report['epoch']+'/'+c['name']
+                old=counters.get(key,0);value=int(c['value'])
+                state['billed']=state.get('billed',0)+max(0,value-old)
+                counters[key]=max(old,value)
+        save()
+        if (root/'lose-response').exists() and status==200:
+            (root/'lose-response').unlink();sys.exit(28)
+        Path(args[args.index('-o')+1]).write_text((root/'desired.json').read_text() if status==200 else '{}')
+        print(status,end='')
     else:
         Path(args[args.index('-D')+1]).write_text((root/'headers').read_text())
         shutil=None
@@ -163,6 +184,92 @@ class SubscriptionScripts(unittest.TestCase):
         self.run_agent('hive-xray-sync')
         self.assertIn('101',(self.root/'reports').read_text())
         self.assertEqual(self.state()['clients'][0]['id'],UUID)
+
+    def test_lost_response_retries_without_double_billing(self):
+        self.run_agent('hive-xray-sync')
+        self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'101'}])
+        (self.root/'lose-response').touch()
+        self.run_agent('hive-xray-sync',expected=1)
+        self.assertEqual(self.state()['billed'],101)
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['billed'],101)
+        self.assertGreater(self.state()['generation'],1)
+        self.assertEqual(self.state()['clients'][0]['id'],UUID)
+
+    def test_final_legacy_snapshot_is_flushed_before_generation_cutover(self):
+        (self.root/'var/lib/hive/subscription-accounting-v1').touch()
+        pending=self.root/'var/lib/hive/traffic-pending';pending.mkdir()
+        (pending/'old.json').write_text(json.dumps({'epoch':'old','counters':[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'50'}]}))
+        self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'100'}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['billed'],150)
+        self.assertEqual(self.state()['generation'],1)
+        self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'7'}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['billed'],157)
+
+    def test_pending_snapshots_replay_in_generation_order(self):
+        self.run_agent('hive-xray-sync')
+        pending=self.root/'var/lib/hive/traffic-pending'
+        for epoch,generation,value in [('z-old',2,13),('a-new',3,17)]:
+            (pending/(epoch+'.json')).write_text(json.dumps({'epoch':epoch,'generation':str(generation),'counters':[{'name':'user>>>sub-1>>>traffic>>>uplink','value':str(value)}]}))
+        self.state_update(xray=False,clients=[],stats=[])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['billed'],30)
+        self.assertEqual(self.state()['generation'],4)
+
+    def test_retired_snapshots_are_discarded_without_rebilling(self):
+        self.run_agent('hive-xray-sync')
+        self.state_update(xray=False,clients=[],stats=[])
+        self.run_agent('hive-xray-sync')
+        pending=self.root/'var/lib/hive/traffic-pending/stale.json'
+        pending.write_text(json.dumps({'epoch':'old','generation':'1','counters':[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'999'}]}))
+        self.run_agent('hive-xray-sync')
+        self.assertFalse(pending.exists())
+        self.assertEqual(self.state().get('billed',0),0)
+        self.assertEqual(self.state()['clients'][0]['id'],UUID)
+
+    def test_failed_replay_sort_keeps_snapshots_and_does_not_advance_generation(self):
+        self.run_agent('hive-xray-sync')
+        pending=self.root/'var/lib/hive/traffic-pending/pending.json'
+        pending.write_text(json.dumps({'epoch':self.state()['accounting_epoch'],'generation':'1','counters':[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'123'}]}))
+        mock=self.root/'mock/sort';mock.write_text('#!/bin/sh\nexit 1\n');mock.chmod(0o755)
+        self.run_agent('hive-xray-sync',expected=1)
+        self.assertTrue(pending.exists())
+        self.assertEqual(self.state()['generation'],1)
+        self.assertEqual(self.state().get('billed',0),0)
+        mock.unlink()
+        self.run_agent('hive-xray-sync')
+        self.assertFalse(pending.exists())
+        self.assertEqual(self.state()['billed'],123)
+
+    def test_missing_generation_state_resets_runtime_before_recovery(self):
+        self.run_agent('hive-xray-sync')
+        self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'101'}])
+        self.run_agent('hive-xray-sync')
+        old_epoch=self.state()['epoch']
+        (self.root/'var/lib/hive/traffic-generation.json').unlink()
+        self.run_agent('hive-xray-sync')
+        self.assertGreater(self.state()['epoch'],old_epoch)
+        self.assertEqual(self.state()['billed'],101)
+        self.assertEqual(self.state()['generation'],2)
+
+    def test_generation_lookup_failure_never_grants_fresh_runtime(self):
+        (self.root/'fail-state').touch()
+        self.run_agent('hive-xray-sync',expected=1)
+        self.assertFalse(self.state()['xray'])
+        self.assertEqual(self.state()['clients'],[])
+
+    def test_large_generation_remains_exact_and_overflow_stops(self):
+        self.state_update(generation=9007199254740992,accounting_epoch='old')
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['generation'],9007199254740993)
+        saved=json.loads((self.root/'var/lib/hive/traffic-generation.json').read_text())
+        self.assertEqual(saved['generation'],'9007199254740993')
+        self.state_update(generation=9223372036854775807,accounting_epoch='exhausted',xray=False,clients=[],stats=[])
+        self.run_agent('hive-xray-sync',expected=1)
+        self.assertFalse(self.state()['xray'])
+        self.assertEqual(self.state()['generation'],9223372036854775807)
 
     def test_stats_failure_immediately_stops_unmetered_access(self):
         self.run_agent('hive-xray-sync')

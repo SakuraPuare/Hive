@@ -2,6 +2,7 @@
 # Shared by sync agents, service startup hooks and the independent watchdog.
 HIVE_ACCESS_DIR=/run/hive-subscriptions
 HIVE_TRAFFIC_DIR=/var/lib/hive/traffic-pending
+HIVE_TRAFFIC_GENERATION=/var/lib/hive/traffic-generation.json
 mkdir -p "$HIVE_ACCESS_DIR" "$HIVE_TRAFFIC_DIR"
 chmod 700 "$HIVE_ACCESS_DIR" "$HIVE_TRAFFIC_DIR"
 hive_now() { awk '{print int($1)}' /proc/uptime; }
@@ -20,15 +21,21 @@ hive_lease_write() {
 hive_xray_epoch() { systemctl show -p InvocationID --value xray; }
 hive_snapshot_traffic() {
     systemctl is-active --quiet xray || return 0
-    local epoch stats tmp
+    local epoch stats tmp generation=0
     epoch=$(hive_xray_epoch) || return 1
     [[ "$epoch" =~ ^[a-zA-Z0-9_-]{1,128}$ ]] || return 1
     stats=$(xray api statsquery --server=127.0.0.1:10085 -timeout 3 -pattern 'user>>>sub-') || return 1
     [ "$epoch" = "$(hive_xray_epoch)" ] || return 1
+    if [ -f "$HIVE_TRAFFIC_GENERATION" ]; then
+        generation=$(jq -er --arg epoch "$epoch" '
+          if .epoch == $epoch then .generation else "0" end |
+          select(type == "string" and test("^(0|[1-9][0-9]{0,18})$"))
+        ' "$HIVE_TRAFFIC_GENERATION") || return 1
+    fi
     tmp=$(mktemp "$HIVE_TRAFFIC_DIR/.snapshot.XXXXXX") || return 1
-    if ! printf '%s' "$stats" | jq -e --arg epoch "$epoch" '
+    if ! printf '%s' "$stats" | jq -e --arg epoch "$epoch" --arg generation "$generation" '
         if type != "object" or ((.stat // []) | type != "array") then error("invalid stats") else . end |
-        {epoch: $epoch, counters: [(.stat // [])[] |
+        {epoch: $epoch, generation: $generation, counters: [(.stat // [])[] |
           select(.name | test("^user>>>sub-[1-9][0-9]*>>>traffic>>>(uplink|downlink)$")) |
           {name, value: ((.value // "0") | tostring)}]} |
         if all(.counters[]; .value | test("^[0-9]+$")) then . else error("invalid counter") end

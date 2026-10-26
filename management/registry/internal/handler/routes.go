@@ -30,6 +30,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("GET /nodes/{mac}/xray-users", h.HandleLegacyNodeXrayUsers)
 	mux.HandleFunc("POST /nodes/{mac}/xray-users", h.HandleLegacyNodeXrayUsers)
 	mux.HandleFunc("POST /servers/{mac}/accounting", h.HandleNodeAccounting)
+	mux.HandleFunc("GET /servers/{mac}/accounting/state", h.HandleNodeAccountingState)
 	mux.HandleFunc("POST /admin/nodes/{mac}/server-credential", perm("node:write")(h.HandleIssueServerCredential))
 	mux.HandleFunc("DELETE /admin/nodes/{mac}/server-credential", perm("node:write")(h.HandleRevokeServerCredential))
 	// 节点拉取本机网关角色的 Mihomo 配置（设备端调用，Bearer token 认证）
