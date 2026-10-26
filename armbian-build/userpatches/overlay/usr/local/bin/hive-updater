@@ -23,7 +23,7 @@ umask 077
 mkdir -p "$STATE_DIR" || exit 1
 exec 9>"${STATE_DIR}/ota.lock"
 flock -n 9 || { log "已有 OTA 正在执行"; exit 75; }
-find "$STATE_DIR" -maxdepth 1 -type d -name 'ota-download.*' -exec rm -rf -- {} +
+find "$STATE_DIR" -maxdepth 1 -type d -name 'ota-download.*' -exec rm -rf -- {} + || exit 1
 WORK_DIR=$(mktemp -d "${STATE_DIR}/ota-download.XXXXXX") || exit 1
 ACK_FILE="${STATE_DIR}/ota-pending-ack.json"
 RECEIPT_FILE="${STATE_DIR}/ota-installed.json"
@@ -36,6 +36,18 @@ source /usr/local/bin/hive-node-info
 hive_load_node_info "$NODE_INFO"
 
 if [ ! -f "${PUBKEY_FILE}" ]; then log "OTA 公钥不存在: ${PUBKEY_FILE}"; exit 1; fi
+
+# Bundles are temporary: download on demand and remove with WORK_DIR on exit.
+# Transaction backups and A/B slots provide recovery independently of downloads.
+OTA_BUNDLE_MAX_BYTES=2147483648
+OTA_SPACE_RESERVE=67108864
+
+ota_available_bytes() {
+    local available
+    available=$(LC_ALL=C df -B1 --output=avail "$WORK_DIR" | tail -n 1 | tr -d ' ') || return 1
+    [[ "$available" =~ ^[0-9]{1,18}$ ]] || return 1
+    printf '%s\n' "$available"
+}
 
 MAC_NORM=""
 AUTH=""
@@ -83,15 +95,23 @@ do_install() {
         download_redirect=() # Never forward a device credential to a redirect.
     fi
     case "$url" in http://*|https://*) ;; *) log "下载地址协议不支持"; return 1;; esac
+    local actual_sha available download_limit
+    available=$(ota_available_bytes) || return 1
+    download_limit=$((available - OTA_SPACE_RESERVE))
+    [ "$download_limit" -ge 1024 ] || { log 'OTA 下载空间不足'; return 1; }
+    [ "$download_limit" -le "$OTA_BUNDLE_MAX_BYTES" ] || download_limit=$OTA_BUNDLE_MAX_BYTES
     log "下载 OTA bundle"
-    if ! curl -4 -f --proto '=http,https' "${download_redirect[@]}" "${download_auth[@]}" --max-filesize 2147483648 --retry 3 --retry-delay 5 --retry-all-errors \
-        --connect-timeout 30 --max-time 600 \
-        -o "${bundle}" "${url}" 2>/dev/null; then
-        log "下载失败"; return 1
+    # RLIMIT_FSIZE bounds even an old curl receiving a chunked response
+    # without Content-Length. Round down so the file cannot exceed budget.
+    if ! (ulimit -f "$((download_limit / 1024))" || exit 1
+        exec curl -4 -f --proto '=http,https' "${download_redirect[@]}" "${download_auth[@]}" --max-filesize "$download_limit" --retry 3 --retry-delay 5 --retry-all-errors \
+            --connect-timeout 30 --max-time 600 -o "$bundle" "$url"
+    ) 2>/dev/null; then
+        log "下载失败或超过可用空间"; return 1
     fi
 
     # ── 校验整包 sha256 ──────────────────────────────────────────────
-    local actual_sha
+    [ "$(stat -c %s "$bundle")" -le "$OTA_BUNDLE_MAX_BYTES" ] || { log 'OTA 包超过 2 GiB'; return 1; }
     actual_sha=$(sha256sum "${bundle}" | awk '{print $1}')
     if [ "${actual_sha}" != "${expected_sha256}" ]; then
         log "sha256 校验失败: 期望 ${expected_sha256}，实际 ${actual_sha}"; return 1
@@ -117,10 +137,11 @@ do_install() {
     if ! tar tvzf "${bundle}" | awk 'substr($0,1,1) != "-" && substr($0,1,1) != "d" {exit 1}'; then
         log "bundle 包含链接或特殊文件，拒绝解压"; return 1
     fi
-    local unpacked available
+    local unpacked
     unpacked=$(tar tvzf "$bundle" | awk '{n += $3} END {printf "%.0f", n}') || return 1
-    available=$(df -B1 --output=avail "$WORK_DIR" | tail -n 1 | tr -d ' ')
-    [ "$unpacked" -le 12884901888 ] && [ "$available" -gt "$((unpacked + 67108864))" ] || { log "解压空间不足或包过大"; return 1; }
+    [[ "$unpacked" =~ ^[0-9]{1,11}$ ]] && [ "$unpacked" -le 12884901888 ] || { log '解压包过大'; return 1; }
+    available=$(ota_available_bytes) || return 1
+    [ "$available" -gt "$((unpacked + OTA_SPACE_RESERVE))" ] || { log "解压空间不足或包过大"; return 1; }
     tar xzf "${bundle}" -C "${extract}" --no-same-owner --no-same-permissions || { log "解压失败"; return 1; }
 
     local payload="${extract}"

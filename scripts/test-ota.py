@@ -57,6 +57,7 @@ class OTATests(base.DeviceRegressionTests):
         self.failure_bundle()
         self.run_script(self.script('hive-updater'), expected=1)
         self.assert_rolled_back()
+        self.assert_no_downloads()
 
     def test_health_failure_restores_entire_application(self):
         self.failure_bundle('health-check.sh')
@@ -132,6 +133,88 @@ if sys.argv[-1] == os.environ['HIVE_TEST_ROOT'] + '/etc/test-app':
         self.assertIn('Authorization: Bearer test-token', args)
         self.assertNotIn('-L', args)
 
+    def assert_no_downloads(self):
+        self.assertFalse((self.root / 'var/lib/hive/ota-cache').exists())
+        self.assertFalse(list((self.root / 'var/lib/hive').glob('ota-download.*')))
+
+    def test_reinstall_fetches_from_server_and_keeps_no_packages(self):
+        assignment = self.bundle()
+        curl = self.root / 'mock/curl'
+        curl.write_text(curl.read_text().replace("else:\n    shutil.copyfile", "else:\n    with (r/'downloads').open('a') as f:f.write('download\\n')\n    shutil.copyfile"))
+        script = self.script('hive-updater')
+        self.run_script(script)
+        self.assert_no_downloads()
+        args = ['--url', assignment['url'], '--sha256', assignment['sha256'], '--version', '1.0', '--force']
+        self.run_script(script, *args)
+        self.assert_no_downloads()
+        self.assertEqual(len((self.root / 'downloads').read_text().splitlines()), 2)
+        # A new installation requires the server bundle, even for the same SHA.
+        (self.root / 'bundle.tar.gz').unlink()
+        self.run_script(script, *args, expected=1)
+        self.assert_no_downloads()
+        self.assertEqual((self.root / 'etc/test-app').read_text(), 'installed safely\n')
+
+    def test_invalid_signature_removes_download(self):
+        self.bundle()
+        (self.root / 'payload/manifest.sig').write_bytes(b'invalid signature')
+        with tarfile.open(self.root / 'bundle.tar.gz', 'w:gz') as archive:
+            archive.add(self.root / 'payload', arcname='bundle')
+        assignment = json.loads((self.root / 'assignment.json').read_text())
+        assignment['sha256'] = hashlib.sha256((self.root / 'bundle.tar.gz').read_bytes()).hexdigest()
+        (self.root / 'assignment.json').write_text(json.dumps(assignment))
+        self.run_script(self.script('hive-updater'), expected=1)
+        self.assert_no_downloads()
+
+    def test_low_space_stops_download_but_preserves_recovery_files(self):
+        self.bundle()
+        tx = self.root / 'var/lib/hive/ota-transaction/files'
+        tx.mkdir(parents=True)
+        (tx / 'saved').write_bytes(b'recovery backup')
+        self.mock('df', '#!/bin/sh\nprintf "Avail\\n67108864\\n"\n')
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('下载空间不足', result.stdout)
+        self.assertFalse((self.root / 'etc/test-app').exists())
+        self.assert_no_downloads()
+        self.assertEqual((tx / 'saved').read_bytes(), b'recovery backup')
+
+    def test_download_without_content_length_is_bounded_by_kernel(self):
+        self.bundle()
+        self.mock('df', '#!/bin/sh\nprintf "Avail\\n67141632\\n"\n') # reserve + 32 KiB
+        curl = self.root / 'mock/curl'
+        curl.write_text(curl.read_text().replace("    shutil.copyfile(r/'bundle.tar.gz',args[args.index('-o')+1])", "    target=Path(args[args.index('-o')+1])\n    try:target.write_bytes(b'x'*(1024*1024))\n    except OSError:pass\n    (r/'download-size').write_text(str(target.stat().st_size))\n    sys.exit(1)"))
+        self.run_script(self.script('hive-updater'), expected=1)
+        self.assertLessEqual(int((self.root / 'download-size').read_text()), 32768)
+        self.assert_no_downloads()
+
+    def test_extraction_space_checked_after_download(self):
+        self.bundle()
+        self.mock('df', "#!/usr/bin/env python3\nimport os\nfrom pathlib import Path\nr=Path(os.environ['HIVE_TEST_ROOT'])\ndownloaded=any((r/'var/lib/hive').glob('ota-download.*/bundle.tar.gz'))\nprint('Avail');print(67108865 if downloaded else 3*1024**3)\n")
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('解压空间不足', result.stdout)
+        self.assertFalse((self.root / 'etc/test-app').exists())
+        self.assert_no_downloads()
+
+    def test_startup_removes_abandoned_downloads(self):
+        assignment = self.bundle()
+        stale = self.root / 'var/lib/hive/ota-download.abandoned'
+        stale.mkdir(); (stale / 'partial').write_bytes(b'partial download')
+        # Skip installing, so startup behavior can be verified independently.
+        (self.root / 'var/lib/hive/ota-installed.json').write_text(json.dumps(assignment))
+        self.run_script(self.script('hive-updater'))
+        self.assert_no_downloads()
+
+    def test_killed_download_is_cleaned_on_next_start(self):
+        self.bundle()
+        curl = self.root / 'mock/curl'
+        original = curl.read_text()
+        curl.write_text(original.replace("else:\n    shutil.copyfile", "else:\n    import signal\n    Path(args[args.index('-o')+1]).write_bytes(b'partial')\n    os.kill(os.getppid(),signal.SIGKILL)\n    sys.exit(0)\n    shutil.copyfile"))
+        script = self.script('hive-updater')
+        self.run_script(script, expected=-9)
+        self.assertTrue(list((self.root / 'var/lib/hive').glob('ota-download.*/bundle.tar.gz')))
+        curl.write_text(original)
+        self.run_script(script)
+        self.assert_no_downloads()
+        self.assertEqual((self.root / 'etc/test-app').read_text(), 'installed safely\n')
 
 
 class FirmwareTests(unittest.TestCase):
