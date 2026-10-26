@@ -1,245 +1,186 @@
-# Hive — Rockchip ARM 边缘节点集群
+# Hive — ARM 边缘节点与订阅服务平台
 
-Hive 是面向 Rockchip ARM SBC 的边缘节点大规模部署框架。同一镜像写入任意数量的设备，上电约两分钟后每台设备自主完成身份注册、隧道建立和服务初始化——无需逐台介入，集群规模与运维成本彻底解耦。
+Hive 面向 Rockchip ARM 开发板，提供节点初始化、代理出口、局域网网关、套餐订阅和客户门户。管理端使用 **Go + MySQL**，前端使用 **Next.js / React / TypeScript**，设备端使用 Bash 和 systemd。
 
----
+业务关系为：**节点 → 线路 → 套餐 → 客户订阅**。节点可以提供 Xray 代理出口，也可以通过 Mihomo 为有线 LAN 和 Wi-Fi 客户端提供网关服务。
+
+本次合并前审查的已修复项、剩余问题和验证范围见 [已知问题清单](docs/review-known-issues.md)。
+
+## 当前功能
+
+| 模块 | 功能 |
+|---|---|
+| 节点管理 | 注册、心跳、在线状态、资源指标、地区与权重、设备分配和认领 |
+| 代理与网关 | VLESS + WebSocket + TLS、Clash/Mihomo 配置、透明代理、分流、上游选择、有线 LAN 和双频热点 |
+| 套餐与订阅 | 套餐关联线路、客户独立订阅链接和 UUID、有效期、流量计量、同套餐续费 |
+| 订单与客户门户 | 注册登录、密码找回、套餐购买、订单查询、余额抵扣、优惠码、邀请返利、设备管理 |
+| 运维 | 白名单远程命令、服务控制、签名 OTA、部署回滚、数据库备份恢复 |
+| 管理与支持 | 管理员角色权限、操作审计、公告、工单和邮件到期提醒 |
+| 监控 | Prometheus、Grafana、Alertmanager 配置与告警规则 |
+
+## 购买、续费和退款
+
+订单确认支付后才开通或续费。余额或优惠抵扣后应付金额为零的订单自动确认；其他订单目前需要管理员确认收款。
+
+- **首次购买某套餐**：创建订阅，生成独立 Token 和 Xray UUID。
+- **重复购买同一套餐**：复用已有订阅，保留订阅 ID、链接、UUID 和设备绑定。未到期从原到期日增加套餐天数，已到期从付款确认日增加套餐天数。
+- **续费只延长时长**：保留当前流量额度、已用流量和设备数配置，不清零、不叠加额度。流量按 UTC 自然月重置；自动超额暂停的订阅在重置后按有效期恢复，人工暂停不会被续费或月度重置解除。
+- **购买不同套餐**：分别创建或续费该套餐的订阅，不自动换套餐。
+- **历史已有多份同套餐订阅**：优先续费仍有效且到期最晚的一份，否则选择到期最晚的一份；不会自动合并或删除旧记录。
+- **重复确认、并发付款**：事务串行处理同一客户的订单，每笔订单只增加一次时长，多笔订单的时长累加。
+- **退款**：根据每笔订单实际授予的天数和付款时间重新计算到期日，保留其他未退款订单的权益；不会清除已用流量。余额抵扣和返利按原订单退回或撤销。
+
+例如，订阅原定 6 月 30 日到期，6 月 10 日购买 30 天，新的到期日为 7 月 30 日；若 7 月 10 日才购买，则为 8 月 9 日。续费后继续使用原来的订阅链接。
+
+后端启动时自动执行数据库迁移。migration 26 新增订单时长记录和暂停原因。缺少时长记录的历史订单、或到期日被人工修改过的订阅，退款可能需要先核对权益；系统不会猜测应扣时长或直接停掉其他订单的服务。旧版没有记录暂停原因的订阅保留原暂停状态，需要管理员核对后激活。
+
+## 订阅授权与流量限制
+
+客户使用 `/c/{token}` 或 `/c/{token}/vless` 获取配置。线路 `/l/{token}`、分组 `/s/{token}` 导出还需提供 `?subscription=<客户订阅Token>`，结果只包含客户套餐允许的节点，不能绕过客户额度和到期限制。管理后台可粘贴客户订阅链接后生成相应导出。
+
+- 节点约每 15 秒上报 Xray 累计流量并续期授权，上传与下载均计入额度，多节点流量汇总到同一订阅；重复上报不重复计费。
+- 授权最长 45 秒，且不超过订阅到期时间；本地守护约每 5 秒检查一次。Registry 失联或同步失败不会无限保留访问权限。
+- 到期、超额、禁用或凭证轮换后，节点关闭旧连接。当前通过重启节点 Xray 实现，因此其他在线用户会短暂重连。
+- 网关失效时应用 REJECT 配置和 IPv4/IPv6 转发阻断，避免代理停止后回退到免费直连。
+- Prometheus 用于监控，计费由节点直接上报完成。重置订阅链接同时轮换连接 UUID；节点公共 UUID 不再提供代理访问。
+
+这是周期性计量，仍有采样与同步延迟，不是逐字节硬限额。升级已有节点必须配套更新后端、设备脚本和服务，详见 [订阅授权升级说明](docs/subscription-enforcement.md)。
 
 ## 架构
 
-```
-[终端用户]
-     │  ws+TLS
-     ▼
-[Cloudflare Edge]
-     │  CF Tunnel (http2)
-     ▼
-[cloudflared]   ← 节点无需公网 IP
-     │
-     ▼
-[nginx]         ← 监听 127.0.0.1:10077，WebSocket /ray → xray
-     │
-     ▼
-[xray-core]     VLESS+WS 监听 127.0.0.1:10079
-     │
-     ▼
-[本地出口]      节点本地网络出口
-
-────────── 管理平面（三套冗余）──────────
-[Tailscale mesh]  → 主通道：SSH / Ansible / Prometheus
-[EasyTier mesh]   → 备用通道：独立 P2P 网络
-[FRP tunnel]      → 最后防线：依赖境外 VPS frps
+```text
+客户客户端 → Cloudflare Edge → Cloudflare Tunnel → Nginx → Xray → 节点本地出口
+                                                    ↑
+                                        Registry 下发有效客户授权
+                                                    ↑
+                                     Go Registry / MySQL / 管理后台
+                                                    ↓
+LAN / Wi-Fi 客户端 → Mihomo 网关 → 套餐允许的上游 Hive 节点
 ```
 
-**管理服务器（VPS）**：frps · Prometheus · Grafana · Node Registry API · Ansible
+管理通道包括 Tailscale、EasyTier 和 FRP；监控通过 Prometheus / Grafana 展示。前端静态导出后由 Nginx 提供管理后台和客户门户。
 
----
+## 支持的构建配置
 
-## 零配置原理
+| Profile | 硬件 | 构建命令 |
+|---|---|---|
+| `nanopi-zero2` | NanoPi Zero2 / RK3528，1 GB / 2 GB | `make build` |
+| `nanopi-r28s` | NanoPi R28S / RK3528，1 GB | `make build-r28s` |
+| `nanopi-r3s` | NanoPi R3S / RK3566 | `make build-r3s` |
+| `orangepi4-lts` | Orange Pi 4 LTS / RK3399 | `make build-opi4` |
+| QEMU | ARM64 UEFI 测试镜像 | `make build-qemu`、`make run-qemu` |
 
-所有节点共享同一镜像，凭证在构建期嵌入。首次上电时，节点从网卡 MAC 地址确定性派生全部身份信息，无需外部分配：
+Wi-Fi 热点和双频能力取决于无线芯片、驱动及 AP 支持。
 
-| 生成内容 | 方式 | 重刷镜像是否变化 |
-|----------|------|------------------|
-| 主机名 `hive-<mac6>` | eth0 MAC 末 6 位 | 不变 |
-| SSH Host Key (Ed25519) | SHA-256(mac) seed | **不变** |
-| xray UUID | SHA-256(mac) | **不变** |
-| EasyTier IP | MAC6 三字节映射 → `10.b1.b2.b3` | 不变 |
-| FRP 远程端口 | MD5(MAC) → 10000–60000 | 不变 |
-| CF Tunnel 凭证 + DNS 记录 | Cloudflare API 自动创建 | 重建（幂等） |
-| Machine ID | `systemd-machine-id-setup` | 重建 |
+当前设备分为：已上线的 **Zero2 2 GB**、未上线的 **Zero2 1 GB** 和 **R28S 1 GB**。两种内存的 Zero2 共用镜像，R28S 使用独立构建配置和固件包；不能跨板型刷写。镜像按运行内存自动配置服务限额。三组设备均以 **32 GB TF 卡**为基线，**64 GB TF 卡**使用同一板型镜像；A/B 镜像首次启动将数据分区扩展到剩余空间。存量接入和新设备首刷见 [设备分组与迁移](docs/OTA.md#设备分组与迁移)。
 
----
+## 设备身份与初始化
+
+可以复用镜像，但每台设备必须配置独立的 Registry 凭证。管理员通过 `POST /admin/nodes/{mac}/credential` 签发或轮换凭证，并将返回值安装到该设备的 `/etc/hive/device-token`，权限设为 `0600`。不要把管理员 API 凭证或同一设备 Token 放入共享镜像。
+
+| 内容 | 当前方式 |
+|---|---|
+| 主机名 | MAC 末 6 位生成 `hive-<mac6>` |
+| SSH 主机密钥 | 随机生成并持久化；重刷且未保留密钥时会变化 |
+| 设备 UUID | 随机生成并持久化，仅作为设备元数据 |
+| 客户代理凭证 | 每份订阅独立生成，在节点内存中授权 |
+| EasyTier IP | Registry 在 `172.20.0.0/16` 地址池中分配 |
+| FRP 远程端口 | 由完整 MAC 的 MD5 映射到 `10000–59999`，仍可能碰撞 |
+| Cloudflare Tunnel / DNS | 首次启动脚本通过 API 配置 |
+
+具备设备凭证、网络和服务配置后，首次启动脚本完成节点注册、隧道和服务初始化。现有设备的身份迁移见 [代码审查修复与迁移说明](docs/review-remediation.md)。
 
 ## 快速开始
 
-### 前提
+### 部署管理服务
 
-- Ubuntu 22.04 / Debian 12 构建主机（推荐 8 核 / 16 GB RAM）
-- 已完成服务端部署（见[服务端文档](#服务端部署)）
-
-```bash
-# 安装构建依赖
-sudo apt install -y git curl wget jq build-essential python3 \
-    ccache unzip qemu-user-static binfmt-support debootstrap
-```
-
-### 构建流程
-
-```bash
-# 1. 初始化 Armbian 框架（首次）
-./scripts/setup-armbian.sh
-
-# 2. 下载 arm64 二进制（xray / cloudflared / frpc / easytier）
-./scripts/download-binaries.sh
-
-# 3. 填写凭证
-cp .env.example .env
-vim .env   # 填入 CF Token、Tailscale OAuth Secret、FRP 地址等
-
-# 4. 构建镜像（首次约 30-90 分钟，有 ccache 后 10-20 分钟）
-./scripts/build.sh
-
-# 5. 烧录
-sudo dd if=armbian-build/build/output/images/*.img of=/dev/sdX bs=4M status=progress
-```
-
-详见 [docs/BUILD.md](docs/BUILD.md)。
-
-### 上电验证
-
-```bash
-# ~2 分钟后，在管理服务器上查看节点
-tailscale status | grep hive-
-
-# SSH 到节点
-ssh root@hive-<mac6>
-
-# 查看节点所有管理通道地址（离线工具）
-./scripts/node-lookup.sh <mac6>
-```
-
----
-
-## .env 关键变量
-
-```bash
-# Cloudflare（节点 URL: hive-<mac6>.yourdomain.com）
-CF_API_TOKEN=       # 需要 Tunnel:Edit + DNS:Edit 权限
-CF_ACCOUNT_ID=
-CF_ZONE_ID=
-CF_DOMAIN=yourdomain.com
-
-# Tailscale — 使用 OAuth Client Secret（不过期，区别于 90 天 Auth Key）
-# 必须在 ACL Policy 中声明 tag: "tagOwners": { "tag:hive": ["autogroup:admin"] }
-TAILSCALE_OAUTH_SECRET=tskey-client-xxxxx
-
-# FRP（SSH 应急隧道）
-FRP_SERVER_ADDR=your-vps.example.com
-FRP_SERVER_PORT=7000
-FRP_AUTH_TOKEN=
-
-# EasyTier（P2P mesh）
-EASYTIER_NETWORK_NAME=hive
-EASYTIER_SECRET=
-EASYTIER_PEERS=your-vps.example.com   # 可逗号分隔多中继
-
-# 节点 root 初始密码（provision 后应通过 SSH key 登录）
-DEFAULT_ROOT_PASSWORD=
-
-# 可选
-NODE_REGISTRY_URL=https://registry.yourdomain.com
-```
-
----
-
-## 节点内服务
-
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| nginx | 127.0.0.1:10077 | WebSocket 反向代理，/ray → xray |
-| xray | 127.0.0.1:10079 | WebSocket 流量转发核心 |
-| cloudflared | — | CF Tunnel，暴露 nginx 到公网 |
-| frpc | — | FRP 客户端，暴露 SSH 到 VPS |
-| easytier | — | P2P mesh，提供备用管理 IP |
-| tailscaled | — | Tailscale VPN，主管理通道 |
-| prometheus-node-exporter | 9100 | 指标采集（仅 Tailscale 可达） |
-| ufw | — | 防火墙，开机自动配置（日志默认关闭） |
-| fail2ban | — | SSH 暴力破解防护 |
-| auditd | — | 系统审计日志 |
-
-**数据通道**：xray 基于 WebSocket（`/ray`），经 nginx 和 CF Tunnel 对外暴露为 HTTPS/WSS。
-节点连接配置在登录后 MOTD 自动显示，也可通过 Node Registry 订阅接口批量获取。
-
----
-
-## 服务端部署
-
-按顺序完成以下步骤后再构建镜像：
-
-| 步骤 | 文档 | 内容 |
-|------|------|------|
-| 1 | [01-foreign-vps.md](docs/management/01-foreign-vps.md) | 境外 VPS：frps + EasyTier 中继 |
-| 2 | [03-cloudflare-tokens.md](docs/management/03-cloudflare-tokens.md) | 获取 CF API Token / Account ID / Zone ID |
-| 3 | [04-tailscale-key.md](docs/management/04-tailscale-key.md) | 创建 Tailscale OAuth Client + 配置 ACL |
-| 4 | [02-china-vps.md](docs/management/02-china-vps.md) | 管理 VPS：Node Registry + Prometheus + Grafana |
-| 4.5 | [05-airport-roadmap.md](docs/management/05-airport-roadmap.md) | 自有节点平台管理系统规划 |
-| 4.6 | [06-v1-compatible-infra-roadmap.md](docs/management/06-v1-compatible-infra-roadmap.md) | `v1.0.0` 节点兼容基础设施 Roadmap |
-| 4.7 | [07-local-dev.md](docs/management/07-local-dev.md) | 本地开发与调试 |
-| 5 | — | 填 `.env`，构建镜像，批量烧录 |
-
----
-
-## 安全特性
-
-- **防火墙（UFW）**：默认拒绝所有入站，仅开放 SSH（本地网络 + Tailscale）和 Node Exporter（仅 Tailscale）
-- **入侵防护（fail2ban）**：SSH 3 次失败封禁 2 小时；端口扫描封禁
-- **SSH 加固**：`MaxAuthTries 3`、`LoginGraceTime 30`、禁 X11/Agent 转发
-- **内核加固**：SYN cookie、rp_filter、禁 ICMP 重定向、禁源路由、ASLR
-- **自动安全更新**：`unattended-upgrades` 仅应用安全补丁
-- **审计日志**：`auditd` 记录 SSH config、root/.ssh、/etc/shadow 变更
-- **确定性 SSH key**：重刷镜像后 fingerprint 不变，避免 known_hosts 重置
-
-详见 [docs/SECURITY-SUMMARY.md](docs/SECURITY-SUMMARY.md)。
-
----
-
-## 文档索引
+先准备 MySQL、Registry、前端、监控和管理通道。部署配置以 [.env.example](.env.example) 为入口；该文件使用部分 `REGISTRY_*` 变量，部署脚本会映射到 Go 服务使用的 `MYSQL_*`、`ADMIN_*` 等变量，不能直接把它当作后端运行环境文件。
 
 | 文档 | 内容 |
-|------|------|
-| [docs/INDEX.md](docs/INDEX.md) | 文档总索引 |
-| [docs/BUILD.md](docs/BUILD.md) | 镜像构建全流程 |
-| [docs/PROVISION.md](docs/PROVISION.md) | 首次启动配置详解 |
-| [docs/NODE-OPERATIONS.md](docs/NODE-OPERATIONS.md) | 节点日常运维 |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 常见故障排查 |
-| [docs/management/05-airport-roadmap.md](docs/management/05-airport-roadmap.md) | 自有节点平台管理系统规划 |
-| [docs/management/06-v1-compatible-infra-roadmap.md](docs/management/06-v1-compatible-infra-roadmap.md) | `v1.0.0` 节点兼容基础设施 Roadmap |
-| [docs/management/07-local-dev.md](docs/management/07-local-dev.md) | 本地开发与调试 |
-| [docs/FIREWALL.md](docs/FIREWALL.md) | 防火墙配置 |
-| [docs/FAIL2BAN.md](docs/FAIL2BAN.md) | 入侵防护配置 |
+|---|---|
+| [境外 VPS](docs/management/01-foreign-vps.md) | FRP、EasyTier 中继 |
+| [Cloudflare](docs/management/03-cloudflare-tokens.md) | API Token、Account / Zone ID |
+| [Tailscale](docs/management/04-tailscale-key.md) | OAuth 配置和 ACL |
+| [管理 VPS](docs/management/02-china-vps.md) | Registry、MySQL、前端和监控 |
+| [部署与回滚](docs/management/08-deploy-and-rollback.md) | 发布与回滚流程 |
+| [数据库迁移与备份](docs/management/08-db-migration-backup.md) | 数据库操作 |
 
----
+### 构建设备镜像
 
-## 关键文件结构
+构建机需要 Docker 及 Armbian 所需依赖，详细要求见 [构建文档](docs/BUILD.md)。在仓库根目录执行：
 
-```
-.
-├── .env.example                   # 环境变量模板（复制为 .env 后填写）
-├── scripts/
-│   ├── build.sh                   # 一键构建脚本（含 ccache 优化）
-│   ├── download-binaries.sh       # 下载 arm64 二进制
-│   ├── setup-armbian.sh           # 初始化 Armbian 构建框架
-│   └── node-lookup.sh             # 离线计算节点地址（仅需 mac6）
-├── configs/
-│   ├── hive/config.env.tpl        # 节点配置模板（嵌入镜像）
-│   └── frp/frpc.toml.tpl          # FRP 客户端配置模板
-├── armbian-build/userpatches/
-│   ├── customize-image.sh         # 镜像定制钩子（chroot 内执行）
-│   └── overlay/                   # 直接覆盖到镜像根目录
-│       ├── etc/hive/              # 节点配置目录
-│       ├── etc/xray/config.json   # xray 配置（含 UUID 占位符）
-│       ├── etc/frp/frpc.toml      # FRP 客户端配置
-│       ├── etc/systemd/system/    # systemd 服务文件
-│       ├── etc/update-motd.d/     # 自定义登录 MOTD
-│       └── usr/local/bin/
-│           ├── provision-node.sh  # 首次启动编排脚本（核心）
-│           ├── setup-firewall.sh  # UFW 防火墙配置
-│           ├── setup-fail2ban.sh  # fail2ban 配置
-│           ├── hive-firewall      # 防火墙管理工具
-│           ├── hive-fail2ban      # 入侵防护管理工具
-│           └── start-easytier.sh  # EasyTier 启动包装脚本
-├── management/
-│   ├── docker-compose.yml         # Prometheus + Grafana
-│   ├── registry/main.py           # Node Registry API（FastAPI）
-│   └── docs/                      # 服务端部署文档
-└── ansible/                       # 批量管理 playbook
+```bash
+make env                         # 创建 .env，不覆盖已有文件
+# 编辑 .env，填写 Cloudflare、Tailscale、FRP、EasyTier 和 Registry 配置
+make setup-armbian
+make download-binaries
+make build                       # 默认 NanoPi Zero2；其他 profile 见上表
 ```
 
----
+将生成的镜像烧录到目标介质，为每台设备安装独立凭证后启动。可在管理后台查看注册结果，或登录设备查看服务状态。出口设备还需要加入线路并关联套餐；网关设备必须绑定有效客户订阅。
 
-## 已知限制
+### 本地开发与验证
 
-- **FRP 端口碰撞**：端口从全 MAC 的 md5 派生到 10000–59999（宽 50000），100 台设备至少一次碰撞概率约 10%（生日问题 C(100,2)/50000）；碰撞时该 FRP 应急隧道不可用，但不影响 Tailscale / EasyTier 主通道
-- **SSH 密码登录**：当前开启（`PasswordAuthentication yes`），provision 导入 GitHub 公钥后建议手动关闭或通过 Ansible 批量改为 `no`
-- **CF Tunnel 重建**：重刷镜像且本地 `cert.json` 丢失时会删除旧 Tunnel 并重建，Tunnel ID 变化（VLESS 链接中的 hostname 不变）
-- **Tailscale tag 权限**：必须在 ACL Policy 中声明 `tagOwners`，否则 `tailscale up --advertise-tags=tag:hive` 会失败
+后端 Go 版本以 [go.mod](management/registry/go.mod) 为准，当前为 Go 1.26；前端使用 Node.js 24 和 npm。
+
+```bash
+make registry                    # 编译 Go 后端
+make registry-openapi            # 从 Go 注释生成接口定义
+cd management/registry-ui
+npm ci
+npm run gen-api
+npm run typecheck
+npm test
+npm run build                    # 静态导出到 out/
+```
+
+Go 集成测试需要专用 MySQL 数据库，通过 `TEST_MYSQL_HOST`、`TEST_MYSQL_PORT`、`TEST_MYSQL_USER`、`TEST_MYSQL_PASSWORD`、`TEST_MYSQL_DB` 指定，然后在 `management/registry` 执行 `go test -race ./...`。测试会清空测试库中的表，不要使用业务数据库。
+
+设备与部署脚本使用隔离环境进行回归验证，需要 Python 3、Bash、jq、OpenSSL 和常用系统工具：
+
+```bash
+python3 scripts/test-remediation.py
+python3 scripts/test-subscriptions.py
+```
+
+本地环境配置见 [开发文档](docs/management/07-local-dev.md)，完整命令见 `make help`。
+
+## OTA 更新
+
+后台支持直接上传更新包，按 16 MiB 分片传输并自动计算 SHA256，无需另外准备下载服务器。设备使用独立凭证下载，经签名和文件校验后执行更新，后台区分安装中、完成、失败和已回滚。
+
+```bash
+make gen-ota-keys                 # 首次生成，后续版本保留同一签名密钥
+make build-ota VERSION=1.0.0      # 应用包：备份、安装、健康检查，失败自动恢复
+make build-ab VERSION=1.0.0       # Zero2 1 GB / 2 GB：A/B 出厂镜像 + 固件包
+make build-ab-r28s VERSION=1.0.0  # R28S 1 GB：独立 A/B 出厂镜像 + 固件包
+make build-ota-bootstrap VERSION=1.0.0  # 已上线设备首次接入应用 OTA
+```
+
+应用更新支持失败回滚和进程中断后的开机恢复。NanoPi Zero2 / R28S A/B 路径包含双根分区、独立数据分区、冗余启动环境、备用槽写入、三次试启动和健康确认；现有单分区设备须先离线整盘刷写新镜像，之后使用系统 OTA 包升级。
+
+**两种板型的 A/B 引导器已交叉编译验证，完整系统镜像构建和三组设备的真机验收仍待完成。** 内核完全卡死且无法自行重启时，仍需要硬件看门狗或人工重启，不能仅靠启动次数保证无人值守恢复。默认布局建议 32 GB 及以上存储。构建、上传、首刷、回切边界及验收步骤见 [OTA 与 A/B 升级说明](docs/OTA.md)。
+
+## 功能边界
+
+- 在线支付渠道、支付回调、外部资金退款、充值和提现尚未接通；订单状态管理不等于已完成资金结算。
+- 套餐限速和设备数量已有配置字段，但尚未实现强制限速或并发设备数控制。
+- 风控目前有事件表和查询接口，尚未形成自动检测流程。
+- 远程操作采用白名单命令队列，设备定期拉取，非即时远程 Shell。
+- 告警接收端、SMTP 和外部下载地址需要按部署环境配置。
+- 历史文档可能仍包含旧版 FastAPI、确定性密钥或公共订阅的描述；当前以 Go 实现和本 README 的升级说明为准。
+
+## 代码与文档导航
+
+```text
+management/registry/                  Go API、计费、续费、权限和数据库迁移
+management/registry-ui/               管理后台与客户门户
+management/nginx/                    API 转发与静态站点配置
+management/prometheus/               监控配置
+armbian-build/userpatches/overlay/    设备脚本、配置模板与 systemd 单元
+scripts/                             镜像构建、OTA 打包和脚本回归
+configs/                             构建及节点配置模板
+ansible/                             批量运维
+```
+
+更多内容见 [文档索引](docs/index.md)、[节点运维](docs/NODE-OPERATIONS.md)、[故障排查](docs/TROUBLESHOOTING.md)、[身份迁移](docs/review-remediation.md) 和 [订阅授权升级](docs/subscription-enforcement.md)。

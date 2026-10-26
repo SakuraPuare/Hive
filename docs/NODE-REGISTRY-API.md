@@ -1,3 +1,5 @@
+> 认证变更：共享 Registry 密钥已停用。设备需独立 MAC 凭证，管理自动化使用 `ADMIN_API_SECRET`；升级步骤见 [审查修复与迁移](review-remediation.md)。
+
 # Node Registry API 规范
 
 服务运行在管理 VPS，通过宿主机 **nginx** 暴露在 `/api/` 二级目录下。

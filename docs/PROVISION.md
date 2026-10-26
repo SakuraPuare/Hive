@@ -1,3 +1,5 @@
+> 认证变更：共享 Registry 密钥已停用。设备需独立 MAC 凭证，管理自动化使用 `ADMIN_API_SECRET`；升级步骤见 [审查修复与迁移](review-remediation.md)。
+
 # 首次启动配置（Provision）详解
 
 本文档描述 Hive Node 首次上电后 `provision-node.sh` 执行的完整流程，以及各步骤的设计原理。

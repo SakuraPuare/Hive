@@ -24,6 +24,7 @@ export default defineConfig({
         text: '日常运维',
         items: [
           { text: '节点操作', link: '/NODE-OPERATIONS' },
+          { text: 'OTA 与 A/B 升级', link: '/OTA' },
           { text: 'WiFi 热点（自动）', link: '/HOTSPOT' },
           { text: '透明代理网关（路由器）', link: '/GATEWAY' },
           { text: '故障排查', link: '/TROUBLESHOOTING' },
