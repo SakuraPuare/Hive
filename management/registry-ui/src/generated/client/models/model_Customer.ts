@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export type model_Customer = {
+    balance?: number;
     created_at?: string;
     email?: string;
     id?: number;

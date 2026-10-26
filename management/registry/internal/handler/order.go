@@ -1,9 +1,9 @@
 package handler
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"time"
@@ -49,7 +49,7 @@ type OrderListResponse struct {
 
 func generateOrderNo() string {
 	ts := time.Now().UTC().Format("20060102150405")
-	return fmt.Sprintf("HV%s%04x", ts, uint16(rand.UintN(1<<16)))
+	return "HV" + ts + rand.Text()[:16]
 }
 
 // ── handlers ──────────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ func (h *Handler) HandleListOrders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	orders := make([]model.Order, 0)
-	if err := query.Select("id, order_no, customer_id, plan_id, amount, original_amount, promo_code_id, status, paid_at, created_at, updated_at").
+	if err := query.Select("id, order_no, customer_id, plan_id, amount, original_amount, promo_code_id, balance_deducted, balance_returned, status, paid_at, created_at, updated_at").
 		Order("o.id DESC").Limit(limit).Offset(offset).Scan(&orders).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
@@ -122,7 +122,7 @@ func (h *Handler) HandleGetOrder(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var o model.Order
 	if err := h.DB.Raw(
-		"SELECT id, order_no, customer_id, plan_id, amount, original_amount, promo_code_id, status, paid_at, created_at, updated_at FROM orders WHERE id = ?", id).
+		"SELECT id, order_no, customer_id, plan_id, amount, original_amount, promo_code_id, balance_deducted, balance_returned, status, paid_at, created_at, updated_at FROM orders WHERE id = ?", id).
 		Scan(&o).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
@@ -137,7 +137,7 @@ func (h *Handler) HandleGetOrder(w http.ResponseWriter, r *http.Request) {
 // HandleUpdateOrderStatus godoc
 // @Summary      更新订单状态
 // @ID           AdminUpdateOrderStatus
-// @Description  更新指定订单的状态，若改为 paid 则自动创建订阅
+// @Description  更新指定订单的状态，若改为 paid 则续期同套餐订阅；没有已有订阅时创建
 // @Tags         admin
 // @Security     AdminSessionCookie
 // @Accept       json
@@ -147,6 +147,7 @@ func (h *Handler) HandleGetOrder(w http.ResponseWriter, r *http.Request) {
 // @Success      200 {object} StatusResponse
 // @Failure      400 {object} ErrorResponse
 // @Failure      404 {object} ErrorResponse
+// @Failure      409 {object} ErrorResponse
 // @Failure      500 {object} ErrorResponse
 // @Router       /admin/orders/{id}/status [patch]
 func (h *Handler) HandleUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
@@ -161,66 +162,10 @@ func (h *Handler) HandleUpdateOrderStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	now := time.Now().UTC().Format(model.TimeLayout)
-
-	var o model.Order
-	if err := h.DB.Raw(
-		"SELECT id, order_no, customer_id, plan_id, amount, original_amount, promo_code_id, status, paid_at, created_at, updated_at FROM orders WHERE id = ?", id).
-		Scan(&o).Error; err != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+	o, err := h.updateOrderStatus(id, req.Status)
+	if err != nil {
+		h.orderError(w, err)
 		return
-	}
-	if o.ID == 0 {
-		h.jsonErr(w, http.StatusNotFound, "order not found")
-		return
-	}
-
-	if req.Status == "paid" {
-		if err := h.DB.Exec("UPDATE orders SET status=?, paid_at=?, updated_at=? WHERE id=?",
-			req.Status, now, now, id).Error; err != nil {
-			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
-			return
-		}
-	} else {
-		if err := h.DB.Exec("UPDATE orders SET status=?, updated_at=? WHERE id=?",
-			req.Status, now, id).Error; err != nil {
-			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
-			return
-		}
-	}
-
-	if req.Status == "paid" && o.Status != "paid" {
-		var plan struct {
-			DurationDays int   `gorm:"column:duration_days"`
-			TrafficLimit int64 `gorm:"column:traffic_limit"`
-			DeviceLimit  int   `gorm:"column:device_limit"`
-		}
-		if err := h.DB.Raw("SELECT duration_days, traffic_limit, device_limit FROM plans WHERE id=?", o.PlanID).Scan(&plan).Error; err != nil {
-			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
-			return
-		}
-
-		token, err := generateToken()
-		if err != nil {
-			token = generateOrderNo()
-		}
-		xrayUUID, err := generateUUID()
-		if err != nil {
-			h.jsonErr(w, http.StatusInternalServerError, "uuid: "+err.Error())
-			return
-		}
-		startedAt := now
-		expiresAt := time.Now().UTC().AddDate(0, 0, plan.DurationDays).Format(model.TimeLayout)
-		if err := h.DB.Exec(
-			"INSERT INTO customer_subscriptions (customer_id, plan_id, token, xray_uuid, traffic_used, traffic_limit, device_limit, started_at, expires_at, status, created_at, updated_at) VALUES (?,?,?,?,0,?,?,?,?,'active',?,?)",
-			o.CustomerID, o.PlanID, token, xrayUUID, plan.TrafficLimit, plan.DeviceLimit, startedAt, expiresAt, now, now,
-		).Error; err != nil {
-			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
-			return
-		}
-
-		// 邀请返利
-		h.CreateReferralCommission(o)
 	}
 
 	actor, _, _ := h.Auth.ParseSession(r)

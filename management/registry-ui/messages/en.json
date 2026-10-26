@@ -967,7 +967,7 @@
     "userFallback": "there",
     "purchaseFailed": "Purchase failed",
     "confirmPurchase": "Confirm purchase",
-    "confirmPurchaseDesc": "You're about to purchase the \"{name}\" plan for {price}, valid for {days} days. An order will be created immediately.",
+    "confirmPurchaseDesc": "Purchase \"{name}\" for {price} and {days} days. Once payment is confirmed, an existing subscription to the same plan is extended from its expiry date, or from payment if expired. Renewal preserves the current quota and usage; monthly resets continue. Confirm to create the order.",
     "confirmPurchaseAction": "Confirm purchase",
     "purchaseSuccess": "Order created successfully",
     "noPlansDesc": "There are no plans available right now. Please check back later or contact support.",

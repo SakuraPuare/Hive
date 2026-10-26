@@ -1190,7 +1190,7 @@ paths:
         - admin
   "/admin/orders/{id}/status":
     patch:
-      description: 更新指定订单的状态，若改为 paid 则自动创建订阅
+      description: 更新指定订单的状态，若改为 paid 则续期同套餐订阅；没有已有订阅时创建
       operationId: AdminUpdateOrderStatus
       parameters:
         - description: 订单 ID
@@ -1221,6 +1221,12 @@ paths:
                 $ref: "#/components/schemas/handler.ErrorResponse"
         "404":
           description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "409":
+          description: Conflict
           content:
             application/json:
               schema:
@@ -5202,6 +5208,8 @@ components:
       type: object
     model.Customer:
       properties:
+        balance:
+          type: integer
         created_at:
           type: string
         email:
@@ -5403,6 +5411,10 @@ components:
       properties:
         amount:
           type: integer
+        balance_deducted:
+          type: integer
+        balance_returned:
+          type: boolean
         created_at:
           type: string
         customer_id:

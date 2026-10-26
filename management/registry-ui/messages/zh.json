@@ -967,7 +967,7 @@
     "userFallback": "用户",
     "purchaseFailed": "购买失败",
     "confirmPurchase": "确认购买",
-    "confirmPurchaseDesc": "你将购买「{name}」套餐,价格 {price},有效期 {days} 天。确认后将立即创建订单。",
+    "confirmPurchaseDesc": "你将购买「{name}」套餐，价格 {price}，时长 {days} 天。付款确认后，同套餐将续到原订阅；未到期从原到期日顺延，已到期从付款日开始。续费保留当前流量额度和已用流量，继续按月重置。确认后创建订单。",
     "confirmPurchaseAction": "确认购买",
     "purchaseSuccess": "订单创建成功",
     "noPlansDesc": "当前没有可购买的套餐,请稍后再来看看,或联系客服了解详情。",

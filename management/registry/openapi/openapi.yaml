@@ -904,6 +904,8 @@ definitions:
     type: object
   model.Customer:
     properties:
+      balance:
+        type: integer
       created_at:
         type: string
       email:
@@ -1104,6 +1106,10 @@ definitions:
     properties:
       amount:
         type: integer
+      balance_deducted:
+        type: integer
+      balance_returned:
+        type: boolean
       created_at:
         type: string
       customer_id:
@@ -2293,7 +2299,7 @@ paths:
     patch:
       consumes:
       - application/json
-      description: 更新指定订单的状态，若改为 paid 则自动创建订阅
+      description: 更新指定订单的状态，若改为 paid 则续期同套餐订阅；没有已有订阅时创建
       operationId: AdminUpdateOrderStatus
       parameters:
       - description: 订单 ID
@@ -2320,6 +2326,10 @@ paths:
             $ref: '#/definitions/handler.ErrorResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "409":
+          description: Conflict
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
         "500":

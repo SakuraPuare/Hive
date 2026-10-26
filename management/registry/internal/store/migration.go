@@ -511,6 +511,31 @@ ALTER TABLE users ADD COLUMN rbac_initialized BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE customers MODIFY COLUMN status ENUM('active','suspended','deleted','banned') NOT NULL DEFAULT 'active';
 `,
 	},
+	{
+		version: 23,
+		desc:    "transactional order balance and fulfillment records",
+		up: `
+ALTER TABLE orders ADD COLUMN balance_deducted INT UNSIGNED NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN balance_returned BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE TABLE order_fulfillments (
+    order_id INT UNSIGNED NOT NULL PRIMARY KEY,
+    subscription_id INT UNSIGNED NULL,
+    referral_id INT UNSIGNED NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+`,
+	},
+	{
+		version: 26,
+		desc:    "subscription renewal grants and suspension reasons",
+		up: `
+ALTER TABLE order_fulfillments ADD COLUMN sequence_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT UNIQUE;
+ALTER TABLE order_fulfillments ADD COLUMN duration_days INT NOT NULL DEFAULT 0;
+ALTER TABLE order_fulfillments ADD COLUMN granted_at DATETIME NULL;
+ALTER TABLE order_fulfillments ADD COLUMN previous_expires_at DATETIME NULL;
+CREATE INDEX idx_subscription_fulfillments ON order_fulfillments (subscription_id, sequence_id);
+ALTER TABLE customer_subscriptions ADD COLUMN suspension_reason VARCHAR(16) NOT NULL DEFAULT '';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

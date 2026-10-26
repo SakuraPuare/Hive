@@ -138,7 +138,7 @@ func (h *Handler) requireCustomer(next http.HandlerFunc) http.HandlerFunc {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return
 		}
-		if status != "active" {
+		if status != "active" && status != "suspended" {
 			h.jsonErr(w, http.StatusForbidden, "account disabled")
 			return
 		}
@@ -267,7 +267,7 @@ func (h *Handler) HandlePortalLogin(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
-	if c.Status != "active" {
+	if c.Status != "active" && c.Status != "suspended" {
 		store.WriteAuditLog(h.DB, req.Email, "customer_login_fail", "account disabled", ip)
 		h.jsonErr(w, http.StatusForbidden, "account disabled")
 		return
@@ -483,80 +483,15 @@ func (h *Handler) HandlePortalCreateOrder(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 验证套餐存在且启用
-	var plan model.Plan
-	if err := h.DB.Raw("SELECT * FROM plans WHERE id = ? AND enabled = 1", req.PlanID).Scan(&plan).Error; err != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+	order, err := h.createCustomerOrder(cid, req)
+	if err != nil {
+		h.orderError(w, err)
 		return
 	}
-	if plan.ID == 0 {
-		h.jsonErr(w, http.StatusBadRequest, "plan not found or disabled")
-		return
-	}
+	store.WriteAuditLog(h.DB, fmt.Sprintf("customer:%d", cid), "portal_order_create",
+		fmt.Sprintf("order: %s, plan: %d, balance_deducted: %d", order.OrderNo, order.PlanID, order.BalanceDeducted), getClientIP(r))
+	h.jsonOK(w, map[string]any{"order_no": order.OrderNo, "amount": order.Amount, "original_amount": order.OriginalAmount, "balance_deducted": order.BalanceDeducted, "status": order.Status})
 
-	originalAmount := plan.Price
-	finalAmount := originalAmount
-	var promoCodeID *uint
-
-	// 应用优惠码
-	if req.PromoCode != "" {
-		var promo model.PromoCode
-		now := time.Now().UTC().Format(model.TimeLayout)
-		if err := h.DB.Raw(
-			"SELECT * FROM promo_codes WHERE code = ? AND enabled = 1 AND valid_from <= ? AND valid_to >= ? AND (max_uses = 0 OR used_count < max_uses)",
-			req.PromoCode, now, now,
-		).Scan(&promo).Error; err != nil {
-			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
-			return
-		}
-		if promo.ID == 0 {
-			h.jsonErr(w, http.StatusBadRequest, "invalid or expired promo code")
-			return
-		}
-		if promo.DiscountPct > 0 {
-			finalAmount = originalAmount * (100 - promo.DiscountPct) / 100
-		}
-		if promo.DiscountAmt > 0 {
-			finalAmount -= promo.DiscountAmt
-		}
-		if finalAmount < 0 {
-			finalAmount = 0
-		}
-		promoCodeID = &promo.ID
-	}
-
-	// 余额抵扣
-	var balanceDeducted int
-	if req.UseBalance && finalAmount > 0 {
-		finalAmount, balanceDeducted = h.ApplyBalanceDeduction(cid, finalAmount)
-	}
-
-	orderNo := generateOrderNo()
-	now := time.Now().UTC().Format(model.TimeLayout)
-
-	if err := h.DB.Exec(
-		"INSERT INTO orders (order_no, customer_id, plan_id, amount, original_amount, promo_code_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-		orderNo, cid, plan.ID, finalAmount, originalAmount, promoCodeID, "pending", now, now,
-	).Error; err != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
-		return
-	}
-
-	// 优惠码使用次数 +1
-	if promoCodeID != nil {
-		if err := h.DB.Exec("UPDATE promo_codes SET used_count = used_count + 1 WHERE id = ?", *promoCodeID).Error; err != nil {
-			log.Printf("create order: update promo code used_count: %v", err)
-		}
-	}
-
-	// 查询客户 email 用于审计
-	var email string
-	if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", cid).Scan(&email).Error; err != nil {
-		log.Printf("create order: lookup email for customer %d: %v", cid, err)
-	}
-	store.WriteAuditLog(h.DB, email, "portal_order_create", fmt.Sprintf("order: %s, plan: %d", orderNo, plan.ID), getClientIP(r))
-
-	h.jsonOK(w, map[string]any{"order_no": orderNo, "amount": finalAmount, "original_amount": originalAmount, "balance_deducted": balanceDeducted})
 }
 
 // ── GET /portal/orders — 当前客户的订单列表 ─────────────────────────────────

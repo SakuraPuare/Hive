@@ -4,6 +4,8 @@
 /* eslint-disable */
 export type model_Order = {
     amount?: number;
+    balance_deducted?: number;
+    balance_returned?: boolean;
     created_at?: string;
     customer_id?: number;
     id?: number;

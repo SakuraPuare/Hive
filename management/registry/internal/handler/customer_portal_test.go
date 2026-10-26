@@ -137,7 +137,7 @@ func TestPortalLogin_NotFound(t *testing.T) {
 func TestPortalLogin_DisabledAccount(t *testing.T) {
 	resetDB(t)
 	cid := insertTestCustomer(t, "disabled@example.com")
-	testDB.Exec("UPDATE customers SET status = 'suspended' WHERE id = ?", cid)
+	testDB.Exec("UPDATE customers SET status = 'banned' WHERE id = ?", cid)
 
 	resp := doJSON("POST", "/portal/login", map[string]string{
 		"email":    "disabled@example.com",
@@ -220,7 +220,7 @@ func TestPortalMe_ExpiredCookie(t *testing.T) {
 func TestPortalMe_DisabledAccount(t *testing.T) {
 	resetDB(t)
 	cid := insertTestCustomer(t, "dis@example.com")
-	testDB.Exec("UPDATE customers SET status = 'suspended' WHERE id = ?", cid)
+	testDB.Exec("UPDATE customers SET status = 'banned' WHERE id = ?", cid)
 
 	resp := doJSON("GET", "/portal/me", nil, customerCookie(cid))
 	assertStatus(t, resp, http.StatusForbidden)

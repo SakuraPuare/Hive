@@ -103,46 +103,26 @@ func (h *Handler) updateTrafficFromPrometheus() {
 
 // ── traffic reset ────────────────────────────────────────────────────────────
 
-// resetTrafficIfNeeded checks each active subscription and resets traffic_used
-// if a calendar month boundary has passed since the last reset.
-func (h *Handler) resetTrafficIfNeeded() {
-	type subReset struct {
-		ID             uint
-		TrafficResetAt *time.Time
-		StartedAt      time.Time
-	}
-	var subs []subReset
-	if err := h.DB.Raw("SELECT id, traffic_reset_at, started_at FROM customer_subscriptions WHERE status = 'active'").Scan(&subs).Error; err != nil {
-		log.Printf("traffic: query subs for reset: %v", err)
+// Both maintenance loops share one atomic reset. Automatic quota suspension
+// must not prevent the next monthly allowance, or undo an administrator's pause.
+func (h *Handler) resetTrafficIfNeeded() { h.resetTrafficAt(time.Now().UTC()) }
+
+func (h *Handler) resetTrafficAt(now time.Time) {
+	now = now.UTC()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	result := h.DB.Exec(`UPDATE customer_subscriptions SET
+        status = CASE WHEN status = 'suspended' AND suspension_reason = 'traffic'
+            THEN CASE WHEN expires_at > ? THEN 'active' ELSE 'expired' END ELSE status END,
+        suspension_reason = CASE WHEN suspension_reason = 'traffic' THEN '' ELSE suspension_reason END,
+        traffic_used = 0, traffic_reset_at = ?, updated_at = ?
+        WHERE (status = 'active' OR (status = 'suspended' AND suspension_reason = 'traffic'))
+        AND COALESCE(traffic_reset_at, started_at) < ?`, now, now, now, monthStart)
+	if result.Error != nil {
+		log.Printf("traffic: monthly reset: %v", result.Error)
 		return
 	}
-
-	now := time.Now().UTC()
-	nowStr := now.Format(model.TimeLayout)
-
-	for _, sub := range subs {
-		var lastReset time.Time
-		if sub.TrafficResetAt != nil && !sub.TrafficResetAt.IsZero() {
-			lastReset = sub.TrafficResetAt.UTC()
-		} else {
-			lastReset = sub.StartedAt.UTC()
-		}
-
-		if lastReset.IsZero() {
-			continue
-		}
-
-		// Reset if we've crossed into a new month since last reset.
-		if now.Year() > lastReset.Year() || (now.Year() == lastReset.Year() && now.Month() > lastReset.Month()) {
-			if err := h.DB.Exec(
-				"UPDATE customer_subscriptions SET traffic_used = 0, traffic_reset_at = ?, updated_at = ? WHERE id = ?",
-				nowStr, nowStr, sub.ID,
-			).Error; err != nil {
-				log.Printf("traffic: reset sub %d: %v", sub.ID, err)
-				continue
-			}
-			log.Printf("traffic: reset traffic for subscription %d", sub.ID)
-		}
+	if result.RowsAffected > 0 {
+		store.WriteAuditLog(h.DB, "system", "subscription_traffic_reset", fmt.Sprintf("count: %d month: %s", result.RowsAffected, now.Format("2006-01")), "")
 	}
 }
 

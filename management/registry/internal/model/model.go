@@ -139,6 +139,7 @@ type LineNode struct {
 // ── Customer ─────────────────────────────────────────────────────────────────
 
 type Customer struct {
+	Balance   int    `json:"balance"`
 	ID        uint   `json:"id"`
 	Email     string `json:"email"`
 	Nickname  string `json:"nickname"`
@@ -167,17 +168,19 @@ type CustomerSubscription struct {
 // ── Order & PromoCode ────────────────────────────────────────────────────────
 
 type Order struct {
-	ID             uint    `json:"id"`
-	OrderNo        string  `json:"order_no"`
-	CustomerID     uint    `json:"customer_id"`
-	PlanID         uint    `json:"plan_id"`
-	Amount         int     `json:"amount"`
-	OriginalAmount int     `json:"original_amount"`
-	PromoCodeID    *uint   `json:"promo_code_id"`
-	Status         string  `json:"status"`
-	PaidAt         *string `json:"paid_at"`
-	CreatedAt      string  `json:"created_at"`
-	UpdatedAt      string  `json:"updated_at"`
+	BalanceDeducted int     `json:"balance_deducted"`
+	BalanceReturned bool    `json:"balance_returned"`
+	ID              uint    `json:"id"`
+	OrderNo         string  `json:"order_no"`
+	CustomerID      uint    `json:"customer_id"`
+	PlanID          uint    `json:"plan_id"`
+	Amount          int     `json:"amount"`
+	OriginalAmount  int     `json:"original_amount"`
+	PromoCodeID     *uint   `json:"promo_code_id"`
+	Status          string  `json:"status"`
+	PaidAt          *string `json:"paid_at"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
 }
 
 type PromoCode struct {

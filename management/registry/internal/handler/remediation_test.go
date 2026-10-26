@@ -3,10 +3,12 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"hive/registry/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -114,4 +116,142 @@ func TestResetChallengeLocksAfterFiveAttempts(t *testing.T) {
 	if n := scalar(t, "SELECT attempts FROM password_reset_codes WHERE email=?", email); n != 5 {
 		t.Fatalf("attempts=%d", n)
 	}
+}
+
+func TestConcurrentOrdersCannotDoubleSpendBalance(t *testing.T) {
+	resetDB(t)
+	cid := insertTestCustomer(t, "balance@example.com")
+	pid := insertTestPlan(t, "balance")
+	mustExec(t, "UPDATE customers SET balance=1000 WHERE id=?", cid)
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := testH.createCustomerOrder(cid, PortalCreateOrderRequest{PlanID: pid, UseBalance: true})
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := scalar(t, "SELECT balance FROM customers WHERE id=?", cid); n != 0 {
+		t.Fatalf("balance=%d", n)
+	}
+	if n := scalar(t, "SELECT SUM(balance_deducted) FROM orders WHERE customer_id=?", cid); n != 1000 {
+		t.Fatalf("deducted=%d", n)
+	}
+	if n := scalar(t, "SELECT COUNT(*) FROM orders WHERE customer_id=? AND status='paid' AND amount=0", cid); n != 1 {
+		t.Fatalf("free paid orders=%d", n)
+	}
+	if n := scalar(t, "SELECT COUNT(*) FROM customer_subscriptions WHERE customer_id=?", cid); n != 1 {
+		t.Fatalf("subscriptions=%d", n)
+	}
+}
+
+func TestOrderFailureRollsBackBalanceAndPayment(t *testing.T) {
+	resetDB(t)
+	oid, cid, pid := insertTestOrder(t)
+	mustExec(t, "UPDATE customers SET balance=1000 WHERE id=?", cid)
+	mustExec(t, "CREATE TRIGGER fail_fulfillment BEFORE INSERT ON customer_subscriptions FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected fulfillment failure'")
+	t.Cleanup(func() { testDB.Exec("DROP TRIGGER IF EXISTS fail_fulfillment") })
+	if _, err := testH.updateOrderStatus(fmt.Sprint(oid), "paid"); err == nil {
+		t.Fatal("expected payment failure")
+	}
+	if _, err := testH.createCustomerOrder(cid, PortalCreateOrderRequest{PlanID: pid, UseBalance: true}); err == nil {
+		t.Fatal("expected zero-order failure")
+	}
+	if n := scalar(t, "SELECT balance FROM customers WHERE id=?", cid); n != 1000 {
+		t.Fatalf("balance lost: %d", n)
+	}
+	if n := scalar(t, "SELECT COUNT(*) FROM orders WHERE status='pending'"); n != 1 {
+		t.Fatalf("orders=%d", n)
+	}
+	if n := scalar(t, "SELECT COUNT(*) FROM order_fulfillments"); n != 0 {
+		t.Fatal("partial fulfillment persisted")
+	}
+	mustExec(t, "DROP TRIGGER fail_fulfillment")
+	if _, err := testH.updateOrderStatus(fmt.Sprint(oid), "paid"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestConcurrentPaymentAndRefundAreIdempotent(t *testing.T) {
+	resetDB(t)
+	oid, cid, _ := insertTestOrder(t)
+	referrer := insertTestCustomer(t, "referrer@example.com")
+	mustExec(t, "UPDATE customers SET referred_by=? WHERE id=?", referrer, cid)
+	mustExec(t, "UPDATE orders SET balance_deducted=300 WHERE id=?", oid)
+	errs := make(chan error, 8)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _, err := testH.updateOrderStatus(fmt.Sprint(oid), "paid"); errs <- err }()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := scalar(t, "SELECT COUNT(*) FROM customer_subscriptions WHERE customer_id=?", cid); n != 1 {
+		t.Fatalf("duplicate subscriptions: %d", n)
+	}
+	if n := scalar(t, "SELECT COUNT(*) FROM referrals WHERE order_id=?", oid); n != 1 {
+		t.Fatalf("duplicate commission: %d", n)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := testH.updateOrderStatus(fmt.Sprint(oid), "refunded"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := scalar(t, "SELECT balance FROM customers WHERE id=?", cid); n != 300 {
+		t.Fatalf("refund=%d", n)
+	}
+	if n := scalar(t, "SELECT balance FROM customers WHERE id=?", referrer); n != 0 {
+		t.Fatalf("commission not reversed: %d", n)
+	}
+	if n := scalar(t, "SELECT COUNT(*) FROM customer_subscriptions WHERE customer_id=? AND status='active'", cid); n != 0 {
+		t.Fatal("refunded service remains active")
+	}
+	if _, err := testH.updateOrderStatus(fmt.Sprint(oid), "paid"); err == nil {
+		t.Fatal("refunded order paid again")
+	}
+}
+
+func TestStaleOrderReturnsBalanceOnce(t *testing.T) {
+	resetDB(t)
+	cid := insertTestCustomer(t, "stale@example.com")
+	pid := insertTestPlan(t, "stale")
+	mustExec(t, "UPDATE customers SET balance=300 WHERE id=?", cid)
+	o, err := testH.createCustomerOrder(cid, PortalCreateOrderRequest{PlanID: pid, UseBalance: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, "UPDATE orders SET created_at=? WHERE id=?", time.Now().UTC().Add(-time.Hour), o.ID)
+	testH.cancelStaleOrders("")
+	testH.cancelStaleOrders("")
+	if n := scalar(t, "SELECT balance FROM customers WHERE id=?", cid); n != 300 {
+		t.Fatalf("balance=%d", n)
+	}
+}
+
+func TestExpiredCustomerCanRenew(t *testing.T) {
+	resetDB(t)
+	cid := insertTestCustomer(t, "renew@example.com")
+	pid := insertTestPlan(t, "renew")
+	insertTestSubscription(t, cid, pid, "expired", time.Now().Add(-time.Hour))
+	mustExec(t, "UPDATE customers SET status='suspended' WHERE id=?", cid)
+	resp := doJSON("POST", "/portal/login", map[string]string{"email": "renew@example.com", "password": "test123"}, nil)
+	assertStatus(t, resp, 200)
+	resp.Body.Close()
+	resp = doJSON("POST", "/portal/orders", map[string]any{"plan_id": pid}, customerCookie(cid))
+	assertStatus(t, resp, 200)
+	resp.Body.Close()
 }

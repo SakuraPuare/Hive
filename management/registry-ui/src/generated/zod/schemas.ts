@@ -8,7 +8,7 @@
 //   Circular references: 0
 //   Discriminated unions: 0
 //   With constraints: 0
-//   Generated at: 2026-10-26T14:23:43.096Z
+//   Generated at: 2026-10-26T14:25:08.167Z
 
 import { z } from "zod";
 
@@ -165,6 +165,7 @@ export const handlerCreateUserRequestSchema = z.object({
 export type HandlerCreateUserRequest = z.infer<typeof handlerCreateUserRequestSchema>;
 
 export const modelCustomerSchema = z.object({
+  balance: z.number().int().optional(),
   created_at: z.string().optional(),
   email: z.string().optional(),
   id: z.number().int().optional(),
@@ -331,6 +332,8 @@ export type HandlerNodeXrayUsersResponse = z.infer<typeof handlerNodeXrayUsersRe
 
 export const modelOrderSchema = z.object({
   amount: z.number().int().optional(),
+  balance_deducted: z.number().int().optional(),
+  balance_returned: z.boolean().optional(),
   created_at: z.string().optional(),
   customer_id: z.number().int().optional(),
   id: z.number().int().optional(),

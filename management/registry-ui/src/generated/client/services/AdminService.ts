@@ -999,7 +999,7 @@ export class AdminService {
     }
     /**
      * 更新订单状态
-     * 更新指定订单的状态，若改为 paid 则自动创建订阅
+     * 更新指定订单的状态，若改为 paid 则续期同套餐订阅；没有已有订阅时创建
      * @returns handler_StatusResponse OK
      * @throws ApiError
      */
@@ -1027,6 +1027,7 @@ export class AdminService {
             errors: {
                 400: `Bad Request`,
                 404: `Not Found`,
+                409: `Conflict`,
                 500: `Internal Server Error`,
             },
         });

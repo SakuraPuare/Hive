@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"time"
 
 	"hive/registry/internal/model"
 	"hive/registry/internal/store"
@@ -174,50 +173,6 @@ func (h *Handler) ProcessReferralOnRegister(newCustomerID uint, referralCode str
 }
 
 // ── 支付成功时创建返利记录 ──────────────────────────────────────────────────
-
-// CreateReferralCommission 在订单支付成功时调用，为邀请人创建返利记录。
-func (h *Handler) CreateReferralCommission(order model.Order) {
-	var referredBy *uint
-	if err := h.DB.Raw("SELECT referred_by FROM customers WHERE id = ?", order.CustomerID).Scan(&referredBy).Error; err != nil {
-		log.Printf("referral: lookup referred_by for customer %d: %v", order.CustomerID, err)
-		return
-	}
-	if referredBy == nil || *referredBy == 0 {
-		return
-	}
-
-	rate := h.Config.ReferralRate
-	if rate <= 0 || rate > 100 {
-		rate = 10
-	}
-	commission := order.Amount * rate / 100
-	if commission <= 0 {
-		return
-	}
-
-	now := time.Now().UTC().Format(model.TimeLayout)
-	orderID := order.ID
-	if err := h.DB.Exec(
-		"INSERT INTO referrals (referrer_id, referee_id, order_id, commission, status, created_at) VALUES (?,?,?,?,?,?)",
-		*referredBy, order.CustomerID, orderID, commission, "pending", now,
-	).Error; err != nil {
-		log.Printf("referral: insert commission for order %s: %v", order.OrderNo, err)
-		return
-	}
-
-	// 直接将返利加到邀请人余额
-	if err := h.DB.Exec("UPDATE customers SET balance = balance + ? WHERE id = ?", commission, *referredBy).Error; err != nil {
-		log.Printf("referral: add balance for customer %d: %v", *referredBy, err)
-	}
-
-	// 审计日志
-	var email string
-	if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", *referredBy).Scan(&email).Error; err != nil {
-		log.Printf("referral: lookup email for customer %d: %v", *referredBy, err)
-	}
-	store.WriteAuditLog(h.DB, email, "referral_commission",
-		fmt.Sprintf("order: %s, referee_cid: %d, commission: %d", order.OrderNo, order.CustomerID, commission), "")
-}
 
 // ── GET /portal/referral — 我的邀请信息 ─────────────────────────────────────
 
@@ -450,88 +405,34 @@ func (h *Handler) HandleUpdateReferral(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 查询当前记录
-	var ref referralLookupRow
-	if err := h.DB.Raw("SELECT id, referrer_id, commission, status FROM referrals WHERE id = ?", id).Scan(&ref).Error; err != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+	rid, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		h.jsonErr(w, 400, "invalid referral id")
 		return
 	}
-	if ref.ID == 0 {
-		h.jsonErr(w, http.StatusNotFound, "referral not found")
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		// Lock the order first, matching the refund path's lock order.
+		var orderID *uint
+		if err := tx.Raw("SELECT order_id FROM referrals WHERE id = ?", rid).Scan(&orderID).Error; err != nil {
+			return err
+		}
+		if orderID != nil {
+			var status string
+			if err := tx.Raw("SELECT status FROM orders WHERE id = ? FOR UPDATE", *orderID).Scan(&status).Error; err != nil {
+				return err
+			}
+			if status != "paid" && req.Status != "cancelled" {
+				return orderInvalid("order is not paid")
+			}
+		}
+		return changeReferralStatus(tx, uint(rid), req.Status)
+	})
+	if err != nil {
+		h.orderError(w, err)
 		return
 	}
-
-	oldStatus := ref.Status
-
-	if err := h.DB.Exec("UPDATE referrals SET status = ? WHERE id = ?", req.Status, id).Error; err != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
-		return
-	}
-
-	// 余额调整：如果从 pending 变为 cancelled，扣回余额
-	if oldStatus == "pending" && req.Status == "cancelled" {
-		if err := h.DB.Exec("UPDATE customers SET balance = GREATEST(balance - ?, 0) WHERE id = ?", ref.Commission, ref.ReferrerID).Error; err != nil {
-			log.Printf("referral: deduct balance for customer %d: %v", ref.ReferrerID, err)
-		}
-		var email string
-		if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", ref.ReferrerID).Scan(&email).Error; err != nil {
-			log.Printf("referral: lookup email for customer %d: %v", ref.ReferrerID, err)
-		}
-		store.WriteAuditLog(h.DB, email, "referral_balance_deduct",
-			fmt.Sprintf("referral_id: %s, amount: %d, reason: cancelled", id, ref.Commission), "")
-	}
-	// 如果从 cancelled 恢复为 pending，加回余额
-	if oldStatus == "cancelled" && req.Status == "pending" {
-		if err := h.DB.Exec("UPDATE customers SET balance = balance + ? WHERE id = ?", ref.Commission, ref.ReferrerID).Error; err != nil {
-			log.Printf("referral: restore balance for customer %d: %v", ref.ReferrerID, err)
-		}
-		var email string
-		if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", ref.ReferrerID).Scan(&email).Error; err != nil {
-			log.Printf("referral: lookup email for customer %d: %v", ref.ReferrerID, err)
-		}
-		store.WriteAuditLog(h.DB, email, "referral_balance_restore",
-			fmt.Sprintf("referral_id: %s, amount: %d", id, ref.Commission), "")
-	}
-
 	actor, _, _ := h.Auth.ParseSession(r)
-	store.WriteAuditLog(h.DB, actor, "referral_status_update",
-		fmt.Sprintf("id: %s, %s -> %s", id, oldStatus, req.Status), getClientIP(r))
+	store.WriteAuditLog(h.DB, actor, "referral_status_update", fmt.Sprintf("id: %s -> %s", id, req.Status), getClientIP(r))
 
 	h.jsonOK(w, map[string]string{"status": "ok"})
-}
-
-// ── 下单时余额抵扣 ─────────────────────────────────────────────────────────
-
-// ApplyBalanceDeduction 在下单时扣减余额，返回实际抵扣金额。
-// amount 是待支付金额（分），返回抵扣后的应付金额和抵扣金额。
-func (h *Handler) ApplyBalanceDeduction(customerID uint, amount int) (finalAmount int, deducted int) {
-	if amount <= 0 {
-		return 0, 0
-	}
-	var balance int
-	if err := h.DB.Raw("SELECT balance FROM customers WHERE id = ?", customerID).Scan(&balance).Error; err != nil {
-		log.Printf("balance_deduction: query balance for customer %d: %v", customerID, err)
-		return amount, 0
-	}
-	if balance <= 0 {
-		return amount, 0
-	}
-	deducted = balance
-	if deducted > amount {
-		deducted = amount
-	}
-	finalAmount = amount - deducted
-	if err := h.DB.Exec("UPDATE customers SET balance = balance - ? WHERE id = ?", deducted, customerID).Error; err != nil {
-		log.Printf("balance_deduction: update balance for customer %d: %v", customerID, err)
-		return amount, 0
-	}
-
-	var email string
-	if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", customerID).Scan(&email).Error; err != nil {
-		log.Printf("balance_deduction: lookup email for customer %d: %v", customerID, err)
-	}
-	store.WriteAuditLog(h.DB, email, "balance_deduct",
-		fmt.Sprintf("amount: %d, remaining: %d", deducted, balance-deducted), "")
-
-	return finalAmount, deducted
 }

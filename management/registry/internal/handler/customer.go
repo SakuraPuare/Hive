@@ -551,6 +551,10 @@ func (h *Handler) HandleUpdateSubscription(w http.ResponseWriter, r *http.Reques
 	updates := map[string]any{"updated_at": time.Now().UTC().Format(model.TimeLayout)}
 	if req.Status != nil {
 		updates["status"] = *req.Status
+		updates["suspension_reason"] = ""
+		if *req.Status == "suspended" {
+			updates["suspension_reason"] = "manual"
+		}
 	}
 	if req.TrafficLimit != nil {
 		updates["traffic_limit"] = *req.TrafficLimit
