@@ -14,6 +14,7 @@ export type { handler_AdminReferralListResponse } from './models/handler_AdminRe
 export type { handler_AnnouncementListResponse } from './models/handler_AnnouncementListResponse';
 export type { handler_AnnouncementRequest } from './models/handler_AnnouncementRequest';
 export type { handler_AssignDeviceRequest } from './models/handler_AssignDeviceRequest';
+export type { handler_assignRequest } from './models/handler_assignRequest';
 export type { handler_ChangePasswordRequest } from './models/handler_ChangePasswordRequest';
 export type { handler_CreateCustomerRequest } from './models/handler_CreateCustomerRequest';
 export type { handler_CreateGroupRequest } from './models/handler_CreateGroupRequest';
@@ -23,6 +24,7 @@ export type { handler_CreateLineResponse } from './models/handler_CreateLineResp
 export type { handler_CreatePlanRequest } from './models/handler_CreatePlanRequest';
 export type { handler_CreatePlanResponse } from './models/handler_CreatePlanResponse';
 export type { handler_CreatePromoCodeRequest } from './models/handler_CreatePromoCodeRequest';
+export type { handler_createRolloutRequest } from './models/handler_createRolloutRequest';
 export type { handler_CreateSubscriptionRequest } from './models/handler_CreateSubscriptionRequest';
 export type { handler_CreateSubscriptionResponse } from './models/handler_CreateSubscriptionResponse';
 export type { handler_CreateUserRequest } from './models/handler_CreateUserRequest';
@@ -40,6 +42,11 @@ export type { handler_NodeTrafficCounter } from './models/handler_NodeTrafficCou
 export type { handler_NodeUpdateRequest } from './models/handler_NodeUpdateRequest';
 export type { handler_NodeXrayUsersResponse } from './models/handler_NodeXrayUsersResponse';
 export type { handler_OrderListResponse } from './models/handler_OrderListResponse';
+export type { handler_otaAckRequest } from './models/handler_otaAckRequest';
+export type { handler_otaArtifactResponse } from './models/handler_otaArtifactResponse';
+export type { handler_otaRolloutItem } from './models/handler_otaRolloutItem';
+export type { handler_otaUploadRequest } from './models/handler_otaUploadRequest';
+export type { handler_otaUploadSession } from './models/handler_otaUploadSession';
 export type { handler_PermissionItem } from './models/handler_PermissionItem';
 export type { handler_PortalClaimRequest } from './models/handler_PortalClaimRequest';
 export type { handler_PortalCreateOrderRequest } from './models/handler_PortalCreateOrderRequest';

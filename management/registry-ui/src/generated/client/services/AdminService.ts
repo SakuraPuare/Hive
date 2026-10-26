@@ -7,6 +7,7 @@ import type { handler_AdminReferralListResponse } from '../models/handler_AdminR
 import type { handler_AnnouncementListResponse } from '../models/handler_AnnouncementListResponse';
 import type { handler_AnnouncementRequest } from '../models/handler_AnnouncementRequest';
 import type { handler_AssignDeviceRequest } from '../models/handler_AssignDeviceRequest';
+import type { handler_assignRequest } from '../models/handler_assignRequest';
 import type { handler_ChangePasswordRequest } from '../models/handler_ChangePasswordRequest';
 import type { handler_CreateCustomerRequest } from '../models/handler_CreateCustomerRequest';
 import type { handler_CreateGroupRequest } from '../models/handler_CreateGroupRequest';
@@ -16,6 +17,7 @@ import type { handler_CreateLineResponse } from '../models/handler_CreateLineRes
 import type { handler_CreatePlanRequest } from '../models/handler_CreatePlanRequest';
 import type { handler_CreatePlanResponse } from '../models/handler_CreatePlanResponse';
 import type { handler_CreatePromoCodeRequest } from '../models/handler_CreatePromoCodeRequest';
+import type { handler_createRolloutRequest } from '../models/handler_createRolloutRequest';
 import type { handler_CreateSubscriptionRequest } from '../models/handler_CreateSubscriptionRequest';
 import type { handler_CreateSubscriptionResponse } from '../models/handler_CreateSubscriptionResponse';
 import type { handler_CreateUserRequest } from '../models/handler_CreateUserRequest';
@@ -26,6 +28,10 @@ import type { handler_enqueueCommandRequest } from '../models/handler_enqueueCom
 import type { handler_MeResponse } from '../models/handler_MeResponse';
 import type { handler_NodeUpdateRequest } from '../models/handler_NodeUpdateRequest';
 import type { handler_OrderListResponse } from '../models/handler_OrderListResponse';
+import type { handler_otaArtifactResponse } from '../models/handler_otaArtifactResponse';
+import type { handler_otaRolloutItem } from '../models/handler_otaRolloutItem';
+import type { handler_otaUploadRequest } from '../models/handler_otaUploadRequest';
+import type { handler_otaUploadSession } from '../models/handler_otaUploadSession';
 import type { handler_PermissionItem } from '../models/handler_PermissionItem';
 import type { handler_PrometheusTarget } from '../models/handler_PrometheusTarget';
 import type { handler_ResetCustomerPasswordRequest } from '../models/handler_ResetCustomerPasswordRequest';
@@ -1029,6 +1035,179 @@ export class AdminService {
                 404: `Not Found`,
                 409: `Conflict`,
                 500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * Upload a signed OTA bundle (maximum 2 GiB)
+     * @returns handler_otaArtifactResponse OK
+     * @throws ApiError
+     */
+    public static adminUploadOtaBundle(): CancelablePromise<handler_otaArtifactResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/ota/bundles',
+            errors: {
+                400: `Bad Request`,
+                413: `Request Entity Too Large`,
+            },
+        });
+    }
+    /**
+     * OTA rollout 列表
+     * @returns handler_otaRolloutItem OK
+     * @throws ApiError
+     */
+    public static adminListOtaRollouts(): CancelablePromise<Array<handler_otaRolloutItem>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/ota/rollouts',
+        });
+    }
+    /**
+     * 创建 OTA rollout（可选同时分配节点）
+     * @returns any OK
+     * @throws ApiError
+     */
+    public static adminCreateOtaRollout({
+        requestBody,
+    }: {
+        /**
+         * rollout
+         */
+        requestBody: handler_createRolloutRequest,
+    }): CancelablePromise<Record<string, any>> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/ota/rollouts',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+            },
+        });
+    }
+    /**
+     * OTA rollout 详情（含节点分配状态）
+     * @returns any OK
+     * @throws ApiError
+     */
+    public static adminGetOtaRollout({
+        id,
+    }: {
+        /**
+         * rollout id
+         */
+        id: number,
+    }): CancelablePromise<Record<string, any>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/ota/rollouts/{id}',
+            path: {
+                'id': id,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 给节点分配 OTA 版本
+     * @returns number OK
+     * @throws ApiError
+     */
+    public static adminAssignOta({
+        id,
+        requestBody,
+    }: {
+        /**
+         * rollout id
+         */
+        id: number,
+        /**
+         * 节点列表
+         */
+        requestBody: handler_assignRequest,
+    }): CancelablePromise<Record<string, number>> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/ota/rollouts/{id}/assign',
+            path: {
+                'id': id,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * Start a chunked OTA upload (16 MiB chunks, 2 GiB total)
+     * @returns handler_otaUploadSession OK
+     * @throws ApiError
+     */
+    public static adminCreateOtaUpload({
+        requestBody,
+    }: {
+        /**
+         * bundle size
+         */
+        requestBody: handler_otaUploadRequest,
+    }): CancelablePromise<handler_otaUploadSession> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/ota/uploads',
+            body: requestBody,
+            mediaType: 'application/json',
+        });
+    }
+    /**
+     * Upload one OTA chunk; identical retries are accepted
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static adminUploadOtaPart({
+        id,
+        part,
+    }: {
+        /**
+         * upload id
+         */
+        id: string,
+        /**
+         * zero-based chunk index
+         */
+        part: number,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/admin/ota/uploads/{id}/{part}',
+            path: {
+                'id': id,
+                'part': part,
+            },
+        });
+    }
+    /**
+     * Assemble uploaded chunks and publish an OTA bundle
+     * @returns handler_otaArtifactResponse OK
+     * @throws ApiError
+     */
+    public static adminCompleteOtaUpload({
+        id,
+    }: {
+        /**
+         * upload id
+         */
+        id: string,
+    }): CancelablePromise<handler_otaArtifactResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/admin/ota/uploads/{id}/complete',
+            path: {
+                'id': id,
             },
         });
     }

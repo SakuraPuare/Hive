@@ -22,6 +22,7 @@ type Config struct {
 	AdminCookieSameSite http.SameSite
 	XrayPath            string
 	PrometheusURL       string
+	OTAArtifactDir      string
 
 	// DB
 	MySQLHost     string
@@ -63,6 +64,7 @@ func Load() *Config {
 		AdminCookieSameSite: parseSameSite(Getenv("ADMIN_COOKIE_SAMESITE", "lax")),
 		XrayPath:            Getenv("XRAY_PATH", "ray"),
 		PrometheusURL:       Getenv("PROMETHEUS_URL", "http://127.0.0.1:4230"),
+		OTAArtifactDir:      Getenv("OTA_ARTIFACT_DIR", "/var/lib/hive-registry/ota"),
 
 		MySQLHost:     Getenv("MYSQL_HOST", "127.0.0.1"),
 		MySQLPort:     Getenv("MYSQL_PORT", "3306"),

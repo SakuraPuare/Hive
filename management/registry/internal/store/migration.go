@@ -498,6 +498,36 @@ CREATE TABLE IF NOT EXISTS easytier_allocations (
 `,
 	},
 	{
+		version: 21,
+		desc:    "application-layer OTA: rollouts + per-node assignments",
+		up: `
+CREATE TABLE IF NOT EXISTS ota_rollouts (
+    id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    version    VARCHAR(64)   NOT NULL COMMENT 'OTA bundle 版本号，如 1.0.0',
+    url        VARCHAR(1024) NOT NULL COMMENT 'bundle 下载地址',
+    sha256     CHAR(64)      NOT NULL COMMENT 'bundle sha256',
+    note       VARCHAR(512)  NOT NULL DEFAULT '' COMMENT '备注',
+    created_by VARCHAR(64)   NOT NULL DEFAULT '' COMMENT '创建者',
+    created_at DATETIME      NOT NULL,
+    INDEX idx_version (version)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OTA 发布记录';
+
+CREATE TABLE IF NOT EXISTS ota_assignments (
+    node_mac    VARCHAR(12)  NOT NULL COMMENT '目标节点 MAC',
+    rollout_id  INT UNSIGNED NOT NULL COMMENT '关联的 rollout',
+    status      ENUM('pending','done','failed') NOT NULL DEFAULT 'pending',
+    result      VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '节点回传结果',
+    assigned_at DATETIME     NOT NULL,
+    acked_at    DATETIME     NULL DEFAULT NULL,
+    PRIMARY KEY (node_mac),
+    FOREIGN KEY (rollout_id) REFERENCES ota_rollouts(id) ON DELETE CASCADE,
+    FOREIGN KEY (node_mac) REFERENCES nodes(mac) ON DELETE CASCADE,
+    INDEX idx_rollout (rollout_id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OTA 节点分配：每个节点至多一条待安装记录（PRIMARY KEY = node_mac），完成后被下一次分配覆盖';
+`,
+	},
+	{
 		version: 22,
 		desc:    "device identity, reset attempt limits and durable RBAC bootstrap",
 		up: `
@@ -525,6 +555,14 @@ CREATE TABLE order_fulfillments (
 `,
 	},
 	{
+		version: 24,
+		desc:    "identify OTA assignments across retries",
+		up: `
+ALTER TABLE ota_assignments ADD COLUMN assignment_token VARCHAR(128) NOT NULL DEFAULT '';
+UPDATE ota_assignments SET assignment_token = SHA2(UUID(), 256) WHERE assignment_token = '';
+`,
+	},
+	{
 		version: 25,
 		desc:    "durable device traffic accounting",
 		up: `
@@ -549,6 +587,11 @@ ALTER TABLE order_fulfillments ADD COLUMN previous_expires_at DATETIME NULL;
 CREATE INDEX idx_subscription_fulfillments ON order_fulfillments (subscription_id, sequence_id);
 ALTER TABLE customer_subscriptions ADD COLUMN suspension_reason VARCHAR(16) NOT NULL DEFAULT '';
 `,
+	},
+	{
+		version: 27,
+		desc:    "OTA installation and rollback states",
+		up:      `ALTER TABLE ota_assignments MODIFY COLUMN status ENUM('pending','installing','done','failed','rolled_back') NOT NULL DEFAULT 'pending';`,
 	},
 }
 

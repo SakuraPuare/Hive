@@ -7,6 +7,7 @@ import type { handler_NodeAccountingRequest } from '../models/handler_NodeAccoun
 import type { handler_NodeRegisterRequest } from '../models/handler_NodeRegisterRequest';
 import type { handler_NodeRegisterResponse } from '../models/handler_NodeRegisterResponse';
 import type { handler_NodeXrayUsersResponse } from '../models/handler_NodeXrayUsersResponse';
+import type { handler_otaAckRequest } from '../models/handler_otaAckRequest';
 import type { handler_StatusResponse } from '../models/handler_StatusResponse';
 import type { model_DeviceCommand } from '../models/model_DeviceCommand';
 import type { model_HeartbeatRequest } from '../models/model_HeartbeatRequest';
@@ -106,6 +107,90 @@ export class NodesService {
             errors: {
                 400: `Bad Request`,
                 401: `Unauthorized`,
+            },
+        });
+    }
+    /**
+     * 节点回传 OTA 安装结果
+     * 上报 installing、done、failed 或 rolled_back；仅当前分配任务可更新，终态不可覆盖。
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static nodeOtaAck({
+        mac,
+        requestBody,
+    }: {
+        /**
+         * node MAC
+         */
+        mac: string,
+        /**
+         * 结果
+         */
+        requestBody: handler_otaAckRequest,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/nodes/{mac}/ota-ack',
+            path: {
+                'mac': mac,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+            },
+        });
+    }
+    /**
+     * Download the OTA bundle assigned to this device
+     * @returns binary OK
+     * @throws ApiError
+     */
+    public static nodeOtaBundle({
+        mac,
+        sha,
+    }: {
+        /**
+         * node MAC
+         */
+        mac: string,
+        /**
+         * bundle SHA256
+         */
+        sha: string,
+    }): CancelablePromise<Blob> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/nodes/{mac}/ota-bundle/{sha}',
+            path: {
+                'mac': mac,
+                'sha': sha,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 节点查询待安装 OTA 版本
+     * hive-updater.timer 定时调用，返回当前分配给本节点的 pending OTA bundle 信息。无分配或已完成时返回空 version。
+     * @returns string OK
+     * @throws ApiError
+     */
+    public static nodeOtaVersion({
+        mac,
+    }: {
+        /**
+         * node MAC
+         */
+        mac: string,
+    }): CancelablePromise<Record<string, string>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/nodes/{mac}/ota-version',
+            path: {
+                'mac': mac,
             },
         });
     }

@@ -42,6 +42,8 @@ var AllPermissions = []struct{ Slug, Desc string }{
 	{"ticket:write", "回复/关闭/删除工单"},
 	{"announcement:read", "查看公告列表"},
 	{"announcement:write", "创建/编辑/删除公告"},
+	{"ota:read", "查看 OTA rollout 和分配状态"},
+	{"ota:write", "创建 OTA rollout 并分配到节点"},
 }
 
 // DefaultRolePerms defines the default permission sets for the three built-in roles.
@@ -57,6 +59,7 @@ var DefaultRolePerms = map[string][]string{
 		"order:read", "order:write",
 		"ticket:read", "ticket:write",
 		"announcement:read", "announcement:write",
+		"ota:read", "ota:write",
 	},
 	"admin": {
 		"node:read", "node:write",

@@ -879,6 +879,28 @@ definitions:
         example: done
         type: string
     type: object
+  handler.assignRequest:
+    properties:
+      node_macs:
+        items:
+          type: string
+        type: array
+    type: object
+  handler.createRolloutRequest:
+    properties:
+      node_macs:
+        items:
+          type: string
+        type: array
+      note:
+        type: string
+      sha256:
+        type: string
+      url:
+        type: string
+      version:
+        type: string
+    type: object
   handler.enqueueCommandRequest:
     properties:
       action:
@@ -887,6 +909,75 @@ definitions:
       params:
         example: ""
         type: string
+    type: object
+  handler.otaAckRequest:
+    properties:
+      assignment_token:
+        type: string
+      result:
+        type: string
+      status:
+        type: string
+      version:
+        type: string
+    type: object
+  handler.otaArtifactResponse:
+    properties:
+      board:
+        type: string
+      kind:
+        type: string
+      sha256:
+        type: string
+      size:
+        type: integer
+      url:
+        type: string
+      version:
+        type: string
+    type: object
+  handler.otaRolloutItem:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      done:
+        type: integer
+      failed:
+        type: integer
+      id:
+        type: integer
+      installing:
+        type: integer
+      note:
+        type: string
+      pending:
+        type: integer
+      rolled_back:
+        type: integer
+      sha256:
+        type: string
+      total:
+        type: integer
+      url:
+        type: string
+      version:
+        type: string
+    type: object
+  handler.otaUploadRequest:
+    properties:
+      size:
+        type: integer
+    type: object
+  handler.otaUploadSession:
+    properties:
+      chunk_size:
+        type: integer
+      id:
+        type: string
+      size:
+        type: integer
     type: object
   model.Announcement:
     properties:
@@ -2359,6 +2450,204 @@ paths:
       security:
       - AdminSessionCookie: []
       summary: 更新订单状态
+      tags:
+      - admin
+  /admin/ota/bundles:
+    post:
+      consumes:
+      - application/gzip
+      operationId: AdminUploadOtaBundle
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.otaArtifactResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: Upload a signed OTA bundle (maximum 2 GiB)
+      tags:
+      - admin
+  /admin/ota/rollouts:
+    get:
+      operationId: AdminListOtaRollouts
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.otaRolloutItem'
+            type: array
+      security:
+      - AdminSessionCookie: []
+      summary: OTA rollout 列表
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      operationId: AdminCreateOtaRollout
+      parameters:
+      - description: rollout
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createRolloutRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 创建 OTA rollout（可选同时分配节点）
+      tags:
+      - admin
+  /admin/ota/rollouts/{id}:
+    get:
+      operationId: AdminGetOtaRollout
+      parameters:
+      - description: rollout id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: OTA rollout 详情（含节点分配状态）
+      tags:
+      - admin
+  /admin/ota/rollouts/{id}/assign:
+    post:
+      consumes:
+      - application/json
+      operationId: AdminAssignOta
+      parameters:
+      - description: rollout id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 节点列表
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.assignRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 给节点分配 OTA 版本
+      tags:
+      - admin
+  /admin/ota/uploads:
+    post:
+      consumes:
+      - application/json
+      operationId: AdminCreateOtaUpload
+      parameters:
+      - description: bundle size
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.otaUploadRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.otaUploadSession'
+      security:
+      - AdminSessionCookie: []
+      summary: Start a chunked OTA upload (16 MiB chunks, 2 GiB total)
+      tags:
+      - admin
+  /admin/ota/uploads/{id}/{part}:
+    put:
+      consumes:
+      - application/octet-stream
+      operationId: AdminUploadOtaPart
+      parameters:
+      - description: upload id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: zero-based chunk index
+        in: path
+        name: part
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: Upload one OTA chunk; identical retries are accepted
+      tags:
+      - admin
+  /admin/ota/uploads/{id}/complete:
+    post:
+      operationId: AdminCompleteOtaUpload
+      parameters:
+      - description: upload id
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.otaArtifactResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: Assemble uploaded chunks and publish an OTA bundle
       tags:
       - admin
   /admin/permissions:
@@ -4103,6 +4392,91 @@ paths:
       security:
       - BearerAuth: []
       summary: 节点回传命令执行结果
+      tags:
+      - nodes
+  /nodes/{mac}/ota-ack:
+    post:
+      consumes:
+      - application/json
+      description: 上报 installing、done、failed 或 rolled_back；仅当前分配任务可更新，终态不可覆盖。
+      operationId: NodeOtaAck
+      parameters:
+      - description: node MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      - description: 结果
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.otaAckRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 节点回传 OTA 安装结果
+      tags:
+      - nodes
+  /nodes/{mac}/ota-bundle/{sha}:
+    get:
+      operationId: NodeOtaBundle
+      parameters:
+      - description: node MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      - description: bundle SHA256
+        in: path
+        name: sha
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Download the OTA bundle assigned to this device
+      tags:
+      - nodes
+  /nodes/{mac}/ota-version:
+    get:
+      description: hive-updater.timer 定时调用，返回当前分配给本节点的 pending OTA bundle 信息。无分配或已完成时返回空
+        version。
+      operationId: NodeOtaVersion
+      parameters:
+      - description: node MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 节点查询待安装 OTA 版本
       tags:
       - nodes
   /nodes/{mac}/xray-users:

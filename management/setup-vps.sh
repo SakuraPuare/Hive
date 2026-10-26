@@ -172,6 +172,7 @@ echo ">>> hive-registry built and installed"
 # 写入 EnvironmentFile（每次执行都刷新，确保密码等变量同步）
 ADMIN_API_SECRET="${ADMIN_API_SECRET:-$(openssl rand -hex 32)}"
 cat > /etc/hive-registry.env << EOF
+OTA_ARTIFACT_DIR=/var/lib/hive-registry/ota
 LISTEN_ADDR=${REGISTRY_LISTEN_ADDR:-127.0.0.1:8080}
 MYSQL_HOST=${REGISTRY_MYSQL_HOST:-127.0.0.1}
 MYSQL_PORT=${REGISTRY_MYSQL_PORT:-3306}
@@ -190,6 +191,7 @@ ADMIN_COOKIE_SAMESITE=${REGISTRY_ADMIN_COOKIE_SAMESITE:-lax}
 EOF
 chmod 600 /etc/hive-registry.env
 
+install -d -m 0700 -o nobody /var/lib/hive-registry/ota
 
 # 安装或更新 systemd 服务单元
 cat > /etc/systemd/system/hive-registry.service << 'UNIT'

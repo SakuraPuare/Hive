@@ -20,6 +20,7 @@ var commandActions = map[string]bool{
 	"restart-xray":    true, // systemctl restart xray
 	"restart-mihomo":  true, // systemctl restart hive-mihomo (gateway role)
 	"resync":          true, // re-pull configs: hive-xray-sync + hive-clash-sync
+	"ota-update":      true, // application-layer OTA: params = {"url","sha256","version","force"}
 	"service-control": true, // params = {"service","operation"}; both are allowlisted below
 	"hotspot-config":  true, // params = Wi-Fi AP fields; validated below
 }
@@ -179,6 +180,10 @@ func (h *Handler) HandlePortalEnqueueCommand(w http.ResponseWriter, r *http.Requ
 		h.jsonErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
+	if body.Action == "ota-update" {
+		h.jsonErr(w, http.StatusForbidden, "OTA updates require administrator release permission")
+		return
+	}
 	id, ok := h.enqueueCommand(w, mac, customerActor(cid), body, getClientIP(r))
 	if !ok {
 		return
@@ -241,6 +246,10 @@ func (h *Handler) HandleAdminEnqueueCommand(w http.ResponseWriter, r *http.Reque
 		if ok {
 			h.jsonOK(w, map[string]uint64{"id": id})
 		}
+	}
+	if body.Action == "ota-update" {
+		h.Auth.RequirePerm("ota:write")(enqueue)(w, r)
+		return
 	}
 	enqueue(w, r)
 }

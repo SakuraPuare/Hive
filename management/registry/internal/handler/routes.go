@@ -34,6 +34,10 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// 远程命令队列（设备端：拉取待执行 + 回传结果，Bearer token 认证）
 	mux.HandleFunc("GET /nodes/{mac}/commands", h.HandleNodePullCommands)
 	mux.HandleFunc("POST /nodes/{mac}/commands/{id}/ack", h.HandleNodeAckCommand)
+	// OTA 轮询（设备端：查询待安装版本 + 回传结果，Bearer token 认证）
+	mux.HandleFunc("GET /nodes/{mac}/ota-version", h.HandleNodeOtaVersion)
+	mux.HandleFunc("POST /nodes/{mac}/ota-ack", h.HandleNodeOtaAck)
+	mux.HandleFunc("GET /nodes/{mac}/ota-bundle/{sha}", h.HandleNodeOTABundle)
 
 	// ── 节点查询 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /nodes", perm("node:read")(h.HandleListNodes))
@@ -48,6 +52,16 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// 设备远程命令（管理员下发/查历史）
 	mux.HandleFunc("POST /admin/nodes/{mac}/commands", perm("node:write")(h.HandleAdminEnqueueCommand))
 	mux.HandleFunc("GET /admin/nodes/{mac}/commands", perm("node:read")(h.HandleAdminListCommands))
+
+	// ── OTA 管理 ──────────────────────────────────────────────────────────
+	mux.HandleFunc("POST /admin/ota/bundles", perm("ota:write")(h.HandleAdminUploadOTA))
+	mux.HandleFunc("POST /admin/ota/uploads", perm("ota:write")(h.HandleCreateOTAUpload))
+	mux.HandleFunc("PUT /admin/ota/uploads/{id}/{part}", perm("ota:write")(h.HandleOTAUploadPart))
+	mux.HandleFunc("POST /admin/ota/uploads/{id}/complete", perm("ota:write")(h.HandleCompleteOTAUpload))
+	mux.HandleFunc("GET /admin/ota/rollouts", perm("ota:read")(h.HandleAdminListRollouts))
+	mux.HandleFunc("POST /admin/ota/rollouts", perm("ota:write")(h.HandleAdminCreateRollout))
+	mux.HandleFunc("GET /admin/ota/rollouts/{id}", perm("ota:read")(h.HandleAdminGetRollout))
+	mux.HandleFunc("POST /admin/ota/rollouts/{id}/assign", perm("ota:write")(h.HandleAdminAssignOta))
 
 	// ── 管理端登录（Cookie 会话）────────────────────────────────────────────
 	mux.HandleFunc("POST /admin/login", loginRL.Wrap(h.HandleAdminLogin))

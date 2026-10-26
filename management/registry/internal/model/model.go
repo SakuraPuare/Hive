@@ -333,6 +333,31 @@ type Announcement struct {
 
 func (Announcement) TableName() string { return "announcements" }
 
+// ── OTA Rollout ─────────────────────────────────────────────────────────────
+
+type OtaRollout struct {
+	ID        uint   `json:"id" gorm:"primaryKey;autoIncrement"`
+	Version   string `json:"version"`
+	URL       string `json:"url"`
+	SHA256    string `json:"sha256"`
+	Note      string `json:"note"`
+	CreatedBy string `json:"created_by"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (OtaRollout) TableName() string { return "ota_rollouts" }
+
+type OtaAssignment struct {
+	NodeMAC    string  `json:"node_mac" gorm:"primaryKey;column:node_mac"`
+	RolloutID  uint    `json:"rollout_id"`
+	Status     string  `json:"status"`
+	Result     string  `json:"result"`
+	AssignedAt string  `json:"assigned_at"`
+	AckedAt    *string `json:"acked_at"`
+}
+
+func (OtaAssignment) TableName() string { return "ota_assignments" }
+
 // ── Heartbeat ────────────────────────────────────────────────────────────────
 
 type HeartbeatRequest struct {

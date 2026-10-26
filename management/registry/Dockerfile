@@ -11,10 +11,13 @@ COPY . .
 # Static binary, no CGO — runs on distroless/static
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/hive-registry .
 
+RUN mkdir -p /out/ota
+
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /
 COPY --from=build /out/hive-registry /hive-registry
 # In-cluster: listen on all interfaces (Ingress/Service front it, not localhost)
+COPY --from=build --chown=nonroot:nonroot /out/ota /var/lib/hive-registry/ota
 ENV LISTEN_ADDR=:8080
 EXPOSE 8080
 USER nonroot:nonroot

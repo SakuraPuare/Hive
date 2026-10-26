@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { LayoutDashboard, Server, Download, Route, Package, Users, ScrollText, ShieldCheck, Activity, UserCheck, ShoppingCart, Tag, MessageSquare, Megaphone, Globe, Waypoints } from 'lucide-react';
+import { LayoutDashboard, Server, Download, Route, Package, Users, ScrollText, ShieldCheck, Activity, UserCheck, ShoppingCart, Tag, MessageSquare, Megaphone, Globe, Waypoints, Upload } from 'lucide-react';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
@@ -54,7 +54,7 @@ function SidebarContent({ onNavigate }: SidebarContentProps) {
     { href: '/gateway', label: tNav('gateway'), icon: Waypoints, perm: 'node:read' },
     { href: '/subscriptions', label: tNav('subscriptions'), icon: Download, perm: null },
     { href: '/lines', label: tNav('lines'), icon: Route, perm: 'line:read' },
-    { href: '/plans', label: tNav('plans'), icon: Package, perm: 'subscription:read' },
+    { href: '/plans', label: tNav('plans'), icon: Package, perm: 'plan:read' },
     { href: '/customers', label: tNav('customers'), icon: UserCheck, perm: 'customer:read' },
   ];
 
@@ -63,6 +63,7 @@ function SidebarContent({ onNavigate }: SidebarContentProps) {
     { href: '/promo-codes', label: tNav('promoCodes'), icon: Tag, perm: 'order:write' },
     { href: '/tickets', label: tNav('tickets'), icon: MessageSquare, perm: 'ticket:read' },
     { href: '/announcements', label: tNav('announcements'), icon: Megaphone, perm: 'announcement:write' },
+    { href: '/ota', label: tNav('ota'), icon: Upload, perm: 'ota:read' },
     { href: '/users', label: tNav('users'), icon: Users, perm: 'user:read' },
     { href: '/roles', label: tNav('roles'), icon: ShieldCheck, perm: 'role:read' },
     { href: '/audit-logs', label: tNav('auditLogs'), icon: ScrollText, perm: 'audit:read' },

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"hive/registry/internal/store"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +11,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"hive/registry/internal/model"
+	"hive/registry/internal/store"
 )
 
 func mustExec(t *testing.T, query string, args ...any) {
@@ -34,7 +36,7 @@ func TestDeviceCredentialsAreMACScopedAndCannotAdminister(t *testing.T) {
 	mac := "aabbccddeeff"
 	insertTestNode(t, mac)
 	token := deviceToken(t, mac)
-	for _, path := range []string{"/nodes/112233445566/xray-users", "/nodes/112233445566/commands", "/nodes/112233445566/clash-config", "/admin/customers"} {
+	for _, path := range []string{"/nodes/112233445566/xray-users", "/nodes/112233445566/commands", "/nodes/112233445566/ota-version", "/nodes/112233445566/clash-config", "/admin/customers", "/admin/ota/rollouts"} {
 		resp := doBearer("GET", path, nil, token)
 		assertStatus(t, resp, http.StatusUnauthorized)
 		resp.Body.Close()
@@ -289,5 +291,29 @@ func TestTrafficSumsNodesAndDeduplicatesTransport(t *testing.T) {
 	h := &Handler{Config: &cfg}
 	if n := h.promQueryInstantByLabel("traffic", "target", false, true)["sub-1"]; n != 300 {
 		t.Fatalf("traffic=%v, want 300", n)
+	}
+}
+
+func TestOldOTAAcknowledgementCannotCompleteNewAssignment(t *testing.T) {
+	resetDB(t)
+	mac := "aabbccddeeff"
+	insertTestNode(t, mac)
+	now := time.Now().UTC().Format(model.TimeLayout)
+	mustExec(t, "INSERT INTO ota_rollouts (version,url,sha256,created_by,created_at) VALUES ('1','https://example.com/ota',?,'admin',?)", strings.Repeat("a", 64), now)
+	var rid uint
+	testDB.Raw("SELECT id FROM ota_rollouts LIMIT 1").Scan(&rid)
+	if testH.assignNodesToRollout(rid, []string{mac}, now) != 1 {
+		t.Fatal("assign failed")
+	}
+	var oldToken string
+	testDB.Raw("SELECT assignment_token FROM ota_assignments WHERE node_mac=?", mac).Scan(&oldToken)
+	if testH.assignNodesToRollout(rid, []string{mac}, now) != 1 {
+		t.Fatal("reassign failed")
+	}
+	resp := doBearer("POST", "/nodes/"+mac+"/ota-ack", map[string]string{"version": "1", "status": "done", "assignment_token": oldToken}, deviceToken(t, mac))
+	assertStatus(t, resp, 200)
+	resp.Body.Close()
+	if n := scalar(t, "SELECT COUNT(*) FROM ota_assignments WHERE status='pending'"); n != 1 {
+		t.Fatal("old acknowledgement completed new assignment")
 	}
 }
