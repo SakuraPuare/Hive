@@ -245,6 +245,16 @@ definitions:
         example: admin
         type: string
     type: object
+  handler.NodeAccountingRequest:
+    properties:
+      counters:
+        items:
+          $ref: '#/definitions/handler.NodeTrafficCounter'
+        type: array
+      epoch:
+        description: Xray systemd InvocationID
+        type: string
+    type: object
   handler.NodeRegisterRequest:
     properties:
       cf_url:
@@ -285,6 +295,14 @@ definitions:
         type: string
       status:
         example: registered
+        type: string
+    type: object
+  handler.NodeTrafficCounter:
+    properties:
+      name:
+        type: string
+      value:
+        example: "0"
         type: string
     type: object
   handler.NodeUpdateRequest:
@@ -342,6 +360,8 @@ definitions:
     type: object
   handler.NodeXrayUsersResponse:
     properties:
+      lease_seconds:
+        type: integer
       mac:
         type: string
       users:
@@ -3764,36 +3784,17 @@ paths:
       - system
   /l/{token}:
     get:
-      description: 返回 base64 编码的 VLESS 订阅链接
-      operationId: PublicLineVless
-      parameters:
-      - description: 线路 token
-        in: path
-        name: token
-        required: true
-        type: string
-      produces:
-      - text/plain
-      responses:
-        "200":
-          description: VLESS subscription
-          schema:
-            type: string
-        "404":
-          description: Not Found
-          schema:
-            type: string
-      summary: 获取线路 VLESS 订阅
-      tags:
-      - subscription
-  /l/{token}/clash:
-    get:
       description: 返回 Clash/Mihomo YAML 格式订阅配置
       operationId: PublicLineClash
       parameters:
       - description: 线路 token
         in: path
         name: token
+        required: true
+        type: string
+      - description: 客户订阅 Token（额度和有效期校验）
+        in: query
+        name: subscription
         required: true
         type: string
       produces:
@@ -3808,6 +3809,35 @@ paths:
           schema:
             type: string
       summary: 获取线路 Clash 订阅
+      tags:
+      - subscription
+  /l/{token}/vless:
+    get:
+      description: 返回 base64 编码的 VLESS 订阅链接
+      operationId: PublicLineVless
+      parameters:
+      - description: 线路 token
+        in: path
+        name: token
+        required: true
+        type: string
+      - description: 客户订阅 Token（额度和有效期校验）
+        in: query
+        name: subscription
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: VLESS subscription
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: 获取线路 VLESS 订阅
       tags:
       - subscription
   /labels:
@@ -4076,18 +4106,22 @@ paths:
       tags:
       - nodes
   /nodes/{mac}/xray-users:
-    get:
-      description: |-
-        Returns the set of VLESS clients (uuid + email) that should be active
-        on this node's Xray inbound: all valid (active, non-expired, under-quota)
-        customer subscriptions whose plan grants access to a line containing this node.
-      operationId: NodeXrayUsers
+    post:
+      consumes:
+      - application/json
+      operationId: NodeAccounting
       parameters:
-      - description: node MAC
+      - description: Node MAC
         in: path
         name: mac
         required: true
         type: string
+      - description: Cumulative traffic counters
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.NodeAccountingRequest'
       produces:
       - application/json
       responses:
@@ -4095,6 +4129,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/handler.NodeXrayUsersResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
@@ -4105,7 +4143,7 @@ paths:
             $ref: '#/definitions/handler.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List Xray users for a node
+      summary: Report node traffic and renew subscription authorization
       tags:
       - nodes
   /nodes/allocate-easytier:
@@ -4935,12 +4973,17 @@ paths:
       - admin
   /s/{token}:
     get:
-      description: 通过 Token 获取订阅组的 Clash YAML 配置（无需认证）
+      description: 通过 Token 获取订阅组的 Clash YAML 配置（必须提供客户订阅 Token）
       operationId: PublicGroupClash
       parameters:
       - description: 订阅组 Token
         in: path
         name: token
+        required: true
+        type: string
+      - description: 客户订阅 Token（额度和有效期校验）
+        in: query
+        name: subscription
         required: true
         type: string
       produces:
@@ -4965,6 +5008,12 @@ paths:
     get:
       description: 返回 base64 编码的 VLESS 订阅链接
       operationId: SubscriptionVless
+      parameters:
+      - description: 客户订阅 Token（额度和有效期校验）
+        in: query
+        name: subscription
+        required: true
+        type: string
       produces:
       - text/plain
       responses:
@@ -4983,6 +5032,12 @@ paths:
     get:
       description: 返回 Clash/Mihomo YAML 格式订阅配置
       operationId: SubscriptionClash
+      parameters:
+      - description: 客户订阅 Token（额度和有效期校验）
+        in: query
+        name: subscription
+        required: true
+        type: string
       produces:
       - text/plain
       responses:

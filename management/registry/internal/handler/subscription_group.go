@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -260,15 +259,17 @@ func (h *Handler) HandleResetGroupToken(w http.ResponseWriter, r *http.Request) 
 // HandlePublicGroupClash handles GET /s/{token}
 // @Summary      公开订阅组 Clash 配置
 // @ID           PublicGroupClash
-// @Description  通过 Token 获取订阅组的 Clash YAML 配置（无需认证）
+// @Description  通过 Token 获取订阅组的 Clash YAML 配置（必须提供客户订阅 Token）
 // @Tags         subscription
 // @Produce      plain
 // @Param        token path string true "订阅组 Token"
 // @Success      200 {string} string "Clash subscription"
 // @Failure      404 {string} string "Not Found"
 // @Failure      500 {string} string "Internal Server Error"
+// @Param        subscription query string true "客户订阅 Token（额度和有效期校验）"
 // @Router       /s/{token} [get]
 func (h *Handler) HandlePublicGroupClash(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	middleware.SubscriptionRequestsTotal.WithLabelValues("public_group_clash").Inc()
 
 	token := r.PathValue("token")
@@ -298,8 +299,8 @@ func (h *Handler) HandlePublicGroupClash(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	yaml := h.buildGroupClashYAML(sg.Name, nodes, "")
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.yaml"`, sg.Name))
-	fmt.Fprint(w, yaml)
+	if nodes == nil {
+		nodes = []model.Node{}
+	}
+	h.serveScopedSubscription(w, r, nodes, false)
 }

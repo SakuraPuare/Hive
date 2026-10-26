@@ -154,11 +154,7 @@ if [[ -f /etc/hive/node-info ]]; then
     [[ -n "${CF_URL:-}" ]] && \
         printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "CF Proxy" "${CF_URL}"
 
-    if [[ -n "${XRAY_UUID:-}" && -n "${CF_URL:-}" ]]; then
-        CF_HOST="${CF_URL#https://}"
-        VLESS_LINK="vless://${XRAY_UUID}@${CF_HOST}:443?type=ws&security=tls&path=%2Fray#${HOSTNAME:-hive}"
-        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "Xray (VLESS)" "${VLESS_LINK}"
-    fi
+    printf " Xray (VLESS): 请从客户门户获取有效订阅链接。\n"
 
     # WiFi 热点（双频，仅展示已开启的频段）
     if [[ -n "${WIFI_SSID_2G:-}" ]]; then

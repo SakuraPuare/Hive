@@ -329,26 +329,14 @@ type XrayUser struct {
 	Email string `json:"email"`
 }
 
-// NodeXrayUsersResponse is the body returned by GET /nodes/{mac}/xray-users.
+// NodeXrayUsersResponse is the body returned by POST /nodes/{mac}/xray-users.
 type NodeXrayUsersResponse struct {
-	MAC   string     `json:"mac"`
-	Users []XrayUser `json:"users"`
+	MAC          string     `json:"mac"`
+	LeaseSeconds int        `json:"lease_seconds"`
+	Users        []XrayUser `json:"users"`
 }
 
-// HandleNodeXrayUsers godoc
-// @Summary List Xray users for a node
-// @ID      NodeXrayUsers
-// @Description Returns the set of VLESS clients (uuid + email) that should be active
-// @Description on this node's Xray inbound: all valid (active, non-expired, under-quota)
-// @Description customer subscriptions whose plan grants access to a line containing this node.
-// @Tags nodes
-// @Security BearerAuth
-// @Produce json
-// @Param mac path string true "node MAC"
-// @Success 200 {object} NodeXrayUsersResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /nodes/{mac}/xray-users [get]
+// HandleNodeXrayUsers responds after durable accounting has committed.
 func (h *Handler) HandleNodeXrayUsers(w http.ResponseWriter, r *http.Request) {
 	if !h.Auth.RequireDeviceAuth(w, r) {
 		return
@@ -363,20 +351,22 @@ func (h *Handler) HandleNodeXrayUsers(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC().Format(model.TimeLayout)
 
 	var rows []struct {
-		ID       uint
-		XrayUUID string
+		ID        uint
+		XrayUUID  string
+		ExpiresAt time.Time
 	}
 	// Resolve: node MAC -> enabled lines containing it -> plans granting those lines
 	// -> active subscriptions of those plans whose customer is active, not expired,
 	// and not over traffic quota. DISTINCT because a sub's plan may map to several
 	// lines that all include this node.
 	if err := h.DB.Raw(
-		"SELECT DISTINCT cs.id, cs.xray_uuid "+
+		"SELECT DISTINCT cs.id, cs.xray_uuid, cs.expires_at "+
 			"FROM customer_subscriptions cs "+
 			"JOIN customers c ON c.id = cs.customer_id AND c.status = 'active' "+
 			"JOIN plan_lines pl ON pl.plan_id = cs.plan_id "+
 			"JOIN `lines` l ON l.id = pl.line_id AND l.enabled = 1 "+
 			"JOIN line_nodes ln ON ln.line_id = pl.line_id AND ln.node_mac = ? "+
+			"JOIN nodes n ON n.mac = ln.node_mac AND n.enabled = 1 AND n.status = 'active' "+
 			"WHERE cs.status = 'active' "+
 			"AND cs.xray_uuid <> '' "+
 			"AND cs.expires_at > ? "+
@@ -387,13 +377,22 @@ func (h *Handler) HandleNodeXrayUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lease := subscriptionLeaseSeconds
 	users := make([]XrayUser, 0, len(rows))
 	for _, row := range rows {
+		remaining := int(time.Until(row.ExpiresAt).Seconds())
+		if remaining < 1 {
+			continue
+		}
+		if remaining < lease {
+			lease = remaining
+		}
 		users = append(users, XrayUser{
 			UUID:  row.XrayUUID,
 			Email: fmt.Sprintf("sub-%d", row.ID),
 		})
 	}
 
-	h.jsonOK(w, NodeXrayUsersResponse{MAC: mac, Users: users})
+	w.Header().Set("Cache-Control", "no-store")
+	h.jsonOK(w, NodeXrayUsersResponse{MAC: mac, Users: users, LeaseSeconds: lease})
 }

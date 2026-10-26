@@ -156,7 +156,7 @@ func TestResetGroupToken_NotFound(t *testing.T) {
 
 func TestPublicGroupClash(t *testing.T) {
 	resetDB(t)
-	insertTestNode(t, "aabbccddeeff")
+	customerToken := setupCustomerSubscription(t)
 
 	// 创建分组并获取 token
 	resp := doJSON("POST", "/admin/subscription-groups", map[string]any{"name": "PublicTest"}, adminCookie())
@@ -172,7 +172,7 @@ func TestPublicGroupClash(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 
 	// 公开访问（无 cookie）
-	resp = doJSON("GET", "/s/"+token, nil, nil)
+	resp = doJSON("GET", "/s/"+token+"?subscription="+customerToken, nil, nil)
 	assertStatus(t, resp, http.StatusOK)
 
 	ct := resp.Header.Get("Content-Type")
@@ -241,7 +241,7 @@ func TestSubscriptionGroups_PermissionDenied(t *testing.T) {
 
 func TestSubscriptionGroupsFullFlow(t *testing.T) {
 	resetDB(t)
-	insertTestNode(t, "aabbccddeeff")
+	customerToken := setupCustomerSubscription(t)
 
 	// 1. 创建分组
 	resp := doJSON("POST", "/admin/subscription-groups", map[string]any{"name": "FlowTest"}, adminCookie())
@@ -282,11 +282,11 @@ func TestSubscriptionGroupsFullFlow(t *testing.T) {
 	}
 
 	// 6. 公开订阅用新 token
-	resp = doJSON("GET", "/s/"+newToken, nil, nil)
+	resp = doJSON("GET", "/s/"+newToken+"?subscription="+customerToken, nil, nil)
 	assertStatus(t, resp, http.StatusOK)
 
 	// 7. 旧 token 应该 404
-	resp = doJSON("GET", "/s/"+token, nil, nil)
+	resp = doJSON("GET", "/s/"+token+"?subscription="+customerToken, nil, nil)
 	assertStatus(t, resp, http.StatusNotFound)
 
 	// 8. 删除分组

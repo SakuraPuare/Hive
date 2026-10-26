@@ -275,6 +275,7 @@ echo ">>> node-info written to /etc/hive/node-info"
 # 6. 启动核心服务
 # ─────────────────────────────────────────────
 echo ">>> Starting services..."
+systemctl enable --now hive-subscription-guard.timer
 systemctl enable --now xray
 systemctl enable --now cloudflared
 systemctl enable --now frpc
@@ -283,6 +284,7 @@ systemctl enable --now frpc
 systemctl enable --now hive-xray-sync.timer || echo ">>> hive-xray-sync.timer failed (non-fatal)"
 
 # Xray 流量统计 exporter（供 Prometheus 抓取 per-user 流量，非致命）
+systemctl enable --now hive-subscription-guard.timer
 systemctl enable --now xray-exporter || echo ">>> xray-exporter failed (non-fatal)"
 
 # EasyTier：start-easytier.sh 从 node-info 读取 --ipv4 参数

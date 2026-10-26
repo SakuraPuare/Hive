@@ -619,7 +619,12 @@ func (h *Handler) HandleResetSubscriptionToken(w http.ResponseWriter, r *http.Re
 	}
 
 	now := time.Now().UTC().Format(model.TimeLayout)
-	if err := h.DB.Exec("UPDATE customer_subscriptions SET token = ?, updated_at = ? WHERE id = ?", token, now, id).Error; err != nil {
+	uuid, err := generateUUID()
+	if err != nil {
+		h.jsonErr(w, 500, "uuid generation failed")
+		return
+	}
+	if err := h.DB.Exec("UPDATE customer_subscriptions SET token = ?, xray_uuid = ?, updated_at = ? WHERE id = ?", token, uuid, now, id).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}

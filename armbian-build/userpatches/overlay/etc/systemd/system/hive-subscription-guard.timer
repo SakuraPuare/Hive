@@ -1,0 +1,10 @@
+[Unit]
+Description=Enforce local Hive authorization deadlines
+
+[Timer]
+OnBootSec=1s
+OnUnitInactiveSec=5s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -35,7 +35,9 @@
     "copy": "Copy",
     "copied": "Copied",
     "perPage": "Per page",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "customerSubscription": "Customer subscription link",
+    "customerSubscriptionHint": "Paste a subscription link from the customer details. Exported configurations use this subscription’s quota and expiry and only include nodes allowed by its plan."
   },
   "auth": {
     "checkingAuth": "Checking authentication…",

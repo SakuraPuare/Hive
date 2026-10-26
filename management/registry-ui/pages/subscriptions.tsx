@@ -1,10 +1,11 @@
+import { CustomerSubscriptionInput, customerSubscriptionToken } from '@/components/CustomerSubscriptionInput';
 import React, { useCallback, useDeferredValue, useEffect, useId, useState } from 'react';
 import {
   AdminService,
   SubscriptionService,
 } from '@/src/generated/client';
 import type { model_Node, model_SubscriptionGroup } from '@/src/generated/client';
-import { apiPath, apiUrl, sessionApi } from '@/lib/openapi-session';
+import { apiUrl, sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { useClipboard } from '@/lib/use-clipboard';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,10 @@ export default function Subscriptions() {
   const { user } = useCurrentUser();
   const canWrite = user?.can('subscription:write') ?? false;
   const toast = useToast();
+  const [customerSubscription, setCustomerSubscription] = useState('');
+  const customerToken = customerSubscriptionToken(customerSubscription);
+  const scopedURL = (path: string) => customerToken ? apiUrl(`${path}?subscription=${encodeURIComponent(customerToken)}`) : undefined;
+
   const createNameId = useId();
   const createErrorId = useId();
   const editSearchId = useId();
@@ -59,7 +64,7 @@ export default function Subscriptions() {
     setLoading(true);
     setError('');
     try {
-      const txt = await sessionApi(SubscriptionService.subscriptionClash());
+      const txt = await sessionApi(SubscriptionService.subscriptionClash({ subscription: customerToken }));
       setPreview(txt);
       setPreviewType('Clash YAML');
     } catch (e: unknown) {
@@ -73,7 +78,7 @@ export default function Subscriptions() {
     setLoading(true);
     setError('');
     try {
-      const txt = await sessionApi(SubscriptionService.subscriptionVless());
+      const txt = await sessionApi(SubscriptionService.subscriptionVless({ subscription: customerToken }));
       setPreview(txt);
       setPreviewType('VLESS');
     } catch (e: unknown) {
@@ -110,7 +115,8 @@ export default function Subscriptions() {
   const { copy: copyToClipboard } = useClipboard();
   const [copiedId, setCopiedId] = useState<number | null>(null);
   async function copyLink(group: model_SubscriptionGroup) {
-    const url = apiUrl('/s/' + group.token!);
+    const url = scopedURL('/s/' + group.token!);
+    if (!url) return;
     const ok = await copyToClipboard(url);
     if (ok) {
       setCopiedId(group.id ?? null);
@@ -259,6 +265,8 @@ export default function Subscriptions() {
         description={t('vlessDesc')}
       />
 
+      <CustomerSubscriptionInput value={customerSubscription} onChange={setCustomerSubscription} />
+
       {/* Subscription format cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card
@@ -282,7 +290,7 @@ export default function Subscriptions() {
               className="state-layer rounded-lg text-sm font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
               asChild
             >
-              <a href={apiPath('/subscription')} target="_blank" rel="noopener noreferrer">
+              <a href={scopedURL('/subscription')} target="_blank" rel="noopener noreferrer">
                 <Download className="mr-2 h-4 w-4" aria-hidden="true" />
                 {tCommon('download')}
               </a>
@@ -291,7 +299,7 @@ export default function Subscriptions() {
               variant="secondary"
               className="state-layer rounded-lg text-sm font-500 bg-md-secondary-container text-md-on-secondary-container hover:bg-md-secondary-container focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
               onClick={previewVless}
-              disabled={loading}
+              disabled={loading || !customerToken}
             >
               {tCommon('preview')}
             </Button>
@@ -319,7 +327,7 @@ export default function Subscriptions() {
               className="state-layer rounded-lg text-sm font-500 border focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
               asChild
             >
-              <a href={apiPath('/subscription/clash')} target="_blank" rel="noopener noreferrer">
+              <a href={scopedURL('/subscription/clash')} target="_blank" rel="noopener noreferrer">
                 <Download className="mr-2 h-4 w-4" aria-hidden="true" />
                 {tCommon('download')}
               </a>
@@ -328,7 +336,7 @@ export default function Subscriptions() {
               variant="secondary"
               className="state-layer rounded-lg text-sm font-500 bg-md-secondary-container text-md-on-secondary-container hover:bg-md-secondary-container focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-2"
               onClick={previewClash}
-              disabled={loading}
+              disabled={loading || !customerToken}
             >
               {tCommon('preview')}
             </Button>
@@ -472,8 +480,8 @@ export default function Subscriptions() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <code className="max-w-[200px] truncate rounded-lg bg-md-surface-container-high px-2 py-1 text-xs text-foreground font-mono" title={apiUrl('/s/' + g.token)}>
-                            {apiUrl('/s/' + g.token)}
+                          <code className="max-w-[200px] truncate rounded-lg bg-md-surface-container-high px-2 py-1 text-xs text-foreground font-mono" title={(scopedURL('/s/' + g.token) ?? '')}>
+                            {(scopedURL('/s/' + g.token) ?? '')}
                           </code>
                           <Button
                             variant="ghost"
@@ -483,6 +491,7 @@ export default function Subscriptions() {
                                 ? 'bg-md-tertiary-container text-md-on-tertiary-container'
                                 : 'text-muted-foreground'
                             }`}
+                            disabled={!customerToken}
                             onClick={() => copyLink(g)}
                           >
                             {copiedId === g.id ? t('copied') : t('copyLink')}
@@ -493,6 +502,7 @@ export default function Subscriptions() {
                                 variant="ghost"
                                 size="sm"
                                 aria-label={t('showQr')}
+                                disabled={!customerToken}
                                 className="state-layer size-6 p-0 rounded-lg text-muted-foreground focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
                               >
                                 <QrCode className="size-3.5" aria-hidden="true" />
@@ -501,7 +511,7 @@ export default function Subscriptions() {
                             <PopoverContent className="w-auto p-4" align="end">
                               <div className="flex flex-col items-center gap-2">
                                 <div className="rounded-lg bg-white p-3">
-                                  <QRCodeSVG value={apiUrl('/s/' + g.token)} size={160} level="M" />
+                                  {customerToken && <QRCodeSVG value={(scopedURL('/s/' + g.token) ?? '')} size={160} level="M" />}
                                 </div>
                                 <p className="max-w-[180px] text-center text-xs text-muted-foreground">{t('qrHint')}</p>
                               </div>

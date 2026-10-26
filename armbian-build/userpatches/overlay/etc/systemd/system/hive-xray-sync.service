@@ -2,11 +2,11 @@
 Description=Hive Xray user sync (pull subscriptions from registry -> Xray HandlerService)
 After=network-online.target xray.service
 Wants=network-online.target
-Requires=xray.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/hive-xray-sync
-# 失败不影响代理本身，下个 timer 周期会重试
+TimeoutStartSec=30
+# Independent watchdog expires authorization even if this agent hangs.
 SuccessExitStatus=0
 Nice=10

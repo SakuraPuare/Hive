@@ -9,8 +9,8 @@ const mockNodesList = vi.fn();
 
 vi.mock('@/src/generated/client', () => ({
   SubscriptionService: {
-    subscriptionClash: () => mockSubscriptionClash(),
-    subscriptionVless: () => mockSubscriptionVless(),
+    subscriptionClash: (args: unknown) => mockSubscriptionClash(args),
+    subscriptionVless: (args: unknown) => mockSubscriptionVless(args),
   },
   AdminService: {
     adminListSubscriptionGroups: () => mockListGroups(),
@@ -87,6 +87,7 @@ describe('Subscriptions page', () => {
     // Two preview buttons (VLESS + Clash)
     const previewButtons = screen.getAllByText('common.preview');
     expect(previewButtons.length).toBe(2);
+    for (const button of previewButtons) expect(button).toBeDisabled();
   });
 
   it('previews VLESS content', async () => {
@@ -94,6 +95,7 @@ describe('Subscriptions page', () => {
     const user = userEvent.setup();
 
     render(<Subscriptions />);
+    await user.type(screen.getByLabelText('common.customerSubscription'), 'https://example.test/api/c/' + 'a'.repeat(64));
 
     // Click first preview button (VLESS card comes first)
     const previewButtons = screen.getAllByText('common.preview');
@@ -101,6 +103,7 @@ describe('Subscriptions page', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/vless:\/\//)).toBeInTheDocument();
+      expect(mockSubscriptionVless).toHaveBeenCalledWith({ subscription: 'a'.repeat(64) });
     });
   });
 
@@ -109,6 +112,7 @@ describe('Subscriptions page', () => {
     const user = userEvent.setup();
 
     render(<Subscriptions />);
+    await user.type(screen.getByLabelText('common.customerSubscription'), 'https://example.test/api/c/' + 'a'.repeat(64));
 
     // Click second preview button (Clash card)
     const previewButtons = screen.getAllByText('common.preview');
@@ -124,6 +128,7 @@ describe('Subscriptions page', () => {
     const user = userEvent.setup();
 
     render(<Subscriptions />);
+    await user.type(screen.getByLabelText('common.customerSubscription'), 'https://example.test/api/c/' + 'a'.repeat(64));
 
     const previewButtons = screen.getAllByText('common.preview');
     await user.click(previewButtons[0]);

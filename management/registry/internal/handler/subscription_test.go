@@ -73,9 +73,9 @@ func setupCustomerSubscription(t *testing.T) string {
 
 func TestAdminSubscriptionVless(t *testing.T) {
 	resetDB(t)
-	insertSubTestNode(t, "aabbccddeeff")
+	token := setupCustomerSubscription(t)
 
-	resp := doJSON("GET", "/subscription", nil, adminCookie())
+	resp := doJSON("GET", "/subscription?subscription="+token, nil, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 
 	body := readBody(resp)
@@ -90,9 +90,9 @@ func TestAdminSubscriptionVless(t *testing.T) {
 
 func TestAdminSubscriptionVless_Bearer(t *testing.T) {
 	resetDB(t)
-	insertSubTestNode(t, "aabbccddeeff")
+	token := setupCustomerSubscription(t)
 
-	resp := doJSON("GET", "/subscription", nil, adminCookie())
+	resp := doJSON("GET", "/subscription?subscription="+token, nil, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 
 	body := readBody(resp)
@@ -109,9 +109,9 @@ func TestAdminSubscriptionVless_Unauthorized(t *testing.T) {
 
 func TestAdminSubscriptionClash(t *testing.T) {
 	resetDB(t)
-	insertSubTestNode(t, "aabbccddeeff")
+	token := setupCustomerSubscription(t)
 
-	resp := doJSON("GET", "/subscription/clash", nil, adminCookie())
+	resp := doJSON("GET", "/subscription/clash?subscription="+token, nil, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 
 	body := readBody(resp)
@@ -126,9 +126,9 @@ func TestAdminSubscriptionClash(t *testing.T) {
 
 func TestAdminSubscriptionClash_Bearer(t *testing.T) {
 	resetDB(t)
-	insertSubTestNode(t, "aabbccddeeff")
+	token := setupCustomerSubscription(t)
 
-	resp := doJSON("GET", "/subscription/clash", nil, adminCookie())
+	resp := doJSON("GET", "/subscription/clash?subscription="+token, nil, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 
 	body := readBody(resp)
@@ -196,7 +196,7 @@ func TestNodeXrayUsers(t *testing.T) {
 	resetDB(t)
 	token := setupCustomerSubscription(t) // builds node aabbccddeeff → line → plan → sub
 
-	resp := doBearer("GET", "/nodes/aabbccddeeff/xray-users", nil, testCfg.APISecret)
+	resp := doBearer("POST", "/nodes/aabbccddeeff/xray-users", emptyNodeReport(), deviceToken(t, "aabbccddeeff"))
 	assertStatus(t, resp, http.StatusOK)
 
 	var out struct {
@@ -227,7 +227,7 @@ func TestNodeXrayUsers(t *testing.T) {
 
 func TestNodeXrayUsers_Unauthorized(t *testing.T) {
 	resetDB(t)
-	resp := doBearer("GET", "/nodes/aabbccddeeff/xray-users", nil, "wrong-secret")
+	resp := doBearer("POST", "/nodes/aabbccddeeff/xray-users", emptyNodeReport(), "wrong-secret")
 	assertStatus(t, resp, http.StatusUnauthorized)
 }
 
@@ -238,7 +238,7 @@ func TestNodeXrayUsers_ExcludesInvalidSubs(t *testing.T) {
 	// Expire the subscription: it must drop out of the node's user list.
 	testDB.Exec("UPDATE customer_subscriptions SET expires_at = '2020-01-01 00:00:00' WHERE token = ?", token)
 
-	resp := doBearer("GET", "/nodes/aabbccddeeff/xray-users", nil, testCfg.APISecret)
+	resp := doBearer("POST", "/nodes/aabbccddeeff/xray-users", emptyNodeReport(), deviceToken(t, "aabbccddeeff"))
 	assertStatus(t, resp, http.StatusOK)
 
 	var out struct {

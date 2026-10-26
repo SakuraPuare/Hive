@@ -1,3 +1,4 @@
+import { CustomerSubscriptionInput, customerSubscriptionToken } from '@/components/CustomerSubscriptionInput';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { MoreVertical, Network } from 'lucide-react';
 import { AdminService } from '@/src/generated/client';
@@ -64,6 +65,10 @@ export default function LinesPage() {
   const tNodes = useTranslations('nodes');
   const router = useRouter();
   const toast = useToast();
+  const [customerSubscription, setCustomerSubscription] = useState('');
+  const customerToken = customerSubscriptionToken(customerSubscription);
+  const scopedURL = (path: string) => customerToken ? apiUrl(`${path}?subscription=${encodeURIComponent(customerToken)}`) : undefined;
+
   const { user, loading: authLoading } = useCurrentUser();
   const canWrite = user?.can('line:write') ?? false;
 
@@ -327,7 +332,8 @@ export default function LinesPage() {
   }, [copied]);
 
   async function copyLink(line: model_Line) {
-    const url = apiUrl(`/l/${line.token}`);
+    const url = scopedURL(`/l/${line.token}`);
+    if (!url) return;
     const ok = await copy(url);
     if (ok) {
       setCopiedLineId(line.id!);
@@ -378,6 +384,8 @@ export default function LinesPage() {
           </>
         }
       />
+
+      <CustomerSubscriptionInput value={customerSubscription} onChange={setCustomerSubscription} />
 
       {/* ── Error banner ── */}
       {error && (
@@ -501,18 +509,19 @@ export default function LinesPage() {
                     <TableCell className="py-4">
                       <div className="flex flex-col gap-1">
                         <a
-                          href={apiUrl(`/l/${line.token}`)}
+                          href={scopedURL(`/l/${line.token}`)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          title={apiUrl(`/l/${line.token}`)}
+                          title={scopedURL(`/l/${line.token}`)}
                           className="font-mono text-xs text-muted-foreground truncate max-w-48 hover:text-foreground transition-colors"
                         >
-                          {`/l/${line.token}`}
+                          {scopedURL(`/l/${line.token}`) ?? tCommon('customerSubscription')}
                         </a>
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
+                            disabled={!customerToken}
                             onClick={() => copyLink(line)}
                             className={copiedLineId === line.id ? 'text-md-tertiary' : 'text-muted-foreground'}
                             aria-label={copiedLineId === line.id ? t('copied') : t('copyLink')}

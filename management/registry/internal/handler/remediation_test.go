@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hive/registry/internal/store"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -43,22 +44,22 @@ func TestDeviceCredentialsAreMACScopedAndCannotAdminister(t *testing.T) {
 		assertStatus(t, resp, http.StatusUnauthorized)
 		resp.Body.Close()
 	}
-	resp := doBearer("GET", "/nodes/"+mac+"/xray-users", nil, token)
+	resp := doBearer("POST", "/nodes/"+mac+"/xray-users", emptyNodeReport(), token)
 	assertStatus(t, resp, 200)
 	resp.Body.Close()
 	resp = doBearer("GET", "/admin/customers", nil, testCfg.APISecret)
 	assertStatus(t, resp, 401)
 	resp.Body.Close()
-	resp = doBearer("GET", "/nodes/"+mac+"/xray-users", nil, testCfg.APISecret)
+	resp = doBearer("POST", "/nodes/"+mac+"/xray-users", emptyNodeReport(), testCfg.APISecret)
 	assertStatus(t, resp, 401)
 	resp.Body.Close()
 	resp = doJSON("POST", "/admin/nodes/"+mac+"/credential", nil, adminCookie())
 	assertStatus(t, resp, 200)
 	rotated := parseJSON(resp)["token"].(string)
-	resp = doBearer("GET", "/nodes/"+mac+"/xray-users", nil, token)
+	resp = doBearer("POST", "/nodes/"+mac+"/xray-users", emptyNodeReport(), token)
 	assertStatus(t, resp, 401)
 	resp.Body.Close()
-	resp = doBearer("GET", "/nodes/"+mac+"/xray-users", nil, rotated)
+	resp = doBearer("POST", "/nodes/"+mac+"/xray-users", emptyNodeReport(), rotated)
 	assertStatus(t, resp, 200)
 	resp.Body.Close()
 }
@@ -254,4 +255,22 @@ func TestExpiredCustomerCanRenew(t *testing.T) {
 	resp = doJSON("POST", "/portal/orders", map[string]any{"plan_id": pid}, customerCookie(cid))
 	assertStatus(t, resp, 200)
 	resp.Body.Close()
+}
+
+func TestInvalidGatewaySubscriptionDoesNotFallBack(t *testing.T) {
+	resetDB(t)
+	mac := "aabbccddeeff"
+	insertTestNode(t, mac)
+	insertTestNode(t, "112233445566")
+	cid := insertTestCustomer(t, "gateway@example.com")
+	pid := insertTestPlan(t, "gateway")
+	sid := insertTestSubscription(t, cid, pid, "expired", time.Now().Add(-time.Hour))
+	mustExec(t, "UPDATE nodes SET bound_subscription_id=? WHERE mac=?", sid, mac)
+	resp := doBearer("GET", "/nodes/"+mac+"/clash-config", nil, deviceToken(t, mac))
+	assertStatus(t, resp, 200)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(body), "MATCH,REJECT") || strings.Contains(string(body), "type: vless") {
+		t.Fatalf("invalid gateway retained upstream credentials: %s", body)
+	}
 }

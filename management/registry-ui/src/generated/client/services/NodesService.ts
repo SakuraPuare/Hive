@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { handler_ackCommandRequest } from '../models/handler_ackCommandRequest';
+import type { handler_NodeAccountingRequest } from '../models/handler_NodeAccountingRequest';
 import type { handler_NodeRegisterRequest } from '../models/handler_NodeRegisterRequest';
 import type { handler_NodeRegisterResponse } from '../models/handler_NodeRegisterResponse';
 import type { handler_NodeXrayUsersResponse } from '../models/handler_NodeXrayUsersResponse';
@@ -109,28 +110,33 @@ export class NodesService {
         });
     }
     /**
-     * List Xray users for a node
-     * Returns the set of VLESS clients (uuid + email) that should be active
-     * on this node's Xray inbound: all valid (active, non-expired, under-quota)
-     * customer subscriptions whose plan grants access to a line containing this node.
+     * Report node traffic and renew subscription authorization
      * @returns handler_NodeXrayUsersResponse OK
      * @throws ApiError
      */
-    public static nodeXrayUsers({
+    public static nodeAccounting({
         mac,
+        requestBody,
     }: {
         /**
-         * node MAC
+         * Node MAC
          */
         mac: string,
+        /**
+         * Cumulative traffic counters
+         */
+        requestBody: handler_NodeAccountingRequest,
     }): CancelablePromise<handler_NodeXrayUsersResponse> {
         return __request(OpenAPI, {
-            method: 'GET',
+            method: 'POST',
             url: '/nodes/{mac}/xray-users',
             path: {
                 'mac': mac,
             },
+            body: requestBody,
+            mediaType: 'application/json',
             errors: {
+                400: `Bad Request`,
                 401: `Unauthorized`,
                 500: `Internal Server Error`,
             },

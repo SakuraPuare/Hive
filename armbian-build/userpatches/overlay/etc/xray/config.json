@@ -18,7 +18,10 @@
     "api": {
         "tag": "api",
         "listen": "127.0.0.1:10085",
-        "services": ["HandlerService", "StatsService"]
+        "services": [
+            "HandlerService",
+            "StatsService"
+        ]
     },
     "inbounds": [
         {
@@ -27,18 +30,15 @@
             "listen": "127.0.0.1",
             "protocol": "vless",
             "settings": {
-                "clients": [
-                    {
-                        "id": "%%XRAY_UUID%%",
-                        "level": 0,
-                        "email": "node-%%NODE_MAC%%"
-                    }
-                ],
+                "clients": [],
                 "decryption": "none"
             },
             "sniffing": {
                 "enabled": true,
-                "destOverride": ["http", "tls"]
+                "destOverride": [
+                    "http",
+                    "tls"
+                ]
             },
             "streamSettings": {
                 "network": "ws",

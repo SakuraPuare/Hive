@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Runs independently of sync/network requests. /run and monotonic uptime prevent
+# old grants surviving reboot or a backwards wall-clock adjustment.
+set -uo pipefail
+source /usr/local/bin/hive-subscription-state
+if [ -e "$HIVE_ACCESS_DIR/xray.lease" ] && ! hive_lease_valid xray; then
+    systemctl stop hive-xray-sync.service
+    hive_lease_valid xray || hive_stop_xray
+fi
+if [ -e "$HIVE_ACCESS_DIR/gateway.lease" ] && ! hive_lease_valid gateway; then
+    systemctl stop hive-clash-sync.service
+    hive_lease_valid gateway || hive_stop_gateway
+fi

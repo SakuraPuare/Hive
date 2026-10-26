@@ -1,16 +1,12 @@
 package handler
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
-	"hive/registry/internal/middleware"
 	"hive/registry/internal/model"
 	"hive/registry/internal/store"
 
@@ -352,7 +348,7 @@ func (h *Handler) HandleResetLineToken(w http.ResponseWriter, r *http.Request) {
 // queryLineNodes looks up a line by token and returns its name and nodes.
 func (h *Handler) queryLineNodes(token string) (lineName string, nodes []model.Node, err error) {
 	var l model.Line
-	if err = h.DB.Where("token = ?", token).First(&l).Error; err != nil {
+	if err = h.DB.Where("token = ? AND enabled = 1", token).First(&l).Error; err != nil {
 		return "", nil, err
 	}
 
@@ -374,45 +370,25 @@ func (h *Handler) queryLineNodes(token string) (lineName string, nodes []model.N
 // @Param        token path string true "线路 token"
 // @Success      200 {string} string "VLESS subscription"
 // @Failure      404 {string} string "Not Found"
-// @Router       /l/{token} [get]
+// @Param        subscription query string true "客户订阅 Token（额度和有效期校验）"
+// @Router       /l/{token}/vless [get]
 //
 // HandlePublicLineVless handles GET /l/{token}
 func (h *Handler) HandlePublicLineVless(w http.ResponseWriter, r *http.Request) {
-	middleware.SubscriptionRequestsTotal.WithLabelValues("public_line_vless").Inc()
-
 	token := r.PathValue("token")
 	if len(token) != 64 {
 		http.NotFound(w, r)
 		return
 	}
-
-	lineName, nodes, err := h.queryLineNodes(token)
+	_, nodes, err := h.queryLineNodes(token)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-
-	var links []string
-	for _, n := range nodes {
-		host := stripScheme(n.CFURL)
-		if host == "" || n.XrayUUID == "" {
-			continue
-		}
-		name := buildNodeName(n)
-		params := url.Values{}
-		params.Set("type", "ws")
-		params.Set("security", "tls")
-		params.Set("sni", host)
-		params.Set("path", fmt.Sprintf("/%s?ed=2560", h.Config.XrayPath))
-		link := fmt.Sprintf("vless://%s@%s:443?%s#%s",
-			n.XrayUUID, host, params.Encode(), url.PathEscape(name))
-		links = append(links, link)
+	if nodes == nil {
+		nodes = []model.Node{}
 	}
-
-	content := base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.txt"`, lineName))
-	fmt.Fprint(w, content)
+	h.serveScopedSubscription(w, r, nodes, true)
 }
 
 // HandlePublicLineClash godoc
@@ -424,26 +400,23 @@ func (h *Handler) HandlePublicLineVless(w http.ResponseWriter, r *http.Request) 
 // @Param        token path string true "线路 token"
 // @Success      200 {string} string "Clash subscription"
 // @Failure      404 {string} string "Not Found"
-// @Router       /l/{token}/clash [get]
+// @Param        subscription query string true "客户订阅 Token（额度和有效期校验）"
+// @Router       /l/{token} [get]
 //
 // HandlePublicLineClash handles GET /l/{token}/clash
 func (h *Handler) HandlePublicLineClash(w http.ResponseWriter, r *http.Request) {
-	middleware.SubscriptionRequestsTotal.WithLabelValues("public_line_clash").Inc()
-
 	token := r.PathValue("token")
 	if len(token) != 64 {
 		http.NotFound(w, r)
 		return
 	}
-
-	lineName, nodes, err := h.queryLineNodes(token)
+	_, nodes, err := h.queryLineNodes(token)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-
-	yaml := h.buildGroupClashYAML(lineName, nodes, "")
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.yaml"`, lineName))
-	fmt.Fprint(w, yaml)
+	if nodes == nil {
+		nodes = []model.Node{}
+	}
+	h.serveScopedSubscription(w, r, nodes, false)
 }

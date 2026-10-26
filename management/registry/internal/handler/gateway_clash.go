@@ -23,7 +23,7 @@ var gatewayClashTmpl = template.Must(template.New("gateway-clash").Parse(gateway
 type gatewayClashData struct {
 	Title             string
 	XrayPath          string
-	Secret            string // external-controller API secret (derived from MAC)
+	Secret            string // external-controller API secret
 	DashboardPath     string // metacubexd static dir served via external-ui
 	Proxies           []clashProxy
 	ManualProxyNames  []string // names for the 手动选择 select group
@@ -38,7 +38,7 @@ type gatewayClashData struct {
 // localDirectProcesses are the node's own outbound daemons that must never be
 // re-proxied by the local Mihomo — otherwise the exit-role Xray traffic would
 // loop back into the gateway. Force-DIRECT at the top of the rule list.
-var localDirectProcesses = []string{"xray", "cloudflared", "warp-svc", "easytier-core", "frpc", "tailscaled"}
+var localDirectProcesses = []string{"curl", "xray", "cloudflared", "warp-svc", "easytier-core", "frpc", "tailscaled"}
 
 // buildGatewayClashYAML renders the node-side Mihomo gateway config.
 //
@@ -65,13 +65,10 @@ func buildGatewayClashYAML(title, xrayPath, secret, dashboardPath, selfMAC, dire
 			continue // never route through ourselves
 		}
 		host := stripScheme(n.CFURL)
-		if host == "" || n.XrayUUID == "" {
+		if host == "" || overrideUUID == "" {
 			continue
 		}
-		uuid := n.XrayUUID
-		if overrideUUID != "" {
-			uuid = overrideUUID // billing: route egress through the bound subscription's UUID
-		}
+		uuid := overrideUUID
 		name := buildNodeName(n)
 		proxies = append(proxies, clashProxy{
 			Name:   yamlStr(name),
@@ -103,6 +100,10 @@ func buildGatewayClashYAML(title, xrayPath, secret, dashboardPath, selfMAC, dire
 	if !hasUpstream {
 		// no upstream available → don't reference 代理 group, fall back to direct
 		cnAction, otherAction = "直连", "直连"
+	}
+
+	if direction == "blocked" || overrideUUID == "" {
+		cnAction, otherAction = "REJECT", "REJECT"
 	}
 
 	data := gatewayClashData{

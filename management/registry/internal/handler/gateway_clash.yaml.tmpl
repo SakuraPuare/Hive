@@ -13,7 +13,7 @@ keep-alive-interval: 15
 global-client-fingerprint: chrome
 
 # 局域网可视化面板（MetaCubeXD）：external-controller 监听全网段，
-# 同网段设备可访问 http://<lan-ip>:9090/ui。secret 由节点 MAC 派生做 API 鉴权。
+# 同网段设备可访问 http://<lan-ip>:9090/ui。secret 使用服务端独立密钥派生做 API 鉴权。
 external-controller: 0.0.0.0:9090
 secret: "{{ .Secret }}"
 external-ui: "{{ .DashboardPath }}"

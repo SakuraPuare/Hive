@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Shared by sync agents, service startup hooks and the independent watchdog.
+HIVE_ACCESS_DIR=/run/hive-subscriptions
+HIVE_TRAFFIC_DIR=/var/lib/hive/traffic-pending
+mkdir -p "$HIVE_ACCESS_DIR" "$HIVE_TRAFFIC_DIR"
+chmod 700 "$HIVE_ACCESS_DIR" "$HIVE_TRAFFIC_DIR"
+hive_now() { awk '{print int($1)}' /proc/uptime; }
+hive_lease_valid() {
+    local deadline
+    read -r deadline < "$HIVE_ACCESS_DIR/$1.lease" 2>/dev/null || return 1
+    [[ "$deadline" =~ ^[0-9]+$ ]] && [ "$(hive_now)" -lt "$deadline" ]
+}
+hive_lease_write() {
+    local role=$1 start=$2 seconds=$3 deadline
+    [[ "$seconds" =~ ^[0-9]+$ ]] && [ "$seconds" -ge 1 ] && [ "$seconds" -le 45 ] || return 1
+    deadline=$((start + seconds))
+    [ "$(hive_now)" -lt "$deadline" ] || return 1
+    printf '%s\n' "$deadline" > "$HIVE_ACCESS_DIR/$role.lease.new" && mv -f "$HIVE_ACCESS_DIR/$role.lease.new" "$HIVE_ACCESS_DIR/$role.lease"
+}
+hive_xray_epoch() { systemctl show -p InvocationID --value xray; }
+hive_snapshot_traffic() {
+    systemctl is-active --quiet xray || return 0
+    local epoch stats tmp
+    epoch=$(hive_xray_epoch) || return 1
+    [[ "$epoch" =~ ^[a-zA-Z0-9_-]{1,128}$ ]] || return 1
+    stats=$(xray api statsquery --server=127.0.0.1:10085 -timeout 3 -pattern 'user>>>sub-') || return 1
+    [ "$epoch" = "$(hive_xray_epoch)" ] || return 1
+    tmp=$(mktemp "$HIVE_TRAFFIC_DIR/.snapshot.XXXXXX") || return 1
+    if ! printf '%s' "$stats" | jq -e --arg epoch "$epoch" '
+        if type != "object" or ((.stat // []) | type != "array") then error("invalid stats") else . end |
+        {epoch: $epoch, counters: [(.stat // [])[] |
+          select(.name | test("^user>>>sub-[1-9][0-9]*>>>traffic>>>(uplink|downlink)$")) |
+          {name, value: ((.value // "0") | tostring)}]} |
+        if all(.counters[]; .value | test("^[0-9]+$")) then . else error("invalid counter") end
+    ' > "$tmp"; then rm -f "$tmp"; return 1; fi
+    chmod 600 "$tmp"
+    mv -f "$tmp" "$HIVE_TRAFFIC_DIR/$epoch.json"
+}
+hive_stop_xray() {
+    # Capture the final counters before terminating existing connections.
+    hive_snapshot_traffic || true
+    systemctl stop xray || systemctl kill --kill-who=all --signal=KILL xray || return 1
+    rm -f "$HIVE_ACCESS_DIR/xray.lease" "$HIVE_ACCESS_DIR/xray.applied"
+}
+hive_gateway_block_forward() {
+    local tool
+    for tool in iptables ip6tables; do
+        "$tool" -w 3 -C FORWARD -m comment --comment hive-subscription -j DROP 2>/dev/null ||
+          "$tool" -w 3 -I FORWARD 1 -m comment --comment hive-subscription -j DROP || return 1
+    done
+}
+hive_gateway_unblock_forward() {
+    local tool
+    for tool in iptables ip6tables; do
+        while "$tool" -w 3 -C FORWARD -m comment --comment hive-subscription -j DROP 2>/dev/null; do
+            "$tool" -w 3 -D FORWARD -m comment --comment hive-subscription -j DROP || return 1
+        done
+    done
+}
+hive_gateway_block_config() {
+    local tmp
+    [ -s /etc/mihomo/config.yaml ] || return 1
+    tmp=$(mktemp /etc/mihomo/.blocked.XXXXXX) || return 1
+    awk '/^rules:/ {exit} {print} END {
+        print "rules:"
+        print "  - PROCESS-NAME,curl,DIRECT"
+        print "  - PROCESS-NAME,xray,DIRECT"
+        print "  - PROCESS-NAME,cloudflared,DIRECT"
+        print "  - PROCESS-NAME,easytier-core,DIRECT"
+        print "  - PROCESS-NAME,frpc,DIRECT"
+        print "  - PROCESS-NAME,tailscaled,DIRECT"
+        print "  - MATCH,REJECT"
+    }' /etc/mihomo/config.yaml > "$tmp"
+    chmod 600 "$tmp"
+    mv -f "$tmp" /etc/mihomo/config.yaml
+}
+hive_stop_gateway() {
+    hive_gateway_block_forward || return 1
+    hive_gateway_block_config || { systemctl stop hive-mihomo; return 1; }
+    systemctl restart hive-mihomo || systemctl stop hive-mihomo || return 1
+    rm -f "$HIVE_ACCESS_DIR/gateway.lease"
+}

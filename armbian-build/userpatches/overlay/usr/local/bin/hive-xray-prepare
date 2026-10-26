@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Never persist subscription clients or keep the historical unmetered node UUID.
+set -euo pipefail
+umask 077
+tmp=$(mktemp /etc/xray/.clients.XXXXXX)
+trap 'rm -f "$tmp"' EXIT
+jq '(.inbounds[] | select(.protocol == "vless") | .settings.clients) = []' /etc/xray/config.json > "$tmp"
+xray run -test -config "$tmp" >/dev/null 2>&1
+mv -f "$tmp" /etc/xray/config.json

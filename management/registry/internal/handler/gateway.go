@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -12,11 +13,11 @@ import (
 	"hive/registry/internal/model"
 )
 
-// gatewaySecret derives a deterministic external-controller API secret from the
-// node MAC (same "everything derived from MAC" convention as the rest of Hive).
-func gatewaySecret(mac string) string {
-	sum := sha256.Sum256([]byte("hive-mihomo-secret:" + strings.ToLower(mac)))
-	return hex.EncodeToString(sum[:])[:32]
+// gatewaySecret derives a per-node controller secret using a server-only key.
+func (h *Handler) gatewaySecret(mac string) string {
+	hash := hmac.New(sha256.New, []byte(h.Config.AdminSessionSecret))
+	hash.Write([]byte("hive-mihomo-secret:v2:" + strings.ToLower(mac)))
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 // HandleNodeClashConfig godoc
@@ -86,38 +87,77 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 
 	// 计费绑定：若本网关绑定了某客户订阅，且该订阅有效（未停用/未过期/未超量），
 	// 则上游代理统一使用该订阅的 UUID —— 网关走上游 Hive 节点的流量落到 sub-<id>
-	// 客户端，被 traffic.go 计入该订阅。订阅无效或未绑定则回退节点级 UUID（不计费）。
+	// 客户端，被 traffic.go 计入该订阅。已绑定或属于客户的网关失效时必须拒绝转发。
 	overrideUUID := ""
+	blocked := true
+	lease := subscriptionLeaseSeconds
 	if self.BoundSubscriptionID != nil && *self.BoundSubscriptionID != 0 {
+		blocked = true
 		var srow struct {
-			Status       string
-			XrayUUID     string
-			TrafficUsed  int64
-			TrafficLimit int64
-			ExpiresAt    time.Time
+			CustomerStatus string
+			PlanID         uint
+			Status         string
+			XrayUUID       string
+			TrafficUsed    int64
+			TrafficLimit   int64
+			ExpiresAt      time.Time
 		}
 		if err := h.DB.Raw(
-			"SELECT status, xray_uuid, traffic_used, traffic_limit, expires_at "+
-				"FROM customer_subscriptions WHERE id = ?", *self.BoundSubscriptionID,
+			"SELECT cs.status, cs.xray_uuid, cs.traffic_used, cs.traffic_limit, cs.expires_at, cs.plan_id, c.status AS customer_status "+
+				"FROM customer_subscriptions cs JOIN customers c ON c.id = cs.customer_id WHERE cs.id = ?", *self.BoundSubscriptionID,
 		).Scan(&srow).Error; err != nil {
 			log.Printf("gateway: query bound subscription %d for node %s: %v", *self.BoundSubscriptionID, mac, err)
 		} else if srow.XrayUUID != "" {
 			expStr := srow.ExpiresAt.UTC().Format(model.TimeLayout)
-			if ok, _ := checkSubscriptionValid(srow.Status, srow.TrafficUsed, srow.TrafficLimit, expStr); ok {
+			if ok, _ := checkSubscriptionValid(srow.Status, srow.TrafficUsed, srow.TrafficLimit, expStr); ok && srow.CustomerStatus == "active" && self.Enabled && self.Status == "active" {
+				remaining := int(time.Until(srow.ExpiresAt).Seconds())
+				if remaining < lease {
+					lease = max(1, remaining)
+				}
 				overrideUUID = srow.XrayUUID
+				blocked = false
+				var allowed []string
+				if err := h.DB.Raw("SELECT DISTINCT ln.node_mac FROM line_nodes ln JOIN `lines` l ON l.id = ln.line_id AND l.enabled = 1 JOIN plan_lines pl ON pl.line_id = l.id WHERE pl.plan_id = ?", srow.PlanID).Scan(&allowed).Error; err != nil {
+					blocked = true
+				}
+				permitted := make(map[string]bool)
+				for _, mac := range allowed {
+					permitted[mac] = true
+				}
+				filtered := make([]model.Node, 0)
+				for _, n := range all {
+					if permitted[n.MAC] {
+						filtered = append(filtered, n)
+					}
+				}
+				all = filtered
+				if len(all) == 0 {
+					blocked = true
+				}
 			}
-			// 无效时保持 overrideUUID="" → 回退节点级 UUID（等同不计费的普通网关）
+			// 无效或查询失败时保持 blocked，不能回退节点级 UUID。
 		}
 	}
 
+	if blocked {
+		all = nil
+		direction = "blocked"
+	}
 	yaml := buildGatewayClashYAML(
 		fmt.Sprintf("gateway %s", self.Hostname),
 		h.Config.XrayPath,
-		gatewaySecret(mac),
+		h.gatewaySecret(mac),
 		"/var/www/metacubexd",
 		mac, direction, upstreamMode, upstreamMACs, all, overrideUUID,
 	)
 
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Hive-Lease-Seconds", fmt.Sprint(lease))
+	access := "active"
+	if blocked {
+		access = "blocked"
+	}
+	w.Header().Set("X-Hive-Access", access)
 	w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(yaml))

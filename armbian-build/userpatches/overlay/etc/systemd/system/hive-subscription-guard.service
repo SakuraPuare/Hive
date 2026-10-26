@@ -1,0 +1,8 @@
+[Unit]
+Description=Revoke expired Hive subscription leases
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hive-subscription-guard
+TimeoutStartSec=20

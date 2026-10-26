@@ -57,31 +57,6 @@ export class SubscriptionService {
         });
     }
     /**
-     * 获取线路 VLESS 订阅
-     * 返回 base64 编码的 VLESS 订阅链接
-     * @returns string VLESS subscription
-     * @throws ApiError
-     */
-    public static publicLineVless({
-        token,
-    }: {
-        /**
-         * 线路 token
-         */
-        token: string,
-    }): CancelablePromise<string> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/l/{token}',
-            path: {
-                'token': token,
-            },
-            errors: {
-                404: `Not Found`,
-            },
-        });
-    }
-    /**
      * 获取线路 Clash 订阅
      * 返回 Clash/Mihomo YAML 格式订阅配置
      * @returns string Clash subscription
@@ -89,17 +64,58 @@ export class SubscriptionService {
      */
     public static publicLineClash({
         token,
+        subscription,
     }: {
         /**
          * 线路 token
          */
         token: string,
+        /**
+         * 客户订阅 Token（额度和有效期校验）
+         */
+        subscription: string,
     }): CancelablePromise<string> {
         return __request(OpenAPI, {
             method: 'GET',
-            url: '/l/{token}/clash',
+            url: '/l/{token}',
             path: {
                 'token': token,
+            },
+            query: {
+                'subscription': subscription,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 获取线路 VLESS 订阅
+     * 返回 base64 编码的 VLESS 订阅链接
+     * @returns string VLESS subscription
+     * @throws ApiError
+     */
+    public static publicLineVless({
+        token,
+        subscription,
+    }: {
+        /**
+         * 线路 token
+         */
+        token: string,
+        /**
+         * 客户订阅 Token（额度和有效期校验）
+         */
+        subscription: string,
+    }): CancelablePromise<string> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/l/{token}/vless',
+            path: {
+                'token': token,
+            },
+            query: {
+                'subscription': subscription,
             },
             errors: {
                 404: `Not Found`,
@@ -108,23 +124,31 @@ export class SubscriptionService {
     }
     /**
      * 公开订阅组 Clash 配置
-     * 通过 Token 获取订阅组的 Clash YAML 配置（无需认证）
+     * 通过 Token 获取订阅组的 Clash YAML 配置（必须提供客户订阅 Token）
      * @returns string Clash subscription
      * @throws ApiError
      */
     public static publicGroupClash({
         token,
+        subscription,
     }: {
         /**
          * 订阅组 Token
          */
         token: string,
+        /**
+         * 客户订阅 Token（额度和有效期校验）
+         */
+        subscription: string,
     }): CancelablePromise<string> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/s/{token}',
             path: {
                 'token': token,
+            },
+            query: {
+                'subscription': subscription,
             },
             errors: {
                 404: `Not Found`,
@@ -138,10 +162,20 @@ export class SubscriptionService {
      * @returns string VLESS subscription
      * @throws ApiError
      */
-    public static subscriptionVless(): CancelablePromise<string> {
+    public static subscriptionVless({
+        subscription,
+    }: {
+        /**
+         * 客户订阅 Token（额度和有效期校验）
+         */
+        subscription: string,
+    }): CancelablePromise<string> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/subscription',
+            query: {
+                'subscription': subscription,
+            },
             errors: {
                 500: `Internal Server Error`,
             },
@@ -153,10 +187,20 @@ export class SubscriptionService {
      * @returns string Clash subscription
      * @throws ApiError
      */
-    public static subscriptionClash(): CancelablePromise<string> {
+    public static subscriptionClash({
+        subscription,
+    }: {
+        /**
+         * 客户订阅 Token（额度和有效期校验）
+         */
+        subscription: string,
+    }): CancelablePromise<string> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/subscription/clash',
+            query: {
+                'subscription': subscription,
+            },
             errors: {
                 500: `Internal Server Error`,
             },

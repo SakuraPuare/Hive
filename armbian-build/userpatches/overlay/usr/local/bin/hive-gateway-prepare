@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source /usr/local/bin/hive-subscription-state
+hive_gateway_block_forward
+if ! hive_lease_valid gateway; then hive_gateway_block_config; fi

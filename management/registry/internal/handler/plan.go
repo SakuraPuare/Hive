@@ -391,30 +391,7 @@ func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.N
 // @Failure      404 {string} string "Not Found"
 // @Router       /c/{token} [get]
 func (h *Handler) HandleCustomerSubscriptionClash(w http.ResponseWriter, r *http.Request) {
-	middleware.SubscriptionRequestsTotal.WithLabelValues("customer_clash").Inc()
-
-	token := r.PathValue("token")
-	if len(token) != 64 {
-		http.NotFound(w, r)
-		return
-	}
-
-	planName, nodes, sub, err := h.queryPlanNodes(token)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-
-	if ok, reason := checkSubscriptionValid(sub.Status, sub.TrafficUsed, sub.TrafficLimit, sub.ExpiresAt); !ok {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprintf(w, "# %s\nproxies: []\n", reason)
-		return
-	}
-
-	yaml := h.buildGroupClashYAML(planName, nodes, sub.XrayUUID)
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.yaml"`, planName))
-	fmt.Fprint(w, yaml)
+	h.serveCustomerSubscription(w, r, r.PathValue("token"), nil, false)
 }
 
 // HandleCustomerSubscriptionVless handles GET /c/{token}/vless
@@ -428,46 +405,73 @@ func (h *Handler) HandleCustomerSubscriptionClash(w http.ResponseWriter, r *http
 // @Failure      404 {string} string "Not Found"
 // @Router       /c/{token}/vless [get]
 func (h *Handler) HandleCustomerSubscriptionVless(w http.ResponseWriter, r *http.Request) {
-	middleware.SubscriptionRequestsTotal.WithLabelValues("customer_vless").Inc()
+	h.serveCustomerSubscription(w, r, r.PathValue("token"), nil, true)
+}
 
-	token := r.PathValue("token")
+// A line/group is only a node filter. Its token never grants access by itself.
+func (h *Handler) serveScopedSubscription(w http.ResponseWriter, r *http.Request, nodes []model.Node, vless bool) {
+	w.Header().Set("Cache-Control", "no-store")
+	token := r.URL.Query().Get("subscription")
+	if len(token) != 64 {
+		h.jsonErr(w, http.StatusUnauthorized, "a customer subscription token is required")
+		return
+	}
+	var allowed map[string]bool
+	if nodes != nil {
+		allowed = make(map[string]bool)
+		for _, n := range nodes {
+			allowed[n.MAC] = true
+		}
+	}
+	h.serveCustomerSubscription(w, r, token, allowed, vless)
+}
+
+func (h *Handler) serveCustomerSubscription(w http.ResponseWriter, r *http.Request, token string, allowed map[string]bool, vless bool) {
+	w.Header().Set("Cache-Control", "no-store")
+	middleware.SubscriptionRequestsTotal.WithLabelValues("customer").Inc()
 	if len(token) != 64 {
 		http.NotFound(w, r)
 		return
 	}
-
 	planName, nodes, sub, err := h.queryPlanNodes(token)
-	if err != nil {
+	if err != nil || sub.XrayUUID == "" {
 		http.NotFound(w, r)
 		return
 	}
-
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	if ok, reason := checkSubscriptionValid(sub.Status, sub.TrafficUsed, sub.TrafficLimit, sub.ExpiresAt); !ok {
-		content := base64.StdEncoding.EncodeToString([]byte("# " + reason))
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprint(w, content)
+		if vless {
+			fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte("# "+reason)))
+		} else {
+			fmt.Fprintf(w, "# %s\nproxies: []\nrules:\n  - MATCH,REJECT\n", reason)
+		}
 		return
 	}
-
-	var links []string
+	filtered := make([]model.Node, 0, len(nodes))
 	for _, n := range nodes {
+		if n.Enabled && n.Status == "active" && (allowed == nil || allowed[n.MAC]) {
+			filtered = append(filtered, n)
+		}
+	}
+	if !vless {
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.yaml"`, planName))
+		fmt.Fprint(w, h.buildGroupClashYAML(planName, filtered, sub.XrayUUID))
+		return
+	}
+	var links []string
+	for _, n := range filtered {
 		host := stripScheme(n.CFURL)
-		if host == "" || sub.XrayUUID == "" {
+		if host == "" {
 			continue
 		}
-		name := buildNodeName(n)
 		params := url.Values{}
 		params.Set("type", "ws")
 		params.Set("security", "tls")
 		params.Set("sni", host)
+		params.Set("host", host)
 		params.Set("path", fmt.Sprintf("/%s?ed=2560", h.Config.XrayPath))
-		link := fmt.Sprintf("vless://%s@%s:443?%s#%s",
-			sub.XrayUUID, host, params.Encode(), url.PathEscape(name))
-		links = append(links, link)
+		links = append(links, fmt.Sprintf("vless://%s@%s:443?%s#%s", sub.XrayUUID, host, params.Encode(), url.PathEscape(buildNodeName(n))))
 	}
-
-	content := base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.txt"`, planName))
-	fmt.Fprint(w, content)
+	fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n"))))
 }

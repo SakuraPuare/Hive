@@ -525,6 +525,20 @@ CREATE TABLE order_fulfillments (
 `,
 	},
 	{
+		version: 25,
+		desc:    "durable device traffic accounting",
+		up: `
+CREATE TABLE node_traffic_counters (
+    node_mac VARCHAR(12) NOT NULL,
+    epoch VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    counter_name VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    bytes BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (node_mac, epoch, counter_name),
+    FOREIGN KEY (node_mac) REFERENCES nodes(mac) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+`,
+	},
+	{
 		version: 26,
 		desc:    "subscription renewal grants and suspension reasons",
 		up: `

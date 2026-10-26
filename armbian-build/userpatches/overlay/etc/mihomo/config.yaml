@@ -54,6 +54,7 @@ proxy-groups:
     type: select
     proxies: [直连]
 
-# 兜底阶段全部直连，等真配置下发后再按规则分流
+# No customer traffic before a valid subscription is received.
 rules:
-  - MATCH,直连
+  - PROCESS-NAME,curl,DIRECT
+  - MATCH,REJECT

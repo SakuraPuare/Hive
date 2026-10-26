@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"hive/registry/internal/model"
@@ -15,17 +13,17 @@ import (
 
 // ── traffic collection loop ──────────────────────────────────────────────────
 
-// StartTrafficLoop runs every 5 minutes to collect xray traffic from Prometheus
-// and update customer_subscriptions.traffic_used. It also handles monthly resets.
+// StartTrafficLoop handles monthly resets. Billing is committed by HandleNodeAccounting
+// before a device can renew its subscription authorization.
 func (h *Handler) StartTrafficLoop(ctx context.Context) {
 	select {
 	case <-time.After(10 * time.Second):
 	case <-ctx.Done():
 		return
 	}
-	log.Printf("traffic: starting traffic collection loop (interval=5m)")
+	log.Printf("traffic: starting traffic reset loop (interval=1m)")
 
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
 	h.collectTraffic()
@@ -42,63 +40,6 @@ func (h *Handler) StartTrafficLoop(ctx context.Context) {
 
 func (h *Handler) collectTraffic() {
 	h.resetTrafficIfNeeded()
-	h.updateTrafficFromPrometheus()
-}
-
-// updateTrafficFromPrometheus queries Prometheus for per-user xray traffic and
-// writes increments into customer_subscriptions.traffic_used.
-//
-// Each subscription is provisioned on nodes as a distinct VLESS client whose Xray
-// email is "sub-<id>" (see HandleNodeXrayUsers). xray-exporter exposes per-user
-// counters labelled target="<email>", so we can attribute traffic to the exact
-// subscription — no more equal-split approximation across a plan's subscribers.
-func (h *Handler) updateTrafficFromPrometheus() {
-	if h.Config.PrometheusURL == "" {
-		return
-	}
-
-	// Sum up+down increase over the last 5 minutes, keyed by the user email label.
-	emailTraffic := h.promQueryInstantByLabel(
-		`increase(xray_traffic_uplink_bytes_total{dimension="user"}[5m]) `+
-			`+ increase(xray_traffic_downlink_bytes_total{dimension="user"}[5m])`,
-		"target", false,
-	)
-	if len(emailTraffic) == 0 {
-		return
-	}
-
-	now := time.Now().UTC().Format(model.TimeLayout)
-	updated := 0
-
-	for email, bytesF := range emailTraffic {
-		// We only bill subscription users, whose email is "sub-<id>".
-		// Anything else (e.g. the node's own "node-*" public client) is ignored.
-		idStr, ok := strings.CutPrefix(email, "sub-")
-		if !ok {
-			continue
-		}
-		subID, err := strconv.ParseUint(idStr, 10, 64)
-		if err != nil || subID == 0 {
-			continue
-		}
-		delta := int64(bytesF)
-		if delta <= 0 {
-			continue
-		}
-
-		if err := h.DB.Exec(
-			"UPDATE customer_subscriptions SET traffic_used = traffic_used + ?, updated_at = ? WHERE id = ?",
-			delta, now, subID,
-		).Error; err != nil {
-			log.Printf("traffic: update sub %d: %v", subID, err)
-			continue
-		}
-		updated++
-	}
-
-	if updated > 0 {
-		log.Printf("traffic: updated %d subscriptions", updated)
-	}
 }
 
 // ── traffic reset ────────────────────────────────────────────────────────────
@@ -136,7 +77,7 @@ func checkSubscriptionValid(status string, trafficUsed, trafficLimit int64, expi
 	}
 
 	expTime, err := time.Parse(model.TimeLayout, expiresAt)
-	if err == nil && time.Now().UTC().After(expTime) {
+	if err != nil || !time.Now().UTC().Before(expTime) {
 		return false, "订阅已过期"
 	}
 

@@ -27,7 +27,8 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("POST /nodes/allocate-easytier", h.HandleAllocateEasytier)
 	mux.HandleFunc("POST /nodes/heartbeat", h.HandleHeartbeat)
 	// 节点拉取本机应下发的 Xray 用户列表（设备端调用，Bearer token 认证）
-	mux.HandleFunc("GET /nodes/{mac}/xray-users", h.HandleNodeXrayUsers)
+	mux.HandleFunc("GET /nodes/{mac}/xray-users", h.HandleLegacyNodeXrayUsers)
+	mux.HandleFunc("POST /nodes/{mac}/xray-users", h.HandleNodeAccounting)
 	// 节点拉取本机网关角色的 Mihomo 配置（设备端调用，Bearer token 认证）
 	mux.HandleFunc("GET /nodes/{mac}/clash-config", h.HandleNodeClashConfig)
 	// 远程命令队列（设备端：拉取待执行 + 回传结果，Bearer token 认证）

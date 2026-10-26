@@ -200,6 +200,12 @@ for bin in xray cloudflared frpc easytier-core xray-exporter; do
     fi
 done
 
+# Hive subscription enforcement and startup hooks
+for helper in hive-subscription-state hive-subscription-guard hive-xray-prepare hive-gateway-prepare; do
+    chmod +x "/usr/local/bin/$helper"
+done
+systemctl enable hive-subscription-guard.timer
+
 # Hive 运维脚本权限
 if [ -f "/usr/local/bin/hive-xray-sync" ]; then
     chmod +x /usr/local/bin/hive-xray-sync
