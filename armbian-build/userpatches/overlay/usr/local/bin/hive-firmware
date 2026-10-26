@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# NanoPi Zero2/R28S A/B firmware installer. This is sourced only after signature and
+# payload verification by hive-updater; standalone mode confirms a trial boot.
+FW_STATE=/var/lib/hive
+FW_PENDING="$FW_STATE/firmware-pending.json"
+FW_ENV=/run/hive-fw-env.config
+source /usr/local/bin/hive-board
+
+firmware_layout() {
+    local root label part
+    hive_detect_board || return 1
+    [ "$(cat /usr/lib/hive/ab-layout 2>/dev/null)" = "$HIVE_LAYOUT" ] || return 1
+    root=$(readlink -f "$(findmnt -n -o SOURCE /)") || return 1
+    FW_DISK="/dev/$(lsblk -dn -o PKNAME "$root")"
+    [[ "$FW_DISK" =~ ^/dev/mmcblk[0-9]+$ ]] || return 1
+    for part in 1 2 3; do
+        [ -b "${FW_DISK}p${part}" ] || return 1
+        label=$(lsblk -dn -o PARTLABEL "${FW_DISK}p${part}")
+        case "$part:$label" in 1:hive-rootA|2:hive-rootB|3:hive-data) ;; *) return 1;; esac
+    done
+    [ "$(cat "/sys/class/block/${FW_DISK##*/}p1/start")" = 32768 ] || return 1
+    case "$root" in
+        "${FW_DISK}p1") FW_SLOT=A; FW_OTHER=B; FW_TARGET="${FW_DISK}p2";;
+        "${FW_DISK}p2") FW_SLOT=B; FW_OTHER=A; FW_TARGET="${FW_DISK}p1";;
+        *) return 1;;
+    esac
+    # Use the actual boot disk, not a Linux mmc index assumed at build time.
+    printf '%s 0xc00000 0x8000\n%s 0xc10000 0x8000\n' "$FW_DISK" "$FW_DISK" > "$FW_ENV" || return 1
+    [ "$(fw_printenv -c "$FW_ENV" -n hive_active)" = A ] || \
+        [ "$(fw_printenv -c "$FW_ENV" -n hive_active)" = B ]
+}
+
+firmware_environment() {
+    local changes="$1"
+    printf '%s\n' "$changes" > /run/hive-fw-env.update || return 1
+    fw_setenv -c "$FW_ENV" -s /run/hive-fw-env.update
+}
+
+firmware_stage() {
+    local payload="$1" version="$2" sha="$3" assignment="$4" manifest image size expected actual
+    manifest="$payload/manifest.json"
+    firmware_layout || { log '设备没有受支持的 A/B 分区或引导器'; return 1; }
+    [ ! -e "$FW_PENDING" ] && [ ! -f "$OTA_TX/active" ] || return 1
+    [ "$(fw_printenv -c "$FW_ENV" -n hive_active)" = "$FW_SLOT" ] || return 1
+    [ -z "$(fw_printenv -c "$FW_ENV" -n hive_pending 2>/dev/null)" ] || return 1
+    jq -e --arg board "$HIVE_BOARD" --arg layout "$HIVE_LAYOUT" '.kind == "firmware" and .board == $board and .layout == $layout
+        and (.files | length == 1) and .files[0].path == "rootfs.img"' "$manifest" >/dev/null || return 1
+    image="$payload/files/rootfs.img"
+    size=$(stat -c %s "$image")
+    [ "$size" -gt 0 ] && [ "$size" -le "$(blockdev --getsize64 "$FW_TARGET")" ] || return 1
+    ! findmnt -rn -S "$FW_TARGET" >/dev/null || return 1
+    [ "$(blkid -p -s TYPE -o value "$image")" = ext4 ] || return 1
+    [ "$(debugfs -R 'cat /usr/lib/hive/ab-layout' "$image" 2>/dev/null)" = "$HIVE_LAYOUT" ] || return 1
+    [ "$(debugfs -R 'cat /usr/lib/hive/firmware-version' "$image" 2>/dev/null)" = "$version" ] || return 1
+    log "写入备用系统槽 $FW_OTHER"
+    ota_save_ack installing "writing inactive slot $FW_OTHER" "$assignment" "$version" || return 1
+    flush_ack || true
+    dd if="$image" of="$FW_TARGET" bs=4M conv=fsync status=none || return 1
+    expected=$(jq -r '.files[0].sha256' "$manifest")
+    actual=$(head -c "$size" "$FW_TARGET" | sha256sum | cut -d ' ' -f1) || return 1
+    [ "$actual" = "$expected" ] || { log '写入后校验失败，保留原系统启动'; return 1; }
+    e2fsck -pf "$FW_TARGET"
+    local check=$?
+    [ "$check" -le 1 ] || return 1
+    resize2fs "$FW_TARGET" || return 1
+    tune2fs -L "hive-root$FW_OTHER" "$FW_TARGET" || return 1
+    [ ! -f "$FW_STATE/ota-installed.json" ] || cp -a "$FW_STATE/ota-installed.json" "$FW_STATE/firmware-previous-receipt.json" || return 1
+    [ ! -f /etc/hive/ota-version ] || cp -a /etc/hive/ota-version "$FW_STATE/firmware-previous-version" || return 1
+    jq -n --arg version "$version" --arg sha "$sha" --arg target "$FW_OTHER" --arg previous "$FW_SLOT" \
+        --arg assignment "$assignment" --arg boot_id "$(cat /proc/sys/kernel/random/boot_id)" \
+        '{version:$version,sha256:$sha,target:$target,previous:$previous,assignment:$assignment,boot_id:$boot_id}' > "$FW_PENDING.new" || return 1
+    mv -f "$FW_PENDING.new" "$FW_PENDING" || return 1
+    sync || return 1
+    # One redundant environment write arms the trial. A power loss before this
+    # point boots the old slot; afterwards bootcmd consumes a bounded attempt.
+    firmware_environment "hive_pending $FW_OTHER
+hive_tries 3" || return 1
+    ota_save_ack installing "slot $FW_OTHER ready; waiting for reboot validation" "$assignment" "$version"
+}
+
+firmware_confirm() {
+    [ -f "$FW_PENDING" ] || return 0
+    firmware_layout || return 1
+    local target version assignment sha svc
+    target=$(jq -r .target "$FW_PENDING")
+    version=$(jq -r .version "$FW_PENDING")
+    assignment=$(jq -r .assignment "$FW_PENDING")
+    sha=$(jq -r .sha256 "$FW_PENDING")
+    # Confirm only after a reboot; a timer cannot approve the old running kernel.
+    [ "$(jq -r .boot_id "$FW_PENDING")" != "$(cat /proc/sys/kernel/random/boot_id)" ] || return 1
+    if [ "$target" != "$FW_SLOT" ]; then
+        [ "$(jq -r .previous "$FW_PENDING")" = "$FW_SLOT" ] || return 1
+        firmware_environment 'hive_pending
+hive_tries 0' || return 1
+        if [ -f "$FW_STATE/firmware-previous-receipt.json" ]; then
+            cp -a "$FW_STATE/firmware-previous-receipt.json" "$FW_STATE/ota-installed.json" || return 1
+        else rm -f "$FW_STATE/ota-installed.json"; fi
+        if [ -f "$FW_STATE/firmware-previous-version" ]; then
+            cp -a "$FW_STATE/firmware-previous-version" /etc/hive/ota-version || return 1
+        else rm -f /etc/hive/ota-version; fi
+        ota_save_ack rolled_back 'trial boot failed; bootloader returned to the confirmed system' "$assignment" "$version" || return 1
+        rm -f "$FW_PENDING" "$FW_STATE/firmware-previous-receipt.json" "$FW_STATE/firmware-previous-version"
+        return 0
+    fi
+    [ "$(cat /usr/lib/hive/firmware-version)" = "$version" ] || return 1
+    for svc in NetworkManager.service nginx.service xray.service cloudflared.service easytier.service hive-subscription-guard.timer hive-updater.timer hive-command-agent.timer; do
+        systemctl is-active --quiet "$svc" || return 1
+    done
+    # Verify the actual authenticated management path before blessing a boot.
+    source /etc/hive/config.env
+    source /usr/local/bin/hive-node-info
+    hive_load_node_info /etc/hive/node-info
+    local mac auth
+    mac=$(printf '%s' "${MAC:-}" | tr 'A-F' 'a-f' | tr -d ':-')
+    auth=$(cat /etc/hive/device-token) || return 1
+    [[ "$mac" =~ ^[0-9a-f]{12}$ ]] && [ -n "$auth" ] && [ -n "${NODE_REGISTRY_URL:-}" ] || return 1
+    curl --proto '=http,https' -fsS --connect-timeout 10 --max-time 20 -H "Authorization: Bearer $auth" \
+        "${NODE_REGISTRY_URL%/}/nodes/$mac/ota-version" >/dev/null || return 1
+    [ ! -x /etc/hive/firmware-health-check ] || timeout 60 /etc/hive/firmware-health-check || return 1
+    jq -n --arg version "$version" --arg sha256 "$sha" '{version:$version,sha256:$sha256}' > "$FW_STATE/ota-installed.json.new" || return 1
+    mv -f "$FW_STATE/ota-installed.json.new" "$FW_STATE/ota-installed.json" || return 1
+    printf '%s\n' "$version" > /etc/hive/ota-version.new || return 1
+    mv -f /etc/hive/ota-version.new /etc/hive/ota-version || return 1
+    sync || return 1
+    firmware_environment "hive_active $FW_SLOT
+hive_pending
+hive_tries 0" || return 1
+    ota_save_ack done "firmware boot and management checks passed in slot $FW_SLOT" "$assignment" "$version" || return 1
+    rm -f "$FW_PENDING" "$FW_STATE/firmware-previous-receipt.json" "$FW_STATE/firmware-previous-version"
+    sync -f "$FW_STATE"
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    set -uo pipefail
+    umask 077
+    source /usr/local/bin/hive-ota-transaction
+    exec 9>"$FW_STATE/ota.lock"
+    flock -w 30 9 || exit 1
+    # Allow network and normal services time to become healthy, then let the
+    # systemd FailureAction reboot. Bootcmd eventually exhausts the trial count.
+    for attempt in $(seq 1 12); do
+        firmware_confirm && exit 0
+        sleep 5
+    done
+    exit 1
+fi

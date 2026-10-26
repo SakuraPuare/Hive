@@ -1,0 +1,13 @@
+[Unit]
+Description=Recover an interrupted Hive application update
+After=local-fs.target hive-data.service
+Before=hive-updater.service hive-command-agent.service xray.service hive-mihomo.service
+ConditionPathExists=/var/lib/hive/ota-transaction/active
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /var/lib/hive/ota-transaction/recover.sh
+TimeoutStartSec=10min
+
+[Install]
+WantedBy=multi-user.target

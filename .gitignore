@@ -5,6 +5,10 @@
 *.pem
 *.p12
 
+# OTA 签名私钥（公钥在 overlay 里需要入库）
+keys/
+!armbian-build/userpatches/overlay/etc/hive/ota-pubkey.pem
+
 # Armbian 框架本体（由 scripts/setup-armbian.sh clone，不入库）
 # 仅追踪 armbian-build/userpatches/ 下的自定义文件
 armbian-build/*
@@ -29,6 +33,9 @@ armbian-build/userpatches/overlay/var/www/metacubexd/
 *.img
 *.img.xz
 *.img.zst
+
+# OTA bundle 产物
+output/ota/
 
 # VitePress
 node_modules/

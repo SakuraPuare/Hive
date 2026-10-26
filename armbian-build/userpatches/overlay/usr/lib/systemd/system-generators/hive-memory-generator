@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Runs at boot and daemon-reload. /run output never changes administrator files.
+set -euo pipefail
+output=${1:?systemd generator output directory required}
+memory_kib=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo)
+[[ "$memory_kib" =~ ^[0-9]+$ ]] || exit 0
+dropin() {
+    local service=$1 high=$2 max=$3 heap=$4
+    mkdir -p "$output/$service.d"
+    cat > "$output/$service.d/50-hive-memory.conf" <<EOF
+[Service]
+MemoryAccounting=yes
+MemoryHigh=$high
+MemoryMax=$max
+Environment="GOMEMLIMIT=$heap"
+EOF
+}
+if [ "$memory_kib" -lt 1572864 ]; then
+    # 1 GB SKU, allowing for firmware reservations. Leave room for kernel,
+    # NetworkManager, SSH, management agents and the streaming OTA installer.
+    dropin xray.service 160M 224M 128MiB
+    dropin hive-mihomo.service 192M 256M 160MiB
+    for pair in cloudflared.service:64MiB tailscaled.service:64MiB frpc.service:32MiB xray-exporter.service:32MiB; do
+        service=${pair%:*}
+        mkdir -p "$output/$service.d"
+        printf '[Service]\nEnvironment="GOMEMLIMIT=%s"\n' "${pair#*:}" > "$output/$service.d/50-hive-memory.conf"
+    done
+else
+    dropin xray.service 200M 300M 192MiB
+    dropin hive-mihomo.service 384M 512M 320MiB
+fi

@@ -1,5 +1,6 @@
 .PHONY: help setup setup-armbian download-binaries env setup-docker-btrfs \
        build build-r3s build-opi4 build-qemu run-qemu \
+       build-ota gen-ota-keys \
        registry registry-arm64 registry-test registry-test-short registry-openapi registry-seed registry-clean \
        ui-dev ui-build ui-gen-api ui-typecheck ui-test \
        monitoring-up monitoring-down monitoring-logs \
@@ -68,6 +69,12 @@ run-qemu: ## 启动 QEMU 虚拟机（SSH: localhost:2222）
 	./scripts/run-qemu.sh
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+gen-ota-keys: ## 生成 OTA 签名 Ed25519 密钥对
+	./scripts/gen-ota-keys.sh
+
+build-ota: ## 打包 OTA bundle（用法: make build-ota VERSION=1.0.0）
+	./scripts/build-ota.sh $(VERSION)
+
 # Registry 后端
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

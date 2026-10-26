@@ -1,0 +1,412 @@
+#!/usr/bin/env bash
+# hive-updater —— 应用层 OTA：下载 bundle → 签名校验 → 原子安装
+#
+# 两种运行模式：
+#   1. 定时轮询：hive-updater.timer 触发，从 registry 检查版本，有新版则安装
+#   2. 手动下发：hive-command-agent 调用，直接传入 bundle 参数立即安装
+#      hive-updater --url <url> --sha256 <hash> [--version <ver>]
+#
+# 安全模型：Ed25519 签名校验（公钥 /etc/hive/ota-pubkey.pem），无论哪种模式都必须通过
+set -uo pipefail
+
+CONFIG_ENV="/etc/hive/config.env"
+NODE_INFO="/etc/hive/node-info"
+VERSION_FILE="/etc/hive/ota-version"
+PUBKEY_FILE="/etc/hive/ota-pubkey.pem"
+WORK_DIR=""
+STATE_DIR="/var/lib/hive"
+
+log() { echo "[hive-updater] $*"; logger -t "hive-updater" "$*" 2>/dev/null || true; }
+
+# Serializes timer and command-agent invocations before creating/cleaning files.
+umask 077
+mkdir -p "$STATE_DIR" || exit 1
+exec 9>"${STATE_DIR}/ota.lock"
+flock -n 9 || { log "已有 OTA 正在执行"; exit 75; }
+find "$STATE_DIR" -maxdepth 1 -type d -name 'ota-download.*' -exec rm -rf -- {} +
+WORK_DIR=$(mktemp -d "${STATE_DIR}/ota-download.XXXXXX") || exit 1
+ACK_FILE="${STATE_DIR}/ota-pending-ack.json"
+RECEIPT_FILE="${STATE_DIR}/ota-installed.json"
+cleanup() { [ -z "$WORK_DIR" ] || rm -rf -- "$WORK_DIR"; }
+trap cleanup EXIT
+
+[ -f "${CONFIG_ENV}" ] && source "${CONFIG_ENV}" 2>/dev/null
+[ ! -s /etc/hive/device-token ] || NODE_REGISTRY_API_SECRET=$(cat /etc/hive/device-token)
+source /usr/local/bin/hive-node-info
+hive_load_node_info "$NODE_INFO"
+
+if [ ! -f "${PUBKEY_FILE}" ]; then log "OTA 公钥不存在: ${PUBKEY_FILE}"; exit 1; fi
+
+MAC_NORM=""
+AUTH=""
+if [ -n "${MAC:-}" ]; then
+    MAC_NORM=$(echo "${MAC}" | tr 'A-F' 'a-f' | tr -cd 'a-f0-9')
+    MAC_NORM="${MAC_NORM: -12}"
+fi
+if [ -n "${NODE_REGISTRY_API_SECRET:-}" ]; then
+    AUTH="Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"
+fi
+
+source /usr/local/bin/hive-ota-transaction
+ota_rollback false || { log "上次更新回滚未完成，停止安装"; exit 1; }
+
+if [ -f "${STATE_DIR}/firmware-pending.json" ]; then
+    if [ "$(jq -r .boot_id "${STATE_DIR}/firmware-pending.json")" = "$(cat /proc/sys/kernel/random/boot_id)" ]; then
+        log "备用系统已准备，等待重启验证"
+        systemctl reboot
+    fi
+    exit 0
+fi
+
+CURRENT_VERSION=$(cat "${VERSION_FILE}" 2>/dev/null || echo "")
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 安装核心逻辑（下载 → 校验 → 安装 → 重启）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+do_install() {
+    local url="$1" expected_sha256="$2" target_version="$3"
+    expected_sha256=$(printf '%s' "${expected_sha256}" | tr 'A-F' 'a-f')
+    if [ "${#expected_sha256}" -ne 64 ] || ! printf '%s' "${expected_sha256}" | grep -Eq '^[0-9a-f]{64}$'; then
+        log "sha256 格式非法"; return 1
+    fi
+
+    # ── 下载 bundle ──────────────────────────────────────────────────
+    mkdir -p "${WORK_DIR}"
+    local bundle="${WORK_DIR}/bundle.tar.gz"
+
+    local download_auth=() download_redirect=(-L --proto-redir '=http,https')
+    if [[ "$url" == /nodes/"$MAC_NORM"/ota-bundle/* ]]; then
+        [ -n "${NODE_REGISTRY_URL:-}" ] && [ -n "$AUTH" ] || return 1
+        url="${NODE_REGISTRY_URL%/}${url}"
+        download_auth=(-H "$AUTH")
+        download_redirect=() # Never forward a device credential to a redirect.
+    fi
+    case "$url" in http://*|https://*) ;; *) log "下载地址协议不支持"; return 1;; esac
+    log "下载 OTA bundle"
+    if ! curl -4 -f --proto '=http,https' "${download_redirect[@]}" "${download_auth[@]}" --max-filesize 2147483648 --retry 3 --retry-delay 5 --retry-all-errors \
+        --connect-timeout 30 --max-time 600 \
+        -o "${bundle}" "${url}" 2>/dev/null; then
+        log "下载失败"; return 1
+    fi
+
+    # ── 校验整包 sha256 ──────────────────────────────────────────────
+    local actual_sha
+    actual_sha=$(sha256sum "${bundle}" | awk '{print $1}')
+    if [ "${actual_sha}" != "${expected_sha256}" ]; then
+        log "sha256 校验失败: 期望 ${expected_sha256}，实际 ${actual_sha}"; return 1
+    fi
+    log "sha256 校验通过"
+
+    # ── 解压并验证签名 ───────────────────────────────────────────────
+    local extract="${WORK_DIR}/extract"
+    mkdir -p "${extract}"
+    # Reject archive entries that could escape the staging directory.
+    local archive_listing
+    if ! archive_listing=$(tar tzf "${bundle}" 2>/dev/null); then
+        log "bundle 清单读取失败"; return 1
+    fi
+    while IFS= read -r entry; do
+        case "${entry}" in
+            /*|../*|*/../*|..)
+                log "bundle 路径非法: ${entry}"; return 1 ;;
+        esac
+    done <<< "${archive_listing}"
+    # Reject links and special files before extraction; an unsigned archive
+    # must not redirect writes outside the staging directory via link targets.
+    if ! tar tvzf "${bundle}" | awk 'substr($0,1,1) != "-" && substr($0,1,1) != "d" {exit 1}'; then
+        log "bundle 包含链接或特殊文件，拒绝解压"; return 1
+    fi
+    local unpacked available
+    unpacked=$(tar tvzf "$bundle" | awk '{n += $3} END {printf "%.0f", n}') || return 1
+    available=$(df -B1 --output=avail "$WORK_DIR" | tail -n 1 | tr -d ' ')
+    [ "$unpacked" -le 12884901888 ] && [ "$available" -gt "$((unpacked + 67108864))" ] || { log "解压空间不足或包过大"; return 1; }
+    tar xzf "${bundle}" -C "${extract}" --no-same-owner --no-same-permissions || { log "解压失败"; return 1; }
+
+    local payload="${extract}"
+    if [ ! -f "${payload}/manifest.json" ]; then
+        local subdirs=("${extract}"/*)
+        if [ ${#subdirs[@]} -eq 1 ] && [ -d "${subdirs[0]}" ] && [ -f "${subdirs[0]}/manifest.json" ]; then
+            payload="${subdirs[0]}"
+        else
+            log "bundle 结构异常：找不到 manifest.json"; return 1
+        fi
+    fi
+
+    local manifest="${payload}/manifest.json"
+    local signature="${payload}/manifest.sig"
+
+    if [ ! -f "${signature}" ]; then
+        log "缺少签名文件 manifest.sig"; return 1
+    fi
+
+    if ! jq -e '.version | type == "string" and length > 0 and (. | test("^[^/]+$"))' "${manifest}" >/dev/null 2>&1 || \
+       ! jq -e '.files | type == "array" and length > 0 and all(.[]; (.path | type == "string") and (.sha256 | test("^[0-9a-f]{64}$")) and ((.mode // "0644") | test("^0?[0-7]{3}$")))' "${manifest}" >/dev/null 2>&1; then
+        log "manifest 格式非法"; return 1
+    fi
+
+    if ! openssl pkeyutl -verify \
+        -pubin -inkey "${PUBKEY_FILE}" \
+        -rawin -in "${manifest}" \
+        -sigfile "${signature}" 2>/dev/null; then
+        log "签名验证失败，拒绝安装"; return 1
+    fi
+    log "签名验证通过"
+
+    verify_hook() {
+        local hook_path="$1" expected="$2" actual
+        if [ ! -f "${hook_path}" ]; then
+            [ -z "${expected}" ]
+            return
+        fi
+        if [ -L "${hook_path}" ] || [ -z "${expected}" ]; then
+            return 1
+        fi
+        actual=$(sha256sum "${hook_path}" | awk '{print $1}')
+        [ "${actual}" = "${expected}" ]
+    }
+    if ! verify_hook "${payload}/hooks/pre-install.sh" "$(jq -r '.hooks.pre_install_sha256 // empty' "${manifest}")" || \
+       ! verify_hook "${payload}/hooks/post-install.sh" "$(jq -r '.hooks.post_install_sha256 // empty' "${manifest}")" || \
+       ! verify_hook "${payload}/hooks/health-check.sh" "$(jq -r '.hooks.health_check_sha256 // empty' "${manifest}")"; then
+        log "hook 完整性校验失败，拒绝安装"; return 1
+    fi
+
+    # ── 解析 manifest，逐文件校验 sha256 ─────────────────────────────
+    local manifest_ver
+    manifest_ver=$(jq -r '.version' "${manifest}")
+    if [ -n "${target_version}" ] && [ "${manifest_ver}" != "${target_version}" ]; then
+        log "manifest version (${manifest_ver}) 与期望 (${target_version}) 不符"; return 1
+    fi
+    # 手动模式可能不传 version，以 manifest 内的为准
+    target_version="${manifest_ver}"
+
+    local file_count
+    file_count=$(jq '.files | length' "${manifest}")
+    log "待安装 ${file_count} 个文件（${target_version}）"
+
+    local i fpath expected_fsha src actual_fsha
+    for i in $(seq 0 $((file_count - 1))); do
+        fpath=$(jq -r ".files[$i].path" "${manifest}")
+        expected_fsha=$(jq -r ".files[$i].sha256" "${manifest}")
+        case "${fpath}" in
+            ""|/*|../*|*/../*|..)
+                log "manifest 路径非法: ${fpath}"; return 1 ;;
+        esac
+        src="${payload}/files/${fpath}"
+
+        if [ ! -f "${src}" ] || [ -L "${src}" ]; then
+            log "文件缺失: files/${fpath}"; return 1
+        fi
+        actual_fsha=$(sha256sum "${src}" | awk '{print $1}')
+        if [ "${actual_fsha}" != "${expected_fsha}" ]; then
+            log "文件 sha256 不匹配: ${fpath}"; return 1
+        fi
+    done
+    log "文件完整性校验全部通过"
+    local kind
+    kind=$(jq -r '.kind // "application"' "$manifest")
+    if [ "$kind" = firmware ]; then
+        [ -n "${ASSIGNMENT_TOKEN:-}" ] || { log "系统更新必须通过 OTA 发布任务下发，以保存重启后的回执"; return 1; }
+        source /usr/local/bin/hive-firmware
+        firmware_stage "$payload" "$target_version" "$expected_sha256" "${ASSIGNMENT_TOKEN:-}" || { [ -f "$FW_PENDING" ] || return 1; }
+        return 10 # Reboot and validation are separate from application commit.
+    fi
+    [ "$kind" = application ] || return 1
+    [ ! -f "${STATE_DIR}/firmware-pending.json" ] || { log "系统试启动尚未确认"; return 1; }
+    ota_prepare "$manifest" "${ASSIGNMENT_TOKEN:-}" "$target_version" || return 1
+    ota_save_ack installing 'installing application bundle' "${ASSIGNMENT_TOKEN:-}" "$target_version" || return 1
+    flush_ack || true
+
+    # ── pre-install hook ─────────────────────────────────────────────
+    local pre_hook="${payload}/hooks/pre-install.sh"
+    if [ -f "${pre_hook}" ]; then
+        log "执行 pre-install.sh..."
+        chmod +x "${pre_hook}"
+        if ! timeout 120 bash "${pre_hook}" >"${WORK_DIR}/pre-install.log" 2>&1; then
+            sed -n '1,50p' "${WORK_DIR}/pre-install.log" | while IFS= read -r line; do log "${line}"; done
+            log "pre-install.sh 失败，中止安装"; return 1
+        fi
+        sed -n '1,50p' "${WORK_DIR}/pre-install.log" | while IFS= read -r line; do log "${line}"; done
+    fi
+
+    # ── 原子安装文件 ─────────────────────────────────────────────────
+    local installed=0 fmode dest dest_dir dest_tmp
+    for i in $(seq 0 $((file_count - 1))); do
+        fpath=$(jq -r ".files[$i].path" "${manifest}")
+        fmode=$(jq -r ".files[$i].mode // \"0644\"" "${manifest}")
+        src="${payload}/files/${fpath}"
+        dest="/${fpath}"
+        dest_dir="$(dirname "${dest}")"
+        ota_safe_path "$fpath" || return 1
+        mkdir -p "${dest_dir}" || { log "创建目录失败: ${dest_dir}"; return 1; }
+        dest_tmp=$(mktemp "${dest}.ota-new.XXXXXX") || return 1
+        cp -f "${src}" "${dest_tmp}" || { log "复制文件失败: ${fpath}"; return 1; }
+        chmod "${fmode}" "${dest_tmp}" || { log "设置权限失败: ${fpath}"; return 1; }
+        chown root:root "${dest_tmp}" || { log "设置属主失败: ${fpath}"; return 1; }
+        mv -f "${dest_tmp}" "${dest}" || { log "安装文件失败: ${fpath}"; return 1; }
+        installed=$((installed + 1))
+    done
+    log "已安装 ${installed}/${file_count} 个文件"
+
+    # ── post-install hook ────────────────────────────────────────────
+    local post_hook="${payload}/hooks/post-install.sh"
+    if [ -f "${post_hook}" ]; then
+        log "执行 post-install.sh..."
+        chmod +x "${post_hook}"
+        timeout 120 bash "${post_hook}" >"${WORK_DIR}/post-install.log" 2>&1 || { log "post-install.sh 失败"; return 1; }
+        sed -n '1,50p' "${WORK_DIR}/post-install.log" | while IFS= read -r line; do log "${line}"; done
+    fi
+
+    # ── daemon-reload + enable + restart ─────────────────────────────
+    local reload_daemon
+    reload_daemon=$(jq -r '.reload_daemon // false' "${manifest}")
+    if [ "${reload_daemon}" = "true" ]; then
+        systemctl daemon-reload || return 1
+        log "systemctl daemon-reload 完成"
+    fi
+
+    local svc
+    for svc in $(jq -r '.enable_services[]? // empty' "${manifest}"); do
+        systemctl enable "${svc}" 2>/dev/null || { log "enable 失败: ${svc}"; return 1; }
+    done
+
+    local restart_result=""
+    for svc in $(jq -r '.restart_services[]? // empty' "${manifest}"); do
+        if systemctl restart "${svc}" 2>&1; then
+            log "已重启: ${svc}"
+        else
+            local msg="重启失败: ${svc}"
+            log "${msg}"
+            restart_result="${restart_result}${msg}; "
+        fi
+    done
+
+    [ -z "$restart_result" ] || return 1
+    ota_health_check "$manifest" "$payload" || { log "健康检查失败"; return 1; }
+
+    # ── 记录版本 ─────────────────────────────────────────────────────
+    mkdir -p "${STATE_DIR}" "$(dirname "${VERSION_FILE}")" || { log "创建状态目录失败"; return 1; }
+    jq -n --arg version "$target_version" --arg sha256 "$expected_sha256" \
+        '{version:$version,sha256:$sha256}' > "${RECEIPT_FILE}.new" || return 1
+    mv -f "${RECEIPT_FILE}.new" "$RECEIPT_FILE" || return 1
+    printf '%s\n' "$target_version" > "${VERSION_FILE}.new" || return 1
+    mv -f "${VERSION_FILE}.new" "$VERSION_FILE" || return 1
+    ota_commit "${ASSIGNMENT_TOKEN:-}" "$target_version" || return 1
+    log "OTA 完成: ${target_version}"
+
+    # 输出结果供调用方（command-agent）捕获
+    echo "installed ${installed} files, version=${target_version}"
+    [ -n "${restart_result}" ] && echo "warnings: ${restart_result}"
+    return 0
+}
+
+# Keep the exact assignment receipt until the registry confirms it, including
+# after process restarts or when a newer rollout has superseded the old one.
+flush_ack() {
+    [ -s "$ACK_FILE" ] || return 0
+    if [ -z "${NODE_REGISTRY_URL:-}" ] || [ -z "$MAC_NORM" ] || [ -z "$AUTH" ]; then return 1; fi
+    if curl -4 -sf --max-time 15 -H "$AUTH" -H 'Content-Type: application/json' \
+        --data-binary "@$ACK_FILE" "${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/ota-ack" >/dev/null 2>&1; then
+        rm -f "$ACK_FILE"
+        log "已回传 OTA 结果"
+    else
+        log "回传失败，已保存结果供下轮重试"
+        return 1
+    fi
+}
+ack_result() {
+    local version="$1" status="$2" result="$3"
+    jq -n --arg v "$version" --arg s "$status" --arg r "$result" --arg a "$ASSIGNMENT_TOKEN" \
+        '{version:$v,status:$s,result:$r,assignment_token:$a}' > "${ACK_FILE}.new" || return 1
+    mv -f "${ACK_FILE}.new" "$ACK_FILE" || return 1
+    flush_ack
+}
+already_installed() {
+    [ -s "$RECEIPT_FILE" ] && jq -e --arg v "$1" --arg s "$2" \
+        '.version == $v and .sha256 == $s' "$RECEIPT_FILE" >/dev/null 2>&1
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 模式分发
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 模式 2：手动下发（command-agent 传参调用）
+#   hive-updater --url <url> --sha256 <hash> [--version <ver>] [--force]
+if [ "${1:-}" = "--url" ] || [ "${1:-}" = "--sha256" ] || [ "${1:-}" = "--force" ]; then
+    ARG_URL="" ARG_SHA256="" ARG_VERSION="" ARG_FORCE=false
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --url)     ARG_URL="$2"; shift 2 ;;
+            --sha256)  ARG_SHA256="$2"; shift 2 ;;
+            --version) ARG_VERSION="$2"; shift 2 ;;
+            --force)   ARG_FORCE=true; shift ;;
+            *)         shift ;;
+        esac
+    done
+    if [ -z "${ARG_URL}" ] || [ -z "${ARG_SHA256}" ]; then
+        log "手动模式需要 --url 和 --sha256 参数"
+        exit 1
+    fi
+    # --force 跳过版本检查（重新安装同版本）
+    if [ "${ARG_FORCE}" = "false" ] && [ -n "${ARG_VERSION}" ] && already_installed "$ARG_VERSION" "$ARG_SHA256"; then
+        log "版本 ${ARG_VERSION} 已安装，跳过（使用 --force 强制重装）"
+        echo "already at version ${ARG_VERSION}"
+        exit 0
+    fi
+    log "手动 OTA: version=${ARG_VERSION:-auto} url=${ARG_URL}"
+    do_install "${ARG_URL}" "${ARG_SHA256}" "${ARG_VERSION}"
+    result=$?
+    if [ "$result" = 10 ]; then systemctl reboot; exit $?; fi
+    if [ "$result" != 0 ]; then ota_rollback false || true; fi
+    exit "$result"
+fi
+
+# 模式 1：定时轮询 registry
+if [ -z "${NODE_REGISTRY_URL:-}" ]; then log "NODE_REGISTRY_URL 未配置，跳过"; exit 0; fi
+if [ -z "${AUTH}" ]; then log "API_SECRET 未配置，跳过"; exit 0; fi
+if [ -z "${MAC_NORM}" ]; then log "MAC 未知，跳过"; exit 0; fi
+
+flush_ack || exit 0
+
+RESP=$(curl -4 -sf --max-time 15 \
+    -H "${AUTH}" \
+    "${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/ota-version" 2>/dev/null) || {
+    log "检查 OTA 版本失败（registry 不可达？）"
+    exit 0
+}
+
+TARGET_VERSION=$(echo "${RESP}" | jq -r '.version // empty' 2>/dev/null)
+BUNDLE_URL=$(echo "${RESP}" | jq -r '.url // empty' 2>/dev/null)
+BUNDLE_SHA256=$(echo "${RESP}" | jq -r '.sha256 // empty' 2>/dev/null)
+
+if [ -z "${TARGET_VERSION}" ]; then exit 0; fi
+ASSIGNMENT_TOKEN=$(echo "$RESP" | jq -r '.assignment_token // empty')
+if [ -z "$ASSIGNMENT_TOKEN" ]; then log "缺少 assignment_token"; exit 1; fi
+if already_installed "$TARGET_VERSION" "$BUNDLE_SHA256"; then
+    ack_result "$TARGET_VERSION" "done" "already installed"
+    exit $?
+fi
+
+log "发现新版本: ${CURRENT_VERSION:-none} → ${TARGET_VERSION}"
+
+if [ -z "${BUNDLE_URL}" ] || [ -z "${BUNDLE_SHA256}" ]; then
+    log "版本信息不完整（缺 url 或 sha256），跳过"
+    exit 0
+fi
+
+do_install "${BUNDLE_URL}" "${BUNDLE_SHA256}" "${TARGET_VERSION}"
+result=$?
+if [ "$result" = 10 ]; then
+    flush_ack || true
+    systemctl reboot
+elif [ "$result" = 0 ]; then
+    flush_ack
+else
+    if [ -f "$OTA_TX/active" ]; then
+        ota_rollback false || true
+        flush_ack || true
+    else
+        ack_result "$TARGET_VERSION" failed 'download or validation failed before installation' || true
+    fi
+    exit 1
+fi

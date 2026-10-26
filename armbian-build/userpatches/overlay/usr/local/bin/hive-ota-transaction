@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# Durable application rollback. A copy of this file is saved before changing
+# any application, so boot recovery does not depend on the newly installed code.
+OTA_ROOT=""
+OTA_STATE="/var/lib/hive"
+OTA_TX="${OTA_STATE}/ota-transaction"
+
+ota_safe_path() {
+    local path="$1" dest
+    [[ "$path" =~ ^[A-Za-z0-9_.@+/-]+$ ]] || return 1
+    case "/$path/" in *'/../'*|*'/./'*|*'//'*) return 1;; esac
+    dest="${OTA_ROOT}/${path}"
+    [ ! -L "$dest" ] && [ "$(realpath -m -- "$dest")" = "$dest" ]
+}
+
+ota_save_ack() {
+    local status="$1" result="$2" assignment="$3" version="$4"
+    [ -n "$assignment" ] || return 0
+    jq -n --arg s "$status" --arg r "$result" --arg a "$assignment" --arg v "$version" \
+        '{status:$s,result:$r,assignment_token:$a,version:$v}' > "${OTA_STATE}/ota-pending-ack.json.new" || return 1
+    mv -f "${OTA_STATE}/ota-pending-ack.json.new" "${OTA_STATE}/ota-pending-ack.json" || return 1
+    sync -f "$OTA_STATE"
+}
+
+ota_prepare() {
+    local manifest="$1" assignment="$2" version="$3" path dest svc enabled active
+    [ ! -f "$OTA_TX/active" ] || return 1
+    rm -rf -- "$OTA_TX"
+    mkdir -p "$OTA_TX/files" || return 1
+    cp /usr/local/bin/hive-ota-transaction "$OTA_TX/recover.sh" || return 1
+    cp "$manifest" "$OTA_TX/manifest.json" || return 1
+    jq -n --arg a "$assignment" --arg v "$version" '{assignment:$a,version:$v}' > "$OTA_TX/task.json" || return 1
+    jq '[.files[].path, (.rollback_paths[]?)] + ["etc/hive/ota-version", "var/lib/hive/ota-installed.json"] | unique' \
+        "$manifest" > "$OTA_TX/paths.json" || return 1
+    : > "$OTA_TX/existing"
+    while IFS= read -r path; do
+        ota_safe_path "$path" || return 1
+        dest="${OTA_ROOT}/${path}"
+        if [ -e "$dest" ]; then
+            [ -f "$dest" ] || return 1
+            mkdir -p "$OTA_TX/files/$(dirname "$path")" || return 1
+            cp -a -- "$dest" "$OTA_TX/files/$path" || return 1
+            printf '%s\n' "$path" >> "$OTA_TX/existing" || return 1
+        fi
+    done < <(jq -r '.[]' "$OTA_TX/paths.json")
+    : > "$OTA_TX/services"
+    while IFS= read -r svc; do
+        [ -n "$svc" ] || continue
+        [[ "$svc" =~ ^[A-Za-z0-9_@.-]+$ && "$svc" != -* ]] || return 1
+        if jq -e --arg s "$svc" '(.restart_services // []) | index($s) != null' "$manifest" >/dev/null; then
+            case "$svc" in hive-updater.service|hive-updater|hive-command-agent.service|hive-command-agent|hive-ota-recover*) return 1;; esac
+        fi
+        enabled=$(systemctl is-enabled "$svc" 2>/dev/null) || true
+        active=false
+        systemctl is-active --quiet "$svc" && active=true
+        printf '%s %s %s\n' "$svc" "${enabled:-disabled}" "$active" >> "$OTA_TX/services" || return 1
+    done < <(jq -r '[(.restart_services[]?), (.enable_services[]?)] | unique[]' "$manifest")
+    # Flush all backups first. Only then publish the durable mutation marker.
+    sync -f "$OTA_TX" || return 1
+    touch "$OTA_TX/active" || return 1
+    sync -f "$OTA_TX"
+}
+
+ota_rollback() {
+    local boot="${1:-false}" path dest tmp svc enabled active failed=0 assignment version
+    [ -f "$OTA_TX/active" ] || return 0
+    # A committed transaction only needs its durable acknowledgement delivered.
+    if [ -f "$OTA_TX/committed" ]; then
+        assignment=$(jq -r '.assignment' "$OTA_TX/task.json")
+        version=$(jq -r '.version' "$OTA_TX/task.json")
+        ota_save_ack done 'installed and health checks passed' "$assignment" "$version" || return 1
+        rm -rf -- "$OTA_TX"
+        return 0
+    fi
+    while IFS= read -r path; do
+        ota_safe_path "$path" || { failed=1; continue; }
+        dest="${OTA_ROOT}/${path}"
+        if grep -Fxq -- "$path" "$OTA_TX/existing"; then
+            mkdir -p "$(dirname "$dest")" || { failed=1; continue; }
+            tmp=$(mktemp "${dest}.restore.XXXXXX") || { failed=1; continue; }
+            cp -a -- "$OTA_TX/files/$path" "$tmp" && mv -f -- "$tmp" "$dest" || failed=1
+        else
+            rm -f -- "$dest" || failed=1
+        fi
+    done < <(jq -r '.[]' "$OTA_TX/paths.json")
+    systemctl daemon-reload || failed=1
+    while read -r svc enabled active; do
+        case "$enabled" in
+            enabled) systemctl enable "$svc" >/dev/null 2>&1 || failed=1;;
+            enabled-runtime) systemctl enable --runtime "$svc" >/dev/null 2>&1 || failed=1;;
+            disabled|not-found) systemctl disable "$svc" >/dev/null 2>&1 || true;;
+        esac
+        # Queue boot-time restarts without waiting on units ordered after this
+        # recovery service. Other services may already have started in parallel.
+        if [ "$boot" = true ]; then
+            if [ "$active" = true ]; then
+                systemctl --no-block restart "$svc" || failed=1
+            else
+                systemctl --no-block stop "$svc" || true
+            fi
+        else
+            if [ "$active" = true ]; then
+                systemctl restart "$svc" || failed=1
+            else
+                systemctl stop "$svc" || true
+            fi
+        fi
+    done < "$OTA_TX/services"
+    sync || failed=1
+    assignment=$(jq -r '.assignment' "$OTA_TX/task.json")
+    version=$(jq -r '.version' "$OTA_TX/task.json")
+    if [ "$failed" -ne 0 ]; then
+        ota_save_ack failed 'rollback incomplete; retained backup, manual recovery required' "$assignment" "$version" || true
+        return 1
+    fi
+    ota_save_ack rolled_back 'previous files and service configuration restored' "$assignment" "$version" || return 1
+    rm -rf -- "$OTA_TX"
+    sync -f "$OTA_STATE"
+}
+
+ota_commit() {
+    local assignment="$1" version="$2"
+    # Boot recovery treats a crash before this marker as a failed installation.
+    sync || return 1
+    touch "$OTA_TX/committed" || return 1
+    sync -f "$OTA_TX" || return 1
+    ota_save_ack done 'installed and health checks passed' "$assignment" "$version" || return 1
+    rm -rf -- "$OTA_TX"
+}
+
+ota_service_healthy() {
+    local svc="$1" type result status
+    if systemctl is-active --quiet "$svc"; then return 0; fi
+    type=$(systemctl show "$svc" -p Type --value)
+    result=$(systemctl show "$svc" -p Result --value)
+    status=$(systemctl show "$svc" -p ExecMainStatus --value)
+    [ "$type" = oneshot ] && [ "$result" = success ] && [ "$status" = 0 ]
+}
+
+ota_health_check() {
+    local manifest="$1" payload="$2" svc elapsed=0 healthy grace timeout_sec
+    grace=$(jq -r '.health_grace_seconds // 5' "$manifest")
+    timeout_sec=$(jq -r '.health_timeout_seconds // 30' "$manifest")
+    [[ "$grace" =~ ^[0-9]+$ && "$timeout_sec" =~ ^[0-9]+$ ]] || return 1
+    [ "$grace" -le 60 ] && [ "$timeout_sec" -ge 1 ] && [ "$timeout_sec" -le 300 ] || return 1
+    sleep "$grace"
+    while [ "$elapsed" -lt "$timeout_sec" ]; do
+        healthy=true
+        while IFS= read -r svc; do
+            [[ "$svc" =~ ^[A-Za-z0-9_@.-]+$ && "$svc" != -* ]] || return 1
+            ota_service_healthy "$svc" || healthy=false
+        done < <(jq -r '(.health_services // .restart_services // [])[]' "$manifest")
+        if "$healthy"; then
+            [ ! -f "$payload/hooks/health-check.sh" ] || timeout "$timeout_sec" bash "$payload/hooks/health-check.sh" || return 1
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    return 1
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    set -uo pipefail
+    umask 077
+    mkdir -p "$OTA_STATE"
+    exec 9>"$OTA_STATE/ota.lock"
+    flock -n 9 || exit 75
+    ota_rollback true
+fi

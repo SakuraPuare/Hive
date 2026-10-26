@@ -1,0 +1,16 @@
+[Unit]
+Description=Confirm a healthy Hive firmware trial boot
+After=network-online.target hive-data.service nginx.service NetworkManager.service xray.service cloudflared.service easytier.service hive-updater.timer hive-command-agent.timer hive-subscription-guard.timer
+Wants=network-online.target
+ConditionPathExists=/var/lib/hive/firmware-pending.json
+FailureAction=reboot
+JobTimeoutSec=360
+JobTimeoutAction=reboot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hive-firmware
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

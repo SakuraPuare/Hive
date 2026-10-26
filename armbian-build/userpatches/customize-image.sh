@@ -15,7 +15,7 @@ echo ">>> customize-image.sh: RELEASE=${RELEASE} ARCH=${ARCH}"
 echo ">>> Copying overlay files to root..."
 if [ -d "/tmp/overlay" ]; then
     cp -a --no-preserve=ownership /tmp/overlay/* /
-    # cp -a 保留构建主机的 UID/GID（kent:kent），只修正 overlay 涉及的目录
+    # Do not import the build user's UID/GID into privileged image directories.
     chown -R root:root /etc/hive /etc/xray /etc/frp /etc/cloudflared \
         /etc/systemd/system /etc/nginx /etc/update-motd.d \
         /etc/NetworkManager /etc/udev/rules.d /etc/mihomo \
@@ -108,7 +108,7 @@ apt-get update -q || true
 # 生成随机 SSH host key 用；缺它会导致离线首启无 host key。这批任一失败即中止构建。
 apt-get install -y --no-install-recommends \
     curl \
-    jq \
+    jq u-boot-tools e2fsprogs fdisk util-linux \
     ca-certificates \
     gnupg \
     python3 \
@@ -204,6 +204,10 @@ done
 for helper in hive-subscription-state hive-subscription-guard hive-xray-prepare hive-gateway-prepare; do
     chmod +x "/usr/local/bin/$helper"
 done
+chmod +x /usr/local/bin/hive-ota-transaction /usr/local/bin/hive-firmware /usr/local/bin/hive-board
+chmod +x /usr/lib/systemd/system-generators/hive-memory-generator
+chown root:root /usr/lib/systemd/system-generators/hive-memory-generator
+systemctl enable hive-ota-recover.service
 systemctl enable hive-subscription-guard.timer
 
 # Hive 运维脚本权限
@@ -224,6 +228,10 @@ fi
 if [ -f "/usr/local/bin/hive-clash-sync" ]; then
     chmod +x /usr/local/bin/hive-clash-sync
     echo ">>> hive-clash-sync: OK"
+fi
+if [ -f "/usr/local/bin/hive-updater" ]; then
+    chmod +x /usr/local/bin/hive-updater
+    echo ">>> hive-updater: OK"
 fi
 if [ -f "/usr/local/bin/mihomo" ]; then
     chmod +x /usr/local/bin/mihomo
@@ -281,6 +289,8 @@ fi
 mkdir -p /etc/hive /etc/cloudflared /etc/xray /etc/frp
 # config.env 由 build.sh 渲染后放入 overlay，此处确保权限
 chmod 600 /etc/hive/config.env 2>/dev/null || true
+# OTA 公钥：设备端验证 bundle 签名用，所有人可读
+chmod 644 /etc/hive/ota-pubkey.pem 2>/dev/null || true
 
 # ─────────────────────────────────────────────
 # 5.5. 预设账号密码（跳过首次启动交互）
@@ -396,6 +406,10 @@ fi
 if [ -f "/etc/systemd/system/hive-command-agent.timer" ]; then
     systemctl enable hive-command-agent.timer
     echo ">>> hive-command-agent.timer enabled"
+fi
+if [ -f "/etc/systemd/system/hive-updater.timer" ]; then
+    systemctl enable hive-updater.timer
+    echo ">>> hive-updater.timer enabled"
 fi
 # MetaCubeXD 面板静态资源校验（由 download-binaries.sh 预置，Mihomo external-ui 托管）
 if [ -d "/var/www/metacubexd" ] && [ -n "$(ls -A /var/www/metacubexd 2>/dev/null)" ]; then

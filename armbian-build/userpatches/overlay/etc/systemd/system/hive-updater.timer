@@ -1,0 +1,11 @@
+[Unit]
+Description=Run hive-updater periodically (application-layer OTA)
+
+[Timer]
+OnBootSec=120s
+OnUnitActiveSec=300s
+RandomizedDelaySec=60s
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

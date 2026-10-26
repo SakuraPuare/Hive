@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Shared by image builders and the device. Do not source mutable node config here.
+hive_board_config() {
+    HIVE_BOARD="$1"
+    case "$HIVE_BOARD" in
+        nanopi-zero2)
+            HIVE_DTB=rockchip/rk3528-nanopi-zero2.dtb
+            HIVE_CONSOLE=ttyS0,1500000
+            ;;
+        nanopi-r28s)
+            HIVE_DTB=rockchip/rk3528-nanopi-rev03.dtb
+            HIVE_CONSOLE=ttyS0,1500000
+            ;;
+        *) return 1;;
+    esac
+    HIVE_LAYOUT="${HIVE_BOARD}-ab-v1"
+}
+
+hive_detect_board() {
+    local compatible
+    compatible=$(tr '\0' '\n' < /proc/device-tree/compatible) || return 1
+    if grep -Fxq friendlyarm,nanopi-zero2 <<< "$compatible"; then
+        hive_board_config nanopi-zero2
+    elif grep -Eq '^friendly(arm|elec),nanopi-r28s$' <<< "$compatible"; then
+        hive_board_config nanopi-r28s
+    else
+        return 1
+    fi
+}
+
+# On first provisioning choose a physical wired NIC, preferring the SoC's
+# ethernet0 alias. Wi-Fi and tunnel creation order must not define node identity.
+hive_identity_interface() {
+    local path iface node alias="" fallback=""
+    [ ! -f /proc/device-tree/aliases/ethernet0 ] || alias=$(tr -d '\0' < /proc/device-tree/aliases/ethernet0)
+    for path in /sys/class/net/*; do
+        [ -e "$path/device" ] && [ ! -d "$path/wireless" ] && [ ! -e "$path/phy80211" ] || continue
+        [ "$(cat "$path/type" 2>/dev/null)" = 1 ] || continue
+        iface=${path##*/}
+        [ -n "$fallback" ] || fallback=$iface
+        node=$(readlink -f "$path/device/of_node") || continue
+        if [ -n "$alias" ] && [ "$node" = "$(readlink -f /proc/device-tree)$alias" ]; then
+            printf '%s\n' "$iface"; return 0
+        fi
+    done
+    [ -n "$fallback" ] || return 1
+    printf '%s\n' "$fallback"
+}

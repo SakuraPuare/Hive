@@ -150,6 +150,23 @@ echo "${RESP}" | jq -c '.[]' 2>/dev/null | while read -r cmd; do
                 ack "$id" "done" "hotspot config applied: ${out}"
             fi
             ;;
+        ota-update)
+            # params 是 JSON: {"url":"...","sha256":"...","version":"...","force":false}
+            ota_url=$(echo "$cmd" | jq -r '.params' | jq -r '.url // empty' 2>/dev/null)
+            ota_sha=$(echo "$cmd" | jq -r '.params' | jq -r '.sha256 // empty' 2>/dev/null)
+            ota_ver=$(echo "$cmd" | jq -r '.params' | jq -r '.version // empty' 2>/dev/null)
+            ota_force=$(echo "$cmd" | jq -r '.params' | jq -r '.force // false' 2>/dev/null)
+            if [ -z "$ota_url" ] || [ -z "$ota_sha" ]; then
+                ack "$id" "failed" "missing url or sha256 in params"
+            else
+                ota_args=(--url "$ota_url" --sha256 "$ota_sha")
+                [ -n "$ota_ver" ] && ota_args+=(--version "$ota_ver")
+                [ "$ota_force" = "true" ] && ota_args+=(--force)
+                out=$(/usr/local/bin/hive-updater "${ota_args[@]}" 2>&1) \
+                    && ack "$id" "done" "${out:0:900}" \
+                    || ack "$id" "failed" "${out:0:900}"
+            fi
+            ;;
         *)
             # 未知 action：不执行任何命令，直接 failed（防越权 / 陈旧客户端）。
             ack "$id" "failed" "unsupported action: ${action}"

@@ -6,6 +6,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/hive-command-agent
+# An explicitly queued application OTA can include a large download.
+TimeoutStartSec=1h
 # 失败不影响节点本身，下个 timer 周期会重试
 SuccessExitStatus=0
 Nice=10
