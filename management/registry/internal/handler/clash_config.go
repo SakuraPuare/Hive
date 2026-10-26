@@ -46,25 +46,27 @@ type ruleProvider struct {
 }
 
 var defaultServiceGroups = []serviceGroup{
-	{"Google", "默认"},
-	{"Telegram", "默认"},
-	{"Twitter", "默认"},
-	{"YouTube", "默认"},
-	{"NETFLIX", "默认"},
-	{"Spotify", "默认"},
-	{"Github", "默认"},
-	{"哔哩哔哩", "默认"},
-	{"巴哈姆特", "默认"},
+	{"Google", "境外"},
+	{"Telegram", "境外"},
+	{"Twitter", "境外"},
+	{"YouTube", "境外"},
+	{"NETFLIX", "境外"},
+	{"Spotify", "境外"},
+	{"Github", "境外"},
+	{"哔哩哔哩", "境内"},
+	{"巴哈姆特", "境外"},
+	{"其他", "境外"},
 }
 
 var defaultRegionGroups = []regionGroup{
+	{"大陆", `"(?i)中国|cn|china"`},
 	{"香港", `"(?i)港|hk|hongkong|hong kong"`},
 	{"台湾", `"(?i)台|tw|taiwan"`},
 	{"日本", `"(?i)日|jp|japan"`},
 	{"新加坡", `"(?i)新|sg|singapore"`},
 	{"美国", `"(?i)美|us|unitedstates|united states"`},
 	{"巴西", `"(?i)巴西|br|brazil"`},
-	{"其它地区", `"(?i)^(?!.*(?:港|hk|hongkong|台|tw|taiwan|日|jp|japan|新|sg|singapore|美|us|unitedstates|巴西|br|brazil|直连))"`},
+	{"其它地区", `"(?i)^(?!.*(?:中国|cn|china|港|hk|hongkong|台|tw|taiwan|日|jp|japan|新|sg|singapore|美|us|unitedstates|巴西|br|brazil|直连))"`},
 }
 
 var defaultDomainProviders = []ruleProvider{
