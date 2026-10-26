@@ -92,7 +92,10 @@ echo "  frontend built"
 # ── 5. 部署后端 ──────────────────────────────────────────────────────────
 echo ">>> Deploying hive-registry..."
 cd "${ROOT_DIR}/management/registry"
-cp hive-registry "${REGISTRY_BIN}"
+registry_tmp=$(mktemp "${REGISTRY_BIN}.XXXXXX")
+cp hive-registry "${registry_tmp}" || { rm -f "${registry_tmp}"; exit 1; }
+chmod 0755 "${registry_tmp}"
+mv -f "${registry_tmp}" "${REGISTRY_BIN}"
 systemctl restart hive-registry
 echo "  service restarted"
 

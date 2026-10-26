@@ -45,7 +45,10 @@ echo ""
 # ── 1. 回滚后端二进制 ────────────────────────────────────────────────────
 if [ -f "${BACKUP_DIR}/hive-registry" ]; then
     echo ">>> Restoring hive-registry binary..."
-    cp "${BACKUP_DIR}/hive-registry" "${REGISTRY_BIN}"
+    registry_tmp=$(mktemp "${REGISTRY_BIN}.XXXXXX")
+    cp "${BACKUP_DIR}/hive-registry" "${registry_tmp}" || { rm -f "${registry_tmp}"; exit 1; }
+    chmod 0755 "${registry_tmp}"
+    mv -f "${registry_tmp}" "${REGISTRY_BIN}"
     systemctl restart hive-registry
     echo "  binary restored, service restarted"
 else
