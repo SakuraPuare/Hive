@@ -204,10 +204,14 @@ done
 for helper in hive-subscription-state hive-subscription-guard hive-xray-prepare hive-gateway-prepare; do
     chmod +x "/usr/local/bin/$helper"
 done
-chmod +x /usr/local/bin/hive-ota-transaction /usr/local/bin/hive-firmware /usr/local/bin/hive-board
+chmod +x /usr/local/bin/hive-ota-transaction /usr/local/bin/hive-firmware /usr/local/bin/hive-data /usr/local/bin/hive-data-grow /usr/local/bin/hive-board
 chmod +x /usr/lib/systemd/system-generators/hive-memory-generator
 chown root:root /usr/lib/systemd/system-generators/hive-memory-generator
 systemctl enable hive-ota-recover.service
+if [ -f /usr/lib/hive/ab-layout ]; then
+    chown -R root:root /usr/lib/hive
+    systemctl enable hive-data.service hive-firmware-confirm.service
+fi
 systemctl enable hive-subscription-guard.timer
 
 # Hive 运维脚本权限

@@ -27,8 +27,9 @@ source /etc/hive/config.env
 # ─────────────────────────────────────────────
 # 1. 设备唯一标识
 # ─────────────────────────────────────────────
-# 取第一块非 lo 网卡的 MAC
-IFACE=$(ip -o link show | awk '$2 !~ /^lo:/ {gsub(/:$/,"",$2); print $2; exit}')
+# Board Ethernet identity is stable even if a Wi-Fi or tunnel interface appears first.
+source /usr/local/bin/hive-board
+IFACE=$(hive_identity_interface) || { echo 'No physical Ethernet interface found'; exit 1; }
 MAC=$(cat /sys/class/net/${IFACE}/address | tr -d ':')
 MAC6="${MAC: -6}"
 HOSTNAME="hive-${MAC6}"
@@ -284,7 +285,6 @@ systemctl enable --now frpc
 systemctl enable --now hive-xray-sync.timer || echo ">>> hive-xray-sync.timer failed (non-fatal)"
 
 # Xray 流量统计 exporter（供 Prometheus 抓取 per-user 流量，非致命）
-systemctl enable --now hive-subscription-guard.timer
 systemctl enable --now xray-exporter || echo ">>> xray-exporter failed (non-fatal)"
 
 # EasyTier：start-easytier.sh 从 node-info 读取 --ipv4 参数

@@ -1,6 +1,6 @@
 .PHONY: help setup setup-armbian download-binaries env setup-docker-btrfs \
-       build build-r3s build-opi4 build-qemu run-qemu \
-       build-ota gen-ota-keys \
+       build build-r28s build-r3s build-opi4 build-qemu run-qemu \
+       build-ota build-ota-bootstrap build-ab build-ab-r28s gen-ota-keys \
        registry registry-arm64 registry-test registry-test-short registry-openapi registry-seed registry-clean \
        ui-dev ui-build ui-gen-api ui-typecheck ui-test \
        monitoring-up monitoring-down monitoring-logs \
@@ -57,10 +57,13 @@ build: ## 构建 nanopi-zero2 (RK3528) 镜像
 build-r3s: ## 构建 nanopi-r3s (RK3566) 镜像
 	./scripts/build.sh nanopi-r3s
 
+build-r28s: ## 构建 NanoPi R28S 1 GB (RK3528) 镜像
+	./scripts/build.sh nanopi-r28s
+
 build-opi4: ## 构建 orangepi4-lts (香橙派 Pi 4 LTS / RK3399) 镜像
 	./scripts/build.sh orangepi4-lts
 
-build-all: build build-r3s build-opi4 ## 构建所有板子镜像
+build-all: build build-r28s build-r3s build-opi4 ## 构建所有板子镜像
 
 build-qemu: ## 构建 QEMU 测试镜像
 	./scripts/build-qemu.sh
@@ -69,12 +72,25 @@ run-qemu: ## 启动 QEMU 虚拟机（SSH: localhost:2222）
 	./scripts/run-qemu.sh
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# OTA
+
+build-ab: ## NanoPi Zero2 1/2 GB A/B 出厂镜像和系统 OTA 包（VERSION 必填）
+	HIVE_AB=yes HIVE_IMAGE_VERSION=$(VERSION) ./scripts/build.sh nanopi-zero2
+
+build-ab-r28s: ## NanoPi R28S 1 GB A/B 出厂镜像和系统 OTA 包（VERSION 必填）
+	HIVE_AB=yes HIVE_IMAGE_VERSION=$(VERSION) ./scripts/build.sh nanopi-r28s
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 gen-ota-keys: ## 生成 OTA 签名 Ed25519 密钥对
 	./scripts/gen-ota-keys.sh
 
 build-ota: ## 打包 OTA bundle（用法: make build-ota VERSION=1.0.0）
 	./scripts/build-ota.sh $(VERSION)
 
+build-ota-bootstrap: ## 打包已上线设备的 OTA 首次安装工具（VERSION 必填）
+	./scripts/build-ota-bootstrap.sh $(VERSION)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Registry 后端
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

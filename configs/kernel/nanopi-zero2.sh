@@ -56,7 +56,7 @@ disable CONFIG_X25         # X.25 — 上世纪的分组交换网络
 disable CONFIG_LAPB        # LAPB — X.25 的链路层
 disable CONFIG_PHONET      # Phonet — Nokia 手机内部总线协议
 
-# ── WiFi 驱动（RK3528 板子无 PCIe/mPCIe 插槽，只用板载/USB WiFi）──────────
+# ── WiFi 驱动（裁剪当前配置不使用的旧卡；Zero2 有 M.2 Key-E）──────────
 
 # Atheros（需要 PCIe 插槽的老卡）
 disable CONFIG_ATH9K       # Atheros 9xxx — 802.11n PCIe
@@ -77,7 +77,7 @@ disable CONFIG_RT73USB     # Ralink USB 老卡
 disable CONFIG_RT2800USB   # Ralink USB
 
 # ── WiFi 热点（AP 模式）驱动保活 ──────────────────────────────────────────
-# Zero2 是唯一可外接 USB 无线网卡的板子，需支持“插卡自动开热点”：
+# Zero2 支持 USB / M.2 无线网卡，需支持“插卡自动开热点”：
 #   - MT AX5400 (MediaTek MT7921AU) → mt7921u；mt76 AP 模式成熟可靠（首选）
 #   - AX210NGW  (Intel AX210)       → iwlwifi+iwlmvm；AP 模式较弱（次选）
 # 6.18 rockchip64-current 基线已含 CFG80211/MAC80211/MT7921U/IWLWIFI/IWLMVM(=m)，
@@ -119,6 +119,8 @@ disable CONFIG_MEDIA_SUPPORT
 force CONFIG_TMPFS y                # tmpfs 实现（/dev/shm、/run、/tmp 全靠它）
 force CONFIG_TMPFS_POSIX_ACL y      # tmpfs POSIX ACL（依赖 TMPFS，基线已 y，一并钉死）
 force CONFIG_TMPFS_XATTR y          # tmpfs 扩展属性（systemd/容器需要）
+force CONFIG_CGROUPS y              # systemd memory profiles on 1 GB / 2 GB SKUs
+force CONFIG_MEMCG y
 
 # ── 过时/罕见文件系统（只保留 ext4、btrfs、xfs、f2fs）────────────────────
 

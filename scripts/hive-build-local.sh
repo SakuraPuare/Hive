@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$board" in
-  all|nanopi-zero2|nanopi-r3s|orangepi4-lts) ;;
+  all|nanopi-zero2|nanopi-r28s|nanopi-r3s|orangepi4-lts) ;;
   *) echo "invalid board: $board" >&2; exit 2 ;;
 esac
 

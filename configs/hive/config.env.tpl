@@ -44,7 +44,7 @@ HOTSPOT_5G_WIDTH=${HOTSPOT_5G_WIDTH}          # 5G 频宽 20|40|80，默认 80�
 HOTSPOT_PREFER_BAND=${HOTSPOT_PREFER_BAND}    # 单卡偏好频段：5 或 2.4，默认 5（优先 5G WPA3）
 
 # ===== 透明代理网关（路由器角色，LAN/WiFi 设备连上即自动走代理）=====
-# 双网口设备（如 NanoPi R3S）自动 WAN/LAN 分口：WAN 接上游路由器走 DHCP，
+# 双网口设备（如 NanoPi R28S / R3S）自动 WAN/LAN 分口：WAN 接上游路由器走 DHCP，
 # LAN 给下游设备发 DHCP 并由 Mihomo 做透明代理。单网口设备也会启用 Mihomo，
 # 接管 WiFi 热点等转发流量。分流方向/上游节点由 registry 面板动态下发。
 GATEWAY_ENABLED=${GATEWAY_ENABLED}            # on/off，默认 on（无下游也不占流量）

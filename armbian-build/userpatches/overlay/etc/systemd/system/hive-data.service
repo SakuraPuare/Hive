@@ -1,0 +1,16 @@
+[Unit]
+Description=Mount Hive A/B persistent device data
+DefaultDependencies=no
+After=systemd-remount-fs.service
+Before=local-fs.target network-pre.target hive-ota-recover.service
+ConditionPathExists=/usr/lib/hive/ab-layout
+FailureAction=reboot
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/hive-data
+TimeoutStartSec=180
+
+[Install]
+WantedBy=local-fs.target

@@ -10,6 +10,7 @@ on:
         default: all
         options:
           - nanopi-zero2
+          - nanopi-r28s
           - nanopi-r3s
           - orangepi4-lts
           - all

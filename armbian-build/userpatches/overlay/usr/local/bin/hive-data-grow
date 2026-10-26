@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Called before /data is mounted. Grow only partition 3 of a validated Hive GPT.
+# A retry after power loss repeats the same geometry and filesystem resize.
+set -euo pipefail
+disk=${1:?root disk required}
+[[ "$disk" =~ ^/dev/mmcblk[0-9]+$ ]] || exit 1
+data="${disk}p3"
+! findmnt -rn -S "$data" >/dev/null || { echo 'Data partition already mounted' >&2; exit 1; }
+plan=$(sfdisk --json "$disk" | python3 -c '
+import json, sys
+t=json.load(sys.stdin)["partitiontable"]; p=t["partitions"]
+assert t["label"] == "gpt" and t.get("sectorsize", 512) == 512
+assert len(p) == 3 and [i.get("name") for i in p] == ["hive-rootA","hive-rootB","hive-data"]
+assert p[0]["start"] == 32768 and p[0]["size"] == p[1]["size"]
+assert p[1]["start"] == p[0]["start"] + p[0]["size"]
+assert p[2]["start"] == p[1]["start"] + p[1]["size"]
+print(p[2]["start"], p[2]["size"])
+')
+read -r start size <<< "$plan"
+sectors=$(blockdev --getsz "$disk")
+target=$(((sectors - 34 - start) / 2048 * 2048))
+[ "$target" -ge "$size" ] || { echo 'Card is smaller than its Hive partition layout' >&2; exit 1; }
+if [ "$target" -gt "$size" ]; then
+    # The factory GPT backup is near the end of the image, not the larger card.
+    sfdisk --no-reread --no-tell-kernel --relocate gpt-bak-std "$disk"
+    printf 'size=%s\n' "$target" | sfdisk --no-reread --no-tell-kernel -N 3 "$disk"
+    sync
+fi
+# Refresh p3 even on a retry where the GPT was already written before a crash.
+partx --update --nr 3 "$disk"
+[ "$(blockdev --getsz "$data")" -eq "$target" ] || exit 1
+e2fsck -p "$data" || [ "$?" -eq 1 ]
+resize2fs "$data"

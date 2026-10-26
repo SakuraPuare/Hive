@@ -9,7 +9,8 @@ Armbian 基线 config ──→ 优化脚本 ──→ userpatches/config/kernel
                                        （构建时生成，不入库，Armbian 按文件名自动采用）
 ```
 
-- `nanopi-zero2.sh` — 基于 `linux-rk35xx-vendor.config` (kernel 6.1)
+- `nanopi-zero2.sh` — 基于 `linux-rockchip64-current.config`，1 GB / 2 GB 共用
+- `nanopi-r28s.sh` — 基于 `linux-rk35xx-vendor.config` (kernel 6.1)，保留双网口和板载 AIC8800 SDIO 驱动
 - `nanopi-r3s.sh` — 基于 `linux-rockchip64-current.config` (kernel 6.18)
 - `orangepi4-lts.sh` — 基于 `linux-rockchip64-current.config`（香橙派 Pi 4 LTS / RK3399）
 
@@ -22,7 +23,7 @@ Armbian 基线 config ──→ 优化脚本 ──→ userpatches/config/kernel
 
 ## 优化内容
 
-两个脚本禁用的内容基本一致，都是 Rockchip ARM 路由器场景不需要的：
+Zero2、R3S、Orange Pi 的裁剪策略相近；R28S 保留厂商基线，不套用这些主线内核裁剪。以下裁剪，都是 Rockchip ARM 路由器场景不需要的：
 
 | 类别 | 禁用项 | 理由 |
 |------|--------|------|
@@ -74,9 +75,9 @@ disable CONFIG_XXX  # 注释说明理由
 ```bash
 # 手动运行脚本查看效果
 ./configs/kernel/nanopi-zero2.sh \
-  armbian-build/build/config/kernel/linux-rk35xx-vendor.config \
+  armbian-build/build/config/kernel/linux-rockchip64-current.config \
   /tmp/test.config
 
 # 对比差异
-diff armbian-build/build/config/kernel/linux-rk35xx-vendor.config /tmp/test.config
+diff armbian-build/build/config/kernel/linux-rockchip64-current.config /tmp/test.config
 ```

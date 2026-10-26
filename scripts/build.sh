@@ -32,6 +32,12 @@ case "${PROFILE}" in
     BASE_KERNEL_CONFIG="linux-rockchip64-current"
     EXTRA_CFLAGS="-O2 -march=armv8-a+crc+crypto -mtune=cortex-a55 -fomit-frame-pointer"
     ;;
+  nanopi-r28s)
+    BOARD="nanopi-r28s"
+    BRANCH="vendor"
+    BASE_KERNEL_CONFIG="linux-rk35xx-vendor"
+    EXTRA_CFLAGS="-O2 -march=armv8-a -mtune=cortex-a53 -fomit-frame-pointer"
+    ;;
   orangepi4-lts)
     BOARD="orangepi4-lts"
     BRANCH="current"
@@ -41,10 +47,29 @@ case "${PROFILE}" in
     ;;
   *)
     echo "ERROR: 未知 profile '${PROFILE}'"
-    echo "支持的 profile: nanopi-zero2, nanopi-r3s, orangepi4-lts"
+    echo "支持的 profile: nanopi-zero2, nanopi-r28s, nanopi-r3s, orangepi4-lts"
     exit 1
     ;;
 esac
+
+# The overlay, kernel config and signed firmware metadata must describe the
+# same board. Do not let forwarded Armbian arguments silently change it.
+for build_arg in "$@"; do
+    case "$build_arg" in
+        BOARD=*|BRANCH=*|HIVE_AB=*)
+            echo 'Select board/branch with the Hive profile and HIVE_AB environment variable, not forwarded arguments.'
+            exit 1
+            ;;
+    esac
+done
+
+HIVE_AB="${HIVE_AB:-no}"
+HIVE_IMAGE_VERSION="${HIVE_IMAGE_VERSION:-}"
+if [ "$HIVE_AB" = yes ]; then
+    source "${ROOT_DIR}/armbian-build/userpatches/overlay/usr/local/bin/hive-board"
+    hive_board_config "$PROFILE" || { echo 'A/B requires NanoPi Zero2 or R28S'; exit 1; }
+    [[ "$HIVE_IMAGE_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || { echo 'Set HIVE_IMAGE_VERSION'; exit 1; }
+fi
 
 KERNEL_OPTIMIZE_SCRIPT="${ROOT_DIR}/configs/kernel/${PROFILE}.sh"
 
@@ -233,6 +258,10 @@ if [ ! -f "${ARMBIAN_DIR}/compile.sh" ]; then
     echo "Run: ./scripts/setup-armbian.sh"
     exit 1
 fi
+if [ "$PROFILE" = nanopi-r28s ] && [ ! -f "${ARMBIAN_DIR}/config/boards/nanopi-r28s.csc" ]; then
+    echo 'Update Armbian: the upstream NanoPi R28S board and AIC8800 extension are required.'
+    exit 1
+fi
 
 # 检查关键二进制
 OVERLAY_BIN="${ROOT_DIR}/armbian-build/userpatches/overlay/usr/local/bin"
@@ -253,6 +282,12 @@ echo ">>> 准备构建环境..."
 # 同步 userpatches
 echo "同步 userpatches..."
 rsync -a --delete "${ROOT_DIR}/armbian-build/userpatches/" "${ARMBIAN_DIR}/userpatches/"
+
+if [ "$HIVE_AB" = yes ]; then
+    "${SCRIPT_DIR}/render-ab-boot.sh" "$PROFILE" > "${ARMBIAN_DIR}/userpatches/hive-ab-boot.cmd"
+    mkdir -p "${ARMBIAN_DIR}/userpatches/overlay/usr/lib/hive"
+    printf '%s\n' "$HIVE_LAYOUT" > "${ARMBIAN_DIR}/userpatches/overlay/usr/lib/hive/ab-layout"
+fi
 
 # 生成优化内核配置（基线 config + 优化脚本 → 定制 config）
 # Armbian 选 config 只认 LINUXCONFIG（默认 linux-${LINUXFAMILY}-${BRANCH}），
@@ -277,7 +312,7 @@ echo "生成优化内核配置: ${BASE_KERNEL_CONFIG} → userpatches/config/ker
 # 渲染配置模板
 echo "渲染配置模板..."
 
-# /etc/hive/config.env — 所有共享凭证烧入镜像
+# /etc/hive/config.env — 设备凭证独立签发，共用镜像不包含 Registry 管理密钥
 # SSH 公钥来源默认值：.env 未设 SSH_IMPORT_GITHUB 时回退历史值，避免渲染成空串。
 export SSH_IMPORT_GITHUB="${SSH_IMPORT_GITHUB:-SakuraPuare}"
 envsubst < "${ROOT_DIR}/configs/hive/config.env.tpl" \
@@ -350,6 +385,10 @@ COMPRESS_THREADS="${COMPRESS_THREADS:-$(nproc)}"
 # full（≈2.7GiB）跨 legacy/current/edge 三分支共用一棵树，切版本 / 打补丁只做增量拉
 # 取；shallow 省一次性带宽但换版本常需重拉，且 bisect / 部分 patch 受限。本仓三机型
 # 反复构建，full 长期更省，故显式钉死消除倒计时。
+AB_ARGS=()
+if [ "$HIVE_AB" = yes ]; then AB_ARGS=(HIVE_AB=yes COMPRESS_OUTPUTIMAGE=sha); fi
+BUILD_STARTED=$(mktemp)
+trap 'rm -f "$BUILD_STARTED"' EXIT
 time ./compile.sh build \
     BOARD="${BOARD}" \
     BRANCH="${BRANCH}" \
@@ -369,6 +408,7 @@ time ./compile.sh build \
     GITHUB_MIRROR="${GITHUB_MIRROR}" \
     GHCR_MIRROR="${GHCR_MIRROR}" \
     ${MIRROR_ARGS} \
+    "${AB_ARGS[@]}" \
     "$@"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -408,3 +448,11 @@ ls -lh output/images/*.img* 2>/dev/null || echo "未找到输出镜像"
 echo ""
 echo "🎉 ${BOARD} 镜像构建成功！"
 echo "💡 提示：后续构建将因 ccache 缓存而更快"
+
+if [ "$HIVE_AB" = yes ]; then
+    mapfile -t AB_IMAGES < <(find "${ARMBIAN_DIR}/output/images" -maxdepth 1 -type f -name '*.img' -newer "$BUILD_STARTED")
+    [ "${#AB_IMAGES[@]}" -eq 1 ] || { echo 'Expected exactly one new uncompressed image'; exit 1; }
+    sudo env HIVE_AB_SLOT_MIB="${HIVE_AB_SLOT_MIB:-4096}" HIVE_AB_DATA_MIB="${HIVE_AB_DATA_MIB:-8192}" \
+        "${SCRIPT_DIR}/build-ab-image.sh" "${AB_IMAGES[0]}" "${ROOT_DIR}/output/ab" "$HIVE_IMAGE_VERSION" "$PROFILE"
+    "${SCRIPT_DIR}/build-ota.sh" "$HIVE_IMAGE_VERSION" --firmware "${ROOT_DIR}/output/ab/hive-${PROFILE}-rootfs-${HIVE_IMAGE_VERSION}.img"
+fi
