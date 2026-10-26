@@ -6,11 +6,15 @@ on:
     paths:
       - "management/registry/**"
       - "management/registry-ui/**"
+      - "armbian-build/userpatches/**"
+      - "scripts/**"
       - ".github/workflows/registry-cicd.yml"
   pull_request:
     paths:
       - "management/registry/**"
       - "management/registry-ui/**"
+      - "armbian-build/userpatches/**"
+      - "scripts/**"
       - ".github/workflows/registry-cicd.yml"
   workflow_dispatch:
 
