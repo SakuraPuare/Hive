@@ -55,6 +55,14 @@ if [ -n "${MAC:-}" ]; then
     MAC_NORM=$(echo "${MAC}" | tr 'A-F' 'a-f' | tr -cd 'a-f0-9')
     MAC_NORM="${MAC_NORM: -12}"
 fi
+# Keep OTA polling usable when a legacy node-info parser cannot load the
+# record (for example, while bootstrapping with a different Python runtime).
+# Only hexadecimal characters are retained; no node-info content is evaluated.
+if [ -z "${MAC_NORM}" ] && [ -r "${NODE_INFO}" ]; then
+    raw_mac=$(awk -F= '$1 == "MAC" {print $2; exit}' "${NODE_INFO}" 2>/dev/null || true)
+    MAC_NORM=$(printf '%s' "${raw_mac}" | tr 'A-F' 'a-f' | tr -cd 'a-f0-9')
+    MAC_NORM="${MAC_NORM: -12}"
+fi
 if [ -n "${NODE_REGISTRY_API_SECRET:-}" ]; then
     AUTH="Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"
 fi
