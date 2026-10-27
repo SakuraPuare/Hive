@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -22,6 +23,9 @@ class DeviceRegressionTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         for name in ['etc/hive', 'etc/ssh', 'var/lib/hive', 'run', 'tmp', 'mock']:
             (self.root / name).mkdir(parents=True)
+        self.node_info = self.root / 'hive-node-info'
+        shutil.copyfile(BIN / 'hive-node-info', self.node_info)
+        self.node_info.chmod(0o755)
         self.env = dict(os.environ, HIVE_TEST_ROOT=str(self.root),
                         PATH=str(self.root / 'mock') + ':' + os.environ['PATH'])
         (self.root / 'etc/hive/config.env').write_text('NODE_REGISTRY_URL=https://test.invalid\nNODE_REGISTRY_API_SECRET=test-token\n')
@@ -66,9 +70,10 @@ if flag.exists():flag.unlink();sys.exit(1)
         for helper in ['hive-ota-transaction', 'hive-firmware', 'hive-board']:
             text = text.replace('/usr/local/bin/' + helper, str(self.root / helper))
         text = text.replace('OTA_ROOT=""', 'OTA_ROOT="' + str(self.root) + '"')
-        text = text.replace('/usr/local/bin/hive-node-info', str(BIN / 'hive-node-info'))
+        text = text.replace('/usr/local/bin/hive-node-info', str(self.node_info))
         for prefix in ['/etc/hive', '/etc/ssh', '/var/lib/hive', '/run', '/tmp/hive-ota', '/tmp/hive-xray-adu']:
-            text = text.replace(prefix, str(self.root) + prefix)
+            pattern = rf'(?<![A-Za-z0-9_.-]){re.escape(prefix)}(?=$|[/\s"\'])'
+            text = re.sub(pattern, str(self.root) + prefix, text)
         text = text.replace('dest="/${fpath}"', 'dest="' + str(self.root) + '/${fpath}"')
         path = self.root / name
         path.write_text(text)
