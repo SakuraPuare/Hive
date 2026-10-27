@@ -66,7 +66,21 @@ jobs:
           TEST_MYSQL_USER: root
           TEST_MYSQL_PASSWORD: hive-test-only
           TEST_MYSQL_DB: hive_registry_test
-        run: go test -race ./...
+        run: |
+          set +e
+          set -o pipefail
+          go test -race ./... 2>&1 | tee "$RUNNER_TEMP/go-test.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            failed=$(grep -E '^(FAIL|panic:|--- FAIL:|    .*\.go:[0-9]+:|WARNING: DATA RACE|Found [0-9]+ data race)' "$RUNNER_TEMP/go-test.log" | tail -n 16 | tr '\n' ' ' || true)
+            failed=${failed//%/%25}
+            failed=${failed//$'\r'/%0D}
+            failed=${failed//$'\n'/%0A}
+            failed=${failed//::/%3A%3A}
+            echo "::error file=management/registry,line=1::${failed:-backend regression failed; inspect the test output}"
+          fi
+          exit "$status"
 
       - name: Isolated device and deployment regressions
         working-directory: .
