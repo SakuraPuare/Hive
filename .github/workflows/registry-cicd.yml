@@ -79,9 +79,11 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: |
+          set +e
           set -o pipefail
           python3 -u scripts/test-remediation.py 2>&1 | tee "$RUNNER_TEMP/remediation.log"
           status=${PIPESTATUS[0]}
+          set -e
           if [ "$status" -ne 0 ]; then
             failed=$(grep -E '^(FAIL|ERROR): |^FAILED ' "$RUNNER_TEMP/remediation.log" | tail -n 3 | tr '\n' ' ' || true)
             failed=${failed//%/%25}
