@@ -21,7 +21,7 @@
 
 | 优先级 | 问题及触发条件 | 当前影响与后续工作 |
 |---|---|---|
-| P1，依赖安全待处理 | `npm audit` 仍报告其他受影响依赖 | 升级 DOMPurify 后仍有 16 个依赖条目：2 critical、8 high、2 moderate、4 low，包含传递依赖，并不等于 16 条可利用攻击路径。需逐项核实并升级；具体范围见下文。 |
+| P2，远端依赖状态待刷新 | 本地锁文件审计已经清零，但 GitHub Dependabot 的仓库级告警列表可能滞后 | 根目录和 `management/registry-ui` 的 `npm audit` 均为 0 条漏洞。推送 `8832237` 时 GitHub 仍提示 66 条仓库级告警（7 critical、22 high、25 moderate、12 low），需要在 Dependabot 页面刷新并逐条确认是否来自其他清单或旧快照。 |
 | P1，上线前阻断 | 完整 Armbian 镜像尚未构建，三组设备未真机验收 | Zero2 1 GB/2 GB、R28S 1 GB 的 U-Boot 编译和隔离测试不能证明完整系统可启动。需在足够磁盘空间的构建机实编译，再用 32/64 GB TF 卡验证冷启动、网络、内存负载、A/B 升降级与断电恢复。R28S 的厂商内核/AIC8800 集成尤其需要实机验证。 |
 | P1，无人值守恢复限制 | 内核或引导阶段硬锁死，无法触发下一次重启 | 尚无经真机验证的 RK3528 硬件看门狗适配。A/B 尝试次数只在重启时递减，需外部看门狗或人工断电；U-Boot 损坏、TF 故障也无法用 A/B 修复。 |
 | P1，存量升级要求 | 升级共享凭证/旧代理，或首次从单系统迁移到 A/B | 新后台拒绝旧凭证和旧 GET/POST 设备计费接口；migration 28 默认关闭所有出口权限，需逐台核对控制权、签发独立服务器密钥。仅升级后台会中断旧设备服务，旧节点上的缓存代理配置也不会自动失效。需维护窗口和可信 SSH 安装独立 token/新版代理；A/B 首刷必须离线备份、整盘刷写后恢复身份。 |
@@ -35,17 +35,15 @@
 
 ### 依赖审计范围
 
-2026-10-27 使用当前锁文件执行 `npm audit --json`。剩余条目为 `next`、`handlebars`、`sharp`、`zod`、`undici`、`vite`、`vitest`、`@vitest/mocker`、`brace-expansion`、`fast-uri`、`js-yaml`、`source-map-js`、`esbuild`、`@cerios/openapi-core`、`@cerios/openapi-to-typescript`、`@cerios/openapi-to-zod`。这些依赖在本轮功能修改前已经存在；只修复了直接阻断 React Doctor 的 DOMPurify，未进行全套依赖升级。
+2026-10-27 使用当前锁文件执行 `npm audit --json`：根目录和 `management/registry-ui` 都是 **0 条漏洞**（critical、high、moderate、low、info 均为 0）。本轮升级并锁定了 Next.js、Vite、esbuild、Vitest、Zod、Undici、Handlebars、js-yaml、source-map-js、fast-uri、brace-expansion 及相关传递依赖，并验证了 `npm ci`、前端测试、类型检查和生产构建。
 
-其中 Next.js 公告包含服务端图片优化、缓存和开发服务器等条件。本仓库按 `output: 'export'` 由 Nginx 提供静态文件，这与运行 Next.js 服务端的暴露面不同；构建、测试和生成器依赖也应按实际运行环境评估。审计级别不等于已经证明当前部署可被利用，也不能据此忽略升级。后续需分别验证生产依赖和工具链升级，重跑 API 生成、测试及静态构建；不要直接执行会强制降级或跨版本替换生成器的 `npm audit fix --force`。
-
-推送 `a038e02` 时，GitHub 另提示默认分支有 **71 条依赖安全告警**（8 critical、23 high、25 moderate、15 low），详见 [Dependabot](https://github.com/SakuraPuare/Hive/security/dependabot)。这是仓库级远端提示，与上述前端锁文件的 16 个依赖条目口径不同，且可能尚未反映本次推送；本轮未逐条核实这些告警。后续应核对远端刷新后的受影响清单，不能将本地回归通过等同于依赖安全问题已全部解决。
+本地审计清零只代表当前两个 npm 锁文件的解析树没有 npm Advisory 命中，不代表 GitHub 其他清单或历史快照已经同步。推送 `8832237` 时，GitHub 仍提示默认分支有 **66 条依赖安全告警**（7 critical、22 high、25 moderate、12 low），详见 [Dependabot](https://github.com/SakuraPuare/Hive/security/dependabot)。应在远端页面刷新后逐条核对来源；不要执行会强制降级或跨版本替换生成器的 `npm audit fix --force`。
 
 ## 验证
 
 - Go 全量 `go test -race ./...` 通过（本轮 Go 源码未改变，复用此前相同源码的通过缓存）；`go vet ./...` 和 Linux ARM64 编译通过。
 - 前端 173 项测试、类型检查和 Webpack 生产静态导出通过。
-- React Doctor 通过（90 分、0 error、4 条原有建议）；`npm audit` 未通过，剩余 16 个依赖条目如上，不计为验证通过。
+- React Doctor 通过（90 分、0 error、4 条原有建议）；根目录和 `management/registry-ui` 的 `npm audit` 均通过且为 0 条漏洞。
 - 设备隔离回归通过：订阅 22 项、OTA 50 项、基础修复 9 项、硬件/分区 11 项。
 - 原子提交分别导出检查，后端及测试代码编译；每阶段 API 从对应后端生成，前端类型检查与对应脚本回归验证。
 - 此前已交叉编译 Zero2/R28S 的 A/B U-Boot；本轮未重复编译引导器，未构建完整 Armbian 镜像，未运行真机测试。
