@@ -73,10 +73,30 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y jq openssl fdisk e2fsprogs
-          python3 scripts/test-remediation.py
-          python3 scripts/test-subscriptions.py
-          python3 scripts/test-ota.py
-          python3 scripts/test-hardware.py
+
+      - name: Device regression (remediation)
+        working-directory: .
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 -u scripts/test-remediation.py
+
+      - name: Device regression (subscriptions)
+        working-directory: .
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 -u scripts/test-subscriptions.py
+
+      - name: Device regression (OTA)
+        working-directory: .
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 -u scripts/test-ota.py
+
+      - name: Device regression (hardware)
+        working-directory: .
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 -u scripts/test-hardware.py
 
       - name: Build (amd64)
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /dev/null .
