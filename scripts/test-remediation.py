@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 import unittest
 
 REPO = Path(__file__).resolve().parents[1]
@@ -217,9 +218,19 @@ if flag.exists():flag.unlink();sys.exit(1)
 
     def test_deploy_and_rollback_replace_running_executable(self):
         live = self.root / 'registry'
-        shutil.copyfile('/usr/bin/sleep', live); live.chmod(0o755)
-        process = subprocess.Popen([str(live), '60'])
-        self.addCleanup(lambda: (process.terminate(), process.wait()))
+        helper = self.root / 'running-helper'
+        helper.write_text('#!/usr/bin/env python3\nimport time\nwhile True: time.sleep(1)\n')
+        helper.chmod(0o755)
+        shutil.copyfile(helper, live); live.chmod(0o755)
+        process = subprocess.Popen([str(live)])
+
+        def stop_process():
+            if process.poll() is None:
+                process.terminate()
+                process.wait(timeout=5)
+
+        self.addCleanup(stop_process)
+        time.sleep(0.2)
         backup = self.root / 'backup'; backup.mkdir()
         shutil.copyfile('/usr/bin/true', backup / 'hive-registry')
         shutil.copyfile('/usr/bin/true', self.root / 'hive-registry')
