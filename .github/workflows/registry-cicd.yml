@@ -112,19 +112,61 @@ jobs:
         working-directory: .
         env:
           PYTHONUNBUFFERED: "1"
-        run: python3 -u scripts/test-subscriptions.py
+        run: |
+          set +e
+          set -o pipefail
+          python3 -u scripts/test-subscriptions.py 2>&1 | tee "$RUNNER_TEMP/subscriptions-test.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            failed=$(grep -E '^(FAIL|ERROR): |^FAILED |^Traceback|^AssertionError|^  File ' "$RUNNER_TEMP/subscriptions-test.log" | tail -n 16 | tr '\n' ' ' || true)
+            failed=${failed//%/%25}
+            failed=${failed//$'\r'/%0D}
+            failed=${failed//$'\n'/%0A}
+            failed=${failed//::/%3A%3A}
+            echo "::error file=scripts/test-subscriptions.py,line=1::${failed:-subscription regression failed; inspect the test output}"
+          fi
+          exit "$status"
 
       - name: Device regression (OTA)
         working-directory: .
         env:
           PYTHONUNBUFFERED: "1"
-        run: python3 -u scripts/test-ota.py
+        run: |
+          set +e
+          set -o pipefail
+          python3 -u scripts/test-ota.py 2>&1 | tee "$RUNNER_TEMP/ota-test.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            failed=$(grep -E '^(FAIL|ERROR): |^FAILED |^Traceback|^AssertionError|^  File ' "$RUNNER_TEMP/ota-test.log" | tail -n 16 | tr '\n' ' ' || true)
+            failed=${failed//%/%25}
+            failed=${failed//$'\r'/%0D}
+            failed=${failed//$'\n'/%0A}
+            failed=${failed//::/%3A%3A}
+            echo "::error file=scripts/test-ota.py,line=1::${failed:-OTA regression failed; inspect the test output}"
+          fi
+          exit "$status"
 
       - name: Device regression (hardware)
         working-directory: .
         env:
           PYTHONUNBUFFERED: "1"
-        run: python3 -u scripts/test-hardware.py
+        run: |
+          set +e
+          set -o pipefail
+          python3 -u scripts/test-hardware.py 2>&1 | tee "$RUNNER_TEMP/hardware-test.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            failed=$(grep -E '^(FAIL|ERROR): |^FAILED |^Traceback|^AssertionError|^  File ' "$RUNNER_TEMP/hardware-test.log" | tail -n 16 | tr '\n' ' ' || true)
+            failed=${failed//%/%25}
+            failed=${failed//$'\r'/%0D}
+            failed=${failed//$'\n'/%0A}
+            failed=${failed//::/%3A%3A}
+            echo "::error file=scripts/test-hardware.py,line=1::${failed:-hardware regression failed; inspect the test output}"
+          fi
+          exit "$status"
 
       - name: Build (amd64)
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /dev/null .
