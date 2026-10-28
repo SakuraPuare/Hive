@@ -208,22 +208,48 @@ var queryTokenPaths = map[string]bool{
 	"/subscription/clash": true,
 }
 
+// automationCredentials lists the secrets accepted as operator automation on
+// this request.
+//
+// ADMIN_API_SECRET is a server-only credential and works on every perm-gated
+// route. The legacy shared API_SECRET is still baked into deployed firmware
+// images and older mihomo configs, so it keeps working on the export routes
+// only; admitting it everywhere would hand a widely distributed secret full
+// admin API access.
+func (a *Auth) automationCredentials(r *http.Request) []string {
+	var out []string
+	admin, legacy := a.Config.AdminAPISecret, a.Config.APISecret
+	if admin != "" && admin != legacy {
+		out = append(out, admin)
+	}
+	if legacy != "" && queryTokenPaths[r.URL.Path] {
+		out = append(out, legacy)
+	}
+	return out
+}
+
 func (a *Auth) checkAPISecret(r *http.Request) bool {
-	// An optional, server-only automation credential. Refuse unsafe reuse of the
-	// legacy shared device secret.
-	secret := a.Config.AdminAPISecret
-	if secret == "" || secret == a.Config.APISecret {
+	credentials := a.automationCredentials(r)
+	if len(credentials) == 0 {
 		return false
 	}
 
 	token, hasHeader := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if hasHeader && token != "" {
-		return subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
+	if !hasHeader || token == "" {
+		if !queryTokenPaths[r.URL.Path] {
+			return false
+		}
+		token = r.URL.Query().Get("token")
 	}
-
-	if !queryTokenPaths[r.URL.Path] {
+	if token == "" {
 		return false
 	}
-	q := r.URL.Query().Get("token")
-	return q != "" && subtle.ConstantTimeCompare([]byte(q), []byte(secret)) == 1
+
+	ok := false
+	for _, c := range credentials {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(c)) == 1 {
+			ok = true
+		}
+	}
+	return ok
 }

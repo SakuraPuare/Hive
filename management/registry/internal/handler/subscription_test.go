@@ -367,14 +367,28 @@ func TestSubscriptionVless_QueryTokenAccepted(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 }
 
-// A wrong query token must still be rejected, and the shared legacy secret must
-// never work because checkAPISecret refuses ADMIN_API_SECRET == API_SECRET.
+// A wrong query token must still be rejected.
 func TestSubscriptionClash_QueryTokenWrongRejected(t *testing.T) {
 	resetDB(t)
 	insertSubTestNode(t, "001122334459")
 
-	resp := doJSON("GET", "/subscription/clash?token=test-api-secret", nil, nil)
+	resp := doJSON("GET", "/subscription/clash?token=definitely-not-a-secret", nil, nil)
 	assertStatus(t, resp, http.StatusUnauthorized)
+}
+
+// The legacy shared API_SECRET stays valid on the export routes so already
+// deployed devices and mihomo configs keep working without a reflash.
+func TestSubscriptionClash_LegacyApiSecretAccepted(t *testing.T) {
+	resetDB(t)
+	insertSubTestNode(t, "00112233445a")
+
+	resp := doJSON("GET", "/subscription/clash?token=test-api-secret", nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+
+	body := readBody(resp)
+	if !strings.Contains(body, "proxies:") {
+		t.Errorf("expected Clash YAML with proxies, got: %s", body[:min(len(body), 200)])
+	}
 }
 
 // Query-token acceptance must not spread to other perm-gated routes.
@@ -382,5 +396,14 @@ func TestQueryTokenRejectedOnNonExportRoute(t *testing.T) {
 	resetDB(t)
 
 	resp := doJSON("GET", "/prometheus-targets?token=test-admin-api-secret", nil, nil)
+	assertStatus(t, resp, http.StatusUnauthorized)
+}
+
+// The legacy shared secret must not become an admin credential on other
+// perm-gated routes, even via the header. It is only honoured on exports.
+func TestLegacyApiSecretRejectedOnOtherRoutes(t *testing.T) {
+	resetDB(t)
+
+	resp := doBearer("GET", "/prometheus-targets", nil, "test-api-secret")
 	assertStatus(t, resp, http.StatusUnauthorized)
 }
