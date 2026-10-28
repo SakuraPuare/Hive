@@ -198,13 +198,32 @@ func (a *Auth) RequireDeviceAuth(w http.ResponseWriter, r *http.Request, bodyMAC
 	return false
 }
 
+// queryTokenPaths are the only routes where the automation credential may be
+// passed as ?token= instead of an Authorization header. Clients that embed a
+// subscription URL (mihomo proxy-providers, browsers, pasted links) cannot set
+// headers, so those two exports accept it; everything else stays header-only so
+// operator automation does not start leaking secrets through query strings.
+var queryTokenPaths = map[string]bool{
+	"/subscription":       true,
+	"/subscription/clash": true,
+}
+
 func (a *Auth) checkAPISecret(r *http.Request) bool {
 	// An optional, server-only automation credential. Refuse unsafe reuse of the
-	// legacy shared device secret, and never accept credentials in query strings.
+	// legacy shared device secret.
 	secret := a.Config.AdminAPISecret
 	if secret == "" || secret == a.Config.APISecret {
 		return false
 	}
-	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	return ok && token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
+
+	token, hasHeader := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if hasHeader && token != "" {
+		return subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
+	}
+
+	if !queryTokenPaths[r.URL.Path] {
+		return false
+	}
+	q := r.URL.Query().Get("token")
+	return q != "" && subtle.ConstantTimeCompare([]byte(q), []byte(secret)) == 1
 }

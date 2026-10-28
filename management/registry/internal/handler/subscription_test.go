@@ -344,12 +344,43 @@ func TestSubscriptionVless_AutomationExportsAllNodes(t *testing.T) {
 	}
 }
 
-// The legacy shared secret must not unlock automation-only exports: checkAPISecret
-// refuses any ADMIN_API_SECRET that equals API_SECRET, and refuses ?token= entirely.
-func TestSubscriptionClash_QueryTokenRejected(t *testing.T) {
+// Clients that embed a subscription URL cannot set headers, so the two export
+// routes accept the automation credential as ?token=.
+func TestSubscriptionClash_QueryTokenAccepted(t *testing.T) {
 	resetDB(t)
 	insertSubTestNode(t, "001122334457")
 
 	resp := doJSON("GET", "/subscription/clash?token=test-admin-api-secret", nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+
+	body := readBody(resp)
+	if !strings.Contains(body, "proxies:") {
+		t.Errorf("expected Clash YAML with proxies, got: %s", body[:min(len(body), 200)])
+	}
+}
+
+func TestSubscriptionVless_QueryTokenAccepted(t *testing.T) {
+	resetDB(t)
+	insertSubTestNode(t, "001122334458")
+
+	resp := doJSON("GET", "/subscription?token=test-admin-api-secret", nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+}
+
+// A wrong query token must still be rejected, and the shared legacy secret must
+// never work because checkAPISecret refuses ADMIN_API_SECRET == API_SECRET.
+func TestSubscriptionClash_QueryTokenWrongRejected(t *testing.T) {
+	resetDB(t)
+	insertSubTestNode(t, "001122334459")
+
+	resp := doJSON("GET", "/subscription/clash?token=test-api-secret", nil, nil)
+	assertStatus(t, resp, http.StatusUnauthorized)
+}
+
+// Query-token acceptance must not spread to other perm-gated routes.
+func TestQueryTokenRejectedOnNonExportRoute(t *testing.T) {
+	resetDB(t)
+
+	resp := doJSON("GET", "/prometheus-targets?token=test-admin-api-secret", nil, nil)
 	assertStatus(t, resp, http.StatusUnauthorized)
 }
