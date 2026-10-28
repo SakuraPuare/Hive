@@ -304,3 +304,52 @@ func TestCustomerSubscription_InactiveCustomer(t *testing.T) {
 	resp := doJSON("GET", "/c/"+token, nil, nil)
 	assertStatus(t, resp, http.StatusNotFound)
 }
+
+// ── Automation (ADMIN_API_SECRET) export tests ──────────────────────────────
+//
+// mihomo/gateway sidecars authenticate with the server-only automation
+// credential and have no customer_subscriptions row. They must still be able to
+// pull the node list, while session-authenticated callers stay scoped to a paid
+// subscription (covered by TestAdminSubscriptionClash_* above).
+
+func TestSubscriptionClash_AutomationExportsAllNodes(t *testing.T) {
+	resetDB(t)
+	insertSubTestNode(t, "001122334455")
+
+	resp := doBearer("GET", "/subscription/clash", nil, "test-admin-api-secret")
+	assertStatus(t, resp, http.StatusOK)
+
+	body := readBody(resp)
+	if !strings.Contains(body, "proxies:") {
+		t.Fatalf("expected Clash YAML with proxies, got: %s", body[:min(len(body), 200)])
+	}
+	if !strings.Contains(body, "test.example.com") {
+		t.Errorf("automation export must include node servers, got: %s", body[:min(len(body), 400)])
+	}
+}
+
+func TestSubscriptionVless_AutomationExportsAllNodes(t *testing.T) {
+	resetDB(t)
+	insertSubTestNode(t, "001122334456")
+
+	resp := doBearer("GET", "/subscription", nil, "test-admin-api-secret")
+	assertStatus(t, resp, http.StatusOK)
+
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(readBody(resp)))
+	if err != nil {
+		t.Fatalf("vless subscription must be base64: %v", err)
+	}
+	if !strings.Contains(string(decoded), "vless://") {
+		t.Errorf("expected vless links, got: %s", string(decoded))
+	}
+}
+
+// The legacy shared secret must not unlock automation-only exports: checkAPISecret
+// refuses any ADMIN_API_SECRET that equals API_SECRET, and refuses ?token= entirely.
+func TestSubscriptionClash_QueryTokenRejected(t *testing.T) {
+	resetDB(t)
+	insertSubTestNode(t, "001122334457")
+
+	resp := doJSON("GET", "/subscription/clash?token=test-admin-api-secret", nil, nil)
+	assertStatus(t, resp, http.StatusUnauthorized)
+}

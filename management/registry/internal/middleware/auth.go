@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -78,12 +79,25 @@ func (a *Auth) ParseSession(r *http.Request) (username, role string, valid bool)
 	return parts[1], parts[2], true
 }
 
+// automationContextKey marks a request that RequirePerm admitted through the
+// server-only automation credential instead of an admin session cookie.
+type automationContextKey struct{}
+
+// IsAutomationRequest reports whether the current request was authenticated by
+// the automation credential (ADMIN_API_SECRET) rather than a browser session.
+// Handlers use it to allow operator automation to reach exports that are
+// otherwise scoped to a single paid customer subscription.
+func IsAutomationRequest(r *http.Request) bool {
+	automation, _ := r.Context().Value(automationContextKey{}).(bool)
+	return automation
+}
+
 // RequirePerm returns middleware that checks the user has the given permission.
 func (a *Auth) RequirePerm(perm string) func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			if a.checkAPISecret(r) {
-				next(w, r)
+				next(w, r.WithContext(context.WithValue(r.Context(), automationContextKey{}, true)))
 				return
 			}
 			username, _, ok := a.ParseSession(r)
