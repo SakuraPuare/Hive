@@ -474,5 +474,73 @@ class R28SBootPolicyTests(BootPolicyTests):
     board = 'nanopi-r28s'
 
 
+class BootloaderEnvGateTests(unittest.TestCase):
+    STAMP = '''CONFIG_ENV_IS_IN_MMC=y
+CONFIG_ENV_REDUNDANT=y
+CONFIG_ENV_SIZE=0x8000
+CONFIG_ENV_OFFSET=0xc00000
+CONFIG_ENV_OFFSET_REDUND=0xc10000
+CONFIG_CMD_SAVEENV=y
+CONFIG_CMD_SETEXPR=y
+CONFIG_CMD_PART=y
+CONFIG_CMD_FDT=y
+'''
+    MARKERS = [
+        'HIVE_AB_V1',
+        'save environment variables to persistent storage',
+        'Invalid ENV offset in MMC',
+        'Writing to %sMMC(',
+        'Reading from %sMMC(',
+        '*** Error - No Valid Environment Area found',
+        'set environment variable as the result of eval expression',
+        'print partition UUID',
+        "boot Linux kernel 'Image' format from memory",
+        'flattened device tree utility commands',
+    ]
+
+    def setUp(self):
+        import tempfile
+        self.temp = tempfile.TemporaryDirectory(prefix='hive-uboot-gate-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def gate(self, markers, stamp=None):
+        uboot = self.root / 'u-boot-rockchip.bin'
+        uboot.write_text('\n'.join(markers) + '\n')
+        stamp_path = self.root / 'uboot-env'
+        stamp_path.write_text(self.STAMP if stamp is None else stamp)
+        return subprocess.run([str(base.REPO / 'scripts/check-uboot-env.sh'), str(uboot), str(stamp_path)],
+                              text=True, capture_output=True)
+
+    def test_accepts_bootloader_with_persistent_redundant_environment(self):
+        result = self.gate(self.MARKERS)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_bootloader_without_mmc_environment(self):
+        markers = [m for m in self.MARKERS if m != 'Invalid ENV offset in MMC']
+        result = self.gate(markers)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('MMC environment driver', result.stderr)
+
+    def test_rejects_bootloader_without_redundant_environment(self):
+        markers = [m for m in self.MARKERS if m != 'Reading from %sMMC(']
+        result = self.gate(markers)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('redundant', result.stderr)
+
+    def test_rejects_environment_offset_drift(self):
+        result = self.gate(self.MARKERS, self.STAMP.replace('CONFIG_ENV_OFFSET=0xc00000', 'CONFIG_ENV_OFFSET=0x3f8000'))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('CONFIG_ENV_OFFSET=0xc00000', result.stderr)
+
+    def test_rejects_missing_build_stamp(self):
+        uboot = self.root / 'u-boot-rockchip.bin'
+        uboot.write_text('\n'.join(self.MARKERS) + '\n')
+        result = subprocess.run([str(base.REPO / 'scripts/check-uboot-env.sh'), str(uboot), str(self.root / 'absent')],
+                                text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('environment stamp', result.stderr)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

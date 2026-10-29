@@ -40,7 +40,8 @@ SOURCE_ROOT=$(lsblk -ln -o NAME,FSTYPE "$SRC_LOOP" | awk '$2 == "ext4" {print "/
 mount -o ro,noload "$SOURCE_ROOT" "$WORK/source"
 [ "$(cat "$WORK/source/usr/lib/hive/ab-layout")" = "$HIVE_LAYOUT" ] || { echo 'Source layout/board mismatch: build with HIVE_AB=yes first'; exit 1; }
 UBOOT=$(find "$WORK/source/usr/lib" -name u-boot-rockchip.bin -type f -print -quit)
-[ -n "$UBOOT" ] && strings "$UBOOT" | grep -F HIVE_AB_V1 >/dev/null || { echo 'A/B bootloader missing'; exit 1; }
+[ -n "$UBOOT" ] || { echo 'A/B bootloader missing'; exit 1; }
+"$SCRIPT_DIR/check-uboot-env.sh" "$UBOOT" "$WORK/source/usr/lib/hive/uboot-env" || exit 1
 [ "$(stat -c %s "$UBOOT")" -lt $((12*1024*1024-32768)) ] || { echo 'U-Boot overlaps reserved environment'; exit 1; }
 truncate -s "${SLOT_MIB}M" "$WORK/rootfs.img"
 mkfs.ext4 -q -F -O ^metadata_csum_seed,^orphan_file -L hive-rootA "$WORK/rootfs.img"

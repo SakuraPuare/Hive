@@ -79,3 +79,42 @@ lines = [line for line in p.read_text().splitlines() if line.split('=', 1)[0] no
 p.write_text('\n'.join(lines + [key+'='+value for key, value in values.items()])+'\n')
 PYCODE
 }
+
+# `post_config_uboot_target` 写完的值只是候选：紧随其后的 `make olddefconfig`
+# 可能因依赖不满足把它们丢掉，而 extension method 的返回值被 Armbian 忽略
+# （extensions.sh: "return 0 # always success"），静默跳过照样能产出镜像。
+# 编译完成后用最终 .config 复核一遍，并把结果作为 stamp 写进 rootfs，
+# 由 scripts/check-uboot-env.sh 在建厂镜像时对照二进制二次校验。
+function post_uboot_custom_postprocess__zz_hive_ab_env() {
+    [[ "${HIVE_AB:-no}" == yes ]] || return 0
+    [[ "$BOOTCONFIG" == "${BOARD}-rk3528_defconfig" ]] || return 0
+    local stamp="${USERPATCHES_PATH}/overlay/usr/lib/hive/uboot-env"
+    local want
+    for want in \
+        'CONFIG_ENV_IS_IN_MMC=y' \
+        'CONFIG_ENV_REDUNDANT=y' \
+        'CONFIG_ENV_SIZE=0x8000' \
+        'CONFIG_ENV_OFFSET=0xc00000' \
+        'CONFIG_ENV_OFFSET_REDUND=0xc10000' \
+        'CONFIG_CMD_SAVEENV=y' \
+        'CONFIG_CMD_SETEXPR=y' \
+        'CONFIG_CMD_PART=y' \
+        'CONFIG_CMD_FDT=y'; do
+        grep -qxF -- "$want" .config 2>/dev/null ||
+            exit_with_error "HIVE A/B: u-boot .config lacks '$want' after olddefconfig; the environment would not persist (reset loop on first boot)"
+    done
+    ! grep -qxF 'CONFIG_ENV_IS_NOWHERE=y' .config ||
+        exit_with_error "HIVE A/B: u-boot .config still has CONFIG_ENV_IS_NOWHERE=y; the environment would not persist"
+    mkdir -p "$(dirname "$stamp")"
+    printf '%s\n' \
+        'CONFIG_ENV_IS_IN_MMC=y' \
+        'CONFIG_ENV_REDUNDANT=y' \
+        'CONFIG_ENV_SIZE=0x8000' \
+        'CONFIG_ENV_OFFSET=0xc00000' \
+        'CONFIG_ENV_OFFSET_REDUND=0xc10000' \
+        'CONFIG_CMD_SAVEENV=y' \
+        'CONFIG_CMD_SETEXPR=y' \
+        'CONFIG_CMD_PART=y' \
+        'CONFIG_CMD_FDT=y' > "$stamp"
+    display_alert "$BOARD" "HIVE: A/B environment verified in u-boot .config" "info"
+}
