@@ -13,6 +13,22 @@ ota_safe_path() {
     [ ! -L "$dest" ] && [ "$(realpath -m -- "$dest")" = "$dest" ]
 }
 
+# 启动/恢复关键文件。hive-data 失败时 /data 挂不上，回滚（备份在
+# /var/lib/hive）就永远跑不到，所以这些文件只能随固件 OTA 更新。
+# 与 scripts/build-ota.sh 的 ota_protected_path 保持一致。
+ota_protected_path() {
+    case "$1" in
+        boot|boot/*|usr/lib/hive|usr/lib/hive/*|usr/lib/modules|usr/lib/modules/*) return 0 ;;
+        usr/local/bin/hive-data|usr/local/bin/hive-data-grow) return 0 ;;
+        usr/local/bin/hive-board|usr/local/bin/hive-node-info) return 0 ;;
+        usr/local/bin/hive-firmware) return 0 ;;
+        etc/systemd/system/hive-data.service) return 0 ;;
+        etc/systemd/system/hive-ota-recover.service) return 0 ;;
+        etc/systemd/system/hive-firmware-confirm.service) return 0 ;;
+    esac
+    return 1
+}
+
 ota_save_ack() {
     local status="$1" result="$2" assignment="$3" version="$4"
     [ -n "$assignment" ] || return 0
@@ -35,6 +51,10 @@ ota_prepare() {
     : > "$OTA_TX/existing"
     while IFS= read -r path; do
         ota_safe_path "$path" || return 1
+        if ota_protected_path "$path"; then
+            echo "Refusing boot-critical path in OTA bundle: $path (firmware update required)" >&2
+            return 1
+        fi
         dest="${OTA_ROOT}/${path}"
         if [ -e "$dest" ]; then
             [ -f "$dest" ] || return 1

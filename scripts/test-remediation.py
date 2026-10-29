@@ -201,13 +201,24 @@ if flag.exists():flag.unlink();sys.exit(1)
         self.assertIn('拒绝解压', result.stdout)
         self.assertFalse((self.root / 'etc/test-app').exists())
 
-    def test_default_bundle_excludes_personalized_configuration(self):
+    def offline_builder(self):
         # Relocate the real builder, keeping its overlay input and isolating output.
         source = (REPO / 'scripts/build-ota.sh').read_text()
         source = source.replace('ROOT_DIR="$(dirname "$SCRIPT_DIR")"', 'ROOT_DIR="' + str(REPO) + '"')
         source = source.replace('OUTPUT_DIR="${ROOT_DIR}/output/ota"', 'OUTPUT_DIR="' + str(self.root / 'output') + '"')
         script = self.root / 'build-ota'
         script.write_text(source)
+        return script
+
+    def test_ota_builder_refuses_boot_critical_include(self):
+        script = self.offline_builder()
+        result = self.run_script(script, 'regression', '--no-sign',
+                                 '--include', 'usr/local/bin/hive-data', expected=1)
+        self.assertIn('启动/恢复关键文件', result.stdout)
+        self.assertFalse(list((self.root / 'output').glob('*.tar.gz')))
+
+    def test_default_bundle_excludes_personalized_configuration(self):
+        script = self.offline_builder()
         self.run_script(script, 'regression', '--no-sign')
         archive_path = next((self.root / 'output').glob('*.tar.gz'))
         with tarfile.open(archive_path) as archive:
@@ -220,6 +231,15 @@ if flag.exists():flag.unlink();sys.exit(1)
         self.assertEqual(manifest['restart_services'][0], 'hive-subscription-guard.timer')
         for prefix in ['etc/xray/', 'etc/mihomo/', 'etc/hive/', 'etc/ssh/', 'etc/frp/']:
             self.assertFalse(any('/files/' + prefix in name for name in names), prefix)
+        packaged = {name.split('/files/', 1)[1] for name in names if '/files/' in name}
+        self.assertFalse(packaged & {
+            'usr/local/bin/hive-data', 'usr/local/bin/hive-data-grow',
+            'usr/local/bin/hive-board', 'usr/local/bin/hive-node-info',
+            'usr/local/bin/hive-firmware',
+            'etc/systemd/system/hive-data.service',
+            'etc/systemd/system/hive-ota-recover.service',
+            'etc/systemd/system/hive-firmware-confirm.service',
+        }, 'boot/recovery critical files must ship only with the A/B firmware')
 
     def test_deploy_and_rollback_replace_running_executable(self):
         live = self.root / 'registry'

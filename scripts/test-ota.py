@@ -17,6 +17,22 @@ spec.loader.exec_module(base)
 
 
 class OTATests(base.DeviceRegressionTests):
+    def test_boot_critical_files_are_refused_before_install(self):
+        self.bundle()
+        payload = self.root / 'payload'
+        (payload / 'files/usr/local/bin').mkdir(parents=True)
+        data = b'#!/bin/sh\nexit 1\n'
+        (payload / 'files/usr/local/bin/hive-data').write_bytes(data)
+        manifest = json.loads((payload / 'manifest.json').read_text())
+        manifest['files'].append({'path': 'usr/local/bin/hive-data',
+                                  'sha256': hashlib.sha256(data).hexdigest(), 'mode': '0755'})
+        self.repack(manifest)
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('boot-critical', result.stderr)
+        self.assertFalse((self.root / 'etc/test-app').exists())
+        self.assertFalse((self.root / 'usr/local/bin/hive-data').exists())
+        self.assertFalse((self.root / 'var/lib/hive/ota-transaction/active').exists())
+
     def repack(self, manifest):
         payload = self.root / 'payload'
         (payload / 'manifest.json').write_text(json.dumps(manifest))

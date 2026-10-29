@@ -29,6 +29,24 @@ OVERLAY_DIR="${ROOT_DIR}/armbian-build/userpatches/overlay"
 SIGNING_KEY="${OTA_SIGNING_KEY_PATH:-${ROOT_DIR}/keys/ota-signing.pem}"
 OUTPUT_DIR="${ROOT_DIR}/output/ota"
 
+# 启动/恢复关键文件不能通过应用 OTA 更换。回滚备份和事务标记都放在
+# /var/lib/hive（由 hive-data 从 /data bind 挂载）：一旦 hive-data 系列脚本
+# 或它们的 unit 被坏包替换，/data 挂不上，回滚脚本永远跑不到，设备只会无限
+# 重启。这些文件只能随 A/B 固件（rootfs 槽）更新。
+# 运行期在 hive-ota-transaction:ota_protected_path 再拦一次，签名包也不能覆盖。
+ota_protected_path() {
+    case "$1" in
+        boot|boot/*|usr/lib/hive|usr/lib/hive/*|usr/lib/modules|usr/lib/modules/*) return 0 ;;
+        usr/local/bin/hive-data|usr/local/bin/hive-data-grow) return 0 ;;
+        usr/local/bin/hive-board|usr/local/bin/hive-node-info) return 0 ;;
+        usr/local/bin/hive-firmware) return 0 ;;
+        etc/systemd/system/hive-data.service) return 0 ;;
+        etc/systemd/system/hive-ota-recover.service) return 0 ;;
+        etc/systemd/system/hive-firmware-confirm.service) return 0 ;;
+    esac
+    return 1
+}
+
 usage() {
     echo "用法: $0 <version> [选项]"
     echo ""
@@ -132,6 +150,10 @@ elif [ ${#INCLUDES[@]} -eq 0 ]; then
             [[ "${f}" == ${ex} ]] && SKIP=true && break
         done
         ${SKIP} && continue
+        if ota_protected_path "$f"; then
+            echo ">>> 跳过启动/恢复关键文件: $f"
+            continue
+        fi
         mkdir -p "${FILES_DIR}/$(dirname "$f")"
         cp -a "${OVERLAY_DIR}/${f}" "${FILES_DIR}/${f}"
     done
@@ -142,6 +164,9 @@ else
             /*|../*|*/../*|..|etc/hive/*|etc/xray/*|etc/mihomo/*|etc/frp/*|etc/ssh/*)
                 echo "ERROR: identity/runtime configuration must be updated by a migration hook: $inc"; exit 1 ;;
         esac
+        if ota_protected_path "$inc"; then
+            echo "ERROR: 启动/恢复关键文件只能随固件 OTA 更新: $inc"; exit 1
+        fi
         if [ -f "${OVERLAY_DIR}/${inc}" ]; then
             mkdir -p "${FILES_DIR}/$(dirname "$inc")"
             cp -a "${OVERLAY_DIR}/${inc}" "${FILES_DIR}/${inc}"
