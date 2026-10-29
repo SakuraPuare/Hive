@@ -2,10 +2,11 @@
 # Hive Registry UI — Next.js static export served by nginx
 # Build context: management/registry-ui
 
-FROM node:20-alpine AS build
+FROM node:24.22.1-alpine3.24 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --prefer-offline --no-audit --no-fund
+RUN npm install --global npm@10 \
+    && npm ci --prefer-offline --no-audit --no-fund
 COPY . .
 # next.config.js has output:'export' -> emits ./out
 RUN npm run build

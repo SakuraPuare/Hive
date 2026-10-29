@@ -13,7 +13,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/hive-registry .
 
 RUN mkdir -p /out/ota
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 WORKDIR /
 COPY --from=build /out/hive-registry /hive-registry
 # In-cluster: listen on all interfaces (Ingress/Service front it, not localhost)
