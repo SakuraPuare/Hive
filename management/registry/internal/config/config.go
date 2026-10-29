@@ -21,9 +21,14 @@ type Config struct {
 	CORSAllowedOrigins  []string
 	AdminCookieSameSite http.SameSite
 	XrayPath            string
-	PrometheusURL       string
-	OTAArtifactDir      string
-	OTARetentionDays    int
+	// CFPreferredHost is the Cloudflare 优选 endpoint written into subscription
+	// configs as the TCP destination. TLS SNI and the WebSocket Host header keep
+	// pointing at the node's own tunnel hostname, so Cloudflare still routes to
+	// the right tunnel. Empty → clients connect to the node hostname directly.
+	CFPreferredHost  string
+	PrometheusURL    string
+	OTAArtifactDir   string
+	OTARetentionDays int
 
 	// DB
 	MySQLHost     string
@@ -64,6 +69,7 @@ func Load() *Config {
 		CORSAllowedOrigins:  splitCSV(Getenv("CORS_ALLOW_ORIGINS", "")),
 		AdminCookieSameSite: parseSameSite(Getenv("ADMIN_COOKIE_SAMESITE", "lax")),
 		XrayPath:            Getenv("XRAY_PATH", "ray"),
+		CFPreferredHost:     Getenv("CF_PREFERRED_HOST", ""),
 		PrometheusURL:       Getenv("PROMETHEUS_URL", "http://127.0.0.1:4230"),
 		OTAArtifactDir:      Getenv("OTA_ARTIFACT_DIR", "/var/lib/hive-registry/ota"),
 		OTARetentionDays:    otaRetentionDays(Getenv("OTA_RETENTION_DAYS", "30")),

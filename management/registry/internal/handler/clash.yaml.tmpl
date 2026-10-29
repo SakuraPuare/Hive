@@ -85,11 +85,11 @@ proxies:
     network: ws
     tls: true
     udp: true
-    servername: {{ .Server }}
+    servername: {{ .Host }}
     ws-opts:
       path: /{{ $.XrayPath }}
       headers:
-        Host: {{ .Server }}
+        Host: {{ .Host }}
       max-early-data: 2560
       early-data-header-name: Sec-WebSocket-Protocol
 {{ end }}

@@ -47,6 +47,17 @@ func stripScheme(rawURL string) string {
 	return strings.TrimSuffix(rawURL, "/")
 }
 
+// dialHost returns the TCP destination to write into client configs for a node
+// whose own tunnel hostname is nodeHost. When cfPreferred is set (a Cloudflare
+// 优选 hostname or IP), clients dial that instead so the connection lands on a
+// better-performing Cloudflare anycast edge; SNI/Host stay on nodeHost.
+func dialHost(nodeHost, cfPreferred string) string {
+	if cfPreferred = stripScheme(strings.TrimSpace(cfPreferred)); cfPreferred != "" {
+		return cfPreferred
+	}
+	return nodeHost
+}
+
 // yamlStr wraps a string in double quotes for YAML output.
 func yamlStr(s string) string {
 	s = strings.ReplaceAll(s, `"`, `\"`)

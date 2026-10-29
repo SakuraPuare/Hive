@@ -40,18 +40,36 @@ type gatewayClashData struct {
 // loop back into the gateway. Force-DIRECT at the top of the rule list.
 var localDirectProcesses = []string{"curl", "xray", "cloudflared", "warp-svc", "easytier-core", "frpc", "tailscaled"}
 
+// gatewayClashArgs groups the render inputs for buildGatewayClashYAML. A struct
+// (not a long positional list) because several fields are optional/zero-valued.
+type gatewayClashArgs struct {
+	Title         string
+	XrayPath      string
+	Secret        string       // external-controller API secret
+	DashboardPath string       // metacubexd static dir served via external-ui
+	SelfMAC       string       // requesting node's MAC; excluded from the upstream pool
+	Direction     string       // domestic / overseas / global / direct / blocked
+	UpstreamMode  string       // auto | manual
+	UpstreamMACs  []string     // manual-mode selection
+	AllNodes      []model.Node // every enabled exit node (candidate upstreams)
+
+	// OverrideUUID, when non-empty, replaces every upstream proxy's UUID with the
+	// bound customer subscription's Xray identity (gateway egress is metered there).
+	OverrideUUID string
+
+	// PreferredHost, when non-empty, is the Cloudflare 优选 host clients dial;
+	// SNI and WebSocket Host stay on the node's own tunnel hostname.
+	PreferredHost string
+}
+
 // buildGatewayClashYAML renders the node-side Mihomo gateway config.
 //
-//	selfMAC    — the requesting node's MAC; excluded from the upstream pool.
-//	allNodes   — every enabled exit node in the cluster (candidate upstreams).
-//	direction  — domestic / overseas / global / direct (see model.Node).
-//	upstreamMode / upstreamMACs — auto (url-test over all) or manual (selected subset).
-//	overrideUUID — when non-empty, every upstream proxy uses this UUID instead of
-//	  the node's own xray_uuid (billing: gateway bound to a customer subscription,
-//	  its egress traffic lands on sub-<id> and is metered against that subscription).
-func buildGatewayClashYAML(title, xrayPath, secret, dashboardPath, selfMAC, direction, upstreamMode string, upstreamMACs []string, allNodes []model.Node, overrideUUID string) string {
+// The self node is never an upstream (no self-routing loop), the upstream pool
+// is auto (url-test over all) or manual (selected subset), and the CN routing
+// rule flips by the node's gateway_direction.
+func buildGatewayClashYAML(args gatewayClashArgs) string {
 	manualSet := map[string]bool{}
-	for _, m := range upstreamMACs {
+	for _, m := range args.UpstreamMACs {
 		m = strings.ToLower(strings.TrimSpace(m))
 		if m != "" {
 			manualSet[m] = true
@@ -60,31 +78,31 @@ func buildGatewayClashYAML(title, xrayPath, secret, dashboardPath, selfMAC, dire
 
 	var proxies []clashProxy
 	var manualNames []string
-	for _, n := range allNodes {
-		if strings.EqualFold(n.MAC, selfMAC) {
+	for _, n := range args.AllNodes {
+		if strings.EqualFold(n.MAC, args.SelfMAC) {
 			continue // never route through ourselves
 		}
 		host := stripScheme(n.CFURL)
-		if host == "" || overrideUUID == "" {
+		if host == "" || args.OverrideUUID == "" {
 			continue
 		}
-		uuid := overrideUUID
 		name := buildNodeName(n)
 		proxies = append(proxies, clashProxy{
 			Name:   yamlStr(name),
-			Server: host,
-			UUID:   uuid,
+			Server: dialHost(host, args.PreferredHost),
+			Host:   host,
+			UUID:   args.OverrideUUID,
 		})
 		// manual mode: only the selected MACs populate the 手动选择 group;
 		// auto mode: all candidates are eligible (url-test picks the fastest).
-		if upstreamMode != "manual" || manualSet[strings.ToLower(n.MAC)] {
+		if args.UpstreamMode != "manual" || manualSet[strings.ToLower(n.MAC)] {
 			manualNames = append(manualNames, name)
 		}
 	}
 
 	// Resolve routing actions per direction.
 	cnAction, otherAction := "直连", "代理"
-	switch direction {
+	switch args.Direction {
 	case "overseas":
 		// node sits outside the GFW: CN sites via a domestic upstream, rest direct
 		cnAction, otherAction = "代理", "直连"
@@ -102,15 +120,15 @@ func buildGatewayClashYAML(title, xrayPath, secret, dashboardPath, selfMAC, dire
 		cnAction, otherAction = "直连", "直连"
 	}
 
-	if direction == "blocked" || overrideUUID == "" {
+	if args.Direction == "blocked" || args.OverrideUUID == "" {
 		cnAction, otherAction = "REJECT", "REJECT"
 	}
 
 	data := gatewayClashData{
-		Title:             title,
-		XrayPath:          xrayPath,
-		Secret:            secret,
-		DashboardPath:     dashboardPath,
+		Title:             args.Title,
+		XrayPath:          args.XrayPath,
+		Secret:            args.Secret,
+		DashboardPath:     args.DashboardPath,
 		Proxies:           proxies,
 		ManualProxyNames:  manualNames,
 		HasUpstream:       hasUpstream,

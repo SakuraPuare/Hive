@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"hive/registry/internal/middleware"
+	"hive/registry/internal/model"
 )
 
 // HandleSubscriptionVless returns a base64-encoded VLESS subscription.
@@ -64,7 +65,7 @@ func (h *Handler) serveAllNodesClash(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="hive-nodes.yaml"`)
-	fmt.Fprint(w, buildFullClashYAML("Hive nodes", nodes, h.Config.XrayPath, ""))
+	fmt.Fprint(w, buildFullClashYAML("Hive nodes", nodes, h.clashRenderOptions("")))
 }
 
 // serveAllNodesVless exports every node as a base64 VLESS subscription.
@@ -78,20 +79,31 @@ func (h *Handler) serveAllNodesVless(w http.ResponseWriter, r *http.Request) {
 
 	links := make([]string, 0, len(nodes))
 	for _, n := range nodes {
-		host := stripScheme(n.CFURL)
-		if host == "" || n.XrayUUID == "" {
-			continue
+		if link := vlessLink(n, n.XrayUUID, h.Config.XrayPath, h.Config.CFPreferredHost); link != "" {
+			links = append(links, link)
 		}
-		params := url.Values{}
-		params.Set("type", "ws")
-		params.Set("security", "tls")
-		params.Set("sni", host)
-		params.Set("host", host)
-		params.Set("path", fmt.Sprintf("/%s?ed=2560", h.Config.XrayPath))
-		links = append(links, fmt.Sprintf("vless://%s@%s:443?%s#%s", n.XrayUUID, host, params.Encode(), url.PathEscape(buildNodeName(n))))
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="hive-nodes.txt"`)
 	fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n"))))
+}
+
+// vlessLink renders one VLESS-over-WS share link for a node. The @host part is
+// the dial target: the Cloudflare 优选 host when configured, otherwise the
+// node's own tunnel hostname. sni/host stay on the node's tunnel hostname so
+// Cloudflare still routes the connection to the right tunnel. Returns "" when
+// the node has no usable hostname or UUID.
+func vlessLink(n model.Node, uuid, xrayPath, preferredHost string) string {
+	host := stripScheme(n.CFURL)
+	if host == "" || uuid == "" {
+		return ""
+	}
+	params := url.Values{}
+	params.Set("type", "ws")
+	params.Set("security", "tls")
+	params.Set("sni", host)
+	params.Set("host", host)
+	params.Set("path", fmt.Sprintf("/%s?ed=2560", xrayPath))
+	return fmt.Sprintf("vless://%s@%s:443?%s#%s", uuid, dialHost(host, preferredHost), params.Encode(), url.PathEscape(buildNodeName(n)))
 }

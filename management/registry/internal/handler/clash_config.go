@@ -24,9 +24,14 @@ type clashData struct {
 	IPProviders     []ruleProvider
 }
 
+// clashProxy is one VLESS-over-WS upstream. Server is the TCP destination the
+// client dials (a Cloudflare 优选 address when one is configured); Host is the
+// node's own tunnel hostname, used for TLS SNI and the WebSocket Host header so
+// Cloudflare can still resolve which tunnel the request belongs to.
 type clashProxy struct {
 	Name   string
 	Server string
+	Host   string
 	UUID   string
 }
 
@@ -93,31 +98,39 @@ var defaultIPProviders = []ruleProvider{
 	{"telegram_ip", "telegram"},
 }
 
+// clashOptions carries the per-request knobs for a generated client config.
+type clashOptions struct {
+	XrayPath      string
+	OverrideUUID  string // non-empty → every proxy uses this UUID (per-subscription billing identity)
+	PreferredHost string // non-empty → dial this Cloudflare 优选 host instead of the node host
+}
+
 // buildFullClashYAML generates a complete Clash/Mihomo YAML subscription config.
-// If overrideUUID is non-empty, all proxies use that UUID instead of the node's
-// own XrayUUID — used for per-subscription (per-customer) configs so traffic is
-// attributed to the subscription's Xray client identity.
-func buildFullClashYAML(title string, nodes []model.Node, xrayPath, overrideUUID string) string {
+// If opts.OverrideUUID is non-empty, all proxies use that UUID instead of the
+// node's own XrayUUID — used for per-subscription (per-customer) configs so
+// traffic is attributed to the subscription's Xray client identity.
+func buildFullClashYAML(title string, nodes []model.Node, opts clashOptions) string {
 	var proxies []clashProxy
 	for _, n := range nodes {
 		host := stripScheme(n.CFURL)
 		uuid := n.XrayUUID
-		if overrideUUID != "" {
-			uuid = overrideUUID
+		if opts.OverrideUUID != "" {
+			uuid = opts.OverrideUUID
 		}
 		if host == "" || uuid == "" {
 			continue
 		}
 		proxies = append(proxies, clashProxy{
 			Name:   yamlStr(buildNodeName(n)),
-			Server: host,
+			Server: dialHost(host, opts.PreferredHost),
+			Host:   host,
 			UUID:   uuid,
 		})
 	}
 
 	data := clashData{
 		Title:           title,
-		XrayPath:        xrayPath,
+		XrayPath:        opts.XrayPath,
 		Proxies:         proxies,
 		ServiceGroups:   defaultServiceGroups,
 		RegionGroups:    defaultRegionGroups,
