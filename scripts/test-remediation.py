@@ -201,6 +201,27 @@ if flag.exists():flag.unlink();sys.exit(1)
         self.assertIn('拒绝解压', result.stdout)
         self.assertFalse((self.root / 'etc/test-app').exists())
 
+    def test_data_mount_failure_reboots_only_three_times(self):
+        # The supervisor is the same file; point it at a stub so the mount code
+        # is not executed, and keep the retry delay out of the test runtime.
+        self.mock('systemctl', '#!/bin/sh\ncase "$*" in *reboot*) echo reboot >> "$HIVE_TEST_ROOT/reboots";; esac\nexit 0\n')
+        stub = self.root / 'hive-data-apply'
+        stub.write_text('#!/bin/sh\nexit 1\n')
+        stub.chmod(0o755)
+        stamp = self.root / 'var/lib/hive/data-failures'
+        script = self.root / 'hive-data'
+        script.write_text((BIN / 'hive-data').read_text()
+                          .replace('SELF=/usr/local/bin/hive-data', 'SELF=' + str(stub))
+                          .replace('FAILURE_STAMP=/usr/lib/hive/data-failures', 'FAILURE_STAMP=' + str(stamp))
+                          .replace('sleep 2', 'sleep 0'))
+        for attempt in range(1, 5):
+            self.run_script(script, expected=1)
+            reboots = (self.root / 'reboots').read_text().splitlines()
+            self.assertEqual(len(reboots), min(attempt, 3), attempt)
+        stub.write_text('#!/bin/sh\nexit 0\n')
+        self.run_script(script)
+        self.assertFalse(stamp.exists())
+
     def offline_builder(self):
         # Relocate the real builder, keeping its overlay input and isolating output.
         source = (REPO / 'scripts/build-ota.sh').read_text()

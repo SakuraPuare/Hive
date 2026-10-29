@@ -1,44 +1,82 @@
 #!/usr/bin/env bash
 # Bind only device identity/runtime state, never the whole /etc or /var/lib
 # (package databases and OS configuration belong to their firmware slot).
+#
+# A persistent /data problem must not become an endless boot loop: the OTA
+# rollback state lives under /var/lib/hive (i.e. on /data), so a node that
+# reboots before this succeeds can never recover itself. Retry in-process,
+# reboot a bounded number of times, then stay up for manual recovery.
 set -euo pipefail
-[ -f /usr/lib/hive/ab-layout ] || exit 0
-source /usr/local/bin/hive-board
-hive_detect_board
-[ "$(cat /usr/lib/hive/ab-layout)" = "$HIVE_LAYOUT" ] || exit 1
-root=$(readlink -f "$(findmnt -n -o SOURCE /)")
-disk="/dev/$(lsblk -dn -o PKNAME "$root")"
-[[ "$disk" =~ ^/dev/mmcblk[0-9]+$ ]] || exit 1
-[ "$(lsblk -dn -o PARTLABEL "${disk}p3")" = hive-data ] || exit 1
-mkdir -p /data
-if ! mountpoint -q /data; then
-    /usr/local/bin/hive-data-grow "$disk"
-    mount -o nosuid,nodev "${disk}p3" /data
-fi
-for path in etc/hive etc/ssh root/.ssh etc/cloudflared etc/frp etc/xray etc/mihomo etc/nginx/sites-available \
-    etc/NetworkManager/system-connections var/lib/hive var/lib/tailscale \
-    var/lib/cloudflare-warp var/lib/easytier; do
-    [ ! -L "/$path" ] && [ ! -L "/data/$path" ] || exit 1
-    mkdir -p "/$path" "/data/$(dirname "$path")"
-    if [ ! -d "/data/$path" ]; then
-        stage=$(mktemp -d "/data/$(dirname "$path")/.seed.XXXXXX")
-        cp -a "/$path/." "$stage/"
-        chmod --reference="/$path" "$stage"
-        chown --reference="/$path" "$stage"
-        sync -f "$stage"
-        mv "$stage" "/data/$path"
-        sync -f /data
+
+FAILURE_STAMP=/usr/lib/hive/data-failures
+SELF=/usr/local/bin/hive-data
+
+apply() {
+    [ -f /usr/lib/hive/ab-layout ] || return 0
+    source /usr/local/bin/hive-board
+    hive_detect_board
+    [ "$(cat /usr/lib/hive/ab-layout)" = "$HIVE_LAYOUT" ] || exit 1
+    root=$(readlink -f "$(findmnt -n -o SOURCE /)")
+    disk="/dev/$(lsblk -dn -o PKNAME "$root")"
+    [[ "$disk" =~ ^/dev/mmcblk[0-9]+$ ]] || exit 1
+    [ "$(lsblk -dn -o PARTLABEL "${disk}p3")" = hive-data ] || exit 1
+    mkdir -p /data
+    if ! mountpoint -q /data; then
+        /usr/local/bin/hive-data-grow "$disk"
+        mount -o nosuid,nodev "${disk}p3" /data
     fi
-    mountpoint -q "/$path" || mount --bind "/data/$path" "/$path"
+    for path in etc/hive etc/ssh root/.ssh etc/cloudflared etc/frp etc/xray etc/mihomo etc/nginx/sites-available \
+        etc/NetworkManager/system-connections var/lib/hive var/lib/tailscale \
+        var/lib/cloudflare-warp var/lib/easytier; do
+        [ ! -L "/$path" ] && [ ! -L "/data/$path" ] || exit 1
+        mkdir -p "/$path" "/data/$(dirname "$path")"
+        if [ ! -d "/data/$path" ]; then
+            stage=$(mktemp -d "/data/$(dirname "$path")/.seed.XXXXXX")
+            cp -a "/$path/." "$stage/"
+            chmod --reference="/$path" "$stage"
+            chown --reference="/$path" "$stage"
+            sync -f "$stage"
+            mv "$stage" "/data/$path"
+            sync -f /data
+        fi
+        mountpoint -q "/$path" || mount --bind "/data/$path" "/$path"
+    done
+
+    # Provisioning is intentionally not repeated after a slot switch. Recreate the
+    # hostname from persisted node metadata without rerunning external API calls.
+    source /usr/local/bin/hive-node-info
+    hive_load_node_info /etc/hive/node-info
+    if [[ "${HOSTNAME:-}" =~ ^hive-[a-f0-9]{6}$ ]]; then
+        printf '%s\n' "$HOSTNAME" > /etc/hostname
+        hostname "$HOSTNAME"
+        sed -i '/^127\.0\.1\.1[[:space:]]/d' /etc/hosts
+        printf '127.0.1.1 %s\n' "$HOSTNAME" >> /etc/hosts
+    fi
+}
+
+if [ "${1:-}" = --apply ]; then
+    apply
+    exit 0
+fi
+
+for _attempt in 1 2 3; do
+    if "$SELF" --apply; then
+        rm -f "$FAILURE_STAMP"
+        exit 0
+    fi
+    sleep 2
 done
 
-# Provisioning is intentionally not repeated after a slot switch. Recreate the
-# hostname from persisted node metadata without rerunning external API calls.
-source /usr/local/bin/hive-node-info
-hive_load_node_info /etc/hive/node-info
-if [[ "${HOSTNAME:-}" =~ ^hive-[a-f0-9]{6}$ ]]; then
-    printf '%s\n' "$HOSTNAME" > /etc/hostname
-    hostname "$HOSTNAME"
-    sed -i '/^127\.0\.1\.1[[:space:]]/d' /etc/hosts
-    printf '127.0.1.1 %s\n' "$HOSTNAME" >> /etc/hosts
+failures=$(cat "$FAILURE_STAMP" 2>/dev/null || true)
+[[ "$failures" =~ ^[0-9]+$ ]] || failures=0
+failures=$((failures + 1))
+mkdir -p "${FAILURE_STAMP%/*}"
+printf '%s\n' "$failures" > "$FAILURE_STAMP"
+sync -f "${FAILURE_STAMP%/*}"
+if [ "$failures" -le 3 ]; then
+    echo "hive-data: mount failed ($failures/3), rebooting to retry" >&2
+    systemctl --no-block reboot || reboot
+    exit 1
 fi
+echo "hive-data: mount failed $failures times, staying up for manual recovery" >&2
+exit 1

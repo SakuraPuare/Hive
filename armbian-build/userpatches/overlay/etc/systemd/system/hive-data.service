@@ -4,7 +4,8 @@ DefaultDependencies=no
 After=systemd-remount-fs.service
 Before=local-fs.target network-pre.target hive-ota-recover.service
 ConditionPathExists=/usr/lib/hive/ab-layout
-FailureAction=reboot
+# No FailureAction=reboot: hive-data owns a bounded retry/reboot policy
+# (see the script), so a persistent /data fault cannot loop forever.
 
 [Service]
 Type=oneshot
