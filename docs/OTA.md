@@ -109,6 +109,10 @@ make build-ota VERSION=1.0.0
 
 默认包包含应用脚本和服务单元，启用 OTA 恢复服务和订阅守护，不覆盖设备 Token、SSH 密钥和个性化运行配置。
 
+启动/恢复关键文件不接受应用包，`build-ota.sh` 打包和 `hive-ota-transaction` 安装前各拦一次（签名包同样拒绝）：`boot/**`、`usr/lib/hive/**`、`usr/lib/modules/**`、`usr/local/bin/hive-data`、`hive-data-grow`、`hive-board`、`hive-node-info`、`hive-firmware`，以及 `hive-data.service`、`hive-ota-recover.service`、`hive-firmware-confirm.service` 三个单元。回滚备份和事务标记都在 `/var/lib/hive`，该路径由 `hive-data` 从数据分区 bind 挂载；一旦这些文件被坏包替换，数据分区挂不上、回滚脚本永远跑不到，设备只会无限重启。它们只能随 firmware 包（A/B rootfs 槽）更新。
+
+`hive-data` 挂载失败不再由 unit 直接 `FailureAction=reboot`：脚本内部重试 3 次，仍未成功时最多重启 3 次（计数存于 `/usr/lib/hive/data-failures`，成功即清除），之后保持运行以便人工介入。
+
 更新前，`/var/lib/hive/ota-transaction` 保存旧文件、权限、原服务启用/运行状态和旧版本记录；备份刷盘后才允许修改。新文件逐个原子替换，之后执行有超时的 hook、服务重启和健康检查。成功后才提交版本和完成回执。失败时恢复全部受管文件，删除本次新增文件，恢复服务状态。恢复本身失败会保留备份并停止新更新，结果提示需要人工恢复。
 
 恢复引擎会在安装前复制到事务目录，`hive-ota-recover.service` 开机执行这份旧副本，因此恢复不依赖更新后的 updater 是否能运行。回执保存到磁盘，网络恢复后继续发送；旧任务回执不能覆盖新任务。
@@ -153,7 +157,7 @@ R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。后台上
 | `hive-rootB` | 第 2 分区，4 GiB | 系统 B，内含 `/boot` |
 | `hive-data` | 第 3 分区，初始 8 GiB，首启扩至卡尾 | 设备身份、运行配置、OTA 状态和下载暂存 |
 
-构建脚本会检查 U-Boot 中的 A/B 标记及大小（从 LBA 64 起的引导镜像必须在 12 MiB 环境区之前结束），拒绝普通引导器或会覆盖启动环境的产物。固件安装时根据**实际当前根分区的父磁盘**确定备用槽，不假设 Linux 的 `mmcblk0` 永远代表某种介质，也不按全局分区标签误选另一张卡。
+构建脚本会检查 U-Boot 中的 A/B 标记及大小（从 LBA 64 起的引导镜像必须在 12 MiB 环境区之前结束），拒绝普通引导器或会覆盖启动环境的产物。`post_uboot_custom_postprocess` 在 `olddefconfig` 之后复核最终 `.config` 的 `ENV_IS_IN_MMC`、`ENV_REDUNDANT`、`ENV_SIZE`/`ENV_OFFSET`/`ENV_OFFSET_REDUND`、`CMD_SAVEENV`/`CMD_SETEXPR`/`CMD_PART`/`CMD_FDT` 并要求 `ENV_IS_NOWHERE` 关闭，缺任何一项直接中断构建；同时把这份配置写入镜像的 `/usr/lib/hive/uboot-env`。`scripts/check-uboot-env.sh` 在建厂镜像时再对照两份证据：stamp 内容，以及 `u-boot-rockchip.bin` 里确实存在 MMC 环境驱动、冗余读写、`saveenv`、`setexpr`、`part uuid`、`booti`、`fdt` 的字符串。只匹配 `HIVE_AB_V1` 不能证明环境可写。固件安装时根据**实际当前根分区的父磁盘**确定备用槽，不假设 Linux 的 `mmcblk0` 永远代表某种介质，也不按全局分区标签误选另一张卡。
 
 首刷可使用烧录工具，或从另一张启动卡/救援系统运行 `dd`。确认目标**整盘**且其分区都未挂载后执行；绝不能覆盖当前运行系统所在的盘：
 
@@ -179,6 +183,8 @@ make build-ab VERSION=1.1.0
 设备验证签名、板型、布局和镜像内版本后，只写未运行且未挂载的备用根分区。写入完成后读回计算 SHA256，再检查/扩展 ext4，保存任务状态，最后通过一次冗余环境更新设置候选槽及 **3 次试启动**，然后重启。
 
 U-Boot 在每次试启动前先持久化扣减尝试次数。新内核/DTB/initramfs 无法加载时立即尝试原槽；次数耗尽后清除候选槽并回到原槽。启动配置含 `panic=10`，内核 panic 可触发重启。用户态确认服务有总超时和失败重启策略。
+
+确认槽自身无法加载（`/boot/Image`、`/boot/uInitrd` 或 DTB 读不出来）时，引导脚本不改写任何槽变量，先尝试另一个槽一次，再 `bootflow scan -lb` 兜底，仍失败才复位；重复启动做出的仍是同一个决定，不会因为反复复位而更坏。环境不可写（`saveenv` 失败）时不再 `reset`：初始化失败直接启动出厂槽，试启动计数无法持久化时退回已确认槽不启动未记录的候选，A/B 记录降级但不进入复位循环。
 
 `hive-firmware-confirm.service` 验证当前槽和新版本、NetworkManager/Nginx/Xray/Cloudflared/EasyTier 服务、OTA 与订阅守护定时器、携带设备凭证的 Registry 连接。也可安装可执行的 `/etc/hive/firmware-health-check` 增加实际业务检查。只有这些检查通过才将新槽标记为已确认；如果回到了旧槽，则恢复旧版本记录并上报 `rolled_back`。管理服务在试启动期间持续失联也会导致回切。
 
