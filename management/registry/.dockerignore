@@ -1,0 +1,7 @@
+hive-registry
+*.test
+*.out
+openapi/swagger.yaml
+openapi/swagger.json
+openapi/docs.go
+.env

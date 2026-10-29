@@ -53,6 +53,7 @@ export default defineConfig({
           { text: '管理 VPS（Registry + 监控）', link: '/management/02-china-vps' },
           { text: 'Cloudflare 凭证', link: '/management/03-cloudflare-tokens' },
           { text: 'Tailscale OAuth', link: '/management/04-tailscale-key' },
+          { text: 'Kubernetes 部署（Zadig）', link: '/DEPLOY-K8S' },
         ],
       },
     ],
