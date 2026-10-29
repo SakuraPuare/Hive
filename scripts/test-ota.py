@@ -373,7 +373,7 @@ class R28SFirmwareTests(FirmwareTests):
 class BootPolicyTests(unittest.TestCase):
     board = 'nanopi-zero2'
 
-    def boot(self, state, fail_load=False, fail_save=False):
+    def boot(self, state, fail_load='', fail_save=False):
         # Execute the actual embedded Hush script using compatible Bash syntax;
         # substitute U-Boot commands, not the selection algorithm.
         script = subprocess.check_output([str(base.REPO / 'scripts/render-ab-boot.sh'), self.board], text=True)
@@ -387,17 +387,18 @@ fdt() {
 mmc() { return 0; }
 env() { return 0; }
 part() { setenv hive_rootuuid test-uuid; }
-load() { [ "$FAIL_LOAD" != 1 ] || [ "$hive_slot" != B ]; }
+load() { case ",${FAIL_LOAD_SLOTS:-}," in *",${hive_slot},"*) return 1;; esac; return 0; }
 saveenv() {
     [ "$FAIL_SAVE" != 1 ] || return 1
     printf 'STATE:%s:%s:%s\n' "$hive_active" "${hive_pending:-}" "$hive_tries"
 }
 run() { eval "${!1}"; }
+bootflow() { echo BOOTFLOW; }
 booti() { echo "BOOT:$hive_slot"; exit 0; }
 reset() { echo RESET; exit 9; }
 '''
         env = dict(os.environ, hive_active=state[0], hive_pending=state[1], hive_tries=str(state[2]),
-                   FAIL_LOAD=str(int(fail_load)), FAIL_SAVE=str(int(fail_save)))
+                   FAIL_LOAD_SLOTS=fail_load, FAIL_SAVE=str(int(fail_save)))
         result = subprocess.run(['bash'], input=mock+script, env=env, text=True, capture_output=True)
         states = [line.split(':')[1:] for line in result.stdout.splitlines() if line.startswith('STATE:')]
         booted = [line.split(':')[1] for line in result.stdout.splitlines() if line.startswith('BOOT:')]
@@ -415,7 +416,7 @@ reset() { echo RESET; exit 9; }
         self.assertEqual(state, ['A', '', '0'])
 
     def test_missing_new_kernel_falls_back_immediately(self):
-        state, slot, _ = self.boot(['A', 'B', '3'], fail_load=True)
+        state, slot, _ = self.boot(['A', 'B', '3'], fail_load='B')
         self.assertEqual(slot, 'A')
         self.assertEqual(state, ['A', '', '0'])
 
@@ -424,10 +425,33 @@ reset() { echo RESET; exit 9; }
         self.assertEqual(slot, 'B')
         self.assertEqual(state, ['B', '', '0'])
 
-    def test_environment_failure_never_boots_unrecorded_trial(self):
-        _, slot, result = self.boot(['A', 'B', '3'], fail_save=True)
+    def test_environment_failure_boots_confirmed_slot_not_the_trial(self):
+        # An unwritable environment must not reset-loop, but the unrecorded
+        # trial slot must never be booted either.
+        state, slot, result = self.boot(['A', 'B', '3'], fail_save=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(slot, 'A')
+        self.assertEqual(state, ['A', 'B', '3'])
+        self.assertNotIn('RESET', result.stdout)
+
+    def test_initialization_failure_boots_factory_slot(self):
+        state, slot, result = self.boot(['', '', '0'], fail_save=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(slot, 'A')
+        self.assertNotIn('RESET', result.stdout)
+
+    def test_confirmed_slot_load_failure_boots_the_other_slot(self):
+        state, slot, result = self.boot(['A', '', '0'], fail_load='A')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(slot, 'B')
+        self.assertEqual(state, ['A', '', '0'])
+
+    def test_both_slots_unbootable_scan_before_reset(self):
+        _, slot, result = self.boot(['B', '', '0'], fail_load='A,B')
         self.assertIsNone(slot)
         self.assertEqual(result.returncode, 9)
+        self.assertIn('BOOTFLOW', result.stdout)
+        self.assertLess(result.stdout.index('BOOTFLOW'), result.stdout.index('RESET'))
 
 
 class R28SBootPolicyTests(BootPolicyTests):
