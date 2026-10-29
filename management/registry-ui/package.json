@@ -60,7 +60,7 @@
     "esbuild": "~0.28.2",
     "fast-uri": "^4.2.3",
     "handlebars": "^4.7.10",
-    "js-yaml": "^4.3.2",
+    "js-yaml": "^5.0.0",
     "source-map-js": "^1.2.2",
     "undici": "^8.12.3",
     "brace-expansion": "^5.0.12"
