@@ -251,6 +251,41 @@ exit 0
             self.assertIn('/boot/dtb/rockchip/'+dtb,text)
             self.assertIn('${hive_slot}',text)  # Not expanded by the host shell.
 
+    def easytier_launcher(self, node_info, config_env):
+        text = (BIN / 'start-easytier.sh').read_text()
+        (self.root / 'node-info').write_text(node_info)
+        (self.root / 'config.env').write_text(config_env)
+        text = text.replace('NODE_INFO="/etc/hive/node-info"', 'NODE_INFO="' + str(self.root / 'node-info') + '"')
+        text = text.replace('CONFIG_ENV="/etc/hive/config.env"', 'CONFIG_ENV="' + str(self.root / 'config.env') + '"')
+        text = text.replace('/usr/local/bin/hive-node-info', str(BIN / 'hive-node-info'))
+        text = text.replace('/usr/local/bin/easytier-core', str(self.root / 'fake-core'))
+        (self.root / 'fake-core').write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "' + str(self.root / 'core-args') + '"\n')
+        (self.root / 'fake-core').chmod(0o755)
+        return text
+
+    def test_easytier_refuses_to_start_without_its_identity(self):
+        # An empty EASYTIER_IP expands to "--ipv4 /16" and an empty secret to
+        # "--network-secret ''". easytier-core exits on the bad argument and
+        # Restart=always turns that into a restart every ten seconds with only
+        # an argument error in the journal.
+        for node_info, config_env in [
+            ('HOSTNAME=hive-abcdef\n', 'EASYTIER_NETWORK_NAME=hive\nEASYTIER_SECRET=s3cret\n'),
+            ('HOSTNAME=hive-abcdef\nEASYTIER_IP=172.20.1.5\n', 'EASYTIER_NETWORK_NAME=hive\n'),
+            ('HOSTNAME=hive-abcdef\nEASYTIER_IP=172.20.1.5\n', 'EASYTIER_NETWORK_NAME=hive\nEASYTIER_SECRET=\n'),
+        ]:
+            with self.subTest(node_info=node_info, config_env=config_env):
+                result = self.run_script(self.easytier_launcher(node_info, config_env), expected=1)
+                self.assertIn('缺少必需配置', result.stderr)
+                self.assertFalse((self.root / 'core-args').exists())
+
+    def test_easytier_starts_with_complete_identity(self):
+        result = self.run_script(self.easytier_launcher(
+            'HOSTNAME=hive-abcdef\nEASYTIER_IP=172.20.1.5\n',
+            'EASYTIER_NETWORK_NAME=hive\nEASYTIER_SECRET=s3cret\n'))
+        args = (self.root / 'core-args').read_text().split()
+        self.assertIn('172.20.1.5/16', args)
+        self.assertIn('s3cret', args)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

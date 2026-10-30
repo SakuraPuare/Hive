@@ -26,6 +26,19 @@ hive_load_node_info "$NODE_INFO"
 # shellcheck source=/dev/null
 source "$CONFIG_ENV"
 
+# 这三个值决定了整条 mesh 是否成立。空的 --ipv4 会变成 "/16"，空的
+# --network-secret 会让节点出现在错误的网络里；easytier-core 随后退出，而
+# Restart=always 把它变成每 10s 一次的重启循环，日志里只有参数错误。
+missing=""
+[ -n "${EASYTIER_IP:-}" ] || missing="${missing} EASYTIER_IP(node-info)"
+[ -n "${EASYTIER_NETWORK_NAME:-}" ] || missing="${missing} EASYTIER_NETWORK_NAME(config.env)"
+[ -n "${EASYTIER_SECRET:-}" ] || missing="${missing} EASYTIER_SECRET(config.env)"
+if [ -n "$missing" ]; then
+    echo "start-easytier: 缺少必需配置:${missing}" >&2
+    echo "start-easytier: 修复前不启动，避免无意义的 Restart=always 循环" >&2
+    exit 1
+fi
+
 # 构造 --peers 参数：EASYTIER_PEERS 逗号分隔，单 peer 填一个即可
 PEER_ARGS=()
 if [ -n "${EASYTIER_PEERS}" ]; then
