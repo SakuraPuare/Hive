@@ -185,6 +185,14 @@ disable CONFIG_CAN               # CAN 总线 — 车载/工业现场总线，�
 disable CONFIG_HAMRADIO          # 业余无线电 AX.25/NetRom — 6.18 基线为 y，关掉
 # W1（1-Wire）在 rockchip64-current 基线未启用，无需处理
 
+# ── IOMMU：只留 Rockchip 自己的实现 ───────────────────────────────────────
+# 6.18.59 把 iommu_ops.attach_dev 扩成 (domain, dev, old_domain)，VSI 驱动仍用旧
+# 双参签名，在 CONFIG_WERROR=y 下直接编译失败（drivers/iommu/vsi-iommu.c:520 与
+# :670，-Werror=incompatible-pointer-types），整个内核树停在 make -j 阶段。
+# VSI 是 VeriSilicon 的 IP，RK3528 走 drivers/iommu/rockchip-iommu.c，该驱动在本
+# 机型上不会被 probe，关掉即可，不影响 DMA 隔离能力。
+disable CONFIG_VSI_IOMMU
+
 # ── 无人值守恢复：锁死检测 ───────────────────────────────────────────────
 # boot.cmd 一直传 softlockup_panic=1 oops=panic，但基线 defconfig 里
 # CONFIG_DEBUG_KERNEL 是缺席的（Kconfig 默认 n），SOFTLOCKUP_DETECTOR

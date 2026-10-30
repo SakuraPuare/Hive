@@ -166,6 +166,14 @@ disable CONFIG_CAN               # CAN 总线 — 车载/工业现场总线，�
 disable CONFIG_HAMRADIO          # 业余无线电 AX.25/NetRom — 不需要
 # W1（1-Wire）在 rockchip64-current 基线未启用，无需处理
 
+# ── IOMMU：只留 Rockchip 自己的实现 ───────────────────────────────────────
+# 6.18.59 把 iommu_ops.attach_dev 扩成 (domain, dev, old_domain)，VSI 驱动仍用旧
+# 双参签名，在 CONFIG_WERROR=y 下直接编译失败（drivers/iommu/vsi-iommu.c:520 与
+# :670，-Werror=incompatible-pointer-types），整个内核树停在 make -j 阶段。
+# VSI 是 VeriSilicon 的 IP，Rockchip 平台走 drivers/iommu/rockchip-iommu.c，该驱动
+# 在本机型上不会被 probe，关掉即可，不影响 DMA 隔离能力。
+disable CONFIG_VSI_IOMMU
+
 # ── Debug/Profiling（生产镜像不需要）─────────────────────────────────────
 
 disable CONFIG_PROFILING         # perf 基础设施
