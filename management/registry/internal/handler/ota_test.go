@@ -178,6 +178,33 @@ func TestOTAProgressAndRollbackAreTerminalAndAssignmentScoped(t *testing.T) {
 	}
 }
 
+func TestOTAAckForAnUnknownAssignmentIsRejected(t *testing.T) {
+	// The node deletes its receipt on any 2xx. Answering 200 for a token that
+	// matched no row would drop that outcome permanently, so the handler must
+	// report the mismatch instead of pretending the write landed.
+	resetDB(t)
+	mac := "aabbccddeeff"
+	insertTestNode(t, mac)
+	token := deviceToken(t, mac)
+	resp := doJSON("POST", "/admin/ota/rollouts", createRolloutRequest{Version: "2.0", URL: "https://example.com/bundle", SHA256: strings.Repeat("a", 64), NodeMACs: []string{mac}}, adminCookie())
+	assertStatus(t, resp, 200)
+	resp.Body.Close()
+
+	resp = doBearer("POST", "/nodes/"+mac+"/ota-ack",
+		otaAckRequest{Version: "2.0", AssignmentToken: strings.Repeat("f", 64), Status: "done"}, token)
+	assertStatus(t, resp, 409)
+	resp.Body.Close()
+
+	resp = doBearer("POST", "/nodes/"+mac+"/ota-ack",
+		otaAckRequest{Version: "9.9", AssignmentToken: "anything", Status: "done"}, token)
+	assertStatus(t, resp, 409)
+	resp.Body.Close()
+
+	if scalar(t, "SELECT COUNT(*) FROM ota_assignments WHERE status='pending' AND acked_at IS NULL") != 1 {
+		t.Fatal("mismatched ack moved the assignment")
+	}
+}
+
 func TestOTAChunkUploadRetriesAndCompletion(t *testing.T) {
 	resetDB(t)
 	otaStorage(t)

@@ -367,8 +367,18 @@ func (h *Handler) HandleNodeOtaAck(w http.ResponseWriter, r *http.Request) {
         SET a.status = ?, a.result = ?, a.acked_at = ? WHERE a.node_mac = ?
         AND a.status IN ('pending', 'installing') AND a.assignment_token = ? AND r.version = ?`
 	args := []any{status, result, now, mac, body.AssignmentToken, body.Version}
-	if err := h.DB.Exec(query, args...).Error; err != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+	res := h.DB.Exec(query, args...)
+	if res.Error != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())
+		return
+	}
+	// A 200 must mean the row actually moved. The node deletes its pending
+	// receipt on 2xx, so acknowledging an unmatched token or version would drop
+	// that outcome permanently: a stale assignment_token, a rollout superseded
+	// while the device rebooted, or a firmware receipt that arrived after the
+	// assignment had already been replaced.
+	if res.RowsAffected == 0 {
+		h.jsonErr(w, http.StatusConflict, "no pending assignment matches this token and version")
 		return
 	}
 	h.jsonOK(w, map[string]string{"status": "ok"})
