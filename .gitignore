@@ -34,8 +34,9 @@ armbian-build/userpatches/overlay/var/www/metacubexd/
 *.img.xz
 *.img.zst
 
-# OTA bundle 产物
-output/ota/
+# 构建产物：OTA bundle 与 A/B 镜像目录。*.img 只覆盖镜像本身，
+# build-ab-image.sh 还会写 hive-*-ab-*.sha256，漏掉就变成未跟踪文件。
+output/
 
 # VitePress
 node_modules/
