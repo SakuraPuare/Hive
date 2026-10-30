@@ -47,3 +47,7 @@ docs/.vitepress/cache/
 .idea/
 *.swp
 *~
+
+# Python 字节码（测试运行产生）
+__pycache__/
+*.pyc
