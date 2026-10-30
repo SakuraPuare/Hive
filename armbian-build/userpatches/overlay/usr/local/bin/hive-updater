@@ -230,6 +230,14 @@ do_install() {
         if [ "${actual_fsha}" != "${expected_fsha}" ]; then
             log "文件 sha256 不匹配: ${fpath}"; return 1
         fi
+        # 应用包不能把单元失败变成整机重启：hive-data 那类 FailureAction=reboot
+        # 曾让一个坏包变成无限重启，用户态没有任何恢复入口。
+        case "${fpath}" in
+            etc/systemd/system/*)
+                if grep -Eq '^[[:space:]]*(FailureAction|JobTimeoutAction)[[:space:]]*=[[:space:]]*(reboot|reboot-force|reboot-immediate|poweroff|poweroff-force|halt|halt-force)[[:space:]]*$' "${src}"; then
+                    log "拒绝安装会把单元失败变成整机重启的单元: ${fpath}"; return 1
+                fi ;;
+        esac
     done
     log "文件完整性校验全部通过"
     local kind

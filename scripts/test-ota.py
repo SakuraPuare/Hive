@@ -33,6 +33,36 @@ class OTATests(base.DeviceRegressionTests):
         self.assertFalse((self.root / 'usr/local/bin/hive-data').exists())
         self.assertFalse((self.root / 'var/lib/hive/ota-transaction/active').exists())
 
+    def test_systemd_side_path_to_protected_unit_is_refused(self):
+        self.bundle()
+        payload = self.root / 'payload'
+        (payload / 'files/etc/systemd/system/hive-data.service.d').mkdir(parents=True)
+        data = b'[Service]\nExecStart=\nExecStart=/bin/false\n'
+        (payload / 'files/etc/systemd/system/hive-data.service.d/override.conf').write_bytes(data)
+        manifest = json.loads((payload / 'manifest.json').read_text())
+        manifest['files'].append({'path': 'etc/systemd/system/hive-data.service.d/override.conf',
+                                  'sha256': hashlib.sha256(data).hexdigest(), 'mode': '0644'})
+        self.repack(manifest)
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('boot-critical', result.stderr)
+        self.assertFalse((self.root / 'etc/systemd/system/hive-data.service.d').exists())
+        self.assertFalse((self.root / 'etc/test-app').exists())
+
+    def test_unit_that_reboots_the_node_on_failure_is_refused(self):
+        self.bundle()
+        payload = self.root / 'payload'
+        (payload / 'files/etc/systemd/system').mkdir(parents=True)
+        data = b'[Unit]\nDescription=app\nFailureAction=reboot\n\n[Service]\nExecStart=/bin/false\n'
+        (payload / 'files/etc/systemd/system/xray.service').write_bytes(data)
+        manifest = json.loads((payload / 'manifest.json').read_text())
+        manifest['files'].append({'path': 'etc/systemd/system/xray.service',
+                                  'sha256': hashlib.sha256(data).hexdigest(), 'mode': '0644'})
+        self.repack(manifest)
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('整机重启', result.stdout)
+        self.assertFalse((self.root / 'etc/systemd/system/xray.service').exists())
+        self.assertFalse((self.root / 'etc/test-app').exists())
+
     def repack(self, manifest):
         payload = self.root / 'payload'
         (payload / 'manifest.json').write_text(json.dumps(manifest))

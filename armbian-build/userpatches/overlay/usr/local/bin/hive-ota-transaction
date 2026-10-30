@@ -19,12 +19,15 @@ ota_safe_path() {
 ota_protected_path() {
     case "$1" in
         boot|boot/*|usr/lib/hive|usr/lib/hive/*|usr/lib/modules|usr/lib/modules/*) return 0 ;;
+        usr/lib/systemd/system|usr/lib/systemd/system/*) return 0 ;;
         usr/local/bin/hive-data|usr/local/bin/hive-data-grow) return 0 ;;
         usr/local/bin/hive-board|usr/local/bin/hive-node-info) return 0 ;;
         usr/local/bin/hive-firmware) return 0 ;;
-        etc/systemd/system/hive-data.service) return 0 ;;
-        etc/systemd/system/hive-ota-recover.service) return 0 ;;
-        etc/systemd/system/hive-firmware-confirm.service) return 0 ;;
+        # Prefix match also covers .d/ drop-ins and .wants/ links, which would
+        # otherwise let a bundle rewrite a protected unit through a side path.
+        etc/systemd/system/hive-data.service*) return 0 ;;
+        etc/systemd/system/hive-ota-recover.service*) return 0 ;;
+        etc/systemd/system/hive-firmware-confirm.service*) return 0 ;;
     esac
     return 1
 }

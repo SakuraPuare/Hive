@@ -37,12 +37,15 @@ OUTPUT_DIR="${ROOT_DIR}/output/ota"
 ota_protected_path() {
     case "$1" in
         boot|boot/*|usr/lib/hive|usr/lib/hive/*|usr/lib/modules|usr/lib/modules/*) return 0 ;;
+        usr/lib/systemd/system|usr/lib/systemd/system/*) return 0 ;;
         usr/local/bin/hive-data|usr/local/bin/hive-data-grow) return 0 ;;
         usr/local/bin/hive-board|usr/local/bin/hive-node-info) return 0 ;;
         usr/local/bin/hive-firmware) return 0 ;;
-        etc/systemd/system/hive-data.service) return 0 ;;
-        etc/systemd/system/hive-ota-recover.service) return 0 ;;
-        etc/systemd/system/hive-firmware-confirm.service) return 0 ;;
+        # 前缀匹配同时覆盖 .d/ drop-in 与 .wants/ 链接：否则可以用
+        # etc/systemd/system/hive-data.service.d/x.conf 绕过上面的名单。
+        etc/systemd/system/hive-data.service*) return 0 ;;
+        etc/systemd/system/hive-ota-recover.service*) return 0 ;;
+        etc/systemd/system/hive-firmware-confirm.service*) return 0 ;;
     esac
     return 1
 }
