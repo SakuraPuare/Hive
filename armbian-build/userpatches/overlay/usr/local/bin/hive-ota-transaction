@@ -210,13 +210,18 @@ ota_management_probe() {
 }
 
 ota_health_check() {
-    local manifest="$1" payload="$2" svc elapsed=0 healthy grace timeout_sec probe_failed=false
+    local manifest="$1" payload="$2" svc healthy grace timeout_sec probe_failed=false deadline
     grace=$(jq -r '.health_grace_seconds // 5' "$manifest")
     timeout_sec=$(jq -r '.health_timeout_seconds // 30' "$manifest")
     [[ "$grace" =~ ^[0-9]+$ && "$timeout_sec" =~ ^[0-9]+$ ]] || return 1
     [ "$grace" -le 60 ] && [ "$timeout_sec" -ge 1 ] && [ "$timeout_sec" -le 300 ] || return 1
     sleep "$grace"
-    while [ "$elapsed" -lt "$timeout_sec" ]; do
+    # Measure wall-clock time. Counting iterations made the name a lie: one
+    # round costs the probe's 8s plus its sleeps, so a bundle asking for 300
+    # seconds could hold the lock for 45 minutes and still be inside its own
+    # budget.
+    deadline=$((SECONDS + timeout_sec))
+    while [ "$SECONDS" -lt "$deadline" ]; do
         healthy=true
         # An empty health_services array must not disable unit checks: jq's //
         # only falls back on null/false, so [] would silently check nothing.
@@ -237,7 +242,6 @@ ota_health_check() {
             return 0
         fi
         sleep 1
-        elapsed=$((elapsed + 1))
     done
     return 1
 }

@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 import subprocess
 import tarfile
+import time
 import unittest
 import sys
 import tempfile
@@ -396,6 +397,36 @@ else:
         self.failure_bundle('health-check.sh')
         self.run_script(self.script('hive-updater'), expected=1)
         self.assert_rolled_back()
+
+    def test_health_timeout_is_wall_clock_not_iterations(self):
+        # Each round costs a probe (up to 8s) plus its sleeps, so counting
+        # iterations let a bundle asking for 300 seconds hold the lock for
+        # roughly 45 minutes. Give the probe a real cost and a 2s budget: the
+        # wall-clock loop stops after one round, the counting loop would run
+        # the budget's worth of expensive rounds.
+        self.bundle()
+        (self.root / 'etc/test-app').write_text('old version\n')
+        (self.root / 'etc/hive/device-token').write_text('test-token')
+        manifest = json.loads((self.root / 'payload/manifest.json').read_text())
+        manifest['health_grace_seconds'] = 0
+        manifest['health_timeout_seconds'] = 2
+        manifest['health_services'] = ['never.service']
+        self.repack(manifest)
+        self.mock('systemctl', '#!/bin/sh\n[ "$1" != is-active ] || exit 3\nexit 0\n')
+        self.mock('mock-copy', (self.root / 'mock/curl').read_text())
+        self.mock('curl', '''#!/bin/sh
+case "$*" in
+    *ota-version*)
+        n=$(cat "$HIVE_TEST_ROOT/probe-count" 2>/dev/null || echo 0)
+        echo $((n+1)) > "$HIVE_TEST_ROOT/probe-count"
+        [ "$n" -lt 1 ] || { sleep 5; exit 22; } ;;
+esac
+exec "$HIVE_TEST_ROOT/mock/mock-copy" "$@"
+''')
+        start = time.monotonic()
+        self.run_script(self.script('hive-updater'), expected=1)
+        elapsed = time.monotonic() - start
+        self.assertLess(elapsed, 9, f'health check ran {elapsed:.1f}s for a 2s budget')
 
     def test_service_failure_restores_previous_service_files(self):
         self.bundle()
