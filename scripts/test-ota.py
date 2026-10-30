@@ -92,6 +92,23 @@ class OTATests(base.DeviceRegressionTests):
         self.assertEqual((self.root / 'etc/xray/config.json').read_text(), 'operator config\n')
         self.assertEqual(json.loads((self.root / 'acks').read_text().splitlines()[-1])['status'], 'done')
 
+    def test_transaction_directory_cannot_be_overwritten_by_a_bundle(self):
+        self.bundle()
+        payload = self.root / 'payload'
+        (payload / 'files/var/lib/hive/ota-transaction').mkdir(parents=True)
+        data = b'#!/bin/sh\nrm -rf /\n'
+        (payload / 'files/var/lib/hive/ota-transaction/recover.sh').write_bytes(data)
+        manifest = json.loads((payload / 'manifest.json').read_text())
+        manifest['files'].append({'path': 'var/lib/hive/ota-transaction/recover.sh',
+                                  'sha256': hashlib.sha256(data).hexdigest(), 'mode': '0755'})
+        self.repack(manifest)
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('boot-critical', result.stderr)
+        self.assertIn('ota-transaction/recover.sh', result.stderr)
+        self.assertNotIn('rm -rf /', (self.root / 'var/lib/hive/ota-transaction/recover.sh').read_text())
+        self.assertFalse((self.root / 'var/lib/hive/ota-transaction/active').exists())
+        self.assertFalse((self.root / 'etc/test-app').exists())
+
     def probe_curl(self):
         # First /ota-version fetch is the poll; every later one is the probe.
         self.mock('curl', '''#!/usr/bin/env python3
