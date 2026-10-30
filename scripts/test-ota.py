@@ -956,10 +956,23 @@ CONFIG_CMD_FDT=y
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('redundant', result.stderr)
 
-    def test_rejects_environment_offset_drift(self):
-        result = self.gate(self.MARKERS, self.STAMP.replace('CONFIG_ENV_OFFSET=0xc00000', 'CONFIG_ENV_OFFSET=0x3f8000'))
+    def test_accepts_a_different_but_self_consistent_offset(self):
+        # The stamp is the build output. A checker that repeats a hardcoded
+        # offset rejects a correctly built bootloader that moved the
+        # environment, and worse: it would keep passing after the build moved
+        # to a new offset, so fw_setenv would write where U-Boot never reads.
+        result = self.gate(self.MARKERS, self.STAMP.replace('0xc00000', '0xe00000').replace('0xc10000', '0xe10000'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_overlapping_environment_areas(self):
+        result = self.gate(self.MARKERS, self.STAMP.replace('CONFIG_ENV_OFFSET_REDUND=0xc10000', 'CONFIG_ENV_OFFSET_REDUND=0xc04000'))
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('CONFIG_ENV_OFFSET=0xc00000', result.stderr)
+        self.assertIn('overlaps', result.stderr)
+
+    def test_rejects_a_stamp_without_the_environment_size(self):
+        result = self.gate(self.MARKERS, self.STAMP.replace('CONFIG_ENV_SIZE=0x8000\n', ''))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('CONFIG_ENV_SIZE', result.stderr)
 
     def test_rejects_missing_build_stamp(self):
         uboot = self.root / 'u-boot-rockchip.bin'

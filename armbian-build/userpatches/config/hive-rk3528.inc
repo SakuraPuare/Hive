@@ -89,13 +89,10 @@ function post_uboot_custom_postprocess__zz_hive_ab_env() {
     [[ "${HIVE_AB:-no}" == yes ]] || return 0
     [[ "$BOOTCONFIG" == "${BOARD}-rk3528_defconfig" ]] || return 0
     local stamp="${USERPATCHES_PATH}/overlay/usr/lib/hive/uboot-env"
-    local want
+    local want key
     for want in \
         'CONFIG_ENV_IS_IN_MMC=y' \
         'CONFIG_ENV_REDUNDANT=y' \
-        'CONFIG_ENV_SIZE=0x8000' \
-        'CONFIG_ENV_OFFSET=0xc00000' \
-        'CONFIG_ENV_OFFSET_REDUND=0xc10000' \
         'CONFIG_CMD_SAVEENV=y' \
         'CONFIG_CMD_SETEXPR=y' \
         'CONFIG_CMD_PART=y' \
@@ -105,16 +102,21 @@ function post_uboot_custom_postprocess__zz_hive_ab_env() {
     done
     ! grep -qxF 'CONFIG_ENV_IS_NOWHERE=y' .config ||
         exit_with_error "HIVE A/B: u-boot .config still has CONFIG_ENV_IS_NOWHERE=y; the environment would not persist"
+    # Copy the values that survived olddefconfig instead of repeating the
+    # constants. fw_setenv finds its offsets through this stamp, so a second
+    # copy here is exactly how a build that moved the environment silently
+    # keeps writing where the bootloader no longer reads.
     mkdir -p "$(dirname "$stamp")"
-    printf '%s\n' \
-        'CONFIG_ENV_IS_IN_MMC=y' \
-        'CONFIG_ENV_REDUNDANT=y' \
-        'CONFIG_ENV_SIZE=0x8000' \
-        'CONFIG_ENV_OFFSET=0xc00000' \
-        'CONFIG_ENV_OFFSET_REDUND=0xc10000' \
-        'CONFIG_CMD_SAVEENV=y' \
-        'CONFIG_CMD_SETEXPR=y' \
-        'CONFIG_CMD_PART=y' \
-        'CONFIG_CMD_FDT=y' > "$stamp"
+    : > "$stamp"
+    for key in CONFIG_ENV_IS_IN_MMC CONFIG_ENV_REDUNDANT CONFIG_ENV_SIZE \
+        CONFIG_ENV_OFFSET CONFIG_ENV_OFFSET_REDUND CONFIG_CMD_SAVEENV \
+        CONFIG_CMD_SETEXPR CONFIG_CMD_PART CONFIG_CMD_FDT; do
+        value=$(sed -n "s/^${key}=//p" .config | head -n 1)
+        [ -n "$value" ] ||
+            exit_with_error "HIVE A/B: .config has no ${key}; the environment stamp would be incomplete"
+        printf '%s=%s\n' "$key" "$value" >> "$stamp"
+    done
+    [ -s "$stamp" ] ||
+        exit_with_error "HIVE A/B: the environment stamp came out empty"
     display_alert "$BOARD" "HIVE: A/B environment verified in u-boot .config" "info"
 }

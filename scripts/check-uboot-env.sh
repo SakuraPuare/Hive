@@ -17,19 +17,31 @@ die() { echo "A/B boot environment invalid: $*" >&2; exit 1; }
 [ -f "$UBOOT" ] || die "missing U-Boot binary: $UBOOT"
 [ -s "$STAMP" ] || die "missing environment stamp: $STAMP (u-boot must be built with HIVE_AB=yes; clear the u-boot build cache if it came from cache)"
 
-# 1) 编译期配置（post_uboot_custom_postprocess 在 olddefconfig 之后从 .config 抄出）。
+# 1) 编译期配置。偏移不写死在这里：stamp 是构建产物，检查脚本的任务是
+#    验证它自洽并且真的编进了二进制。硬编码一份副本会让「构建期改了偏移、
+#    检查脚本仍按旧值放行」变成静默的写错位置。
 for want in \
     'CONFIG_ENV_IS_IN_MMC=y' \
     'CONFIG_ENV_REDUNDANT=y' \
-    'CONFIG_ENV_SIZE=0x8000' \
-    'CONFIG_ENV_OFFSET=0xc00000' \
-    'CONFIG_ENV_OFFSET_REDUND=0xc10000' \
     'CONFIG_CMD_SAVEENV=y' \
     'CONFIG_CMD_SETEXPR=y' \
     'CONFIG_CMD_PART=y' \
     'CONFIG_CMD_FDT=y'; do
     grep -qxF -- "$want" "$STAMP" || die "build config lacks '$want'"
 done
+
+env_value() { sed -n "s/^$1=//p" "$STAMP" | head -n 1; }
+SIZE=$(env_value CONFIG_ENV_SIZE)
+OFFSET=$(env_value CONFIG_ENV_OFFSET)
+REDUND=$(env_value CONFIG_ENV_OFFSET_REDUND)
+for pair in "CONFIG_ENV_SIZE:$SIZE" "CONFIG_ENV_OFFSET:$OFFSET" "CONFIG_ENV_OFFSET_REDUND:$REDUND"; do
+    value=${pair#*:}
+    [[ "$value" =~ ^0x[0-9a-fA-F]+$ ]] ||
+        die "${pair%%:*} missing or not a hex constant in $STAMP (got '$value')"
+done
+# 两段环境不能重叠，否则第二份 saveenv 会覆盖第一份的正在写入内容。
+(( REDUND - OFFSET >= SIZE )) ||
+    die "redundant environment overlaps the primary one (offset=$OFFSET redund=$REDUND size=$SIZE)"
 
 # 2) 二进制里必须真的编进了对应代码路径（--gc-sections 会丢掉未引用函数，
 #    所以这些串缺席就意味着功能缺席）。
