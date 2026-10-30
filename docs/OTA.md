@@ -109,7 +109,9 @@ make build-ota VERSION=1.0.0
 
 默认包包含应用脚本和服务单元，启用 OTA 恢复服务和订阅守护，不覆盖设备 Token、SSH 密钥和个性化运行配置。
 
-启动/恢复关键文件不接受应用包，`build-ota.sh` 打包和 `hive-ota-transaction` 安装前各拦一次（签名包同样拒绝）：`boot/**`、`usr/lib/hive/**`、`usr/lib/modules/**`、`usr/local/bin/hive-data`、`hive-data-grow`、`hive-board`、`hive-node-info`、`hive-firmware`，以及 `hive-data.service`、`hive-ota-recover.service`、`hive-firmware-confirm.service` 三个单元。回滚备份和事务标记都在 `/var/lib/hive`，该路径由 `hive-data` 从数据分区 bind 挂载；一旦这些文件被坏包替换，数据分区挂不上、回滚脚本永远跑不到，设备只会无限重启。它们只能随 firmware 包（A/B rootfs 槽）更新。
+启动/恢复关键文件不接受应用包，`build-ota.sh` 打包和 `hive-ota-transaction` 安装前各拦一次（签名包同样拒绝）：`boot/**`、`usr/lib/hive/**`、`usr/lib/modules/**`、`usr/lib/systemd/system/**`、`usr/local/bin/hive-data`、`hive-data-grow`、`hive-board`、`hive-node-info`、`hive-firmware`，以及 `hive-data.service*`、`hive-ota-recover.service*`、`hive-firmware-confirm.service*`（前缀匹配，覆盖 `.d/` drop-in 与 `.wants/` 链接这类侧路径）。回滚备份和事务标记都在 `/var/lib/hive`，该路径由 `hive-data` 从数据分区 bind 挂载；一旦这些文件被坏包替换，数据分区挂不上、回滚脚本永远跑不到，设备只会无限重启。它们只能随 firmware 包（A/B rootfs 槽）更新。
+
+此外，应用包里的 `etc/systemd/system/**` 单元若声明 `FailureAction=`/`JobTimeoutAction=` 为 `reboot|poweroff|halt` 系列，`hive-updater` 在写入前直接拒绝：那会让任意服务故障变成整机重启，而用户态没有任何恢复入口。
 
 `hive-data` 挂载失败不再由 unit 直接 `FailureAction=reboot`：脚本内部重试 3 次，仍未成功时最多重启 3 次（计数存于 `/usr/lib/hive/data-failures`，成功即清除），之后保持运行以便人工介入。
 
@@ -187,6 +189,8 @@ U-Boot 在每次试启动前先持久化扣减尝试次数。新内核/DTB/initr
 确认槽自身无法加载（`/boot/Image`、`/boot/uInitrd` 或 DTB 读不出来）时，引导脚本不改写任何槽变量，先尝试另一个槽一次，再 `bootflow scan -lb` 兜底，仍失败才复位；重复启动做出的仍是同一个决定，不会因为反复复位而更坏。环境不可写（`saveenv` 失败）时不再 `reset`：初始化失败直接启动出厂槽，试启动计数无法持久化时退回已确认槽不启动未记录的候选，A/B 记录降级但不进入复位循环。
 
 `hive-firmware-confirm.service` 验证当前槽和新版本、NetworkManager/Nginx/Xray/Cloudflared/EasyTier 服务、OTA 与订阅守护定时器、携带设备凭证的 Registry 连接。也可安装可执行的 `/etc/hive/firmware-health-check` 增加实际业务检查。只有这些检查通过才将新槽标记为已确认；如果回到了旧槽，则恢复旧版本记录并上报 `rolled_back`。管理服务在试启动期间持续失联也会导致回切。
+
+回切分支先删掉 `firmware-pending.json` 再清理其余状态：该文件是确认服务的 `ConditionPathExists` 门控，先失败退出会配合 `FailureAction=reboot` 变成无限重启，而环境不可写时 `hive_pending` 根本清不掉。清环境失败只记警告并继续回切。
 
 数据分区在正常服务启动前绑定以下目录，因此槽位切换保留身份和运行状态：`/etc/hive`、`/etc/ssh`、`/root/.ssh`、Nginx 站点配置、`/etc/cloudflared`、`/etc/frp`、`/etc/xray`、`/etc/mihomo`、NetworkManager 连接配置，以及 Hive、Tailscale、WARP、EasyTier 的对应 `/var/lib` 目录。不会共享整个 `/etc`、包管理器数据库或系统二进制。跨版本数据格式变更必须兼容旧版本，否则回切旧程序也无法恢复已迁移的数据。
 
