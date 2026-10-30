@@ -35,10 +35,12 @@ ota_protected_path() {
     return 1
 }
 
-# 事务状态全部落在 /var/lib/hive，由 hive-data 从 /data bind 挂载。没有这个
-# 挂载时备份和标记只存在于当前 rootfs 槽，切槽即丢，回滚引擎再也跑不到。
+# 事务状态全部落在 /var/lib/hive，由 hive-data 从 /data bind 挂载。只检查 /data
+# 不够：/data 挂上但 bind 尚未完成时（hive-data 中途失败后保持运行），备份仍写进
+# 当前 rootfs 槽，切槽即丢，回滚引擎再也跑不到。
 ota_state_persistent() {
-    [ ! -f /usr/lib/hive/ab-layout ] || mountpoint -q /data
+    [ ! -f /usr/lib/hive/ab-layout ] && return 0
+    mountpoint -q /data && mountpoint -q /var/lib/hive
 }
 
 ota_save_ack() {

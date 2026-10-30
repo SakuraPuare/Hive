@@ -117,7 +117,7 @@ make build-ota VERSION=1.0.0
 
 `hive-data` 挂载失败不再由 unit 直接 `FailureAction=reboot`：脚本内部重试 3 次，仍未成功时最多重启 3 次（计数存于 `/usr/lib/hive/data-failures`，成功即清除），之后保持运行以便人工介入。
 
-在保持运行的这个状态（`/data` 未挂载）下，updater 会直接拒绝应用包和固件包：`ota_state_persistent` 要求 `/usr/lib/hive/ab-layout` 存在时 `/data` 必须已挂载。没有该挂载，回执、备份和 `firmware-pending.json` 都只落在当前 rootfs 槽里，切槽即丢，回滚引擎再也跑不到，而且还会对外回报 `done`。所以宁可拒绝安装并让 `/usr/lib/hive/data-failures` 记录的故障暴露出来，也不产生一次无法存活的重启验证。
+在保持运行的这个状态（`/data` 未挂载）下，updater 会直接拒绝应用包和固件包：`ota_state_persistent` 要求 `/usr/lib/hive/ab-layout` 存在时 `/data` **和** `/var/lib/hive` 都必须已挂载（后者由 `hive-data` 逐目录 bind）。没有该挂载，回执、备份和 `firmware-pending.json` 都只落在当前 rootfs 槽里，切槽即丢，回滚引擎再也跑不到，而且还会对外回报 `done`。只查 `/data` 不足以覆盖 `/data` 挂上、后续 bind 未完成就失败的中间态。所以宁可拒绝安装并让 `/usr/lib/hive/data-failures` 记录的故障暴露出来，也不产生一次无法存活的重启验证。
 
 更新前，`/var/lib/hive/ota-transaction` 保存旧文件、权限、原服务启用/运行状态和旧版本记录；备份刷盘后才允许修改。新文件逐个原子替换，之后执行有超时的 hook、服务重启和健康检查。成功后才提交版本和完成回执。失败时恢复全部受管文件，删除本次新增文件，恢复服务状态。恢复本身失败会保留备份并停止新更新，结果提示需要人工恢复。
 

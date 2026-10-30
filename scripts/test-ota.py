@@ -155,6 +155,20 @@ class OTATests(base.DeviceRegressionTests):
         self.run_script(script)
         self.assertEqual((self.root / 'etc/test-app').read_text(), 'installed safely\n')
 
+    def test_partial_hive_data_mount_still_refuses_install(self):
+        # /data can be mounted while a later bind in hive-data failed. Transaction
+        # backups would then land in the rootfs slot even though /data looks fine.
+        self.bundle()
+        layout = self.root / 'ab-layout'
+        layout.write_text('nanopi-zero2-ab-v1\n')
+        self.mock('mountpoint', '#!/bin/sh\ncase "$2" in */var/lib/hive) exit 1;; esac\nexit 0\n')
+        script = self.script('hive-updater')
+        helper = self.root / 'hive-ota-transaction'
+        helper.write_text(helper.read_text().replace('/usr/lib/hive/ab-layout', str(layout)))
+        result = self.run_script(script, expected=1)
+        self.assertIn('/data', result.stdout)
+        self.assertFalse((self.root / 'etc/test-app').exists())
+
     def test_empty_health_services_still_checks_the_restarted_units(self):
         self.bundle()
         (self.root / 'etc/test-app').write_text('old version\n')
