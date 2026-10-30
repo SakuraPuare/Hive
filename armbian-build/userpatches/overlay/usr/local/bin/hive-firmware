@@ -165,7 +165,12 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     flock -w 30 9 || exit 1
     # Allow network and normal services time to become healthy, then let the
     # systemd FailureAction reboot. Bootcmd eventually exhausts the trial count.
-    for attempt in $(seq 1 12); do
+    # Bound by elapsed time, not by a fixed iteration count: one failing probe
+    # costs 20s and one failing health check 60s, so twelve rounds could reach
+    # the unit's TimeoutStartSec and kill a device that was merely slow to
+    # reach the registry.
+    deadline=$((SECONDS + ${CONFIRM_BUDGET:-150}))
+    while [ "$SECONDS" -lt "$deadline" ]; do
         firmware_confirm && exit 0
         sleep 5
     done

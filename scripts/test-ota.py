@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tarfile
@@ -714,6 +715,21 @@ else firmware_confirm; fi
         self.assertFalse(path.exists())
         self.assertIn('hive_pending could not be cleared', result.stdout)
         self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-pending-ack.json').read_text())['status'], 'rolled_back')
+
+    def test_confirm_retry_budget_fits_the_unit_start_timeout(self):
+        # One failing registry probe costs 20s and one failing health check
+        # 60s. A fixed twelve rounds could reach TimeoutStartSec=300 and kill a
+        # device that was only slow to reach the registry, which then rolls the
+        # trial back. The loop must be bounded by elapsed time with headroom.
+        source = (base.BIN / 'hive-firmware').read_text()
+        self.assertNotIn('seq 1 12', source)
+        self.assertIn('deadline=$((SECONDS + ${CONFIRM_BUDGET:-', source)
+        budget = int(re.search(r'CONFIRM_BUDGET:-(\d+)', source).group(1))
+        unit = (base.REPO / 'armbian-build/userpatches/overlay/etc/systemd/system/hive-firmware-confirm.service').read_text()
+        start = int(re.search(r'^TimeoutStartSec=(\d+)', unit, re.M).group(1))
+        # Worst single round is probe 20s + health 60s; the budget must leave
+        # room for flock acquisition inside the unit's start timeout.
+        self.assertLess(budget + 20 + 60 + 30, start)
 
     def test_customer_firmware_confirms_with_xray_stopped(self):
         runner = self.firmware_fixture()
