@@ -23,6 +23,7 @@ ota_protected_path() {
         usr/local/bin/hive-data|usr/local/bin/hive-data-grow) return 0 ;;
         usr/local/bin/hive-board|usr/local/bin/hive-node-info) return 0 ;;
         usr/local/bin/hive-firmware) return 0 ;;
+        usr/local/bin/hive-ota-transaction) return 0 ;;
         # 事务目录在 ota_prepare 之后才被写入：包内容能覆盖 recover.sh/paths.json，
         # 让下次开机回滚跑的是包带来的引擎。
         var/lib/hive/ota-transaction|var/lib/hive/ota-transaction/*) return 0 ;;

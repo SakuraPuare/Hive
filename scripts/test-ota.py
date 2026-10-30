@@ -29,6 +29,7 @@ class OTATests(base.DeviceRegressionTests):
             'boot/Image', 'usr/lib/hive/ab-layout', 'usr/lib/modules/x.ko',
             'usr/lib/systemd/system/foo.service', 'usr/local/bin/hive-data',
             'usr/local/bin/hive-board', 'usr/local/bin/hive-firmware',
+            'usr/local/bin/hive-ota-transaction',
             'var/lib/hive/ota-transaction/recover.sh',
             'etc/systemd/system/hive-data.service.d/override.conf',
             'etc/systemd/system/hive-ota-recover.service.wants/x.service',
@@ -64,6 +65,24 @@ done
         self.assertFalse((self.root / 'etc/test-app').exists())
         self.assertFalse((self.root / 'usr/local/bin/hive-data').exists())
         self.assertFalse((self.root / 'var/lib/hive/ota-transaction/active').exists())
+
+    def test_ota_engine_cannot_replace_itself(self):
+        # ota_prepare copies /usr/local/bin/hive-ota-transaction to recover.sh
+        # for every transaction. A bundle that replaces the engine decides what
+        # the next boot's recovery runs, which is the same bootstrap risk that
+        # already keeps hive-data and hive-firmware out of application bundles.
+        self.bundle()
+        payload = self.root / 'payload'
+        (payload / 'files/usr/local/bin').mkdir(parents=True)
+        data = b'#!/bin/sh\nexit 0\n'
+        (payload / 'files/usr/local/bin/hive-ota-transaction').write_bytes(data)
+        manifest = json.loads((payload / 'manifest.json').read_text())
+        manifest['files'].append({'path': 'usr/local/bin/hive-ota-transaction',
+                                  'sha256': hashlib.sha256(data).hexdigest(), 'mode': '0755'})
+        self.repack(manifest)
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('boot-critical', result.stderr)
+        self.assertFalse((self.root / 'usr/local/bin/hive-ota-transaction').exists())
 
     def test_systemd_side_path_to_protected_unit_is_refused(self):
         self.bundle()

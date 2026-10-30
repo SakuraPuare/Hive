@@ -41,6 +41,9 @@ ota_protected_path() {
         usr/local/bin/hive-data|usr/local/bin/hive-data-grow) return 0 ;;
         usr/local/bin/hive-board|usr/local/bin/hive-node-info) return 0 ;;
         usr/local/bin/hive-firmware) return 0 ;;
+        # 回滚引擎自身：ota_prepare 把它复制成 recover.sh，被包替换等于让
+        # 下次开机恢复执行包内容。与 hive-data 同级自举风险。
+        usr/local/bin/hive-ota-transaction) return 0 ;;
         # 事务目录由 hive-ota-transaction 在安装前写入，包内容不得覆盖。
         var/lib/hive/ota-transaction|var/lib/hive/ota-transaction/*) return 0 ;;
         # 前缀匹配同时覆盖 .d/ drop-in 与 .wants/ 链接：否则可以用

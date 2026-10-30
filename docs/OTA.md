@@ -111,7 +111,7 @@ make build-ota VERSION=1.0.0
 
 `hive-updater --url`（Registry 的 `ota-update` 指令走这条手动路径）只能装应用包。固件包含 `rootfs.img`，必须经 Registry 的发布任务（`ota-version` 轮询返回 `kind=firmware` 与 `assignment_token`）下发：手动路径没有 assignment token，写不出重启后要发的完成回执，所以 `hive-updater` 在动盘之前直接拒绝。
 
-启动/恢复关键文件不接受应用包，`build-ota.sh` 打包和 `hive-ota-transaction` 安装前各拦一次（签名包同样拒绝）：`boot/**`、`usr/lib/hive/**`、`usr/lib/modules/**`、`usr/lib/systemd/system/**`、`usr/local/bin/hive-data`、`hive-data-grow`、`hive-board`、`hive-node-info`、`hive-firmware`，以及 `hive-data.service*`、`hive-ota-recover.service*`、`hive-firmware-confirm.service*`（前缀匹配，覆盖 `.d/` drop-in 与 `.wants/` 链接这类侧路径），以及 `var/lib/hive/ota-transaction/**`（安装前由引擎写入，包内容覆盖 `recover.sh`/`paths.json` 会让开机回滚跑包带来的副本）。回滚备份和事务标记都在 `/var/lib/hive`，该路径由 `hive-data` 从数据分区 bind 挂载；一旦这些文件被坏包替换，数据分区挂不上、回滚脚本永远跑不到，设备只会无限重启。除引擎自管的 `ota-transaction` 目录外，这些文件只能随 firmware 包（A/B rootfs 槽）更新。
+启动/恢复关键文件不接受应用包，`build-ota.sh` 打包和 `hive-ota-transaction` 安装前各拦一次（签名包同样拒绝）：`boot/**`、`usr/lib/hive/**`、`usr/lib/modules/**`、`usr/lib/systemd/system/**`、`usr/local/bin/hive-data`、`hive-data-grow`、`hive-board`、`hive-node-info`、`hive-firmware`，以及 `hive-data.service*`、`hive-ota-recover.service*`、`hive-firmware-confirm.service*`（前缀匹配，覆盖 `.d/` drop-in 与 `.wants/` 链接这类侧路径），以及 `usr/local/bin/hive-ota-transaction` 与 `var/lib/hive/ota-transaction/**`（安装前由引擎写入，包内容覆盖 `recover.sh`/`paths.json` 会让开机回滚跑包带来的副本；引擎自身的源头同样不能替换，否则 `ota_prepare` 后续每次复制出的 `recover.sh` 都来自包内容）。回滚备份和事务标记都在 `/var/lib/hive`，该路径由 `hive-data` 从数据分区 bind 挂载；一旦这些文件被坏包替换，数据分区挂不上、回滚脚本永远跑不到，设备只会无限重启。除引擎自管的 `ota-transaction` 目录外，这些文件只能随 firmware 包（A/B rootfs 槽）更新。
 
 此外，应用包里的 `etc/systemd/system/**` 单元若声明 `FailureAction=`/`JobTimeoutAction=` 为 `reboot|poweroff|halt` 系列，`hive-updater` 在写入前直接拒绝：那会让任意服务故障变成整机重启，而用户态没有任何恢复入口。
 
