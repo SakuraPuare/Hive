@@ -185,6 +185,22 @@ disable CONFIG_CAN               # CAN 总线 — 车载/工业现场总线，�
 disable CONFIG_HAMRADIO          # 业余无线电 AX.25/NetRom — 6.18 基线为 y，关掉
 # W1（1-Wire）在 rockchip64-current 基线未启用，无需处理
 
+# ── 无人值守恢复：锁死检测 ───────────────────────────────────────────────
+# boot.cmd 一直传 softlockup_panic=1 oops=panic，但基线 defconfig 里
+# CONFIG_DEBUG_KERNEL 是缺席的（Kconfig 默认 n），SOFTLOCKUP_DETECTOR
+# depends on 它，于是 detector 从未编进内核：那两个 cmdline 参数至今是空转。
+# Zero2 无人值守部署，内核态死锁必须能自己复位，这条是 A/B 兜底的前置。
+force CONFIG_DEBUG_KERNEL y                  # 锁死检测的前置开关
+force CONFIG_LOCKUP_DETECTOR y               # select-only 符号，显式钉死免得残留旧行
+force CONFIG_SOFTLOCKUP_DETECTOR y           # soft lockup → panic → panic=10 复位
+force CONFIG_BOOTPARAM_SOFTLOCKUP_PANIC y    # cmdline softlockup_panic=1 生效
+# 关中断死锁只有 NMI 能发现。arm64 的 HAVE_HARDLOCKUP_DETECTOR_PERF 由
+# ARC64_PSEUDO_NMI 提供 NMI，而它需要 cmdline irqchip.gicv3_pseudo_nmi=1 才
+# 真正启用（见 boot.cmd）。RK3528 是 GICv3，满足 select 的 ARM_GIC_V3。
+force CONFIG_ARM64_PSEUDO_NMI y
+force CONFIG_HARDLOCKUP_DETECTOR y
+force CONFIG_BOOTPARAM_HARDLOCKUP_PANIC y    # cmdline hardlockup_panic=1 生效
+
 # ── Debug/Profiling（生产镜像不需要）─────────────────────────────────────
 
 disable CONFIG_PROFILING         # perf 基础设施

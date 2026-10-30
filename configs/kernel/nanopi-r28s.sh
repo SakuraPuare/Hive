@@ -9,6 +9,14 @@ force() {
     sed -i "/^${1}=/d; /^# ${1} is not set$/d" "$OUT"
     printf '%s=%s\n' "$1" "$2" >> "$OUT"
 }
+# Same reasoning as nanopi-zero2.sh: the vendor 6.1 baseline ships
+# CONFIG_ARM64_PSEUDO_NMI=y but has no CONFIG_DEBUG_KERNEL, so the lockup
+# detectors were never built and boot.cmd's panic switches were inert.
+for key in DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR \
+           BOOTPARAM_SOFTLOCKUP_PANIC HARDLOCKUP_DETECTOR \
+           BOOTPARAM_HARDLOCKUP_PANIC; do
+    force "CONFIG_$key" y
+done
 for key in TMPFS TMPFS_POSIX_ACL TMPFS_XATTR I2C CGROUPS MEMCG BLK_DEV_INITRD \
            EXT4_FS MMC MMC_DW MMC_DW_ROCKCHIP PCI PCIE_DW_ROCKCHIP \
            STMMAC_ETH DWMAC_ROCKCHIP INET IPV6 NETFILTER NF_TABLES NF_CONNTRACK \

@@ -8,6 +8,7 @@ import subprocess
 import tarfile
 import unittest
 import sys
+import tempfile
 import importlib.util
 
 sys.dont_write_bytecode = True
@@ -736,6 +737,70 @@ reset() { echo RESET; exit 9; }
         self.assertEqual(result.returncode, 9)
         self.assertIn('BOOTFLOW', result.stdout)
         self.assertLess(result.stdout.index('BOOTFLOW'), result.stdout.index('RESET'))
+
+    def test_kernel_cmdline_panic_switches_are_configured_into_the_kernel(self):
+        # boot.cmd passes panic=10 oops=panic softlockup_panic=1 hardlockup_panic=1
+        # plus irqchip.gicv3_pseudo_nmi=1. Every one of those needs the matching
+        # CONFIG_* in the image, or the switch is silently inert -- which is what
+        # happened to softlockup_panic before: the Armbian baseline defconfig has
+        # no CONFIG_DEBUG_KERNEL, so the detector was never built.
+        kernel = (base.REPO / 'configs/kernel/nanopi-zero2.sh').read_text()
+        temp = tempfile.TemporaryDirectory(prefix='hive-kernel-config-')
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        script = root / 'kernel-config'
+        script.write_text(kernel)
+        baseline = root / 'baseline.config'
+        baseline.write_text('# CONFIG_DEBUG_KERNEL is not set\n'
+                            '# CONFIG_LOCKUP_DETECTOR is not set\n'
+                            '# CONFIG_SOFTLOCKUP_DETECTOR is not set\n'
+                            '# CONFIG_HARDLOCKUP_DETECTOR is not set\n'
+                            '# CONFIG_ARM64_PSEUDO_NMI is not set\n'
+                            'CONFIG_WATCHDOG=y\n')
+        produced = root / 'produced.config'
+        subprocess.run(['bash', str(script), str(baseline), str(produced)], check=True, capture_output=True)
+        config = produced.read_text().splitlines()
+        for symbol in ['DEBUG_KERNEL', 'LOCKUP_DETECTOR', 'SOFTLOCKUP_DETECTOR',
+                       'BOOTPARAM_SOFTLOCKUP_PANIC', 'HARDLOCKUP_DETECTOR',
+                       'BOOTPARAM_HARDLOCKUP_PANIC', 'ARM64_PSEUDO_NMI']:
+            with self.subTest(symbol=symbol):
+                self.assertIn(f'CONFIG_{symbol}=y', config)
+
+    def test_r28s_vendor_kernel_also_builds_the_lockup_detectors(self):
+        # R28S uses the vendor 6.1 baseline, which has ARM64_PSEUDO_NMI=y but no
+        # CONFIG_DEBUG_KERNEL either; without the detectors the same boot.cmd
+        # panic switches are inert there.
+        temp = tempfile.TemporaryDirectory(prefix='hive-kernel-config-r28s-')
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        script = root / 'kernel-config'
+        script.write_text((base.REPO / 'configs/kernel/nanopi-r28s.sh').read_text())
+        baseline = root / 'baseline.config'
+        baseline.write_text('CONFIG_ARM64_PSEUDO_NMI=y\n'
+                            '# CONFIG_DEBUG_KERNEL is not set\n'
+                            '# CONFIG_LOCKUP_DETECTOR is not set\n'
+                            '# CONFIG_SOFTLOCKUP_DETECTOR is not set\n'
+                            '# CONFIG_HARDLOCKUP_DETECTOR is not set\n'
+                            'CONFIG_CMA_SIZE_MBYTES=32\n')
+        produced = root / 'produced.config'
+        subprocess.run(['bash', str(script), str(baseline), str(produced)], check=True, capture_output=True)
+        config = produced.read_text().splitlines()
+        for symbol in ['DEBUG_KERNEL', 'SOFTLOCKUP_DETECTOR', 'HARDLOCKUP_DETECTOR',
+                       'BOOTPARAM_SOFTLOCKUP_PANIC', 'BOOTPARAM_HARDLOCKUP_PANIC']:
+            with self.subTest(symbol=symbol):
+                self.assertIn(f'CONFIG_{symbol}=y', config)
+
+    def test_hardware_watchdog_is_armed_before_the_first_slow_boot(self):
+        # The SoC watchdog is only useful if userspace opens it: dw_wdt is built
+        # in but nothing in the image touched /dev/watchdog0.
+        dropin = (base.REPO / 'armbian-build/userpatches/overlay/etc/systemd/system.conf.d/10-hive-watchdog.conf').read_text()
+        keys = [line.split('=', 1)[0] for line in dropin.splitlines()
+                if '=' in line and not line.lstrip().startswith('#')]
+        self.assertIn('RuntimeWatchdogSec', keys)
+        # systemd has no ShutdownWatchdogSec in [Manager]; such a key is parsed
+        # and dropped, which reads as protection that does not exist.
+        self.assertNotIn('ShutdownWatchdogSec', keys,
+                         'systemd has no such [Manager] key; it would be ignored')
 
 
 class R28SBootPolicyTests(BootPolicyTests):

@@ -41,7 +41,7 @@
 | 优先级 | 问题及触发条件 | 当前影响与后续工作 |
 |---|---|---|
 | P1，上线前阻断 | 完整 Armbian 镜像尚未构建，三组设备未真机验收 | Zero2 1 GB/2 GB、R28S 1 GB 的 U-Boot 编译和隔离测试不能证明完整系统可启动。需在足够磁盘空间的构建机实编译，再用 32/64 GB TF 卡验证冷启动、网络、内存负载、A/B 升降级与断电恢复。R28S 的厂商内核/AIC8800 集成尤其需要实机验证。`Request Image Build` 至今零运行，说明这条链路从未在 GitHub 侧走通一次。 |
-| P1，无人值守恢复限制 | 内核或引导阶段硬锁死，无法触发下一次重启 | 仓库内没有 RK3528 硬件看门狗适配（`/dev/watchdog`、`nowayout` 均无引用）。A/B 尝试次数只在重启时递减，需外部看门狗或人工断电；U-Boot 损坏、TF 故障也无法用 A/B 修复。软件侧 watchdog 服务（`hive-subscription-guard`）只处理订阅授权，不能拉起死锁内核。 |
+| P1，无人值守恢复限制 | 内核或引导阶段硬锁死，无法触发下一次重启 | **已在用户态与内核态补齐硬件看门狗**：RK3528 片上 DesignWare 看门狗（`watchdog@ffac0000`，`snps,dw-wdt`）主线 DTS 与内核基线（`CONFIG_DW_WATCHDOG=y`）本来就支持，此前只是没有任何用户态使用者。现在 `etc/systemd/system.conf.d/10-hive-watchdog.conf` 让 PID 1 以 `RuntimeWatchdogSec=30s` 打开 `/dev/watchdog0`，systemd 主进程死锁即由 SoC 硬复位；内核侧补 `CONFIG_DEBUG_KERNEL`/`SOFTLOCKUP_DETECTOR`/`HARDLOCKUP_DETECTOR` 与 `irqchip.gicv3_pseudo_nmi=1`，使 boot.cmd 的 `softlockup_panic=1`/`hardlockup_panic=1`/`panic=10` 真正生效。仍存在的缺口：U-Boot 自身损坏或卡死（U-Boot 的 DTS 副本没有 wdt 节点、defconfig 未开 `CONFIG_WDT`，SPL→U-Boot 阶段无保护）、TF 卡物理损坏、U-Boot 环境区损坏需 USB/rockusb 人工救援。这些不属于 A/B 或 OTA 能覆盖的范围。 |
 | P1，存量升级要求 | 升级共享凭证/旧代理，或首次从单系统迁移到 A/B | 新后台拒绝旧凭证和旧 `GET/POST /nodes/{mac}/xray-users` 计费接口；migration 28 默认关闭所有出口权限，需逐台核对控制权、签发独立服务器密钥。仅升级后台会中断旧设备服务。需维护窗口和可信 SSH 安装独立 token/新版代理；A/B 首刷必须离线备份、整盘刷写后恢复身份。 |
 | P1，计费协议与回滚兼容 | 启用 migration 29 的递增周期后，回滚到无周期编号的出口脚本或混跑旧后台 | 旧请求会被拒绝；回滚包、备用槽及全部 Registry 写入实例须支持新协议。数据库恢复须与出口待传状态一致。旧出口在配套升级前继续保留历史计数，不能手动删除去重状态。 |
 | P2，**文档与实现漂移**（本次新增） | 运维按文档操作 | 见下方"文档漂移清单"，其中 `NODE-OPERATIONS.md` 的 `Bearer <API_SECRET>` 调用 `/prometheus-targets` 在 `76e3810` 之后会直接 401。 |
