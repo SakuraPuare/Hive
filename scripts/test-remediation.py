@@ -222,6 +222,26 @@ if flag.exists():flag.unlink();sys.exit(1)
         self.run_script(script)
         self.assertFalse(stamp.exists())
 
+    def test_interrupted_seed_leaves_no_staging_directories(self):
+        # A seed that dies before its rename leaves .seed.XXXXXX next to the
+        # target; the target stays absent, so every boot seeds again. Without
+        # cleanup those directories accumulate on the data partition.
+        source = (BIN / 'hive-data').read_text()
+        source = source[:source.index('apply() {')]
+        script = self.root / 'seed-test'
+        script.write_text(source + '''
+base="$HIVE_TEST_ROOT/sandbox"
+mkdir -p "$base/etc/hive" "$base/data/etc"
+printf 'slot copy\\n' > "$base/etc/hive/config.env"
+mkdir -p "$base/data/etc/.seed.leftover" "$base/data/etc/.seed.orphan"
+seed_path "$base" etc/hive || exit 1
+[ -f "$base/data/etc/hive/config.env" ] || exit 1
+[ "$(cat "$base/data/etc/hive/config.env")" = "slot copy" ] || exit 1
+[ -z "$(find "$base/data/etc" -maxdepth 1 -name '.seed.*')" ] || exit 1
+''')
+        self.mock('mountpoint', '#!/bin/sh\nexit 0\n')
+        self.run_script(script)
+
     def offline_builder(self):
         # Relocate the real builder, keeping its overlay input and isolating output.
         source = (REPO / 'scripts/build-ota.sh').read_text()

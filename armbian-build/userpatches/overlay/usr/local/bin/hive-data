@@ -11,6 +11,29 @@ set -euo pipefail
 FAILURE_STAMP=/usr/lib/hive/data-failures
 SELF=/usr/local/bin/hive-data
 
+# Seed one persistent path from the slot copy, then bind it. base is empty in
+# production; tests pass a sandbox root so the mount logic can run unprivileged.
+# An interrupted seed leaves .seed.XXXXXX beside the target, and since the target
+# is still absent the next boot seeds again: remove the leftovers first so a
+# repeatedly failing /data does not fill the partition.
+seed_path() {
+    local base="$1" path="$2" stage parent
+    parent="$base/data/$(dirname "$path")"
+    [ ! -L "$base/$path" ] && [ ! -L "$base/data/$path" ] || return 1
+    mkdir -p "$base/$path" "$parent" || return 1
+    if [ ! -d "$base/data/$path" ]; then
+        find "$parent" -maxdepth 1 -mindepth 1 -type d -name '.seed.*' -exec rm -rf -- {} + || true
+        stage=$(mktemp -d "$parent/.seed.XXXXXX") || return 1
+        cp -a "$base/$path/." "$stage/" || return 1
+        chmod --reference="$base/$path" "$stage" || return 1
+        chown --reference="$base/$path" "$stage" || return 1
+        sync -f "$stage" || return 1
+        mv "$stage" "$base/data/$path" || return 1
+        sync -f "$base/data" || return 1
+    fi
+    mountpoint -q "$base/$path" || mount --bind "$base/data/$path" "$base/$path"
+}
+
 apply() {
     [ -f /usr/lib/hive/ab-layout ] || return 0
     source /usr/local/bin/hive-board
@@ -28,18 +51,7 @@ apply() {
     for path in etc/hive etc/ssh root/.ssh etc/cloudflared etc/frp etc/xray etc/mihomo etc/nginx/sites-available \
         etc/NetworkManager/system-connections var/lib/hive var/lib/tailscale \
         var/lib/cloudflare-warp var/lib/easytier; do
-        [ ! -L "/$path" ] && [ ! -L "/data/$path" ] || exit 1
-        mkdir -p "/$path" "/data/$(dirname "$path")"
-        if [ ! -d "/data/$path" ]; then
-            stage=$(mktemp -d "/data/$(dirname "$path")/.seed.XXXXXX")
-            cp -a "/$path/." "$stage/"
-            chmod --reference="/$path" "$stage"
-            chown --reference="/$path" "$stage"
-            sync -f "$stage"
-            mv "$stage" "/data/$path"
-            sync -f /data
-        fi
-        mountpoint -q "/$path" || mount --bind "/data/$path" "/$path"
+        seed_path "" "$path" || exit 1
     done
 
     # Provisioning is intentionally not repeated after a slot switch. Recreate the
