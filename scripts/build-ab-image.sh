@@ -44,6 +44,7 @@ WORK=$(mktemp -d "$OUTPUT/.ab-build.XXXXXX")
 SRC_LOOP="" ROOT_LOOP=""
 cleanup() {
     mountpoint -q "$WORK/root" && umount "$WORK/root" || true
+    mountpoint -q "$WORK/source-boot" && umount "$WORK/source-boot" || true
     mountpoint -q "$WORK/source" && umount "$WORK/source" || true
     [ -z "$ROOT_LOOP" ] || losetup -d "$ROOT_LOOP"
     [ -z "$SRC_LOOP" ] || losetup -d "$SRC_LOOP"
@@ -66,7 +67,16 @@ if [ -z "$SOURCE_ROOT" ]; then
         awk '$2 == "ext4" && $3+0 > best {best = $3+0; dev = "/dev/"$1} END {if (dev) print dev}')
 fi
 [ -n "$SOURCE_ROOT" ] || { echo 'No ext4 root filesystem in source'; exit 1; }
+# /boot may live on its own partition (Armbian armbi_boot). The A/B boot policy
+# loads /boot/Image, /boot/uInitrd and /boot/dtb/<board>.dtb from inside the slot
+# filesystem, so the boot partition has to be folded into the slot later.
+SOURCE_BOOT=$(lsblk -ln -o NAME,FSTYPE,LABEL "$SRC_LOOP" |
+    awk '$2 == "ext4" && $3 == "armbi_boot" {print "/dev/"$1; exit}')
 mount -o ro,noload "$SOURCE_ROOT" "$WORK/source"
+if [ -n "$SOURCE_BOOT" ]; then
+    mkdir -p "$WORK/source-boot"
+    mount -o ro,noload "$SOURCE_BOOT" "$WORK/source-boot"
+fi
 [ "$(cat "$WORK/source/usr/lib/hive/ab-layout")" = "$HIVE_LAYOUT" ] || { echo 'Source layout/board mismatch: build with HIVE_AB=yes first'; exit 1; }
 UBOOT=$(find "$WORK/source/usr/lib" -name u-boot-rockchip.bin -type f -print -quit)
 [ -n "$UBOOT" ] || { echo 'A/B bootloader missing'; exit 1; }
@@ -77,6 +87,12 @@ mkfs.ext4 -q -F -O ^metadata_csum_seed,^orphan_file -L hive-rootA "$WORK/rootfs.
 ROOT_LOOP=$(losetup --find --show "$WORK/rootfs.img")
 mount "$ROOT_LOOP" "$WORK/root"
 rsync -aHAX --numeric-ids --exclude=lost+found "$WORK/source/" "$WORK/root/"
+# Fold the separate boot partition into the slot: the A/B policy loads
+# /boot/Image, /boot/uInitrd and /boot/dtb/* from the slot itself.
+if mountpoint -q "$WORK/source-boot"; then
+    mkdir -p "$WORK/root/boot"
+    rsync -aHAX --numeric-ids --exclude=lost+found "$WORK/source-boot/" "$WORK/root/boot/"
+fi
 # Root device comes from bootargs PARTUUID, so one payload fits either slot.
 awk '$2 != "/" && $2 != "/boot" && $2 != "/boot/efi" && $3 != "swap"' "$WORK/root/etc/fstab" > "$WORK/fstab"
 cp "$WORK/fstab" "$WORK/root/etc/fstab"
@@ -88,9 +104,9 @@ systemctl --root="$WORK/root" enable hive-data.service hive-firmware-confirm.ser
 # The provisioning marker lives on the data partition; a new slot must already
 # have the normal node services enabled because provisioning will be skipped.
 systemctl --root="$WORK/root" enable xray.service cloudflared.service frpc.service easytier.service xray-exporter.service hive-xray-sync.timer
-test -f "$WORK/root/boot/Image"
-test -f "$WORK/root/boot/uInitrd"
-test -f "$WORK/root/boot/dtb/$HIVE_DTB"
+test -e "$WORK/root/boot/Image" || { echo 'Slot is missing /boot/Image'; exit 1; }
+test -e "$WORK/root/boot/uInitrd" || { echo 'Slot is missing /boot/uInitrd'; exit 1; }
+test -e "$WORK/root/boot/dtb/$HIVE_DTB" || { echo "Slot is missing /boot/dtb/$HIVE_DTB"; exit 1; }
 sync
 umount "$WORK/root"
 losetup -d "$ROOT_LOOP"; ROOT_LOOP=""
