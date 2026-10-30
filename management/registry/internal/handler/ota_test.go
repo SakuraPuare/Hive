@@ -178,10 +178,12 @@ func TestOTAProgressAndRollbackAreTerminalAndAssignmentScoped(t *testing.T) {
 	}
 }
 
-func TestOTAAckForAnUnknownAssignmentIsRejected(t *testing.T) {
-	// The node deletes its receipt on any 2xx. Answering 200 for a token that
-	// matched no row would drop that outcome permanently, so the handler must
-	// report the mismatch instead of pretending the write landed.
+func TestOTAAckForAnUnknownTokenIsANoOp(t *testing.T) {
+	// ota_assignments is keyed by node_mac, so a reassignment overwrites the
+	// token in place and the superseded one is indistinguishable from a bogus
+	// one. The handler therefore answers 200 and lets the WHERE clause decide
+	// what moves; an error status would make an ordinary replay unresolvable
+	// for the device.
 	resetDB(t)
 	mac := "aabbccddeeff"
 	insertTestNode(t, mac)
@@ -190,15 +192,14 @@ func TestOTAAckForAnUnknownAssignmentIsRejected(t *testing.T) {
 	assertStatus(t, resp, 200)
 	resp.Body.Close()
 
-	resp = doBearer("POST", "/nodes/"+mac+"/ota-ack",
-		otaAckRequest{Version: "2.0", AssignmentToken: strings.Repeat("f", 64), Status: "done"}, token)
-	assertStatus(t, resp, 409)
-	resp.Body.Close()
-
-	resp = doBearer("POST", "/nodes/"+mac+"/ota-ack",
-		otaAckRequest{Version: "9.9", AssignmentToken: "anything", Status: "done"}, token)
-	assertStatus(t, resp, 409)
-	resp.Body.Close()
+	for _, ack := range []otaAckRequest{
+		{Version: "2.0", AssignmentToken: strings.Repeat("f", 64), Status: "done"},
+		{Version: "9.9", AssignmentToken: "anything", Status: "done"},
+	} {
+		resp = doBearer("POST", "/nodes/"+mac+"/ota-ack", ack, token)
+		assertStatus(t, resp, 200)
+		resp.Body.Close()
+	}
 
 	if scalar(t, "SELECT COUNT(*) FROM ota_assignments WHERE status='pending' AND acked_at IS NULL") != 1 {
 		t.Fatal("mismatched ack moved the assignment")

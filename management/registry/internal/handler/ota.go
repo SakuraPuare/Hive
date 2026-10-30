@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -372,14 +373,17 @@ func (h *Handler) HandleNodeOtaAck(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())
 		return
 	}
-	// A 200 must mean the row actually moved. The node deletes its pending
-	// receipt on 2xx, so acknowledging an unmatched token or version would drop
-	// that outcome permanently: a stale assignment_token, a rollout superseded
-	// while the device rebooted, or a firmware receipt that arrived after the
-	// assignment had already been replaced.
+	// The WHERE clause already scopes the update to this node's still-open
+	// assignment, so zero rows is a normal no-op rather than an error: a repeat
+	// of a terminal status, or a receipt carrying the token that a reassignment
+	// replaced. ota_assignments is keyed by node_mac, so a superseded token is
+	// gone from the table and cannot be told apart from a bogus one; answering
+	// anything but 200 would turn an ordinary replay into an error the device
+	// could never resolve. Log it, because a mismatch that a superseded token
+	// does not explain means the device and the registry disagree about what was
+	// assigned.
 	if res.RowsAffected == 0 {
-		h.jsonErr(w, http.StatusConflict, "no pending assignment matches this token and version")
-		return
+		log.Printf("ota-ack: no open assignment for node %s version %s (superseded, terminal, or unknown token)", mac, body.Version)
 	}
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
