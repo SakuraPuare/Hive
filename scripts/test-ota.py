@@ -18,6 +18,35 @@ spec.loader.exec_module(base)
 
 
 class OTATests(base.DeviceRegressionTests):
+    def test_both_copies_of_the_protected_list_agree(self):
+        # build-ota.sh refuses these paths at packaging time and
+        # hive-ota-transaction refuses them again at install time, because a
+        # signed bundle does not pass through the builder. Two copies of the
+        # same list drift: the identity list already lost two entries that way.
+        paths = [
+            'boot/Image', 'usr/lib/hive/ab-layout', 'usr/lib/modules/x.ko',
+            'usr/lib/systemd/system/foo.service', 'usr/local/bin/hive-data',
+            'usr/local/bin/hive-board', 'usr/local/bin/hive-firmware',
+            'var/lib/hive/ota-transaction/recover.sh',
+            'etc/systemd/system/hive-data.service.d/override.conf',
+            'etc/systemd/system/hive-ota-recover.service.wants/x.service',
+            'etc/systemd/system/hive-firmware-confirm.service',
+            'etc/systemd/system/xray.service', 'usr/local/bin/hive-updater',
+            'etc/test-app', 'var/www/index.html',
+        ]
+        runtime = base.REPO / 'armbian-build/userpatches/overlay/usr/local/bin/hive-ota-transaction'
+        builder = base.REPO / 'scripts/build-ota.sh'
+        probe = '''
+source_runtime() {{ . "{runtime}"; ota_protected_path "$1"; }}
+source_builder() {{ eval "$(sed -n '/^ota_protected_path()/,/^}}/p' "{builder}")"; ota_protected_path "$1"; }}
+for p in {paths}; do
+    source_runtime "$p" && a=0 || a=1
+    source_builder "$p" && b=0 || b=1
+    [ "$a" = "$b" ] || {{ echo "disagree on $p: runtime=$a builder=$b"; exit 1; }}
+done
+'''.format(runtime=runtime, builder=builder, paths=' '.join(paths))
+        result = subprocess.run(['bash', '-c', probe], text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
     def test_boot_critical_files_are_refused_before_install(self):
         self.bundle()
         payload = self.root / 'payload'
