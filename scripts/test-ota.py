@@ -377,6 +377,20 @@ else firmware_confirm; fi
         self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), '1.0\n')
         self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-pending-ack.json').read_text())['status'], 'rolled_back')
 
+    def test_fallback_clears_pending_even_if_environment_write_fails(self):
+        # fw_setenv failing used to abort before the pending marker was removed;
+        # with FailureAction=reboot that is an endless reboot loop.
+        runner = self.firmware_fixture()
+        self.run_script(runner, 'stage')
+        path = self.root / 'var/lib/hive/firmware-pending.json'
+        pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
+        path.write_text(json.dumps(pending))
+        self.mock('fw_setenv', '#!/bin/sh\nexit 1\n')
+        result = self.run_script(runner, 'confirm')
+        self.assertFalse(path.exists())
+        self.assertIn('hive_pending could not be cleared', result.stdout)
+        self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-pending-ack.json').read_text())['status'], 'rolled_back')
+
     def test_customer_firmware_confirms_with_xray_stopped(self):
         runner = self.firmware_fixture()
         self.run_script(runner, 'stage')

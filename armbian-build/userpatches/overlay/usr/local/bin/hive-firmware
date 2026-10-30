@@ -4,6 +4,8 @@
 FW_STATE=/var/lib/hive
 FW_PENDING="$FW_STATE/firmware-pending.json"
 FW_ENV=/run/hive-fw-env.config
+# hive-updater defines log(); the standalone (systemd) run needs the same helper.
+declare -F log >/dev/null || log() { echo "[hive-firmware] $*"; logger -t "hive-firmware" "$*" 2>/dev/null || true; }
 source /usr/local/bin/hive-board
 
 firmware_layout() {
@@ -90,16 +92,20 @@ firmware_confirm() {
     [ "$(jq -r .boot_id "$FW_PENDING")" != "$(cat /proc/sys/kernel/random/boot_id)" ] || return 1
     if [ "$target" != "$FW_SLOT" ]; then
         [ "$(jq -r .previous "$FW_PENDING")" = "$FW_SLOT" ] || return 1
+        # The trial is over. Clear the marker before anything else can fail:
+        # FailureAction=reboot plus a pending file that is never removed is an
+        # endless reboot loop, and hive_pending cannot be cleared at all when
+        # the environment is unwritable.
         firmware_environment 'hive_pending
-hive_tries 0' || return 1
+hive_tries 0' || log 'warning: hive_pending could not be cleared; the bootloader retries the trial until attempts run out'
         if [ -f "$FW_STATE/firmware-previous-receipt.json" ]; then
-            cp -a "$FW_STATE/firmware-previous-receipt.json" "$FW_STATE/ota-installed.json" || return 1
+            cp -a "$FW_STATE/firmware-previous-receipt.json" "$FW_STATE/ota-installed.json" || log 'warning: previous receipt not restored'
         else rm -f "$FW_STATE/ota-installed.json"; fi
         if [ -f "$FW_STATE/firmware-previous-version" ]; then
-            cp -a "$FW_STATE/firmware-previous-version" /etc/hive/ota-version || return 1
+            cp -a "$FW_STATE/firmware-previous-version" /etc/hive/ota-version || log 'warning: previous version not restored'
         else rm -f /etc/hive/ota-version; fi
-        ota_save_ack rolled_back 'trial boot failed; bootloader returned to the confirmed system' "$assignment" "$version" || return 1
         rm -f "$FW_PENDING" "$FW_STATE/firmware-previous-receipt.json" "$FW_STATE/firmware-previous-version"
+        ota_save_ack rolled_back 'trial boot failed; bootloader returned to the confirmed system' "$assignment" "$version" || log 'warning: rollback receipt not delivered'
         return 0
     fi
     [ "$(cat /usr/lib/hive/firmware-version)" = "$version" ] || return 1
