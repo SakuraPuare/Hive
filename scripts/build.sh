@@ -106,6 +106,7 @@ echo "  内存: ${TOTAL_RAM_GB}GB"
 # 但在 44 核上 I/O 空隙早被填满，超订只换来满核狂转 + 上下文切换抖动（风扇拉满、
 # 总时长几乎不变甚至更慢）。故大核机改为 = 核数，去掉超订：安静、不发热、速度不降。
 if [ -n "${MAKE_JOBS:-}" ]; then
+  MAKE_JOBS_FROM_ENV=yes
   PARALLEL_DOWNLOADS=$([ "$MAKE_JOBS" -le 8 ] && echo 8 || echo 16)
   echo "  （MAKE_JOBS=${MAKE_JOBS} 由环境变量指定）"
 elif [ $CPU_CORES -le 4 ]; then
@@ -119,6 +120,24 @@ else
   PARALLEL_DOWNLOADS=16
 fi
 
+# 按核数算出的并行度必须再被内存收敛。内核编译单个 gcc/cc1 峰值约 1~1.5 GB，
+# 64 核机器若只有 15 GB 内存，按核数并行会把宿主机打到 global OOM：实测 15 GB /
+# 64 核上 -j96 直接触发 oom-killer（连宿主 k8s 的 coredns 一起被杀），而构建自身
+# 以「没有任何 error: 行」的 Error 2 结束，极难从日志看出是内存问题。
+# 每 job 预留 2 GB，取核数与内存两者的较小值；MAKE_JOBS 显式指定时不干预。
+if [ "${MAKE_JOBS_FROM_ENV:-no}" = no ]; then
+  RAM_JOBS=$((TOTAL_RAM_GB / 2))
+  [ "$RAM_JOBS" -lt 2 ] && RAM_JOBS=2
+  if [ "$MAKE_JOBS" -gt "$RAM_JOBS" ]; then
+    echo "  按内存收敛: ${MAKE_JOBS} → ${RAM_JOBS}（${TOTAL_RAM_GB}GB 内存，每 job 预留 2GB）"
+    MAKE_JOBS=$RAM_JOBS
+  fi
+fi
+
+# Armbian 在 lib/functions/configuration/compilation-config.sh:34 用 CPUS+CPUS/2
+# 重新计算 CTHREADS（64 核 → -j96），会覆盖这里导出的 CTHREADS；官方覆盖入口是
+# CPUTHREADS（同文件 :36-40），必须显式传给 compile.sh 才生效。
+CPUTHREADS="${MAKE_JOBS}"
 export CTHREADS="-j${MAKE_JOBS}"
 export PARALLEL_DOWNLOADS_WORKERS=${PARALLEL_DOWNLOADS}
 
@@ -400,6 +419,7 @@ time ./compile.sh build \
     COMPRESS_OUTPUTIMAGE=sha,xz \
     IMAGE_XZ_COMPRESSION_RATIO=6 \
     COMPRESS_MAX_THREADS="${COMPRESS_THREADS}" \
+    CPUTHREADS="${CPUTHREADS}" \
     PATCHES_TO_GIT=yes \
     KERNEL_GIT=full \
     UBOOT_GIT_CACHE_TTL="${GIT_CACHE_TTL_SECONDS}" \
