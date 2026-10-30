@@ -166,7 +166,7 @@ elif [ ${#INCLUDES[@]} -eq 0 ]; then
 else
     for inc in "${INCLUDES[@]}"; do
         case "$inc" in
-            /*|../*|*/../*|..|etc/hive/*|etc/xray/*|etc/mihomo/*|etc/frp/*|etc/ssh/*)
+            /*|../*|*/../*|..|etc/hive/*|etc/xray/*|etc/mihomo/*|etc/frp/*|etc/ssh/*|etc/cloudflared/*|root/.ssh/*|var/lib/tailscale/*|var/lib/cloudflare-warp/*|var/lib/easytier/*)
                 echo "ERROR: identity/runtime configuration must be updated by a migration hook: $inc"; exit 1 ;;
         esac
         if ota_protected_path "$inc"; then

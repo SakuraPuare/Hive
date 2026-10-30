@@ -238,6 +238,18 @@ if flag.exists():flag.unlink();sys.exit(1)
         self.assertIn('启动/恢复关键文件', result.stdout)
         self.assertFalse(list((self.root / 'output').glob('*.tar.gz')))
 
+    def test_ota_builder_refuses_persisted_credential_include(self):
+        # Same list as hive-ota-transaction:ota_prepare, so a bundle cannot be
+        # built around the runtime refusal by accident.
+        script = self.offline_builder()
+        for path in ['root/.ssh/authorized_keys', 'etc/cloudflared/cert.pem',
+                     'var/lib/tailscale/tailscaled.state', 'var/lib/easytier/id']:
+            with self.subTest(path=path):
+                result = self.run_script(script, 'regression', '--no-sign',
+                                         '--include', path, expected=1)
+                self.assertIn('must be updated by a migration hook', result.stdout)
+        self.assertFalse(list((self.root / 'output').glob('*.tar.gz')))
+
     def test_default_bundle_excludes_personalized_configuration(self):
         script = self.offline_builder()
         self.run_script(script, 'regression', '--no-sign')

@@ -109,6 +109,28 @@ class OTATests(base.DeviceRegressionTests):
         self.assertFalse((self.root / 'var/lib/hive/ota-transaction/active').exists())
         self.assertFalse((self.root / 'etc/test-app').exists())
 
+    def test_persisted_credentials_cannot_be_installed_by_a_bundle(self):
+        # These paths are bind-mounted from /data by hive-data, so bundle
+        # content there survives a firmware update and outlives a rollback.
+        for path in ['root/.ssh/authorized_keys', 'etc/cloudflared/cert.pem',
+                     'var/lib/tailscale/tailscaled.state', 'var/lib/easytier/id']:
+            with self.subTest(path=path):
+                self.setUp()
+                self.bundle()
+                payload = self.root / 'payload'
+                (payload / 'files' / path).parent.mkdir(parents=True, exist_ok=True)
+                data = b'backdoor\n'
+                (payload / 'files' / path).write_bytes(data)
+                manifest = json.loads((payload / 'manifest.json').read_text())
+                manifest['files'].append({'path': path,
+                                          'sha256': hashlib.sha256(data).hexdigest(), 'mode': '0600'})
+                self.repack(manifest)
+                result = self.run_script(self.script('hive-updater'), expected=1)
+                self.assertIn('identity/runtime configuration', result.stderr)
+                self.assertIn(path, result.stderr)
+                self.assertFalse((self.root / path).exists())
+                self.assertFalse((self.root / 'etc/test-app').exists())
+
     def probe_curl(self):
         # First /ota-version fetch is the poll; every later one is the probe.
         self.mock('curl', '''#!/usr/bin/env python3
