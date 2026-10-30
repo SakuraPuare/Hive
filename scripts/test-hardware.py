@@ -2,6 +2,7 @@
 """Board detection, memory profiles and TF growth using isolated fake devices."""
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -211,6 +212,38 @@ exit 0
         self.assertEqual((device/'usr/local/bin/hive-updater').read_text(),'old updater')
         self.assertFalse((device/'etc/hive/ota-pubkey.pem').exists())
         self.assertEqual((device/'etc/hive/device-token').read_text(),'preserve-device-secret')
+
+    def test_every_external_call_in_provisioning_is_bounded(self):
+        # provisioning talks to Cloudflare, Tailscale and the registry on the
+        # node's first boot. An unbounded curl hangs until systemd kills the
+        # unit, and a killed oneshot never writes the provisioned marker, so the
+        # whole flow replays on every boot.
+        source = (BIN / 'provision-node.sh').read_text()
+        joined = re.sub(r'\\\n\s*', ' ', source)
+        unbounded = [line.strip() for line in joined.splitlines()
+                     if 'curl ' in line and '--max-time' not in line and '--connect-timeout' not in line]
+        self.assertEqual(unbounded, [])
+
+    def test_bare_curl_calls_cannot_abort_provisioning(self):
+        # set -e is active. A curl that is neither captured nor guarded aborts
+        # the script on any non-zero exit, before the diagnostic stages run.
+        source = (BIN / 'provision-node.sh').read_text()
+        for number, line in enumerate(source.splitlines(), 1):
+            if not re.match(r'\s+curl ', line):
+                continue
+            block = '\n'.join(source.splitlines()[number - 1:number + 8])
+            captured = '=$(' in source.splitlines()[number - 2] if number > 1 else False
+            guarded = re.search(r'\|\|\s*(true|echo|\{)', block)
+            self.assertTrue(captured or guarded, f'line {number} aborts provisioning: {line.strip()}')
+
+    def test_provisioning_budget_fits_inside_the_unit_timeout(self):
+        # The script gives up on its own budget first; systemd is the backstop
+        # and must not fire earlier, or the operator loses the reason.
+        source = (BIN / 'provision-node.sh').read_text()
+        budget = int(re.search(r'PROVISION_BUDGET:-(\d+)', source).group(1))
+        unit = (REPO / 'armbian-build/userpatches/overlay/etc/systemd/system/provision-node.service').read_text()
+        timeout = int(re.search(r'^TimeoutStartSec=(\d+)', unit, re.M).group(1))
+        self.assertGreater(timeout, budget * 1.4)
 
     def test_boot_policy_contains_matching_kernel_dtb(self):
         for board, dtb in [('nanopi-zero2','rk3528-nanopi-zero2.dtb'), ('nanopi-r28s','rk3528-nanopi-rev03.dtb')]:

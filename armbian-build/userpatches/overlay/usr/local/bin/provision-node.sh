@@ -14,6 +14,19 @@ LOG="/var/log/provision-node.log"
 exec > >(tee -a "$LOG") 2>&1
 echo "=== provision-node start: $(date) ==="
 
+# systemd 的 TimeoutStartSec 会硬杀这里，进程被杀时 DONE_MARKER 不会落，日志也
+# 可能截断。超过预算就主动退出并留下可诊断的状态，让下次开机重试有据可查。
+# 每个外部 API 调用都有 --max-time，所以预算是可推算的。
+PROVISION_BUDGET="${PROVISION_BUDGET:-600}"
+budget_exceeded() {
+    local spent=$1 stage="$2"
+    # 未超预算时必须返回 0：调用点处在 set -e 之下，返回 1 会直接终止脚本。
+    [ "$spent" -ge "$PROVISION_BUDGET" ] || return 0
+    echo "!!! provision 超出时间预算 ${PROVISION_BUDGET}s（在 ${stage} 阶段），放弃本次首启置备"
+    echo "    已用时 ${spent}s；下次开机重试。若持续出现，检查外部 API 连通性。"
+    exit 1
+}
+
 # 等待网络就绪
 for i in $(seq 1 30); do
     ip route get 8.8.8.8 &>/dev/null && break
@@ -69,7 +82,7 @@ if [ -n "${SSH_IMPORT_GITHUB:-}" ]; then
     for gh_user in "${GH_USERS[@]}"; do
         gh_user=$(echo "$gh_user" | tr -d ' ')
         [ -z "$gh_user" ] && continue
-        if curl -fsSL "https://github.com/${gh_user}.keys" >> /root/.ssh/authorized_keys; then
+        if curl -fsSL --connect-timeout 10 --max-time 30 "https://github.com/${gh_user}.keys" >> /root/.ssh/authorized_keys; then
             echo ">>> imported keys for ${gh_user}"
         else
             echo ">>> WARN: failed to fetch keys for ${gh_user} (non-fatal)"
@@ -151,13 +164,14 @@ echo ">>> Tailscale hostname: ${HOSTNAME}"
 # ─────────────────────────────────────────────
 # 4. Cloudflare Tunnel（参考用户提供的脚本）
 # ─────────────────────────────────────────────
+budget_exceeded "$SECONDS" "cloudflare"
 TUNNEL_NAME="hive-${MAC6}"
 FULL_DOMAIN="hive-${MAC6}.${CF_DOMAIN}"
 
 echo ">>> Creating CF Tunnel: ${TUNNEL_NAME} → ${FULL_DOMAIN}"
 
 # 先尝试查找已存在的同名 tunnel（幂等）
-EXISTING=$(curl -s -G \
+EXISTING=$(curl -s --connect-timeout 10 --max-time 30 -G \
     "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/tunnels" \
     -H "Authorization: Bearer ${CF_API_TOKEN}" \
     --data-urlencode "name=${TUNNEL_NAME}" \
@@ -172,12 +186,13 @@ else
     # 没有本地凭证就必须（重新）创建 tunnel 才能拿到 secret
     if [ -n "$TUNNEL_ID" ]; then
         echo ">>> Tunnel exists but no local cert.json, deleting to recreate..."
-        curl -s -X DELETE \
+        curl -s --connect-timeout 10 --max-time 30 -X DELETE \
             "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/tunnels/${TUNNEL_ID}" \
-            -H "Authorization: Bearer ${CF_API_TOKEN}" >/dev/null
+            -H "Authorization: Bearer ${CF_API_TOKEN}" >/dev/null \
+            || echo ">>> 删除旧 tunnel 失败（non-fatal，继续尝试创建）"
     fi
 
-    CREATE_RES=$(curl -s -X POST \
+    CREATE_RES=$(curl -s --connect-timeout 10 --max-time 30 -X POST \
         "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/tunnels" \
         -H "Authorization: Bearer ${CF_API_TOKEN}" \
         -H "Content-Type: application/json" \
@@ -213,7 +228,7 @@ if [ -z "$TUNNEL_ID" ]; then
     : > /etc/hive/cloudflare-unavailable
 else
 # 添加 DNS CNAME 记录（幂等：先查再建）
-EXISTING_DNS=$(curl -s -G \
+EXISTING_DNS=$(curl -s --connect-timeout 10 --max-time 30 -G \
     "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records" \
     -H "Authorization: Bearer ${CF_API_TOKEN}" \
     --data-urlencode "type=CNAME" \
@@ -223,13 +238,14 @@ DNS_ID=$(echo "$EXISTING_DNS" | jq -r '.result[0].id // empty')
 
 if [ -n "$DNS_ID" ]; then
     echo ">>> DNS record already exists for ${FULL_DOMAIN}, updating."
-    curl -s -X PUT \
+    curl -s --connect-timeout 10 --max-time 30 -X PUT \
         "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${DNS_ID}" \
         -H "Authorization: Bearer ${CF_API_TOKEN}" \
         -H "Content-Type: application/json" \
-        --data "{\"type\":\"CNAME\",\"name\":\"${TUNNEL_NAME}\",\"content\":\"${TUNNEL_ID}.cfargotunnel.com\",\"proxied\":true}" >/dev/null
+        --data "{\"type\":\"CNAME\",\"name\":\"${TUNNEL_NAME}\",\"content\":\"${TUNNEL_ID}.cfargotunnel.com\",\"proxied\":true}" >/dev/null \
+        || { echo ">>> DNS 记录更新失败（non-fatal）"; CLOUDFLARE_UNAVAILABLE=1; : > /etc/hive/cloudflare-unavailable; }
 else
-    DNS_RES=$(curl -s -X POST \
+    DNS_RES=$(curl -s --connect-timeout 10 --max-time 30 -X POST \
         "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records" \
         -H "Authorization: Bearer ${CF_API_TOKEN}" \
         -H "Content-Type: application/json" \
@@ -331,6 +347,7 @@ systemctl enable --now hive-fail2ban || echo ">>> hive-fail2ban failed (non-fata
 # ─────────────────────────────────────────────
 # 7. Tailscale 加入（使用嵌入的可复用 AuthKey）
 # ─────────────────────────────────────────────
+budget_exceeded "$SECONDS" "tailscale"
 echo ">>> Joining Tailscale..."
 systemctl enable --now tailscaled
 sleep 2
@@ -339,12 +356,12 @@ sleep 2
 # tskey-client-<ID>-<SECRET> 格式中提取 client ID
 TS_CLIENT_ID=$(echo "${TAILSCALE_OAUTH_SECRET}" | sed 's/tskey-client-\([^-]*\)-.*/\1/')
 
-TS_ACCESS_TOKEN=$(curl -sf -X POST "https://api.tailscale.com/api/v2/oauth/token" \
+TS_ACCESS_TOKEN=$(curl -sf --connect-timeout 10 --max-time 30 -X POST "https://api.tailscale.com/api/v2/oauth/token" \
     -d "client_id=${TS_CLIENT_ID}" \
     -d "client_secret=${TAILSCALE_OAUTH_SECRET}" | jq -r '.access_token // empty')
 
 if [ -n "${TS_ACCESS_TOKEN}" ]; then
-    TS_AUTHKEY=$(curl -sf -X POST "https://api.tailscale.com/api/v2/tailnet/-/keys" \
+    TS_AUTHKEY=$(curl -sf --connect-timeout 10 --max-time 30 -X POST "https://api.tailscale.com/api/v2/tailnet/-/keys" \
         -H "Authorization: Bearer ${TS_ACCESS_TOKEN}" \
         -H "Content-Type: application/json" \
         -d "{
@@ -370,13 +387,13 @@ fi
 # 清理同 hostname 的旧节点（避免重刷后出现 -1 -2 后缀）
 if [ -n "${TS_ACCESS_TOKEN}" ]; then
     echo ">>> Checking for stale Tailscale nodes with hostname: ${HOSTNAME}..."
-    STALE_IDS=$(curl -sf \
+    STALE_IDS=$(curl -sf --connect-timeout 10 --max-time 30 \
         -H "Authorization: Bearer ${TS_ACCESS_TOKEN}" \
         "https://api.tailscale.com/api/v2/tailnet/-/devices" | \
         jq -r --arg h "${HOSTNAME}" '.devices[] | select(.hostname == $h) | .id')
     for DEVICE_ID in $STALE_IDS; do
         echo ">>> Deleting stale node: ${DEVICE_ID}"
-        curl -sf -X DELETE \
+        curl -sf --connect-timeout 10 --max-time 30 -X DELETE \
             -H "Authorization: Bearer ${TS_ACCESS_TOKEN}" \
             "https://api.tailscale.com/api/v2/device/${DEVICE_ID}" \
             && echo ">>> Deleted ${DEVICE_ID}" \
@@ -401,7 +418,7 @@ MESH_NAME="hive-${MAC6}"
 echo ">>> Setting up Cloudflare Mesh node: ${MESH_NAME}"
 
 # 1) 查未删除的同名 WARP Connector，存在则直接复用（幂等）
-MESH_TUNNEL_ID=$(curl -s -G \
+MESH_TUNNEL_ID=$(curl -s --connect-timeout 10 --max-time 30 -G \
     "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector" \
     -H "Authorization: Bearer ${CF_API_TOKEN}" \
     --data-urlencode "name=${MESH_NAME}" \
@@ -412,21 +429,22 @@ if [ -n "$MESH_TUNNEL_ID" ]; then
 else
     # 2) WARP Connector 软删除后名字仍被占用，直接 POST 会撞 code 1013。
     #    先查出已删除的同名残留并硬删，释放名字（CF Tunnel 段同款幂等思路）。
-    STALE_MESH_IDS=$(curl -s -G \
+    STALE_MESH_IDS=$(curl -s --connect-timeout 10 --max-time 30 -G \
         "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector" \
         -H "Authorization: Bearer ${CF_API_TOKEN}" \
         --data-urlencode "name=${MESH_NAME}" \
         --data-urlencode "is_deleted=true" | jq -r '.result[]?.id')
     for SID in $STALE_MESH_IDS; do
         echo ">>> Deleting soft-deleted Mesh connector holding the name: ${SID}"
-        curl -s -X DELETE \
+        curl -s --connect-timeout 10 --max-time 30 -X DELETE \
             "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector/${SID}" \
-            -H "Authorization: Bearer ${CF_API_TOKEN}" >/dev/null
+            -H "Authorization: Bearer ${CF_API_TOKEN}" >/dev/null \
+            || echo ">>> 删除旧 Mesh connector 失败（non-fatal，继续）"
     done
 
     # 3) 创建新的 Mesh node
     echo ">>> Creating new Mesh node..."
-    MESH_CREATE_RES=$(curl -s -X POST \
+    MESH_CREATE_RES=$(curl -s --connect-timeout 10 --max-time 30 -X POST \
         "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector" \
         -H "Authorization: Bearer ${CF_API_TOKEN}" \
         -H "Content-Type: application/json" \
@@ -436,7 +454,7 @@ else
     # 4) 仍因撞名失败（残留未能清理等）→ 兜底再查一次未删除列表复用其 ID
     if [ -z "$MESH_TUNNEL_ID" ] && echo "$MESH_CREATE_RES" | grep -q '"code":1013'; then
         echo ">>> Name still taken, re-querying non-deleted connectors to reuse..."
-        MESH_TUNNEL_ID=$(curl -s -G \
+        MESH_TUNNEL_ID=$(curl -s --connect-timeout 10 --max-time 30 -G \
             "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector" \
             -H "Authorization: Bearer ${CF_API_TOKEN}" \
             --data-urlencode "name=${MESH_NAME}" \
@@ -450,7 +468,7 @@ else
 fi
 
 if [ -n "$MESH_TUNNEL_ID" ]; then
-    MESH_TOKEN=$(curl -s \
+    MESH_TOKEN=$(curl -s --connect-timeout 10 --max-time 30 \
         "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector/${MESH_TUNNEL_ID}/token" \
         -H "Authorization: Bearer ${CF_API_TOKEN}" | jq -r '.result // empty')
 
@@ -479,6 +497,7 @@ TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "pending")
 sed -i "s/^TAILSCALE_HOST=.*/TAILSCALE_HOST=${HOSTNAME}\nTAILSCALE_IP=${TAILSCALE_IP}/" \
     /etc/hive/node-info
 
+budget_exceeded "$SECONDS" "registry"
 if [ -n "${NODE_REGISTRY_URL}" ]; then
     # -4 强制 IPv4：同 allocate-easytier，避开 IPv6+Mihomo 半开死路。
     # 带重试：代理网关上游中继间歇抽风，单次抖动不该让节点漏注册（漏了要等下次

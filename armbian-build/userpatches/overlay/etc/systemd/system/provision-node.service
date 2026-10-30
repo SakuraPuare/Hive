@@ -16,7 +16,10 @@ ExecStart=/usr/local/bin/provision-node.sh
 RemainAfterExit=no
 StandardOutput=journal+console
 StandardError=journal+console
-TimeoutStartSec=300
+# 每个外部 API 调用都有 --max-time，脚本自身在 PROVISION_BUDGET（默认 600s）
+# 处主动退出并留下诊断。systemd 只在这个守卫失效时兜底，因此留出余量：
+# 全挂最坏约 780s，取 900s 保证脚本先一步给出可读的失败原因。
+TimeoutStartSec=900
 
 [Install]
 WantedBy=multi-user.target
