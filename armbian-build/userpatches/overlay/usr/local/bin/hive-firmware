@@ -150,14 +150,22 @@ hive_tries 0' || log 'warning: hive_pending could not be cleared; the bootloader
     curl --proto '=http,https' -fsS --connect-timeout 10 --max-time 20 -H "Authorization: Bearer $auth" \
         "${NODE_REGISTRY_URL%/}/nodes/$mac/ota-version" >/dev/null || return 1
     [ ! -x /etc/hive/firmware-health-check ] || timeout 60 /etc/hive/firmware-health-check || return 1
+    # Flip the bootloader first: it is the authoritative switch and nothing may
+    # claim the new version before the bootloader agrees. Writing the receipt
+    # and /etc/hive/ota-version first left a window where the node reported the
+    # new version while hive_active still pointed at the old slot, so a failed
+    # or interrupted environment write made the receipt lie about what boots.
+    # If a later write fails, the pending marker is still present and the next
+    # confirm retries on this slot.
+    firmware_environment "hive_active $FW_SLOT
+hive_pending
+hive_tries 0" || return 1
+    sync || return 1
     jq -n --arg version "$version" --arg sha256 "$sha" '{version:$version,sha256:$sha256}' > "$FW_STATE/ota-installed.json.new" || return 1
     mv -f "$FW_STATE/ota-installed.json.new" "$FW_STATE/ota-installed.json" || return 1
     printf '%s\n' "$version" > /etc/hive/ota-version.new || return 1
     mv -f /etc/hive/ota-version.new /etc/hive/ota-version || return 1
     sync || return 1
-    firmware_environment "hive_active $FW_SLOT
-hive_pending
-hive_tries 0" || return 1
     ota_save_ack done "firmware boot and management checks passed in slot $FW_SLOT" "$assignment" "$version" || return 1
     rm -f "$FW_PENDING" "$FW_STATE/firmware-previous-receipt.json" "$FW_STATE/firmware-previous-version"
     sync -f "$FW_STATE"

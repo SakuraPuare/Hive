@@ -721,6 +721,24 @@ else firmware_confirm; fi
         self.assertIn('hive_active B', (self.root / 'environment-writes').read_text())
         self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-pending-ack.json').read_text())['status'], 'done')
 
+    def test_failed_activation_never_claims_the_new_version(self):
+        # The receipt and /etc/hive/ota-version were written before hive_active
+        # was flipped. If the environment write fails or power is lost there,
+        # the old slot boots again while its receipt already claims the new
+        # version, so the pending marker can never be confirmed and the trial
+        # rollback restores the wrong receipt.
+        runner = self.firmware_fixture()
+        self.run_script(runner, 'stage')
+        self.env['TEST_SLOT'] = 'B'
+        path = self.root / 'var/lib/hive/firmware-pending.json'
+        pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
+        path.write_text(json.dumps(pending))
+        self.mock('fw_setenv', '#!/bin/sh\nexit 1\n')
+        self.run_script(runner, 'confirm', expected=1)
+        self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), '1.0\n')
+        self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-installed.json').read_text())['version'], '1.0')
+        self.assertTrue(path.exists())
+
     def test_fallback_restores_old_receipt_and_reports_rollback(self):
         runner = self.firmware_fixture()
         self.run_script(runner, 'stage')
