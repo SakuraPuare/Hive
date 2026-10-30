@@ -474,5 +474,11 @@ if [ "$HIVE_AB" = yes ]; then
     [ "${#AB_IMAGES[@]}" -eq 1 ] || { echo 'Expected exactly one new uncompressed image'; exit 1; }
     sudo env HIVE_AB_SLOT_MIB="${HIVE_AB_SLOT_MIB:-4096}" HIVE_AB_DATA_MIB="${HIVE_AB_DATA_MIB:-8192}" \
         "${SCRIPT_DIR}/build-ab-image.sh" "${AB_IMAGES[0]}" "${ROOT_DIR}/output/ab" "$HIVE_IMAGE_VERSION" "$PROFILE"
+    # build-ab-image.sh runs under sudo and writes as root, so it leaves its
+    # output root-owned. build-ota.sh runs as the invoking user and cannot
+    # create output/ota underneath a root-owned output/. Hand the tree back as
+    # soon as the privileged step is done, or the OTA bundle fails with
+    # 'mkdir: Permission denied' after the images are already built.
+    sudo chown -R "$(id -u):$(id -g)" "${ROOT_DIR}/output"
     "${SCRIPT_DIR}/build-ota.sh" "$HIVE_IMAGE_VERSION" --firmware "${ROOT_DIR}/output/ab/hive-${PROFILE}-rootfs-${HIVE_IMAGE_VERSION}.img"
 fi
