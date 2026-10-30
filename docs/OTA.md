@@ -165,6 +165,8 @@ R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。后台上
 | `hive-rootB` | 第 2 分区，4 GiB | 系统 B，内含 `/boot` |
 | `hive-data` | 第 3 分区，初始 8 GiB，首启扩至卡尾 | 设备身份、运行配置、OTA 状态和下载暂存 |
 
+启动环境的偏移量只是默认值：编译期由 `hive-rk3528.inc` 写入 U-Boot `.config`，`post_uboot_custom_postprocess` 从最终 `.config` 抄成 `/usr/lib/hive/uboot-env`，运行期 `hive-firmware` 直接从这份 stamp 读 `CONFIG_ENV_SIZE`/`CONFIG_ENV_OFFSET`/`CONFIG_ENV_OFFSET_REDUND` 生成 `fw_setenv` 配置。改偏移只需改一处；stamp 缺失或格式错误时固件更新直接失败，不会写到 U-Boot 不读的位置。
+
 构建脚本会检查 U-Boot 中的 A/B 标记及大小（从 LBA 64 起的引导镜像必须在 12 MiB 环境区之前结束），拒绝普通引导器或会覆盖启动环境的产物。`post_uboot_custom_postprocess` 在 `olddefconfig` 之后复核最终 `.config` 的 `ENV_IS_IN_MMC`、`ENV_REDUNDANT`、`ENV_SIZE`/`ENV_OFFSET`/`ENV_OFFSET_REDUND`、`CMD_SAVEENV`/`CMD_SETEXPR`/`CMD_PART`/`CMD_FDT` 并要求 `ENV_IS_NOWHERE` 关闭，缺任何一项直接中断构建；同时把这份配置写入镜像的 `/usr/lib/hive/uboot-env`。`scripts/check-uboot-env.sh` 在建厂镜像时再对照两份证据：stamp 内容，以及 `u-boot-rockchip.bin` 里确实存在 MMC 环境驱动、冗余读写、`saveenv`、`setexpr`、`part uuid`、`booti`、`fdt` 的字符串。只匹配 `HIVE_AB_V1` 不能证明环境可写。固件安装时根据**实际当前根分区的父磁盘**确定备用槽，不假设 Linux 的 `mmcblk0` 永远代表某种介质，也不按全局分区标签误选另一张卡。
 
 首刷可使用烧录工具，或从另一张启动卡/救援系统运行 `dd`。确认目标**整盘**且其分区都未挂载后执行；绝不能覆盖当前运行系统所在的盘：
