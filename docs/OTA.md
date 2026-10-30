@@ -115,7 +115,7 @@ make build-ota VERSION=1.0.0
 
 此外，应用包里的 `etc/systemd/system/**` 单元若声明 `FailureAction=`/`JobTimeoutAction=` 为 `reboot|poweroff|halt` 系列，`hive-updater` 在写入前直接拒绝：那会让任意服务故障变成整机重启，而用户态没有任何恢复入口。
 
-身份与运行配置同样不能作为包内容下发：`etc/hive/**`、`etc/xray/**`、`etc/mihomo/**`、`etc/frp/**`、`etc/ssh/**`、`etc/cloudflared/**`、`root/.ssh/**`、`var/lib/tailscale/**`、`var/lib/cloudflare-warp/**`、`var/lib/easytier/**` 在 `ota_prepare` 里被拒绝（`build-ota.sh --include` 也拦），只能用签名 hook 迁移。这份名单就是 `hive-data` 从 `/data` bind 挂载的持久化目录，包内容落在那里会跨固件更新存活、回滚也删不掉，装的是设备 Token、SSH 凭据、隧道身份和代理配置。hook 需要保护的文件通过 `--backup`/`rollback_paths` 声明，那只是备份与回滚声明，不安装内容，因此不受此限制。
+身份与运行配置同样不能作为包内容下发：`etc/hive/**`、`etc/xray/**`、`etc/mihomo/**`、`etc/frp/**`、`etc/ssh/**`、`etc/cloudflared/**`、`etc/nginx/sites-available/**`、`etc/NetworkManager/system-connections/**`、`root/.ssh/**`、`var/lib/tailscale/**`、`var/lib/cloudflare-warp/**`、`var/lib/easytier/**` 在 `ota_prepare` 里被拒绝（`build-ota.sh --include` 也拦），只能用签名 hook 迁移。这份名单必须与 `hive-data` 从 `/data` bind 挂载的持久化目录逐项一致：包内容落在那里会跨固件更新存活、回滚也删不掉，装的是设备 Token、SSH 凭据、WiFi PSK、隧道身份和代理配置。此前漏了 `nginx/sites-available` 与 `NetworkManager/system-connections` 两项——签名包可以直接改掉站点配置和 WiFi 预共享密钥。hook 需要保护的文件通过 `--backup`/`rollback_paths` 声明，那只是备份与回滚声明，不安装内容，因此不受此限制。
 
 `hive-data` 挂载失败不再由 unit 直接 `FailureAction=reboot`：脚本内部重试 3 次，仍未成功时最多重启 3 次（计数存于 `/usr/lib/hive/data-failures`，成功即清除），之后保持运行以便人工介入。
 

@@ -61,11 +61,11 @@ ota_prepare() {
     cp "$manifest" "$OTA_TX/manifest.json" || return 1
     # 身份与运行配置只能由签名 hook 迁移，包内容不能直接替换（与
     # scripts/build-ota.sh 的 --include 限制一致）。清单与 hive-data 的
-    # bind 挂载列表对齐：这些路径落在 /data 上，跨固件 OTA 持久化，装着
-    # 设备 Token、SSH 凭据、隧道身份和代理配置。
+    # bind 挂载列表逐项对齐：这些路径落在 /data 上，跨固件 OTA 持久化，装着
+    # 设备 Token、SSH 凭据、WiFi PSK、隧道身份和代理配置。
     # hook 需要保护的文件用 rollback_paths 声明：那只是备份，不安装内容。
     identity=$(jq -r '[(.files[]?.path | select(type == "string"))]
-        | map(select(test("^(etc/(hive|xray|mihomo|frp|ssh|cloudflared)/|root/[.]ssh/|var/lib/(tailscale|cloudflare-warp|easytier)/)")))
+        | map(select(test("^(etc/(hive|xray|mihomo|frp|ssh|cloudflared|nginx/sites-available|NetworkManager/system-connections)/|root/[.]ssh/|var/lib/(tailscale|cloudflare-warp|easytier)/)")))
         | join(", ")' "$manifest") || return 1
     if [ -n "$identity" ]; then
         echo "Refusing identity/runtime configuration in OTA bundle: $identity (use a migration hook)" >&2

@@ -82,6 +82,30 @@ class OTATests(base.DeviceRegressionTests):
         self.assertFalse((self.root / 'etc/test-app').exists())
         self.assertFalse((self.root / 'var/lib/hive/ota-transaction/active').exists())
 
+    def test_every_path_hive_data_mounts_is_refused_as_bundle_content(self):
+        # hive-data bind-mounts these from /data, so bundle content here survives
+        # firmware updates and carries credentials. The refusal list is supposed
+        # to mirror that mount list exactly; two entries were missing, so a
+        # bundle could rewrite the WiFi PSK and the nginx site.
+        for target in ['etc/NetworkManager/system-connections/wifi.nmconnection',
+                       'etc/nginx/sites-available/hive']:
+            with self.subTest(target=target):
+                self.setUp()
+                self.bundle()
+                payload = self.root / 'payload'
+                (payload / 'files' / target).parent.mkdir(parents=True)
+                data = b'[wifi-security]\npsk=bundle\n'
+                (payload / 'files' / target).write_bytes(data)
+                manifest = json.loads((payload / 'manifest.json').read_text())
+                manifest['files'].append({'path': target,
+                                          'sha256': hashlib.sha256(data).hexdigest(),
+                                          'mode': '0600'})
+                self.repack(manifest)
+                result = self.run_script(self.script('hive-updater'), expected=1)
+                self.assertIn('identity/runtime configuration', result.stderr)
+                self.assertIn(target, result.stderr)
+                self.assertFalse((self.root / target).exists())
+
     def test_declared_migration_path_is_not_treated_as_bundle_content(self):
         self.bundle()
         (self.root / 'etc/xray').mkdir(parents=True)
