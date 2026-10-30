@@ -189,7 +189,12 @@ else
     if [ "$TUNNEL_ID" = "null" ] || [ -z "$TUNNEL_ID" ]; then
         echo "!!! CF Tunnel creation failed:"
         echo "$CREATE_RES"
-        exit 1
+        # CLOUDFLARE_API failure 不能拖垮整机 provision：cloudflared 只是三条
+        # 管理通道之一，Tailscale 与 EasyTier 仍可用。过去这里 exit 1，于是
+        # provisioned 标记永远不落，每次开机重跑，而 hive-firmware 的确认要求
+        # cloudflared.service active —— 固件试启动必然回滚。
+        CLOUDFLARE_UNAVAILABLE=1
+        TUNNEL_ID=""
     fi
 
     cat > /etc/cloudflared/cert.json << EOF
@@ -200,8 +205,13 @@ else
 }
 EOF
 fi
-echo ">>> Tunnel ID: ${TUNNEL_ID}"
+echo ">>> Tunnel ID: ${TUNNEL_ID:-<none>}"
 
+# 没有 tunnel 就没有可用的入口，DNS 与 cloudflared 配置都跳过。
+if [ -z "$TUNNEL_ID" ]; then
+    echo "!!! Cloudflare 不可用，跳过 DNS 与 cloudflared 配置（Tailscale/EasyTier 仍可用）"
+    : > /etc/hive/cloudflare-unavailable
+else
 # 添加 DNS CNAME 记录（幂等：先查再建）
 EXISTING_DNS=$(curl -s -G \
     "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records" \
@@ -225,9 +235,10 @@ else
         -H "Content-Type: application/json" \
         --data "{\"type\":\"CNAME\",\"name\":\"${TUNNEL_NAME}\",\"content\":\"${TUNNEL_ID}.cfargotunnel.com\",\"proxied\":true}")
     if ! echo "$DNS_RES" | grep -q '"success":true'; then
-        echo "!!! DNS record creation failed:"
+        echo "!!! DNS record creation failed (non-fatal):"
         echo "$DNS_RES"
-        exit 1
+        CLOUDFLARE_UNAVAILABLE=1
+        : > /etc/hive/cloudflare-unavailable
     fi
 fi
 echo ">>> DNS record OK: ${FULL_DOMAIN}"
@@ -244,6 +255,7 @@ ingress:
   - service: http_status:404
 EOF
 echo ">>> cloudflared config written."
+fi
 
 # ─────────────────────────────────────────────
 # 5. 写入节点信息汇总文件（运维查阅用）
@@ -278,7 +290,13 @@ echo ">>> node-info written to /etc/hive/node-info"
 echo ">>> Starting services..."
 systemctl enable --now hive-subscription-guard.timer
 systemctl enable --now xray
-systemctl enable --now cloudflared
+# 没有 tunnel 就没有 config.yml；enable 它只会让 ExecStartPre 永久等待，
+# 并在固件试启动确认时把整次升级判失败。
+if [ -f /etc/cloudflared/config.yml ]; then
+    systemctl enable --now cloudflared
+else
+    echo ">>> cloudflared 无配置，跳过启用（non-fatal）"
+fi
 systemctl enable --now frpc
 
 # Xray 用户同步定时器（从 registry 拉取订阅用户并注入 Xray，非致命）

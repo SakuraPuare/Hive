@@ -762,6 +762,22 @@ else firmware_confirm; fi
         # room for flock acquisition inside the unit's start timeout.
         self.assertLess(budget + 20 + 60 + 30, start)
 
+    def test_node_provisioned_without_cloudflare_still_confirms(self):
+        # provision-node.sh records a failed Cloudflare setup and skips enabling
+        # cloudflared, because the node has no config.yml to run. Waiting for
+        # that unit to become active would fail every firmware trial on such a
+        # node and roll the upgrade back forever.
+        runner = self.firmware_fixture()
+        self.run_script(runner, 'stage')
+        (self.root / 'etc/hive/cloudflare-unavailable').touch()
+        self.env['TEST_SLOT'] = 'B'
+        path = self.root / 'var/lib/hive/firmware-pending.json'
+        pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
+        path.write_text(json.dumps(pending))
+        self.mock('systemctl', '#!/bin/sh\n[ "$3" != cloudflared.service ]\n')
+        self.run_script(runner, 'confirm')
+        self.assertFalse(path.exists())
+
     def test_customer_firmware_confirms_with_xray_stopped(self):
         runner = self.firmware_fixture()
         self.run_script(runner, 'stage')

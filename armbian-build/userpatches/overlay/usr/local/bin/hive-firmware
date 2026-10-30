@@ -126,6 +126,12 @@ hive_tries 0' || log 'warning: hive_pending could not be cleared; the bootloader
     fi
     [ "$(cat /usr/lib/hive/firmware-version)" = "$version" ] || return 1
     for svc in NetworkManager.service nginx.service cloudflared.service easytier.service hive-subscription-guard.timer hive-updater.timer hive-command-agent.timer; do
+        # 没有 Cloudflare 凭证的节点由 provision-node.sh 记录在案并跳过启用。
+        # 它在管理面根本没有可确认的 cloudflared 通道，等它 active 就等于把
+        # 这台设备永久判为试启动失败。
+        if [ "$svc" = cloudflared.service ] && [ -f /etc/hive/cloudflare-unavailable ]; then
+            continue
+        fi
         systemctl is-active --quiet "$svc" || return 1
     done
     # Xray serves only operator-controlled exits. Customer images intentionally
