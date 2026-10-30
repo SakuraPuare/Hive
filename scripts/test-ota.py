@@ -63,6 +63,45 @@ class OTATests(base.DeviceRegressionTests):
         self.assertFalse((self.root / 'etc/systemd/system/xray.service').exists())
         self.assertFalse((self.root / 'etc/test-app').exists())
 
+    def probe_curl(self):
+        # First /ota-version fetch is the poll; every later one is the probe.
+        self.mock('curl', '''#!/usr/bin/env python3
+import json,os,sys,shutil
+from pathlib import Path
+r=Path(os.environ['HIVE_TEST_ROOT']);args=sys.argv[1:];url=args[-1]
+if url.endswith('/ota-version'):
+    seen=r/'probe-calls'
+    n=int(seen.read_text()) if seen.exists() else 0
+    seen.write_text(str(n+1))
+    if n: sys.exit(22)
+    print((r/'assignment.json').read_text())
+elif url.endswith('/ota-ack'):
+    payload=Path(args[args.index('--data-binary')+1][1:]).read_text()
+    with (r/'acks').open('a') as f:f.write(json.dumps(json.loads(payload))+'\\n')
+else:
+    shutil.copyfile(r/'bundle.tar.gz',args[args.index('-o')+1])
+''')
+
+    def test_broken_management_path_rolls_back_the_bundle(self):
+        self.bundle()
+        (self.root / 'etc/hive/device-token').write_text('test-token')
+        (self.root / 'etc/test-app').write_text('old version\n')
+        (self.root / 'etc/hive/ota-version').write_text('previous\n')
+        self.probe_curl()
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('management endpoint unreachable', result.stderr)
+        self.assertEqual((self.root / 'etc/test-app').read_text(), 'old version\n')
+        self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), 'previous\n')
+        self.assertFalse((self.root / 'var/lib/hive/ota-installed.json').exists())
+        self.assertEqual(json.loads((self.root / 'acks').read_text().splitlines()[-1])['status'], 'rolled_back')
+
+    def test_unregistered_device_skips_the_management_probe(self):
+        self.bundle()
+        self.probe_curl()
+        self.run_script(self.script('hive-updater'))
+        self.assertEqual((self.root / 'etc/test-app').read_text(), 'installed safely\n')
+        self.assertEqual(json.loads((self.root / 'acks').read_text().splitlines()[-1])['status'], 'done')
+
     def repack(self, manifest):
         payload = self.root / 'payload'
         (payload / 'manifest.json').write_text(json.dumps(manifest))

@@ -160,8 +160,34 @@ ota_service_healthy() {
     [ "$type" = oneshot ] && [ "$result" = success ] && [ "$status" = 0 ]
 }
 
+ota_management_probe() {
+    # Unit state cannot tell a working tunnel from a broken one: xray/mihomo/
+    # frp configs, routing and unit dependencies are all writable by an
+    # application bundle, and a broken path leaves the unit "active" while the
+    # device is unreachable. Probe the same authenticated endpoint the updater
+    # used to receive this assignment. hive-node-info is a protected file, so
+    # the bundle under test cannot fake the identity this probe reads.
+    # An unregistered device has no management path to verify.
+    (
+        local mac auth
+        # An unregistered device has no management path to verify.
+        [ -s /etc/hive/device-token ] || return 0
+        auth=$(cat /etc/hive/device-token) || return 1
+        [ -r /etc/hive/config.env ] || return 1
+        source /etc/hive/config.env 2>/dev/null || return 1
+        source /usr/local/bin/hive-node-info || return 1
+        hive_load_node_info /etc/hive/node-info || return 1
+        mac=$(printf '%s' "${MAC:-}" | tr 'A-F' 'a-f' | tr -d ':-')
+        [[ "$mac" =~ ^[0-9a-f]{12}$ ]] || return 1
+        [ -n "${NODE_REGISTRY_URL:-}" ] || return 1
+        curl --proto '=http,https' -fsS --connect-timeout 3 --max-time 8 \
+            -H "Authorization: Bearer $auth" \
+            "${NODE_REGISTRY_URL%/}/nodes/$mac/ota-version" >/dev/null
+    )
+}
+
 ota_health_check() {
-    local manifest="$1" payload="$2" svc elapsed=0 healthy grace timeout_sec
+    local manifest="$1" payload="$2" svc elapsed=0 healthy grace timeout_sec probe_failed=false
     grace=$(jq -r '.health_grace_seconds // 5' "$manifest")
     timeout_sec=$(jq -r '.health_timeout_seconds // 30' "$manifest")
     [[ "$grace" =~ ^[0-9]+$ && "$timeout_sec" =~ ^[0-9]+$ ]] || return 1
@@ -173,6 +199,13 @@ ota_health_check() {
             [[ "$svc" =~ ^[A-Za-z0-9_@.-]+$ && "$svc" != -* ]] || return 1
             ota_service_healthy "$svc" || healthy=false
         done < <(jq -r '(.health_services // .restart_services // [])[]' "$manifest")
+        if ! ota_management_probe; then
+            healthy=false
+            if [ "$probe_failed" = false ]; then
+                echo "health check: management endpoint unreachable (registry probe failed)" >&2
+                probe_failed=true
+            fi
+        fi
         if "$healthy"; then
             [ ! -f "$payload/hooks/health-check.sh" ] || timeout "$timeout_sec" bash "$payload/hooks/health-check.sh" || return 1
             return 0
