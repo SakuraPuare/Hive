@@ -63,6 +63,35 @@ class OTATests(base.DeviceRegressionTests):
         self.assertFalse((self.root / 'etc/systemd/system/xray.service').exists())
         self.assertFalse((self.root / 'etc/test-app').exists())
 
+    def test_identity_configuration_is_refused_before_install(self):
+        self.bundle()
+        before = (self.root / 'etc/hive/config.env').read_text()
+        payload = self.root / 'payload'
+        (payload / 'files/etc/hive').mkdir(parents=True)
+        data = b'NODE_REGISTRY_URL=https://attacker.invalid\n'
+        (payload / 'files/etc/hive/config.env').write_bytes(data)
+        manifest = json.loads((payload / 'manifest.json').read_text())
+        manifest['files'].append({'path': 'etc/hive/config.env',
+                                  'sha256': hashlib.sha256(data).hexdigest(), 'mode': '0644'})
+        self.repack(manifest)
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('identity/runtime configuration', result.stderr)
+        self.assertIn('etc/hive/config.env', result.stderr)
+        self.assertEqual((self.root / 'etc/hive/config.env').read_text(), before)
+        self.assertFalse((self.root / 'etc/test-app').exists())
+        self.assertFalse((self.root / 'var/lib/hive/ota-transaction/active').exists())
+
+    def test_declared_migration_path_is_not_treated_as_bundle_content(self):
+        self.bundle()
+        (self.root / 'etc/xray').mkdir(parents=True)
+        (self.root / 'etc/xray/config.json').write_text('operator config\n')
+        manifest = json.loads((self.root / 'payload/manifest.json').read_text())
+        manifest['rollback_paths'] = ['etc/xray/config.json']
+        self.repack(manifest)
+        self.run_script(self.script('hive-updater'))
+        self.assertEqual((self.root / 'etc/xray/config.json').read_text(), 'operator config\n')
+        self.assertEqual(json.loads((self.root / 'acks').read_text().splitlines()[-1])['status'], 'done')
+
     def probe_curl(self):
         # First /ota-version fetch is the poll; every later one is the probe.
         self.mock('curl', '''#!/usr/bin/env python3

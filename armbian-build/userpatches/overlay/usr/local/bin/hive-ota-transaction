@@ -42,12 +42,21 @@ ota_save_ack() {
 }
 
 ota_prepare() {
-    local manifest="$1" assignment="$2" version="$3" path dest svc enabled active
+    local manifest="$1" assignment="$2" version="$3" path dest svc enabled active identity
     [ ! -f "$OTA_TX/active" ] || return 1
     rm -rf -- "$OTA_TX"
     mkdir -p "$OTA_TX/files" || return 1
     cp /usr/local/bin/hive-ota-transaction "$OTA_TX/recover.sh" || return 1
     cp "$manifest" "$OTA_TX/manifest.json" || return 1
+    # 身份与运行配置只能由签名 hook 迁移，包内容不能直接替换（与
+    # scripts/build-ota.sh 的 --include 限制一致）。hook 需要保护的文件用
+    # rollback_paths 声明：那只是备份，不安装内容。
+    identity=$(jq -r '[(.files[]?.path | select(type == "string"))]
+        | map(select(test("^etc/(hive|xray|mihomo|frp|ssh)/"))) | join(", ")' "$manifest") || return 1
+    if [ -n "$identity" ]; then
+        echo "Refusing identity/runtime configuration in OTA bundle: $identity (use a migration hook)" >&2
+        return 1
+    fi
     jq -n --arg a "$assignment" --arg v "$version" '{assignment:$a,version:$v}' > "$OTA_TX/task.json" || return 1
     jq '[.files[].path, (.rollback_paths[]?)] + ["etc/hive/ota-version", "var/lib/hive/ota-installed.json"] | unique' \
         "$manifest" > "$OTA_TX/paths.json" || return 1
