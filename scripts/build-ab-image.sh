@@ -53,7 +53,18 @@ trap cleanup EXIT
 mkdir "$WORK/source" "$WORK/root"
 SRC_LOOP=$(losetup --find --show --partscan --read-only "$SOURCE_IMAGE")
 udevadm settle
-SOURCE_ROOT=$(lsblk -ln -o NAME,FSTYPE "$SRC_LOOP" | awk '$2 == "ext4" {print "/dev/"$1; exit}')
+# Select the root filesystem, not merely the first ext4 partition. Armbian
+# puts /boot on its own ext4 partition (label armbi_boot) before root
+# (armbi_root), and ab-layout only exists in root: picking by filesystem type
+# alone selected the 512 MiB boot partition and failed the layout check even
+# on a correctly built image. Prefer the root label, then fall back to the
+# largest ext4 partition for images built without labels.
+SOURCE_ROOT=$(lsblk -ln -o NAME,FSTYPE,LABEL,SIZE "$SRC_LOOP" |
+    awk '$2 == "ext4" && $3 == "armbi_root" {print "/dev/"$1; exit}')
+if [ -z "$SOURCE_ROOT" ]; then
+    SOURCE_ROOT=$(lsblk -lnb -o NAME,FSTYPE,SIZE "$SRC_LOOP" |
+        awk '$2 == "ext4" && $3+0 > best {best = $3+0; dev = "/dev/"$1} END {if (dev) print dev}')
+fi
 [ -n "$SOURCE_ROOT" ] || { echo 'No ext4 root filesystem in source'; exit 1; }
 mount -o ro,noload "$SOURCE_ROOT" "$WORK/source"
 [ "$(cat "$WORK/source/usr/lib/hive/ab-layout")" = "$HIVE_LAYOUT" ] || { echo 'Source layout/board mismatch: build with HIVE_AB=yes first'; exit 1; }
