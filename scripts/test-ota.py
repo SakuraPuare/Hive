@@ -131,6 +131,22 @@ class OTATests(base.DeviceRegressionTests):
                 self.assertFalse((self.root / path).exists())
                 self.assertFalse((self.root / 'etc/test-app').exists())
 
+    def test_empty_health_services_still_checks_the_restarted_units(self):
+        self.bundle()
+        (self.root / 'etc/test-app').write_text('old version\n')
+        manifest = json.loads((self.root / 'payload/manifest.json').read_text())
+        manifest['health_services'] = []
+        manifest['restart_services'] = ['test.service']
+        self.repack(manifest)
+        self.mock('systemctl', '''#!/bin/sh
+[ "$1" != show ] || echo 123
+case "$1 $2 $3" in "is-active --quiet test.service") exit 3;; esac
+exit 0
+''')
+        self.run_script(self.script('hive-updater'), expected=1)
+        self.assertEqual((self.root / 'etc/test-app').read_text(), 'old version\n')
+        self.assertEqual(json.loads((self.root / 'acks').read_text().splitlines()[-1])['status'], 'rolled_back')
+
     def probe_curl(self):
         # First /ota-version fetch is the poll; every later one is the probe.
         self.mock('curl', '''#!/usr/bin/env python3

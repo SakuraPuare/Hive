@@ -210,10 +210,13 @@ ota_health_check() {
     sleep "$grace"
     while [ "$elapsed" -lt "$timeout_sec" ]; do
         healthy=true
+        # An empty health_services array must not disable unit checks: jq's //
+        # only falls back on null/false, so [] would silently check nothing.
         while IFS= read -r svc; do
             [[ "$svc" =~ ^[A-Za-z0-9_@.-]+$ && "$svc" != -* ]] || return 1
             ota_service_healthy "$svc" || healthy=false
-        done < <(jq -r '(.health_services // .restart_services // [])[]' "$manifest")
+        done < <(jq -r '(.health_services // []) as $h
+            | if ($h | length) > 0 then $h[] else (.restart_services // [])[] end' "$manifest")
         if ! ota_management_probe; then
             healthy=false
             if [ "$probe_failed" = false ]; then
