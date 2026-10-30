@@ -69,11 +69,12 @@ if [ -n "${NODE_REGISTRY_API_SECRET:-}" ]; then
 fi
 
 source /usr/local/bin/hive-ota-transaction
+ota_rollback false || { log "上次更新回滚未完成，停止安装"; exit 1; }
 # hive-data bind-mounts /var/lib/hive and /etc/hive from /data. Without it an
 # install lands in the rootfs slot and its backup/receipt vanish at the next
 # slot switch, so refuse instead of reporting a success that cannot survive.
+# Checked after recovery: an interrupted transaction must still be rolled back.
 ota_state_persistent || { log "持久化 /data 未挂载，拒绝 OTA（先修复 hive-data）"; exit 1; }
-ota_rollback false || { log "上次更新回滚未完成，停止安装"; exit 1; }
 
 if [ -f "${STATE_DIR}/firmware-pending.json" ]; then
     if [ "$(jq -r .boot_id "${STATE_DIR}/firmware-pending.json")" = "$(cat /proc/sys/kernel/random/boot_id)" ]; then
