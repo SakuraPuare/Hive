@@ -454,6 +454,28 @@ else firmware_confirm; fi
 ''')
         return runner
 
+    def test_environment_offsets_come_from_the_build_stamp(self):
+        # fw_setenv must write where the U-Boot in this image reads. Deriving the
+        # offsets from the build stamp keeps a single source of truth; a
+        # hardcoded copy silently strands firmware updates after any change.
+        self.firmware_fixture()
+        stamp = self.root / 'stamp'
+        stamp.write_text('CONFIG_ENV_IS_IN_MMC=y\nCONFIG_ENV_REDUNDANT=y\n'
+                         'CONFIG_ENV_SIZE=0x4000\nCONFIG_ENV_OFFSET=0x500000\n'
+                         'CONFIG_ENV_OFFSET_REDUND=0x600000\n')
+        runner = self.root / 'env-test'
+        runner.write_text('set -uo pipefail\nHIVE_UBOOT_ENV="' + str(stamp) + '"\n'
+                          'FW_DISK=/dev/mmcblk0\n'
+                          'log() { echo "$*"; }\n'
+                          'source "' + str(self.script('hive-firmware')) + '"\n'
+                          'firmware_environment_config\n')
+        result = self.run_script(runner)
+        self.assertEqual(result.stdout.strip(),
+                         '/dev/mmcblk0 0x500000 0x4000\n/dev/mmcblk0 0x600000 0x4000')
+        stamp.write_text('CONFIG_ENV_IS_IN_MMC=y\n')
+        result = self.run_script(runner, expected=1)
+        self.assertEqual(result.stdout, '')
+
     def test_write_verified_before_boot_switch(self):
         runner = self.firmware_fixture()
         self.run_script(runner, 'stage')

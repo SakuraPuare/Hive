@@ -8,6 +8,19 @@ FW_ENV=/run/hive-fw-env.config
 declare -F log >/dev/null || log() { echo "[hive-firmware] $*"; logger -t "hive-firmware" "$*" 2>/dev/null || true; }
 source /usr/local/bin/hive-board
 
+firmware_environment_config() {
+    # The offsets must match the U-Boot the image was built with, so derive them
+    # from the stamp that build wrote rather than repeating constants here. A
+    # mismatch makes fw_setenv write where U-Boot never reads.
+    local stamp="${HIVE_UBOOT_ENV:-/usr/lib/hive/uboot-env}" size offset redund
+    [ -r "$stamp" ] || return 1
+    size=$(sed -n 's/^CONFIG_ENV_SIZE=//p' "$stamp")
+    offset=$(sed -n 's/^CONFIG_ENV_OFFSET=//p' "$stamp")
+    redund=$(sed -n 's/^CONFIG_ENV_OFFSET_REDUND=//p' "$stamp")
+    [[ "$size" =~ ^0x[0-9a-fA-F]+$ && "$offset" =~ ^0x[0-9a-fA-F]+$ && "$redund" =~ ^0x[0-9a-fA-F]+$ ]] || return 1
+    printf '%s %s %s\n%s %s %s\n' "$FW_DISK" "$offset" "$size" "$FW_DISK" "$redund" "$size"
+}
+
 firmware_layout() {
     local root label part
     hive_detect_board || return 1
@@ -27,7 +40,7 @@ firmware_layout() {
         *) return 1;;
     esac
     # Use the actual boot disk, not a Linux mmc index assumed at build time.
-    printf '%s 0xc00000 0x8000\n%s 0xc10000 0x8000\n' "$FW_DISK" "$FW_DISK" > "$FW_ENV" || return 1
+    firmware_environment_config > "$FW_ENV" || { log '缺少 /usr/lib/hive/uboot-env，无法定位 U-Boot 环境（镜像不是以 HIVE_AB=yes 构建？）'; return 1; }
     [ "$(fw_printenv -c "$FW_ENV" -n hive_active)" = A ] || \
         [ "$(fw_printenv -c "$FW_ENV" -n hive_active)" = B ]
 }
