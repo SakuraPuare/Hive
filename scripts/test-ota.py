@@ -131,6 +131,30 @@ class OTATests(base.DeviceRegressionTests):
                 self.assertFalse((self.root / path).exists())
                 self.assertFalse((self.root / 'etc/test-app').exists())
 
+    def test_install_requires_the_persistent_data_mount(self):
+        # OTA backups and receipts live on /data (hive-data bind mounts). Without
+        # that mount an install would be reported as done but vanish at the next
+        # slot switch, and rollback would have nothing to restore.
+        self.bundle()
+        layout = self.root / 'ab-layout'
+        layout.write_text('nanopi-zero2-ab-v1\n')
+        self.mock('mountpoint', '#!/bin/sh\nexit 1\n')
+        script = self.script('hive-updater')
+        # The Harness does not relocate /usr/lib/hive, so point the guard at the
+        # sandbox marker instead of the host path.
+        helper = self.root / 'hive-ota-transaction'
+        helper.write_text(helper.read_text().replace('/usr/lib/hive/ab-layout', str(layout)))
+        result = self.run_script(script, expected=1)
+        self.assertIn('/data', result.stdout)
+        self.assertFalse((self.root / 'etc/test-app').exists())
+        self.assertFalse((self.root / 'var/lib/hive/ota-transaction/active').exists())
+        # The same bundle installs once the persistent store is mounted.
+        self.mock('mountpoint', '#!/bin/sh\nexit 0\n')
+        script = self.script('hive-updater')
+        helper.write_text(helper.read_text().replace('/usr/lib/hive/ab-layout', str(layout)))
+        self.run_script(script)
+        self.assertEqual((self.root / 'etc/test-app').read_text(), 'installed safely\n')
+
     def test_empty_health_services_still_checks_the_restarted_units(self):
         self.bundle()
         (self.root / 'etc/test-app').write_text('old version\n')
@@ -473,6 +497,22 @@ else firmware_confirm; fi
         self.mock('findmnt', '#!/bin/sh\nexit 0\n')
         self.run_script(runner, 'stage', expected=1)
         self.assertFalse((self.root / 'environment-writes').exists())
+
+    def test_staging_requires_the_persistent_data_mount(self):
+        # The pending marker and the receipt live on /data; arming a trial whose
+        # marker the next slot cannot read would strand the update unconfirmed.
+        runner = self.firmware_fixture()
+        layout = self.root / 'image-tree/usr/lib/hive/ab-layout'
+        helper = self.root / 'hive-ota-transaction'
+        helper.write_text(helper.read_text().replace('/usr/lib/hive/ab-layout', str(layout)))
+        self.mock('mountpoint', '#!/bin/sh\nexit 1\n')
+        self.run_script(runner, 'stage', expected=1)
+        self.assertFalse((self.root / 'environment-writes').exists())
+        self.assertFalse((self.root / 'var/lib/hive/firmware-pending.json').exists())
+        helper = self.root / 'hive-ota-transaction'
+        self.mock('mountpoint', '#!/bin/sh\nexit 0\n')
+        self.run_script(runner, 'stage')
+        self.assertTrue((self.root / 'var/lib/hive/firmware-pending.json').exists())
 
     def test_new_boot_is_confirmed_only_after_reboot_and_health_checks(self):
         runner = self.firmware_fixture()

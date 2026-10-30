@@ -42,6 +42,9 @@ firmware_stage() {
     local payload="$1" version="$2" sha="$3" assignment="$4" manifest image size expected actual
     manifest="$payload/manifest.json"
     firmware_layout || { log '设备没有受支持的 A/B 分区或引导器'; return 1; }
+    # Firmware pending/receipt live on /data. Staging without it would arm a
+    # trial that the next slot can never confirm (its /var/lib/hive is empty).
+    ota_state_persistent || { log '持久化 /data 未挂载，拒绝固件更新'; return 1; }
     [ ! -e "$FW_PENDING" ] && [ ! -f "$OTA_TX/active" ] || return 1
     [ "$(fw_printenv -c "$FW_ENV" -n hive_active)" = "$FW_SLOT" ] || return 1
     [ -z "$(fw_printenv -c "$FW_ENV" -n hive_pending 2>/dev/null)" ] || return 1

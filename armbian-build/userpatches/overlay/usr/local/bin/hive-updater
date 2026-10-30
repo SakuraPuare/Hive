@@ -30,6 +30,7 @@ RECEIPT_FILE="${STATE_DIR}/ota-installed.json"
 cleanup() { [ -z "$WORK_DIR" ] || rm -rf -- "$WORK_DIR"; }
 trap cleanup EXIT
 
+
 [ -f "${CONFIG_ENV}" ] && source "${CONFIG_ENV}" 2>/dev/null
 [ ! -s /etc/hive/device-token ] || NODE_REGISTRY_API_SECRET=$(cat /etc/hive/device-token)
 source /usr/local/bin/hive-node-info
@@ -68,6 +69,10 @@ if [ -n "${NODE_REGISTRY_API_SECRET:-}" ]; then
 fi
 
 source /usr/local/bin/hive-ota-transaction
+# hive-data bind-mounts /var/lib/hive and /etc/hive from /data. Without it an
+# install lands in the rootfs slot and its backup/receipt vanish at the next
+# slot switch, so refuse instead of reporting a success that cannot survive.
+ota_state_persistent || { log "持久化 /data 未挂载，拒绝 OTA（先修复 hive-data）"; exit 1; }
 ota_rollback false || { log "上次更新回滚未完成，停止安装"; exit 1; }
 
 if [ -f "${STATE_DIR}/firmware-pending.json" ]; then
