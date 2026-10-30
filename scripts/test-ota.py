@@ -556,7 +556,7 @@ class R28SFirmwareTests(FirmwareTests):
 class BootPolicyTests(unittest.TestCase):
     board = 'nanopi-zero2'
 
-    def boot(self, state, fail_load='', fail_save=False):
+    def boot(self, state, fail_load='', fail_save=False, bootpath=None):
         # Execute the actual embedded Hush script using compatible Bash syntax;
         # substitute U-Boot commands, not the selection algorithm.
         script = subprocess.check_output([str(base.REPO / 'scripts/render-ab-boot.sh'), self.board], text=True)
@@ -565,7 +565,11 @@ setenv() { local key="$1"; shift; printf -v "$key" '%s' "$*"; }
 setexpr() { printf -v "$1" '%s' "$((${2} - ${4}))"; }
 fdt() {
     [ "$1" != get ] && return 0
-    case "$3" in hive_bootpath|hive_sdpath) setenv "$3" /soc/mmc@ffc30000;; hive_emmcpath) setenv "$3" /soc/mmc@ffbf0000;; esac
+    case "$3" in
+        hive_bootpath) setenv "$3" "${BOOTPATH:-/soc/mmc@ffc30000}";;
+        hive_sdpath) setenv "$3" /soc/mmc@ffc30000;;
+        hive_emmcpath) setenv "$3" /soc/mmc@ffbf0000;;
+    esac
 }
 mmc() { return 0; }
 env() { return 0; }
@@ -581,7 +585,7 @@ booti() { echo "BOOT:$hive_slot"; exit 0; }
 reset() { echo RESET; exit 9; }
 '''
         env = dict(os.environ, hive_active=state[0], hive_pending=state[1], hive_tries=str(state[2]),
-                   FAIL_LOAD_SLOTS=fail_load, FAIL_SAVE=str(int(fail_save)))
+                   FAIL_LOAD_SLOTS=fail_load, FAIL_SAVE=str(int(fail_save)), **({'BOOTPATH': bootpath} if bootpath else {}))
         result = subprocess.run(['bash'], input=mock+script, env=env, text=True, capture_output=True)
         states = [line.split(':')[1:] for line in result.stdout.splitlines() if line.startswith('STATE:')]
         booted = [line.split(':')[1] for line in result.stdout.splitlines() if line.startswith('BOOT:')]
@@ -628,6 +632,16 @@ reset() { echo RESET; exit 9; }
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(slot, 'B')
         self.assertEqual(state, ['A', '', '0'])
+
+    def test_unsupported_boot_medium_scans_before_resetting(self):
+        # USB rescue or rockusb: neither slot is addressable, but resetting
+        # straight away repeats this branch forever.
+        _, slot, result = self.boot(['A', '', '0'], bootpath='/soc/usb@ff000000')
+        self.assertIsNone(slot)
+        self.assertEqual(result.returncode, 9)
+        self.assertIn('Unsupported boot medium', result.stdout)
+        self.assertIn('BOOTFLOW', result.stdout)
+        self.assertLess(result.stdout.index('BOOTFLOW'), result.stdout.index('RESET'))
 
     def test_both_slots_unbootable_scan_before_reset(self):
         _, slot, result = self.boot(['B', '', '0'], fail_load='A,B')

@@ -10,7 +10,10 @@ fdt get value hive_sdpath /aliases mmc1;
 fdt get value hive_emmcpath /aliases mmc0;
 if test "${hive_bootpath}" = "${hive_sdpath}"; then setenv hive_mmc 1; else
     if test "${hive_bootpath}" = "${hive_emmcpath}"; then setenv hive_mmc 0; else
-        echo Unsupported boot medium; reset;
+        # Booted from another medium (USB rescue, rockusb): the mmc index is
+        # unknown, so neither slot can be addressed. Scan for bootable media
+        # first; a bare reset here would loop this same branch forever.
+        echo Unsupported boot medium; bootflow scan -lb; reset;
     fi;
 fi;
 mmc dev ${hive_mmc}; mmc rescan; mmc rescan;
