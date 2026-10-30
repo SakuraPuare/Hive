@@ -113,6 +113,8 @@ make build-ota VERSION=1.0.0
 
 此外，应用包里的 `etc/systemd/system/**` 单元若声明 `FailureAction=`/`JobTimeoutAction=` 为 `reboot|poweroff|halt` 系列，`hive-updater` 在写入前直接拒绝：那会让任意服务故障变成整机重启，而用户态没有任何恢复入口。
 
+身份与运行配置同样不能作为包内容下发：`etc/hive/**`、`etc/xray/**`、`etc/mihomo/**`、`etc/frp/**`、`etc/ssh/**` 在 `ota_prepare` 里被拒绝（`build-ota.sh --include` 也拦），只能用签名 hook 迁移。hook 需要保护的文件通过 `--backup`/`rollback_paths` 声明，那只是备份与回滚声明，不安装内容，因此不受此限制。
+
 `hive-data` 挂载失败不再由 unit 直接 `FailureAction=reboot`：脚本内部重试 3 次，仍未成功时最多重启 3 次（计数存于 `/usr/lib/hive/data-failures`，成功即清除），之后保持运行以便人工介入。
 
 更新前，`/var/lib/hive/ota-transaction` 保存旧文件、权限、原服务启用/运行状态和旧版本记录；备份刷盘后才允许修改。新文件逐个原子替换，之后执行有超时的 hook、服务重启和健康检查。成功后才提交版本和完成回执。失败时恢复全部受管文件，删除本次新增文件，恢复服务状态。恢复本身失败会保留备份并停止新更新，结果提示需要人工恢复。
