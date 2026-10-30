@@ -631,6 +631,17 @@ reset() { echo RESET; exit 9; }
         booted = [line.split(':')[1] for line in result.stdout.splitlines() if line.startswith('BOOT:')]
         return (states[-1] if states else state), (booted[-1] if booted else None), result
 
+    def test_corrupt_try_counter_still_boots_the_pending_slot(self):
+        # A counter the installer never writes ("x", an empty value, a negative
+        # number) must not silently discard an armed trial: boot the pending
+        # slot once and let the normal attempt accounting take over.
+        for tries in ['x', '3abc', '', '-1']:
+            with self.subTest(tries=tries):
+                state, slot, result = self.boot(['A', 'B', tries])
+                self.assertEqual(slot, 'B', result.stdout)
+                self.assertEqual(state[1], 'B')
+                self.assertEqual(int(state[2]), 0)
+
     def test_unconfirmed_kernel_falls_back_after_three_attempts(self):
         state = ['A', 'B', '3']
         for remaining in [2, 1, 0]:

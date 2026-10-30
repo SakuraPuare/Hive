@@ -25,6 +25,14 @@ if test "${hive_active}" != A && test "${hive_active}" != B; then
 fi;
 setenv hive_boot_slot 'if test "${hive_slot}" = A; then setenv hive_part 1; else setenv hive_part 2; fi; if part uuid mmc ${hive_mmc}:${hive_part} hive_rootuuid && load mmc ${hive_mmc}:${hive_part} ${kernel_addr_r} /boot/Image && load mmc ${hive_mmc}:${hive_part} ${ramdisk_addr_r} /boot/uInitrd && load mmc ${hive_mmc}:${hive_part} ${fdt_addr_r} /boot/dtb/rockchip/rk3528-nanopi-zero2.dtb; then setenv bootargs console=ttyS0,1500000 root=PARTUUID=${hive_rootuuid} rootfstype=ext4 rootwait=60 rw panic=10 oops=panic softlockup_panic=1 hive.slot=${hive_slot}; booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}; fi';
 if test "${hive_pending}" = A || test "${hive_pending}" = B; then
+    # Hush's `test -gt` cannot tell a digit from a corrupted value: "x" or an
+    # empty counter made the comparison fail, so the armed trial was dropped and
+    # the freshly written slot was never booted. Normalise anything outside the
+    # counter values the installer writes to one bounded attempt.
+    if test "${hive_tries}" != 0 && test "${hive_tries}" != 1 \
+        && test "${hive_tries}" != 2 && test "${hive_tries}" != 3; then
+        setenv hive_tries 1;
+    fi;
     if test "${hive_tries}" -gt 0; then
         setenv hive_slot ${hive_pending}; setexpr hive_tries ${hive_tries} - 1;
         if saveenv; then run hive_boot_slot; fi;
