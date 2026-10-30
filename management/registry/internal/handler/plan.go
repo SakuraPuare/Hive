@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -455,22 +454,14 @@ func (h *Handler) serveCustomerSubscription(w http.ResponseWriter, r *http.Reque
 	}
 	if !vless {
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.yaml"`, planName))
-		fmt.Fprint(w, h.buildGroupClashYAML(planName, filtered, sub.XrayUUID))
+		fmt.Fprint(w, buildFullClashYAML(planName, filtered, h.clashRenderOptions(sub.XrayUUID)))
 		return
 	}
 	var links []string
 	for _, n := range filtered {
-		host := stripScheme(n.CFURL)
-		if host == "" {
-			continue
+		if link := vlessLink(n, sub.XrayUUID, h.Config.XrayPath, h.Config.CFPreferredHost); link != "" {
+			links = append(links, link)
 		}
-		params := url.Values{}
-		params.Set("type", "ws")
-		params.Set("security", "tls")
-		params.Set("sni", host)
-		params.Set("host", host)
-		params.Set("path", fmt.Sprintf("/%s?ed=2560", h.Config.XrayPath))
-		links = append(links, fmt.Sprintf("vless://%s@%s:443?%s#%s", sub.XrayUUID, host, params.Encode(), url.PathEscape(buildNodeName(n))))
 	}
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.txt"`, planName))
 	fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n"))))

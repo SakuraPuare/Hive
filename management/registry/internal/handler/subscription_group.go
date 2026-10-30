@@ -25,10 +25,15 @@ type ResetTokenResponse struct {
 	Token string `json:"token"`
 }
 
-// buildGroupClashYAML generates a group-specific Clash YAML.
-// overrideUUID, when non-empty, forces all proxies to use that UUID (per-subscription).
-func (h *Handler) buildGroupClashYAML(groupName string, nodes []model.Node, overrideUUID string) string {
-	return buildFullClashYAML(groupName, nodes, h.Config.XrayPath, overrideUUID)
+// clashRenderOptions assembles the render options shared by every client-facing
+// subscription config: the Xray WS path, the optional per-subscription UUID, and
+// the optional Cloudflare 优选 dial host.
+func (h *Handler) clashRenderOptions(overrideUUID string) clashOptions {
+	return clashOptions{
+		XrayPath:      h.Config.XrayPath,
+		OverrideUUID:  overrideUUID,
+		PreferredHost: h.Config.CFPreferredHost,
+	}
 }
 
 // HandleListGroups handles GET /admin/subscription-groups

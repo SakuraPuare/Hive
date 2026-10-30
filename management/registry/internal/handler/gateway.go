@@ -143,13 +143,19 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 		all = nil
 		direction = "blocked"
 	}
-	yaml := buildGatewayClashYAML(
-		fmt.Sprintf("gateway %s", self.Hostname),
-		h.Config.XrayPath,
-		h.gatewaySecret(mac),
-		"/var/www/metacubexd",
-		mac, direction, upstreamMode, upstreamMACs, all, overrideUUID,
-	)
+	yaml := buildGatewayClashYAML(gatewayClashArgs{
+		Title:         fmt.Sprintf("gateway %s", self.Hostname),
+		XrayPath:      h.Config.XrayPath,
+		Secret:        h.gatewaySecret(mac),
+		DashboardPath: "/var/www/metacubexd",
+		SelfMAC:       mac,
+		Direction:     direction,
+		UpstreamMode:  upstreamMode,
+		UpstreamMACs:  upstreamMACs,
+		AllNodes:      all,
+		OverrideUUID:  overrideUUID,
+		PreferredHost: h.Config.CFPreferredHost,
+	})
 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Hive-Lease-Seconds", fmt.Sprint(lease))

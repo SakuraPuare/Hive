@@ -90,6 +90,11 @@ DB_MAX_IDLE=3
 # xray path（需与节点 xray config 一致）
 XRAY_PATH=ray
 
+# Cloudflare 优选地址（可选，留空则订阅直连各节点自己的隧道域名）
+# 只替换 TCP 拨号地址：TLS SNI 与 WebSocket Host 仍是节点自己的域名，
+# 由 Cloudflare 按 SNI 把连接路由到对应隧道。所有节点必须同一 CF zone。
+CF_PREFERRED_HOST=cf.example.com
+
 # 管理操作认证（PATCH/DELETE 接口，留空关闭认证）
 API_SECRET=CHANGE_ME_ADMIN_SECRET
 EOF
