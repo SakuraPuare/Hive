@@ -242,6 +242,41 @@ seed_path "$base" etc/hive || exit 1
         self.mock('mountpoint', '#!/bin/sh\nexit 0\n')
         self.run_script(script)
 
+    def test_bundle_with_an_unparsable_script_rolls_back(self):
+        # A bundle may legitimately ship a new hive-updater: that is how the
+        # controller itself is deployed. But a truncated or hand-edited script
+        # would be committed as done, and the timer would then fail on every
+        # run -- the rollback engine only runs after a *failure*, which never
+        # happens once the broken file is the thing doing the installing.
+        self.bundle()
+        (self.root / 'usr/local/bin').mkdir(parents=True, exist_ok=True)
+        controller = self.root / 'usr/local/bin/hive-updater'
+        controller.write_text('#!/bin/bash\nexit 0\n')
+        (self.root / 'etc/test-app').write_text('old version\n')
+        payload = self.root / 'payload'
+        (payload / 'files/usr/local/bin').mkdir(parents=True)
+        broken = b'#!/bin/bash\nif [ ; then\n'
+        (payload / 'files/usr/local/bin/hive-updater').write_bytes(broken)
+        manifest = json.loads((payload / 'manifest.json').read_text())
+        manifest['files'].append({'path': 'usr/local/bin/hive-updater',
+                                  'sha256': hashlib.sha256(broken).hexdigest(),
+                                  'mode': '0755'})
+        (payload / 'manifest.json').write_text(json.dumps(manifest))
+        key = self.root / 'signing.pem'
+        subprocess.run(['openssl', 'pkeyutl', '-sign', '-inkey', str(key),
+                        '-rawin', '-in', str(payload / 'manifest.json'),
+                        '-out', str(payload / 'manifest.sig')], check=True, capture_output=True)
+        with tarfile.open(self.root / 'bundle.tar.gz', 'w:gz') as archive:
+            archive.add(payload, arcname='bundle')
+        assignment = json.loads((self.root / 'assignment.json').read_text())
+        assignment['sha256'] = hashlib.sha256((self.root / 'bundle.tar.gz').read_bytes()).hexdigest()
+        (self.root / 'assignment.json').write_text(json.dumps(assignment))
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('语法', result.stdout)
+        self.assertEqual(controller.read_text(), '#!/bin/bash\nexit 0\n')
+        self.assertEqual((self.root / 'etc/test-app').read_text(), 'old version\n')
+        self.assertFalse((self.root / 'var/lib/hive/ota-installed.json').exists())
+
     def offline_builder(self):
         # Relocate the real builder, keeping its overlay input and isolating output.
         source = (REPO / 'scripts/build-ota.sh').read_text()

@@ -272,6 +272,23 @@ do_install() {
         sed -n '1,50p' "${WORK_DIR}/pre-install.log" | while IFS= read -r line; do log "${line}"; done
     fi
 
+    # ── 脚本语法预检 ─────────────────────────────────────────────────
+    # 包可以把 hive-updater 自己换掉（控制器本来就靠 OTA 迭代）。语法坏掉的
+    # 副本一旦落地并提交，之后每次定时任务都在解析阶段失败，而回滚引擎只在
+    # 安装“失败”时才跑——装成功了就再没有失败可言。所以在动任何文件之前，
+    # 对包里的 shell 脚本先做一次解析。
+    local shebang
+    for i in $(seq 0 $((file_count - 1))); do
+        src="${payload}/files/$(jq -r ".files[$i].path" "${manifest}")"
+        [ -f "${src}" ] || continue
+        shebang=$(head -n 1 -- "${src}" 2>/dev/null)
+        case "${shebang}" in
+            '#!'*bash*|'#!'*/sh|'#!'*' sh')
+                bash -n -- "${src}" 2>/dev/null \
+                    || { log "脚本语法错误: $(jq -r ".files[$i].path" "${manifest}")"; return 1; } ;;
+        esac
+    done
+
     # ── 原子安装文件 ─────────────────────────────────────────────────
     local installed=0 fmode dest dest_dir dest_tmp
     for i in $(seq 0 $((file_count - 1))); do
