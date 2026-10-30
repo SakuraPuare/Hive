@@ -245,6 +245,74 @@ exit 0
         timeout = int(re.search(r'^TimeoutStartSec=(\d+)', unit, re.M).group(1))
         self.assertGreater(timeout, budget * 1.4)
 
+    def ab_plan(self, *args, env=None):
+        source = self.root / 'source.img'
+        source.write_bytes(b'')
+        extra = dict(self.env)
+        extra['HIVE_AB_PLAN_ONLY'] = '1'
+        if env:
+            extra.update(env)
+        r = subprocess.run(['bash', str(REPO / 'scripts/build-ab-image.sh'), str(source),
+                            str(self.root / 'out'), '1.0.0', *args],
+                           env=extra, capture_output=True, text=True)
+        return r
+
+    def test_ab_image_geometry_matches_the_runtime_contract(self):
+        # hive-firmware refuses a disk whose first partition does not start at
+        # 32768, and the boot script reserves the first 16 MiB for GPT, U-Boot
+        # and both environment copies. build-ab-image.sh must lay out exactly
+        # that, so the numbers are checked against the runtime, not repeated.
+        r = self.ab_plan('nanopi-zero2')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        plan = dict(line.split('=', 1) for line in r.stdout.split())
+        start_a = int(plan['start_a'])
+        slot_mib = int(plan['slot_mib'])
+        slot_sectors = int(plan['slot_sectors'])
+        self.assertEqual(slot_sectors, slot_mib * 2048)
+        self.assertEqual(int(plan['start_b']), start_a + slot_sectors)
+        self.assertEqual(int(plan['start_data']), start_a + 2 * slot_sectors)
+        self.assertEqual(int(plan['factory_mib']),
+                         int(plan['boot_area_mib']) + 2 * slot_mib + int(plan['data_mib']) + 1)
+        firmware = (BIN / 'hive-firmware').read_text()
+        runtime_start = re.search(r'p1/start"\)"\s*=\s*(\d+)\s*\]', firmware)
+        self.assertIsNotNone(runtime_start)
+        self.assertEqual(int(runtime_start.group(1)), start_a)
+        # The bootloader must fit in the reserved area ahead of the first
+        # partition, otherwise flashing it overwrites slot A's filesystem.
+        self.assertLess(12 * 1024 * 1024, int(plan['boot_area_mib']) * 1024 * 1024)
+
+    def test_ab_image_rejects_impossible_geometry(self):
+        for env in [{'HIVE_AB_SLOT_MIB': '512'}, {'HIVE_AB_DATA_MIB': '1024'},
+                    {'HIVE_AB_SLOT_MIB': '4g'}, {'HIVE_AB_DATA_MIB': '8192x'}]:
+            with self.subTest(env=env):
+                r = self.ab_plan('nanopi-zero2', env=env)
+                self.assertNotEqual(r.returncode, 0, f'{env} was accepted')
+        # An unset or empty override means "use the default", not "zero".
+        r = self.ab_plan('nanopi-zero2', env={'HIVE_AB_SLOT_MIB': '', 'HIVE_AB_DATA_MIB': ''})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        plan = dict(line.split('=', 1) for line in r.stdout.split())
+        self.assertEqual((plan['slot_mib'], plan['data_mib']), ('4096', '8192'))
+        for version in ['../escape', '.hidden', 'has space', 'x' * 65]:
+            with self.subTest(version=version):
+                source = self.root / 'source.img'
+                source.write_bytes(b'')
+                r = subprocess.run(['bash', str(REPO / 'scripts/build-ab-image.sh'),
+                                    str(source), str(self.root / 'out'), version, 'nanopi-zero2'],
+                                   env=dict(self.env, HIVE_AB_PLAN_ONLY='1'),
+                                   capture_output=True, text=True)
+                self.assertNotEqual(r.returncode, 0, f'version {version!r} was accepted')
+
+    def test_ab_image_refuses_to_run_without_root(self):
+        if os.geteuid() == 0:
+            self.skipTest('running as root')
+        source = self.root / 'source.img'
+        source.write_bytes(b'')
+        r = subprocess.run(['bash', str(REPO / 'scripts/build-ab-image.sh'), str(source),
+                            str(self.root / 'out'), '1.0.0', 'nanopi-zero2'],
+                           env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('sudo', r.stdout + r.stderr)
+
     def test_boot_policy_contains_matching_kernel_dtb(self):
         for board, dtb in [('nanopi-zero2','rk3528-nanopi-zero2.dtb'), ('nanopi-r28s','rk3528-nanopi-rev03.dtb')]:
             text = subprocess.check_output([str(REPO/'scripts/render-ab-boot.sh'),board],text=True)

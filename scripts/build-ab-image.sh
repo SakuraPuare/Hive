@@ -9,12 +9,30 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$SCRIPT_DIR/../armbian-build/userpatches/overlay/usr/local/bin/hive-board"
 hive_board_config "${4:-nanopi-zero2}" || { echo 'Unsupported A/B board'; exit 1; }
 [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || exit 1
-[ "$EUID" -eq 0 ] || { echo 'Run with sudo (loop mounts are required).'; exit 1; }
 [ -f "$SOURCE_IMAGE" ] && [ ! -b "$SOURCE_IMAGE" ] || exit 1
 SLOT_MIB=${HIVE_AB_SLOT_MIB:-4096}
 DATA_MIB=${HIVE_AB_DATA_MIB:-8192}
 [[ "$SLOT_MIB" =~ ^[0-9]+$ && "$DATA_MIB" =~ ^[0-9]+$ ]] || exit 1
 [ "$SLOT_MIB" -ge 1024 ] && [ "$DATA_MIB" -ge 2048 ] || exit 1
+# Partition geometry is defined here and nowhere else. hive-firmware refuses a
+# disk whose first partition does not start at 32768, and the boot script
+# reserves the first 16 MiB for GPT, U-Boot and both environment copies, so both
+# numbers are part of the on-disk contract rather than local choices.
+START_A=32768
+SLOT_SECTORS=$((SLOT_MIB*2048))
+START_B=$((START_A+SLOT_SECTORS))
+START_DATA=$((START_B+SLOT_SECTORS))
+BOOT_AREA_MIB=16
+FACTORY_MIB=$((BOOT_AREA_MIB+2*SLOT_MIB+DATA_MIB+1))
+# Report the plan without touching a device. Loop mounts need root; the
+# arithmetic does not, and a test can hold these numbers to the runtime checks.
+if [ "${HIVE_AB_PLAN_ONLY:-}" = 1 ]; then
+    printf 'board=%s\nversion=%s\nslot_mib=%s\ndata_mib=%s\nboot_area_mib=%s\nstart_a=%s\nslot_sectors=%s\nstart_b=%s\nstart_data=%s\nfactory_mib=%s\n' \
+        "$HIVE_BOARD" "$VERSION" "$SLOT_MIB" "$DATA_MIB" "$BOOT_AREA_MIB" \
+        "$START_A" "$SLOT_SECTORS" "$START_B" "$START_DATA" "$FACTORY_MIB"
+    exit 0
+fi
+[ "$EUID" -eq 0 ] || { echo 'Run with sudo (loop mounts are required).'; exit 1; }
 for tool in losetup mount umount sfdisk mkfs.ext4 e2fsck resize2fs tune2fs rsync jq strings; do
     command -v "$tool" >/dev/null || { echo "Missing dependency: $tool"; exit 1; }
 done
@@ -68,11 +86,7 @@ losetup -d "$ROOT_LOOP"; ROOT_LOOP=""
 e2fsck -pf "$WORK/rootfs.img" || [ "$?" -eq 1 ]
 # Ship only the occupied filesystem; the installer expands it to slot size.
 resize2fs -M "$WORK/rootfs.img"
-START_A=32768
-SLOT_SECTORS=$((SLOT_MIB*2048))
-START_B=$((START_A+SLOT_SECTORS))
-START_DATA=$((START_B+SLOT_SECTORS))
-truncate -s "$((16+2*SLOT_MIB+DATA_MIB+1))M" "$WORK/factory.img"
+truncate -s "${FACTORY_MIB}M" "$WORK/factory.img"
 sfdisk "$WORK/factory.img" <<EOF
 label: gpt
 unit: sectors
@@ -83,13 +97,13 @@ EOF
 dd if="$UBOOT" of="$WORK/factory.img" bs=512 seek=64 conv=notrunc status=none
 cp --sparse=always "$WORK/rootfs.img" "$WORK/rootA.img"
 resize2fs "$WORK/rootA.img" "${SLOT_MIB}M"
-dd if="$WORK/rootA.img" of="$WORK/factory.img" bs=1M seek=16 conv=notrunc,sparse status=none
+dd if="$WORK/rootA.img" of="$WORK/factory.img" bs=1M seek=$BOOT_AREA_MIB conv=notrunc,sparse status=none
 cp --sparse=always "$WORK/rootA.img" "$WORK/rootB.img"
 tune2fs -U random -L hive-rootB "$WORK/rootB.img"
-dd if="$WORK/rootB.img" of="$WORK/factory.img" bs=1M seek=$((16+SLOT_MIB)) conv=notrunc,sparse status=none
+dd if="$WORK/rootB.img" of="$WORK/factory.img" bs=1M seek=$((BOOT_AREA_MIB+SLOT_MIB)) conv=notrunc,sparse status=none
 truncate -s "${DATA_MIB}M" "$WORK/data.img"
 mkfs.ext4 -q -F -L hive-data "$WORK/data.img"
-dd if="$WORK/data.img" of="$WORK/factory.img" bs=1M seek=$((16+2*SLOT_MIB)) conv=notrunc,sparse status=none
+dd if="$WORK/data.img" of="$WORK/factory.img" bs=1M seek=$((BOOT_AREA_MIB+2*SLOT_MIB)) conv=notrunc,sparse status=none
 mv "$WORK/rootfs.img" "$ROOTFS"
 mv "$WORK/factory.img" "$FACTORY"
 sha256sum "$FACTORY" "$ROOTFS" > "$OUTPUT/hive-${HIVE_BOARD}-ab-${VERSION}.sha256"
