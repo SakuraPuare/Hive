@@ -106,6 +106,51 @@ class OTATests(base.DeviceRegressionTests):
                 self.assertIn(target, result.stderr)
                 self.assertFalse((self.root / target).exists())
 
+    def test_a_firmware_bundle_is_refused_from_the_manual_path(self):
+        # The manual path carries no assignment token, so the reboot-time
+        # receipt would have nowhere to land and the registry would never learn
+        # the outcome. Refusing is correct, but the operator needs to be told
+        # which path to use instead of reading a generic integrity failure.
+        self.bundle()
+        manifest = json.loads((self.root / 'payload/manifest.json').read_text())
+        manifest['kind'] = 'firmware'
+        manifest['version'] = '2.0'
+        self.repack(manifest)
+        assignment = json.loads((self.root / 'assignment.json').read_text())
+        result = self.run_script(self.script('hive-updater'), '--url', assignment['url'],
+                                 '--sha256', assignment['sha256'], '--version', '2.0', expected=1)
+        self.assertIn('OTA 发布任务', result.stdout)
+        self.assertFalse((self.root / 'var/lib/hive/firmware-pending.json').exists())
+
+    def test_manual_path_still_installs_an_application_bundle(self):
+        # --url must keep working for application bundles; refusing firmware
+        # must not turn the whole manual path off.
+        self.bundle()
+        manifest = json.loads((self.root / 'payload/manifest.json').read_text())
+        manifest['version'] = '1.0'
+        self.repack(manifest)
+        assignment = json.loads((self.root / 'assignment.json').read_text())
+        self.run_script(self.script('hive-updater'), '--url', assignment['url'],
+                        '--sha256', assignment['sha256'], '--version', '1.0')
+        self.assertEqual((self.root / 'etc/test-app').read_text(), 'installed safely\n')
+
+    def test_a_bundle_with_an_unparsable_python_controller_is_refused(self):
+        # The bash -n preflight covers shell scripts. The controller could be
+        # replaced by a python3 copy that fails at import, which would leave a
+        # broken updater on disk that only reports success once.
+        self.bundle()
+        payload = self.root / 'payload'
+        data = b'#!/usr/bin/env python3\ndef broken(:\n    pass\n'
+        (payload / 'files/usr/local/bin').mkdir(parents=True)
+        (payload / 'files/usr/local/bin/hive-updater').write_bytes(data)
+        manifest = json.loads((payload / 'manifest.json').read_text())
+        manifest['files'].append({'path': 'usr/local/bin/hive-updater',
+                                  'sha256': hashlib.sha256(data).hexdigest(), 'mode': '0755'})
+        self.repack(manifest)
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('语法错误', result.stdout)
+        self.assertFalse((self.root / 'usr/local/bin/hive-updater').exists())
+
     def test_declared_migration_path_is_not_treated_as_bundle_content(self):
         self.bundle()
         (self.root / 'etc/xray').mkdir(parents=True)
@@ -216,15 +261,21 @@ exit 0
 import json,os,sys,shutil
 from pathlib import Path
 r=Path(os.environ['HIVE_TEST_ROOT']);args=sys.argv[1:];url=args[-1]
+def emit(code):
+    if '-w' in args:
+        sys.stdout.write(code);sys.stdout.flush();return True
+    return False
 if url.endswith('/ota-version'):
     seen=r/'probe-calls'
     n=int(seen.read_text()) if seen.exists() else 0
     seen.write_text(str(n+1))
-    if n: sys.exit(22)
-    print((r/'assignment.json').read_text())
+    if not (('-w' in args) and emit('200')):
+        if n: sys.exit(22)
+        print((r/'assignment.json').read_text())
 elif url.endswith('/ota-ack'):
     payload=Path(args[args.index('--data-binary')+1][1:]).read_text()
     with (r/'acks').open('a') as f:f.write(json.dumps(json.loads(payload))+'\\n')
+    if '-w' in args:emit('200')
 else:
     shutil.copyfile(r/'bundle.tar.gz',args[args.index('-o')+1])
 ''')
@@ -284,6 +335,26 @@ else:
         self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), 'previous\n')
         self.assertFalse((self.root / 'var/lib/hive/ota-installed.json').exists())
         self.assertEqual(json.loads((self.root / 'acks').read_text().splitlines()[-1])['status'], 'rolled_back')
+
+    def test_a_rejected_receipt_is_not_retried_forever(self):
+        # The registry answers 409 when no pending assignment matches the
+        # token, meaning the rollout was replaced while the node rebooted.
+        # Retrying that receipt would block every later poll behind a body
+        # that can never be accepted.
+        self.bundle()
+        (self.root / 'ack-code').write_text('409')
+        result = self.run_script(self.script('hive-updater'))
+        self.assertIn('回执已过期', result.stdout)
+        self.assertFalse((self.root / 'var/lib/hive/ota-pending-ack.json').exists())
+        self.assertEqual((self.root / 'etc/test-app').read_text(), 'installed safely\n')
+
+    def test_a_transient_receipt_failure_keeps_the_receipt(self):
+        self.bundle()
+        (self.root / 'ack-code').write_text('503')
+        result = self.run_script(self.script('hive-updater'), expected=1)
+        self.assertIn('供下轮重试', result.stdout)
+        self.assertTrue((self.root / 'var/lib/hive/ota-pending-ack.json').exists())
+        self.assertEqual((self.root / 'etc/test-app').read_text(), 'installed safely\n')
 
     def test_post_hook_failure_restores_entire_application(self):
         self.failure_bundle()

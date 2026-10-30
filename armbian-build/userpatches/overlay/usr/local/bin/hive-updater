@@ -276,7 +276,8 @@ do_install() {
     # 包可以把 hive-updater 自己换掉（控制器本来就靠 OTA 迭代）。语法坏掉的
     # 副本一旦落地并提交，之后每次定时任务都在解析阶段失败，而回滚引擎只在
     # 安装“失败”时才跑——装成功了就再没有失败可言。所以在动任何文件之前，
-    # 对包里的 shell 脚本先做一次解析。
+    # 对包里带 shebang 的可执行内容按解释器先解析一遍。python3 是镜像的
+    # 核心运行时依赖（customize-image.sh），预检可以直接用。
     local shebang
     for i in $(seq 0 $((file_count - 1))); do
         src="${payload}/files/$(jq -r ".files[$i].path" "${manifest}")"
@@ -285,6 +286,15 @@ do_install() {
         case "${shebang}" in
             '#!'*bash*|'#!'*/sh|'#!'*' sh')
                 bash -n -- "${src}" 2>/dev/null \
+                    || { log "脚本语法错误: $(jq -r ".files[$i].path" "${manifest}")"; return 1; } ;;
+            '#!'*python3*|'#!'*python)
+                # 不执行、不导入：只编译到内存，任何 import 期副作用都不会跑。
+                python3 -c 'import sys
+try:
+    compile(open(sys.argv[1], "rb").read(), sys.argv[1], "exec")
+except SyntaxError as e:
+    sys.stderr.write(str(e) + "\n")
+    raise SystemExit(1)' "${src}" 2>/dev/null \
                     || { log "脚本语法错误: $(jq -r ".files[$i].path" "${manifest}")"; return 1; } ;;
         esac
     done
@@ -365,14 +375,28 @@ do_install() {
 flush_ack() {
     [ -s "$ACK_FILE" ] || return 0
     if [ -z "${NODE_REGISTRY_URL:-}" ] || [ -z "$MAC_NORM" ] || [ -z "$AUTH" ]; then return 1; fi
-    if curl -4 -sf --max-time 15 -H "$AUTH" -H 'Content-Type: application/json' \
-        --data-binary "@$ACK_FILE" "${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/ota-ack" >/dev/null 2>&1; then
-        rm -f "$ACK_FILE"
-        log "已回传 OTA 结果"
-    else
-        log "回传失败，已保存结果供下轮重试"
-        return 1
-    fi
+    local code
+    code=$(curl -4 -s -o /dev/null -w '%{http_code}' --max-time 15 -H "$AUTH" -H 'Content-Type: application/json' \
+        --data-binary "@$ACK_FILE" "${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/ota-ack" 2>/dev/null) || code=000
+    case "$code" in
+        2??)
+            rm -f "$ACK_FILE"
+            log "已回传 OTA 结果" ;;
+        409)
+            # The registry has no assignment with this token and version: it
+            # was superseded while the device was rebooting, or the rollout was
+            # deleted. Retrying forever would pin the queue behind a receipt
+            # that can never be accepted, and the next poll would never run.
+            log "回执已过期（发布记录已被替换），丢弃: $(jq -r '.assignment_token' "$ACK_FILE" 2>/dev/null)"
+            rm -f "$ACK_FILE" ;;
+        4??)
+            # Any other client error is permanent too: the body cannot change.
+            log "回执被拒绝（HTTP ${code}），丢弃"
+            rm -f "$ACK_FILE" ;;
+        *)
+            log "回传失败（HTTP ${code}），已保存结果供下轮重试"
+            return 1 ;;
+    esac
 }
 ack_result() {
     local version="$1" status="$2" result="$3"

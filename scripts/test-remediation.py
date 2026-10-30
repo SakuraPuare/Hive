@@ -37,14 +37,19 @@ class DeviceRegressionTests(unittest.TestCase):
 import json,os,sys,shutil
 from pathlib import Path
 r=Path(os.environ['HIVE_TEST_ROOT']);args=sys.argv[1:];url=args[-1]
+def emit(code):
+    if '-w' in args:
+        sys.stdout.write(code);sys.stdout.flush();return True
+    return False
 if url.endswith('/xray-users'):
-    print((r/'desired.json').read_text())
+    if not emit('200'): print((r/'desired.json').read_text())
 elif url.endswith('/ota-version'):
-    print((r/'assignment.json').read_text())
+    if not emit('200'): print((r/'assignment.json').read_text())
 elif url.endswith('/ota-ack'):
     payload=Path(args[args.index('--data-binary')+1][1:]).read_text()
     with (r/'acks').open('a') as f:f.write(json.dumps(json.loads(payload))+'\\n')
     if (r/'fail-ack').exists():sys.exit(22)
+    if '-w' in args:emit((r/'ack-code').read_text() if (r/'ack-code').exists() else '200')
 else:
     shutil.copyfile(r/'bundle.tar.gz',args[args.index('-o')+1])
 ''')
