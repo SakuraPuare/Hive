@@ -61,6 +61,7 @@ func (h *Handler) HandlePrometheusTargets(w http.ResponseWriter, r *http.Request
 		SELECT hostname, tailscale_ip, easytier_ip, cf_url, location, mac6
 		FROM nodes
 		WHERE tailscale_ip != 'pending' AND tailscale_ip != ''
+		  AND enabled = 1 AND status = 'active'
 		ORDER BY hostname
 	`).Scan(&rows).Error
 	if err != nil {
