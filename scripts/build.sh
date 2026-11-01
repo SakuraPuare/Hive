@@ -453,6 +453,31 @@ if ! python3 "${SCRIPT_DIR}/verify-uboot.py" "${UBOOT_DEB}"; then
 fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 出厂门禁：校验内核 DTB 里的 RK3528 看门狗节点
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 该节点不在主线 6.18（v7.0 才合入 rk3528.dtsi），由
+# userpatches/kernel/archive/rockchip64-6.18 的补丁回移。补丁目录名写错时
+# Armbian 静默跳过、不报错，镜像里就没有 /dev/watchdog0：RuntimeWatchdogSec
+# 空转，内核卡死不会重启，boot.cmd 的试启动计数永远不递减，A/B 回切失效。
+if [ "$BOARD" = nanopi-zero2 ]; then
+  echo ""
+  echo "🔒 出厂门禁：校验内核 DTB 的看门狗节点..."
+  DTB_DEB="$(ls -t "${ARMBIAN_DIR}/output/debs/linux-dtb-current-rockchip64_"*.deb 2>/dev/null | head -1)" || DTB_DEB=""
+  if [ -z "${DTB_DEB}" ]; then
+    echo "❌ 门禁：未找到 linux-dtb-current-rockchip64 deb，无法确认看门狗节点"
+    exit 1
+  fi
+  if ! python3 "${SCRIPT_DIR}/verify-kernel-dtb.py" "${DTB_DEB}" \
+      "rockchip/rk3528-nanopi-zero2.dtb" "watchdog@ffac0000" "snps,dw-wdt"; then
+    echo ""
+    echo "🛑 出厂门禁拦截：内核 DTB 缺 RK3528 看门狗节点。"
+    echo "   后果：内核卡死不会硬复位，A/B 试启动失败只能人工断电。"
+    echo "   检查 userpatches/kernel/archive/rockchip64-6.18/ 是否被同步进 Armbian 树。"
+    exit 1
+  fi
+fi
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 构建完成统计
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
