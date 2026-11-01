@@ -94,6 +94,7 @@ function DropdownMenuItem({
   variant = "default",
   size = "default",
   loading = false,
+  asChild = false,
   disabled,
   onSelect,
   children,
@@ -105,7 +106,9 @@ function DropdownMenuItem({
   /**
    * When true, shows a leading spinner, marks the item as disabled
    * (aria/data), and blocks selection so async actions can't be
-   * double-fired before the menu reacts.
+   * double-fired before the menu reacts. With asChild the spinner is NOT
+   * injected (Radix slots onto a single child element); the disabled/aria
+   * attributes still apply.
    */
   loading?: boolean
 }) {
@@ -115,6 +118,7 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       data-loading={loading || undefined}
+      asChild={asChild}
       disabled={disabled || loading}
       aria-disabled={disabled || loading || undefined}
       onSelect={
@@ -129,8 +133,14 @@ function DropdownMenuItem({
       )}
       {...props}
     >
-      {loading ? <DropdownMenuSpinner /> : null}
-      {children}
+      {asChild ? (
+        children
+      ) : (
+        <>
+          {loading ? <DropdownMenuSpinner /> : null}
+          {children}
+        </>
+      )}
     </DropdownMenuPrimitive.Item>
   )
 }
