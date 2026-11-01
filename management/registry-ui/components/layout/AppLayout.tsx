@@ -1,7 +1,6 @@
 import React from 'react';
 import { useRouter } from 'next/router';
-import Link from 'next/link';
-import { LogOut, Menu, User, Settings } from 'lucide-react';
+import { LogOut, Menu } from 'lucide-react';
 import { Sidebar, SidebarDrawer } from './Sidebar';
 import { ThemeToggle } from './ThemeToggle';
 import { ThemeColorPicker } from './ThemeColorPicker';
@@ -37,7 +36,7 @@ async function performLogout() {
   }
 }
 
-/** Account dropdown: profile / settings / logout. Logout opens a confirm dialog. */
+/** Account dropdown: current admin user + logout. Logout opens a confirm dialog. */
 function UserBadge() {
   const { user } = useCurrentUser();
   const tCommon = useTranslations('common');
@@ -70,19 +69,6 @@ function UserBadge() {
           <DropdownMenuLabel className="normal-case tracking-normal text-foreground">
             {user.username}
           </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <Link href="/account">
-              <User aria-hidden="true" />
-              {tCommon('profile')}
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href="/settings">
-              <Settings aria-hidden="true" />
-              {tCommon('settings')}
-            </Link>
-          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={() => setConfirmOpen(true)}>
             <LogOut aria-hidden="true" />
