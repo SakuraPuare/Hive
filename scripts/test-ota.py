@@ -675,6 +675,23 @@ else firmware_confirm; fi
         pending = json.loads((self.root / 'var/lib/hive/firmware-pending.json').read_text())
         self.assertEqual(pending['target'], 'B')
 
+    def fs_info(self, path):
+        result = subprocess.run(['dumpe2fs', '-h', str(path)], text=True, capture_output=True, check=True)
+        return {key.strip(): value.strip() for key, _, value in
+                (line.partition(':') for line in result.stdout.splitlines())}
+
+    def test_slot_write_gets_a_fresh_filesystem_uuid(self):
+        # The factory A slot is a copy of the filesystem the OTA payload is
+        # built from, so writing the payload verbatim leaves both slots with
+        # one UUID; blkid, `mount -U` and systemd's duplicate detection then
+        # cannot tell them apart. Relabelling does not fix that.
+        runner = self.firmware_fixture()
+        payload_uuid = self.fs_info(self.root / 'firmware/files/rootfs.img')['Filesystem UUID']
+        self.run_script(runner, 'stage')
+        info = self.fs_info(self.root / 'inactive-slot')
+        self.assertNotEqual(info['Filesystem UUID'], payload_uuid)
+        self.assertEqual(info['Filesystem volume name'], 'hive-rootB')
+
     def test_firmware_builder_produces_distinct_board_bundle(self):
         self.firmware_fixture()
         source = (base.REPO / 'scripts/build-ota.sh').read_text()

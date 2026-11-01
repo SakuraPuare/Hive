@@ -81,7 +81,11 @@ firmware_stage() {
     local check=$?
     [ "$check" -le 1 ] || return 1
     resize2fs "$FW_TARGET" || return 1
-    tune2fs -L "hive-root$FW_OTHER" "$FW_TARGET" || return 1
+    # The payload is built from the same filesystem the factory A slot was
+    # copied from, so writing it verbatim leaves both slots with one UUID and
+    # nothing that resolves a filesystem by UUID (blkid, mount -U, systemd's
+    # duplicate detection) can tell them apart. Label alone is not enough.
+    tune2fs -L "hive-root$FW_OTHER" -U random "$FW_TARGET" || return 1
     [ ! -f "$FW_STATE/ota-installed.json" ] || cp -a "$FW_STATE/ota-installed.json" "$FW_STATE/firmware-previous-receipt.json" || return 1
     [ ! -f /etc/hive/ota-version ] || cp -a /etc/hive/ota-version "$FW_STATE/firmware-previous-version" || return 1
     jq -n --arg version "$version" --arg sha "$sha" --arg target "$FW_OTHER" --arg previous "$FW_SLOT" \
