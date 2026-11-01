@@ -175,6 +175,8 @@ R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。后台上
 
 构建脚本会检查 U-Boot 中的 A/B 标记及大小（从 LBA 64 起的引导镜像必须在 12 MiB 环境区之前结束），拒绝普通引导器或会覆盖启动环境的产物。`post_uboot_custom_postprocess` 在 `olddefconfig` 之后复核最终 `.config` 的 `ENV_IS_IN_MMC`、`ENV_REDUNDANT`、`ENV_SIZE`/`ENV_OFFSET`/`ENV_OFFSET_REDUND`、`CMD_SAVEENV`/`CMD_SETEXPR`/`CMD_PART`/`CMD_FDT` 并要求 `ENV_IS_NOWHERE` 关闭，缺任何一项直接中断构建；同时把这份配置写入镜像的 `/usr/lib/hive/uboot-env`。`scripts/check-uboot-env.sh` 在建厂镜像时再对照两份证据：stamp 内容，以及 `u-boot-rockchip.bin` 里确实存在 MMC 环境驱动、冗余读写、`saveenv`、`setexpr`、`part uuid`、`booti`、`fdt` 的字符串。只匹配 `HIVE_AB_V1` 不能证明环境可写。固件安装时根据**实际当前根分区的父磁盘**确定备用槽，不假设 Linux 的 `mmcblk0` 永远代表某种介质，也不按全局分区标签误选另一张卡。
 
+内核侧另有一道门禁：`scripts/verify-kernel-dtb.py` 从本次构建的 `linux-dtb-current-rockchip64` deb 里取出板级 DTB，断言 RK3528 看门狗节点存在、`compatible` 含 `snps,dw-wdt` 且未被 `status = "disabled"` 关掉。该节点不在主线 6.18（v7.0 才合入 `rk3528.dtsi`），由 `armbian-build/userpatches/kernel/archive/rockchip64-6.18/` 的补丁回移；Armbian 只从 `userpatches/kernel/<KERNELPATCHDIR>` 读用户补丁，放错目录不会报错，只会让镜像里没有 `/dev/watchdog0`，所以这里用构建失败兜住。
+
 首刷可使用烧录工具，或从另一张启动卡/救援系统运行 `dd`。确认目标**整盘**且其分区都未挂载后执行；绝不能覆盖当前运行系统所在的盘：
 
 ```bash
@@ -196,7 +198,7 @@ make build-ab VERSION=1.1.0
 # 上传 output/ota/hive-firmware-nanopi-zero2-v1.1.0.tar.gz；无需再 dd 整盘镜像
 ```
 
-设备验证签名、板型、布局和镜像内版本后，只写未运行且未挂载的备用根分区。写入完成后读回计算 SHA256，再检查/扩展 ext4，保存任务状态，最后通过一次冗余环境更新设置候选槽及 **3 次试启动**，然后重启。
+设备验证签名、板型、布局和镜像内版本后，只写未运行且未挂载的备用根分区。写入完成后读回计算 SHA256，再检查/扩展 ext4（并把该槽的文件系统 UUID 重新随机化——payload 与 A 槽同源，直接写入会让两个槽同 UUID），保存任务状态，最后通过一次冗余环境更新设置候选槽及 **3 次试启动**，然后重启。
 
 U-Boot 在每次试启动前先持久化扣减尝试次数。新内核/DTB/initramfs 无法加载时立即尝试原槽；次数耗尽后清除候选槽并回到原槽。启动配置含 `panic=10`，内核 panic 可触发重启。用户态确认服务有总超时和失败重启策略。
 
@@ -216,7 +218,7 @@ U-Boot 在每次试启动前先持久化扣减尝试次数。新内核/DTB/initr
 2. 正常升级：从 A 到 B，再从 B 到 A；版本只在健康确认后变更。
 3. 在下载、备用槽写入、环境切换、第一次启动期间分别断电；恢复后确认仍有可启动系统、身份不变、任务结果可上报。
 4. 注入服务检查失败、Registry 不可达和坏内核文件，验证回切旧槽及 `rolled_back` 状态。
-5. 验证真实内核卡死与硬件看门狗。**本实现没有补入未经验证的 RK3528 硬件看门狗驱动/设备树。无法自行重启的硬锁死仍需断电或外部看门狗；启动次数逻辑在下一次重启才继续生效。**
+5. 验证真实内核卡死与硬件看门狗。**看门狗节点不在主线 6.18（v7.0 才合入 `rk3528.dtsi`），由 `userpatches/kernel/archive/rockchip64-6.18/` 的补丁回移，构建期 `scripts/verify-kernel-dtb.py` 断言它确实进了镜像；PID 1 用 `RuntimeWatchdogSec=30s` 打开 `/dev/watchdog0`。** systemd 起来之后的卡死 30 秒内由 SoC 硬复位，`hive_tries` 随后递减。仍未覆盖：systemd 启动之前的卡死（U-Boot 没有 WDT 驱动，SPL→内核早期没有喂狗者）只能断电，断电后已扣减的 `hive_tries` 继续生效。30 秒超时在慢卡 fsck/介质探测下是否误复位，须在真机确认。
 
 A/B 不能修复损坏的 U-Boot、介质物理故障或两个系统槽同时损坏。固件安装阶段不修改 GPT 或引导器；首启数据扩容仅增大最后一个分区。改变系统槽大小、分区顺序或引导器仍需离线维护。
 
