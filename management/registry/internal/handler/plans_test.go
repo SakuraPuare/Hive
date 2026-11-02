@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -12,9 +13,9 @@ func TestListPlans_Empty(t *testing.T) {
 	resp := doJSON("GET", "/admin/plans", nil, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 
-	plans := parseJSONArray(resp)
-	if len(plans) != 0 {
-		t.Fatalf("expected 0 plans, got %d", len(plans))
+	// 空列表必须是 []，不能是 null：前端拿到后直接 .filter()，null 会让整页崩溃
+	if body := strings.TrimSpace(readBody(resp)); body != "[]" {
+		t.Fatalf("expected empty JSON array, got %q", body)
 	}
 }
 

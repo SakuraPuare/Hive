@@ -195,9 +195,6 @@ func (h *Handler) HandleListNodes(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
-	if nodes == nil {
-		nodes = []model.Node{}
-	}
 	h.jsonOK(w, nodes)
 }
 

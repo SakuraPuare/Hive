@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 
 	"gorm.io/gorm"
 
@@ -40,9 +41,22 @@ func (h *Handler) ResetRateLimiters() {
 
 func (h *Handler) jsonOK(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(v); err != nil {
+	if err := json.NewEncoder(w).Encode(nonNilSlice(v)); err != nil {
 		log.Printf("jsonOK: encode error: %v", err)
 	}
+}
+
+// nonNilSlice turns a nil slice into an empty slice of the same type so that it
+// encodes as [] instead of null. Every list endpoint is declared `{array}` in
+// the OpenAPI spec and clients index the response directly, so a null body is a
+// contract violation: GET /admin/lines returned null on a fresh install and
+// crashed the admin plans page with "Cannot read properties of null".
+func nonNilSlice(v any) any {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Slice && rv.IsNil() {
+		return reflect.MakeSlice(rv.Type(), 0, 0).Interface()
+	}
+	return v
 }
 
 func (h *Handler) jsonErr(w http.ResponseWriter, code int, msg string) {
