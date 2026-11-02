@@ -262,7 +262,7 @@ export default function GatewayPage() {
     if (isInitial) setLoading(true);
     setError('');
     try {
-      setNodes(await sessionApi(AdminService.nodesList({})));
+      setNodes(await sessionApi(AdminService.nodesList({})) ?? []);
     } catch (e: unknown) {
       setError(getErrorMessage(e, t('loadFailed')));
     } finally {

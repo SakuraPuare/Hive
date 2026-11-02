@@ -439,7 +439,7 @@ export default function PlansPage() {
     setLoading(true);
     setError('');
     try {
-      setPlans(await sessionApi(AdminService.adminListPlans()));
+      setPlans(await sessionApi(AdminService.adminListPlans()) ?? []);
     } catch (e) {
       setError(getErrorMessage(e, t('loadFailed')));
     } finally {
@@ -496,7 +496,7 @@ export default function PlansPage() {
         sessionApi(AdminService.adminListLines()),
         sessionApi(AdminService.adminGetPlanLines({ id: p.id! })),
       ]);
-      setAllLines(lines);
+      setAllLines(lines ?? []);
       setSelectedLineIds(new Set(assigned));
     } catch {
       setAllLines([]);

@@ -96,7 +96,7 @@ export default function Subscriptions() {
     setGroupsLoading(true);
     setGroupsError('');
     try {
-      setGroups(await sessionApi(AdminService.adminListSubscriptionGroups()));
+      setGroups(await sessionApi(AdminService.adminListSubscriptionGroups()) ?? []);
     } catch (e: unknown) {
       setGroupsError(getErrorMessage(e, tCommon('loading')));
     } finally {
