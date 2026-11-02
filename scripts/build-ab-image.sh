@@ -11,9 +11,13 @@ hive_board_config "${4:-nanopi-zero2}" || { echo 'Unsupported A/B board'; exit 1
 [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || exit 1
 [ -f "$SOURCE_IMAGE" ] && [ ! -b "$SOURCE_IMAGE" ] || exit 1
 SLOT_MIB=${HIVE_AB_SLOT_MIB:-4096}
-DATA_MIB=${HIVE_AB_DATA_MIB:-8192}
+# The data partition ships small on purpose. hive-data-grow expands it to the
+# end of the card before /data is first mounted, so every MiB reserved here is
+# dead weight in the factory image that the device would have allocated anyway.
+# 512 MiB is what the image carries; the floor below only guards typos.
+DATA_MIB=${HIVE_AB_DATA_MIB:-512}
 [[ "$SLOT_MIB" =~ ^[0-9]+$ && "$DATA_MIB" =~ ^[0-9]+$ ]] || exit 1
-[ "$SLOT_MIB" -ge 1024 ] && [ "$DATA_MIB" -ge 2048 ] || exit 1
+[ "$SLOT_MIB" -ge 1024 ] && [ "$DATA_MIB" -ge 256 ] || exit 1
 # Partition geometry is defined here and nowhere else. hive-firmware refuses a
 # disk whose first partition does not start at 32768, and the boot script
 # reserves the first 16 MiB for GPT, U-Boot and both environment copies, so both

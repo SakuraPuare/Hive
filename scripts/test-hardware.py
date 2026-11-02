@@ -59,7 +59,7 @@ class HardwareTests(unittest.TestCase):
 
     def fixture_growth(self, capacity=32_000_000_000, expanded=False):
         start = 32768 + 2*4096*2048
-        size = (capacity//512-34-start)//2048*2048 if expanded else 8192*2048
+        size = (capacity//512-34-start)//2048*2048 if expanded else 512*2048
         layout = {'partitiontable': {'label':'gpt','sectorsize':512,'partitions':[
             {'name':'hive-rootA','start':32768,'size':4096*2048},
             {'name':'hive-rootB','start':32768+4096*2048,'size':4096*2048},
@@ -90,7 +90,7 @@ case "$2" in *p3) cat "$HIVE_TEST_ROOT/size";; *) cat "$HIVE_TEST_ROOT/capacity"
             source = self.fixture_growth(capacity)
             self.run_script(source, 0, '/dev/mmcblk0')
             new_size = int((self.root/'size').read_text())
-            self.assertGreater(new_size,8192*2048)
+            self.assertGreater(new_size,512*2048)
             self.assertLessEqual((32768+8192*2048+new_size+34)*512, capacity)
             calls = (self.root/'calls').read_text()
             self.assertIn('-N 3 /dev/mmcblk0', calls)
@@ -282,7 +282,7 @@ exit 0
         self.assertLess(12 * 1024 * 1024, int(plan['boot_area_mib']) * 1024 * 1024)
 
     def test_ab_image_rejects_impossible_geometry(self):
-        for env in [{'HIVE_AB_SLOT_MIB': '512'}, {'HIVE_AB_DATA_MIB': '1024'},
+        for env in [{'HIVE_AB_SLOT_MIB': '512'}, {'HIVE_AB_DATA_MIB': '128'},
                     {'HIVE_AB_SLOT_MIB': '4g'}, {'HIVE_AB_DATA_MIB': '8192x'}]:
             with self.subTest(env=env):
                 r = self.ab_plan('nanopi-zero2', env=env)
@@ -291,7 +291,7 @@ exit 0
         r = self.ab_plan('nanopi-zero2', env={'HIVE_AB_SLOT_MIB': '', 'HIVE_AB_DATA_MIB': ''})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         plan = dict(line.split('=', 1) for line in r.stdout.split())
-        self.assertEqual((plan['slot_mib'], plan['data_mib']), ('4096', '8192'))
+        self.assertEqual((plan['slot_mib'], plan['data_mib']), ('4096', '512'))
         for version in ['../escape', '.hidden', 'has space', 'x' * 65]:
             with self.subTest(version=version):
                 source = self.root / 'source.img'
