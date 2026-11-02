@@ -137,3 +137,15 @@ sha256sum "$FACTORY" "$ROOTFS" > "$OUTPUT/hive-${HIVE_BOARD}-ab-${VERSION}.sha25
 echo "Factory image: $FACTORY"
 echo "Firmware payload: $ROOTFS"
 echo 'Factory image requires a full offline flash. Firmware OTA never writes the bootloader or data partition.'
+
+# The factory image is a raw GPT disk: 16 MiB boot area, two full slots and the
+# data partition, so it is ~16 GiB apparent however little is actually written.
+# Ship an .xz beside it for handing around: xz is the only format balenaEtcher
+# and rpi-imager both decompress on the fly, and the holes plus the near-identical
+# second slot make it compress hard. memlimit keeps xz from sizing its thread
+# pool for the core count alone, which is how this host ran out of memory once.
+if [ "${HIVE_AB_COMPRESS:-yes}" = yes ]; then
+    xz -T0 -6 -q --memlimit-compress=60% -c "$FACTORY" > "$FACTORY.xz"
+    sha256sum "$FACTORY.xz" > "$FACTORY.xz.sha256"
+    echo "Factory image (compressed): $FACTORY.xz"
+fi
