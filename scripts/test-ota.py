@@ -254,10 +254,10 @@ done
     def test_install_requires_the_persistent_data_mount(self):
         # OTA backups and receipts live on /data (hive-data bind mounts). Without
         # that mount an install would be reported as done but vanish at the next
-        # slot switch, and rollback would have nothing to restore.
+        # letter switch, and rollback would have nothing to restore.
         self.bundle()
         layout = self.root / 'ab-layout'
-        layout.write_text('nanopi-zero2-ab-v1\n')
+        layout.write_text('nanopi-zero2-bootab-v1\n')
         self.mock('mountpoint', '#!/bin/sh\nexit 1\n')
         script = self.script('hive-updater')
         # The Harness does not relocate /usr/lib/hive, so point the guard at the
@@ -280,7 +280,7 @@ done
         # backups would then land in the rootfs slot even though /data looks fine.
         self.bundle()
         layout = self.root / 'ab-layout'
-        layout.write_text('nanopi-zero2-ab-v1\n')
+        layout.write_text('nanopi-zero2-bootab-v1\n')
         self.mock('mountpoint', '#!/bin/sh\ncase "$2" in */var/lib/hive) exit 1;; esac\nexit 0\n')
         script = self.script('hive-updater')
         helper = self.root / 'hive-ota-transaction'
