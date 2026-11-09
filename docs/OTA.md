@@ -7,9 +7,9 @@ Hive 支持两类签名更新包，均通过后台「OTA 更新」上传并分�
 | 类型 | 更新范围 | 生效与回滚 |
 |---|---|---|
 | application | 脚本、程序、服务单元、静态资源 | 备份后替换；安装、服务重启或健康检查失败时恢复；进程中断后在下次运行或开机时恢复 |
-| firmware | NanoPi Zero2 / R28S 各自的内核、DTB、initramfs 和根文件系统 | 写备用槽，读回校验后试启动；健康检查通过才确认；试启动失败后回到原槽 |
+| firmware | NanoPi Zero2 / R28S 各自的内核、DTB、initramfs 及配套内核模块 | 写未激活引导载荷，读回校验后试启动；健康检查通过才确认；试启动失败后由 U-Boot 回到原载荷 |
 
-**A/B 代码已接入两种板型，U-Boot v2026.07-rc4 的 Zero2 / R28S A/B 产物已实际交叉编译并校验 FIT、设备树和保留区边界；完整系统镜像尚未实编译，三组设备尚未真机验收。** 当前工作区没有足够空间完成完整 Armbian 镜像构建，也没有板卡。应用回滚、固件写入/回切在隔离环境中测试；TF 扩容还验证了真实 `sfdisk` 对普通镜像文件保留系统分区及 UUID。不能把这些检查当成批量上线验收。
+**引导 A/B 已接入两种板型，U-Boot v2026.07-rc4 的 Zero2 / R28S 产物已实际交叉编译并校验 FIT、设备树和保留区边界；Zero2 的出厂镜像与引导载荷包已实编译并校验产物结构，三组设备尚未真机验收。** 应用回滚、固件写入/回切在隔离环境中测试；TF 扩容还验证了真实 `sfdisk` 对普通镜像文件保留系统分区及 UUID。不能把这些检查当成批量上线验收。
 
 ## 设备分组与迁移
 
@@ -17,15 +17,15 @@ Hive 支持两类签名更新包，均通过后台「OTA 更新」上传并分�
 
 | 设备 | 状态 | 构建与升级安排 |
 |---|---|---|
-| NanoPi Zero2，2 GB | 已上线 | 先核对现有系统中的 updater、签名公钥、设备凭证和服务依赖，再接入应用 OTA。当前分区若未初始化为 Hive A/B，须安排离线首刷才能使用 firmware 包；先备份并恢复本机身份与配置。 |
-| NanoPi Zero2，1 GB | 未上线 | 沿用 `nanopi-zero2` 配置，以这批设备优先进行 A/B 首刷和升级验收，通过后再上线。内存容量不作为拆分固件包的依据。 |
+| NanoPi Zero2，2 GB | 已上线 | 先核对现有系统中的 updater、签名公钥、设备凭证和服务依赖，再接入应用 OTA。当前分区若未初始化为 Hive 布局，须安排离线首刷才能使用 firmware 包；先备份并恢复本机身份与配置。 |
+| NanoPi Zero2，1 GB | 未上线 | 沿用 `nanopi-zero2` 配置，以这批设备优先进行引导 A/B 首刷和升级验收，通过后再上线。内存容量不作为拆分固件包的依据。 |
 | NanoPi R28S，1 GB | 未上线 | 使用 `make build-r28s` 或 `make build-ab-r28s VERSION=…`；保留厂商内核的双网口和 AIC8800 SDIO 无线支持，配套独立引导设备树和 firmware 包。不能使用 Zero2/R3S 镜像。 |
 
 [Zero2 官方规格](https://wiki.friendlyelec.com/wiki/index.php/NanoPi_Zero2/zh)列出 1 GB / 2 GB 内存版本；同一构建配置并不代表本仓库产物已经在两种实物上验证。[R28S 官方规格](https://wiki.friendlyelec.com/wiki/index.php/NanoPi_R28S/zh)列出 RK3528A、1 GB 内存、双千兆网口及板载无线。它与 Zero2 同属 RK3528 系列，但板级外围不同，也不是本仓库已有的 RK3566 / NanoPi R3S。
 
 [Armbian 的 R28S 配置](https://github.com/armbian/build/blob/main/config/boards/nanopi-r28s.csc)使用 `vendor` 6.1 内核、`rk3528-nanopi-rev03.dtb` 和 `radxa-aic8800` 扩展。Hive 为其接入固定版本主线 U-Boot，并在 `userpatches/u-boot/hive-r28s-v2026.07/` 保存板级回移补丁；Linux 设备树来源固定到提交 `c1e23f3425c4`，配置依据 [R28S U-Boot 上游 RFC](https://mail-archive.com/u-boot%40lists.u-boot-project.org/msg07609.html)。该固定版本的引导器设备树不含新 USB 节点，因此补丁省略这些节点，只用于 SD/eMMC 引导；不影响厂商 Linux 中的 USB 驱动。该补丁是本仓库适配，不代表 R28S 配置已被 U-Boot 上游合入。
 
-**1 GB / 2 GB 是运行内存，A/B 分区占用的是 TF 卡存储。** 本批设备均使用 32 GB 或 64 GB TF 卡，使用同一板型出厂镜像。首次启动的 `hive-data-grow` 校验 GPT、三个分区名称与边界，仅扩大最后的数据分区并调整 ext4；系统槽、设备标识和分区 UUID 不变。写入 GPT 后中断可在下次启动继续扩展文件系统；不允许改动非 Hive 分区或已挂载的数据分区。
+**1 GB / 2 GB 是运行内存，引导载荷占用的是 TF 卡存储。** 本批设备均使用 32 GB 或 64 GB TF 卡，使用同一板型出厂镜像。首次启动的 `hive-data-grow` 校验 GPT、两个分区名称与边界，仅扩大最后的数据分区并调整 ext4；根文件系统、设备标识和分区 UUID 不变。写入 GPT 后中断可在下次启动继续扩展文件系统；不允许改动非 Hive 分区或已挂载的数据分区。
 
 `hive-memory-generator` 按实际 `MemTotal` 在每次启动及 `daemon-reload` 时生成临时服务配置，低于 1.5 GiB 的设备使用 1 GB 档位：Xray 的 `MemoryHigh/MemoryMax` 为 160/224 MiB，Mihomo 为 192/256 MiB，Go 软内存限制分别为 128/160 MiB，部分管理代理也配置较低的 Go 软限制。2 GB 档位分别为 200/300 MiB、384/512 MiB。这些限额用于约束进程，不能保证所有服务满负载同时运行不发生 OOM；验收应观察实际内存峰值、重启和吞吐。管理员可通过 `/etc/systemd/system/<service>.d/90-local-memory.conf` 覆盖。内存环境变量在进程下次启动后生效。
 
@@ -90,9 +90,9 @@ NanoPi Zero2 1 GB/2 GB 和 R28S 1 GB 均按需下载，32/64 GB TF 卡使用相�
 - 安装成功或失败退出时清理下载包和解压目录；断电或进程被强制终止留下的 `ota-download.*` 在下次 updater 启动并取得互斥锁后清理。定时任务和手动更新不会并行下载。
 - 重试安装或强制重装时重新从服务器下载。已经安装的相同版本和 SHA256 可以直接确认任务，不重复安装。
 - 下载前按当时可用空间设置上限，预留 **64 MiB**。除了 curl 大小限制，还使用进程文件大小限制，防止没有 `Content-Length` 的响应无限写入。解压前再次检查解压大小和可用空间，空间不足则停止本次更新。
-- 临时文件清理不删除 `ota-transaction` 回滚备份、待确认固件状态或 A/B 分区。应用回滚恢复本地事务备份，固件回滚启动旧槽，不依赖重新下载 OTA 包；解压、备份和两个系统槽仍需单独预留空间。
+- 临时文件清理不删除 `ota-transaction` 回滚备份、待确认固件状态或引导载荷。应用回滚恢复本地事务备份，固件回滚切回旧字母，不依赖重新下载 OTA 包；解压、备份和两套引导载荷仍需单独预留空间。
 
-包大小取决于构建内容：默认应用包包含脚本、服务及静态文件，加入 Xray/Mihomo 等二进制后需要以实际构建输出为准。完整固件包尚未实构建，暂无可靠压缩体积；构建脚本会输出最终包大小，上传与设备下载均限制为 2 GiB。管理后台继续使用 30 天/各类型最近 3 个版本策略；设备按需下载不会给后台目录设置总容量额度。
+包大小取决于构建内容：默认应用包包含脚本、服务及静态文件，加入 Xray/Mihomo 等二进制后需要以实际构建输出为准。固件包只含引导载荷、内核模块和固件 blob，体积随内核大小变化；构建脚本会输出最终包大小，上传与设备下载均限制为 2 GiB。管理后台继续使用 30 天/各类型最近 3 个版本策略；设备按需下载不会给后台目录设置总容量额度。
 
 ## 应用更新
 
@@ -109,9 +109,9 @@ make build-ota VERSION=1.0.0
 
 默认包包含应用脚本和服务单元，启用 OTA 恢复服务和订阅守护，不覆盖设备 Token、SSH 密钥和个性化运行配置。
 
-`hive-updater --url`（Registry 的 `ota-update` 指令走这条手动路径）只能装应用包。固件包含 `rootfs.img`，必须经 Registry 的发布任务（`ota-version` 轮询返回 `kind=firmware` 与 `assignment_token`）下发：手动路径没有 assignment token，写不出重启后要发的完成回执，所以 `hive-updater` 在动盘之前直接拒绝。
+`hive-updater --url`（Registry 的 `ota-update` 指令走这条手动路径）只能装应用包。固件包含引导载荷，必须经 Registry 的发布任务（`ota-version` 轮询返回 `kind=firmware` 与 `assignment_token`）下发：手动路径没有 assignment token，写不出重启后要发的完成回执，所以 `hive-updater` 在动盘之前直接拒绝。
 
-启动/恢复关键文件不接受应用包，`build-ota.sh` 打包和 `hive-ota-transaction` 安装前各拦一次（签名包同样拒绝）：`boot/**`、`usr/lib/hive/**`、`usr/lib/modules/**`、`usr/lib/systemd/system/**`、`usr/local/bin/hive-data`、`hive-data-grow`、`hive-board`、`hive-node-info`、`hive-firmware`，以及 `hive-data.service*`、`hive-ota-recover.service*`、`hive-firmware-confirm.service*`（前缀匹配，覆盖 `.d/` drop-in 与 `.wants/` 链接这类侧路径），以及 `usr/local/bin/hive-ota-transaction` 与 `var/lib/hive/ota-transaction/**`（安装前由引擎写入，包内容覆盖 `recover.sh`/`paths.json` 会让开机回滚跑包带来的副本；引擎自身的源头同样不能替换，否则 `ota_prepare` 后续每次复制出的 `recover.sh` 都来自包内容）。回滚备份和事务标记都在 `/var/lib/hive`，该路径由 `hive-data` 从数据分区 bind 挂载；一旦这些文件被坏包替换，数据分区挂不上、回滚脚本永远跑不到，设备只会无限重启。除引擎自管的 `ota-transaction` 目录外，这些文件只能随 firmware 包（A/B rootfs 槽）更新。
+启动/恢复关键文件不接受应用包，`build-ota.sh` 打包和 `hive-ota-transaction` 安装前各拦一次（签名包同样拒绝）：`boot/**`、`usr/lib/hive/**`、`usr/lib/modules/**`、`usr/lib/systemd/system/**`、`usr/local/bin/hive-data`、`hive-data-grow`、`hive-board`、`hive-node-info`、`hive-firmware`，以及 `hive-data.service*`、`hive-ota-recover.service*`、`hive-firmware-confirm.service*`（前缀匹配，覆盖 `.d/` drop-in 与 `.wants/` 链接这类侧路径），以及 `usr/local/bin/hive-ota-transaction` 与 `var/lib/hive/ota-transaction/**`（安装前由引擎写入，包内容覆盖 `recover.sh`/`paths.json` 会让开机回滚跑包带来的副本；引擎自身的源头同样不能替换，否则 `ota_prepare` 后续每次复制出的 `recover.sh` 都来自包内容）。回滚备份和事务标记都在 `/var/lib/hive`，该路径由 `hive-data` 从数据分区 bind 挂载；一旦这些文件被坏包替换，数据分区挂不上、回滚脚本永远跑不到，设备只会无限重启。除引擎自管的 `ota-transaction` 目录外，这些文件只能随 firmware 包更新。firmware 包不走应用包的事务，而是走 `hive-firmware` 自己的安装路径：只允许写 `boot/Image`、`boot/uInitrd`、`boot/dtb/**`、`usr/lib/modules/**`、`usr/lib/firmware/**`，其余路径一律拒绝。
 
 此外，应用包里的 `etc/systemd/system/**` 单元若声明 `FailureAction=`/`JobTimeoutAction=` 为 `reboot|poweroff|halt` 系列，`hive-updater` 在写入前直接拒绝：那会让任意服务故障变成整机重启，而用户态没有任何恢复入口。
 
@@ -119,7 +119,7 @@ make build-ota VERSION=1.0.0
 
 `hive-data` 挂载失败不再由 unit 直接 `FailureAction=reboot`：脚本内部重试 3 次，仍未成功时最多重启 3 次（计数存于 `/usr/lib/hive/data-failures`，成功即清除），之后保持运行以便人工介入。
 
-在保持运行的这个状态（`/data` 未挂载）下，updater 会直接拒绝应用包和固件包：`ota_state_persistent` 要求 `/usr/lib/hive/ab-layout` 存在时 `/data` **和** `/var/lib/hive` 都必须已挂载（后者由 `hive-data` 逐目录 bind）。没有该挂载，回执、备份和 `firmware-pending.json` 都只落在当前 rootfs 槽里，切槽即丢，回滚引擎再也跑不到，而且还会对外回报 `done`。只查 `/data` 不足以覆盖 `/data` 挂上、后续 bind 未完成就失败的中间态。所以宁可拒绝安装并让 `/usr/lib/hive/data-failures` 记录的故障暴露出来，也不产生一次无法存活的重启验证。
+在保持运行的这个状态（`/data` 未挂载）下，updater 会直接拒绝应用包和固件包：`ota_state_persistent` 要求 `/usr/lib/hive/ab-layout` 存在时 `/data` **和** `/var/lib/hive` 都必须已挂载（后者由 `hive-data` 逐目录 bind）。没有该挂载，回执、备份和 `firmware-pending.json` 都只落在当前根文件系统里，回切即丢，回滚引擎再也跑不到，而且还会对外回报 `done`。只查 `/data` 不足以覆盖 `/data` 挂上、后续 bind 未完成就失败的中间态。所以宁可拒绝安装并让 `/usr/lib/hive/data-failures` 记录的故障暴露出来，也不产生一次无法存活的重启验证。
 
 更新前，`/var/lib/hive/ota-transaction` 保存旧文件、权限、原服务启用/运行状态和旧版本记录；备份刷盘后才允许修改。新文件逐个原子替换，之后执行有超时的 hook、服务重启和健康检查。成功后才提交版本和完成回执。失败时恢复全部受管文件，删除本次新增文件，恢复服务状态。恢复本身失败会保留备份并停止新更新，结果提示需要人工恢复。
 
@@ -133,9 +133,9 @@ make build-ota VERSION=1.0.0
 
 `--pre-hook`、`--post-hook` 是受签名保护的 root 脚本。若 hook 要修改额外文件，必须用 `--backup etc/path/to/file` 声明；自动回滚只覆盖清单和明确声明的文件、服务状态，不能撤销数据库迁移、远程操作或任意外部副作用。hook 不应重启设备或停止更新控制器。涉及系统分区、内核或软件包管理器的变更请使用 firmware 包。
 
-## 首次启用 A/B
+## 首次启用引导 A/B
 
-普通单分区 Armbian 设备不能直接接收 firmware 包。需要先构建并**离线整盘刷写**新的 A/B 出厂镜像；这会覆盖原有分区与数据。已有身份、配置如需保留，须先另行备份并在首刷后恢复，不能指望第一次整盘 `dd` 自动保留。
+没有 Hive 布局的普通 Armbian 设备不能直接接收 firmware 包：`hive-firmware` 会校验 `/usr/lib/hive/ab-layout`、两个分区标签（`hive-root`、`hive-data`）和 U-Boot 环境 stamp，缺任何一项都拒绝。这类设备需要先构建并**离线整盘刷写**出厂镜像；这会覆盖原有分区与数据。已有身份、配置如需保留，须先另行备份并在首刷前注入根分区，不能指望整盘 `dd` 自动保留。
 
 适配路径为 **NanoPi Zero2 / current 内核** 与 **NanoPi R28S / vendor 6.1 内核**，均使用固定的主线 U-Boot 加 Hive A/B 配置。Zero2 的 1 GB / 2 GB 沿用同一构建配置。R3S、Orange Pi、USB 根盘和自定义分区未启用这条固件升级路径。
 
@@ -153,27 +153,28 @@ make build-ab-r28s VERSION=1.0.0  # R28S 1 GB
 
 以 Zero2 为例，输出：
 
-- `output/ab/hive-nanopi-zero2-ab-1.0.0.img`：用于首次整盘刷写的镜像。
-- `output/ab/hive-nanopi-zero2-rootfs-1.0.0.img`：系统 OTA 的根文件系统原料，不能当作整盘镜像刷写。
+- `output/ab/hive-nanopi-zero2-factory-1.0.0.img`：用于首次整盘刷写的镜像，另有 `.img.xz`。
+- `output/ab/hive-nanopi-zero2-boot-1.0.0.tar`：引导载荷包，`build-ota.sh --firmware` 的输入，不能直接刷写。
 - `output/ota/hive-firmware-nanopi-zero2-v1.0.0.tar.gz`：已签名的系统更新包，上传后台使用。
 - 相应 SHA256 校验文件。
 
 R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。后台上传完成后显示固件目标板型；设备同时校验实际设备树、已安装布局及签名清单板型，拒绝跨板型安装。
 
-出厂镜像约 16 GiB，可写入本批 **32 GB / 64 GB TF 卡**。首次启动自动扩容数据分区：
+出厂镜像约 4.0 GB（3857 MiB），8 GB 及以上的 TF 卡即可写入。首次启动自动扩容数据分区：
 
 | 区域 | 默认位置/容量 | 用途 |
 |---|---|---|
 | 引导保留区 | 前 16 MiB | GPT、U-Boot、两份启动环境 |
 | U-Boot | LBA 64 起 | 首刷写入；OTA 不更新 |
-| 启动环境 | `0xc00000` 与 `0xc10000`，每份 `0x8000` 字节 | 冗余保存当前确认槽、候选槽、剩余尝试次数 |
-| `hive-rootA` | 第 1 分区，4 GiB | 系统 A，内含 `/boot` |
-| `hive-rootB` | 第 2 分区，4 GiB | 系统 B，内含 `/boot` |
-| `hive-data` | 第 3 分区，初始 8 GiB，首启扩至卡尾 | 设备身份、运行配置、OTA 状态和下载暂存 |
+| 启动环境 | `0xc00000` 与 `0xc10000`，每份 `0x8000` 字节 | 冗余保存已确认字母、候选字母、剩余尝试次数 |
+| `hive-root` | 第 1 分区，3328 MiB | 唯一的根文件系统，含 `/boot/Image.<字母>`、`/boot/uInitrd.<字母>`、`/boot/dtb.<字母>/` 两套引导载荷 |
+| `hive-data` | 第 2 分区，初始 512 MiB，首启扩至卡尾 | 设备身份、运行配置、OTA 状态和下载暂存 |
+
+只有一套根文件系统：字母只决定 U-Boot 加载哪一套内核载荷。3328 MiB 是按实测载荷（2782 MiB）留出约 7% 余量的下限，`HIVE_ROOT_MIB` 可覆盖；两套载荷在出厂镜像里内容相同，第一次固件更新写入未激活的那一套。
 
 启动环境的偏移量只是默认值：编译期由 `hive-rk3528.inc` 写入 U-Boot `.config`，`post_uboot_custom_postprocess` 从最终 `.config` 抄成 `/usr/lib/hive/uboot-env`，运行期 `hive-firmware` 直接从这份 stamp 读 `CONFIG_ENV_SIZE`/`CONFIG_ENV_OFFSET`/`CONFIG_ENV_OFFSET_REDUND` 生成 `fw_setenv` 配置。改偏移只需改一处；stamp 缺失或格式错误时固件更新直接失败，不会写到 U-Boot 不读的位置。
 
-构建脚本会检查 U-Boot 中的 A/B 标记及大小（从 LBA 64 起的引导镜像必须在 12 MiB 环境区之前结束），拒绝普通引导器或会覆盖启动环境的产物。`post_uboot_custom_postprocess` 在 `olddefconfig` 之后复核最终 `.config` 的 `ENV_IS_IN_MMC`、`ENV_REDUNDANT`、`ENV_SIZE`/`ENV_OFFSET`/`ENV_OFFSET_REDUND`、`CMD_SAVEENV`/`CMD_SETEXPR`/`CMD_PART`/`CMD_FDT` 并要求 `ENV_IS_NOWHERE` 关闭，缺任何一项直接中断构建；同时把这份配置写入镜像的 `/usr/lib/hive/uboot-env`。`scripts/check-uboot-env.sh` 在建厂镜像时再对照两份证据：stamp 内容，以及 `u-boot-rockchip.bin` 里确实存在 MMC 环境驱动、冗余读写、`saveenv`、`setexpr`、`part uuid`、`booti`、`fdt` 的字符串。只匹配 `HIVE_AB_V1` 不能证明环境可写。固件安装时根据**实际当前根分区的父磁盘**确定备用槽，不假设 Linux 的 `mmcblk0` 永远代表某种介质，也不按全局分区标签误选另一张卡。
+构建脚本会检查 U-Boot 中的 A/B 标记及大小（从 LBA 64 起的引导镜像必须在 12 MiB 环境区之前结束），拒绝普通引导器或会覆盖启动环境的产物。`post_uboot_custom_postprocess` 在 `olddefconfig` 之后复核最终 `.config` 的 `ENV_IS_IN_MMC`、`ENV_REDUNDANT`、`ENV_SIZE`/`ENV_OFFSET`/`ENV_OFFSET_REDUND`、`CMD_SAVEENV`/`CMD_SETEXPR`/`CMD_PART`/`CMD_FDT` 并要求 `ENV_IS_NOWHERE` 关闭，缺任何一项直接中断构建；同时把这份配置写入镜像的 `/usr/lib/hive/uboot-env`。`scripts/check-uboot-env.sh` 在建厂镜像时再对照两份证据：stamp 内容，以及 `u-boot-rockchip.bin` 里确实存在 MMC 环境驱动、冗余读写、`saveenv`、`setexpr`、`part uuid`、`booti`、`fdt` 的字符串。只匹配 `HIVE_AB_V1` 不能证明环境可写。固件安装时从**实际当前根分区反查父磁盘**（必须是 `/dev/mmcblk[0-9]+`），校验 `p1` 标签为 `hive-root` 且起始于 32768、`p2` 为 `hive-data`，再用 `fw_printenv hive_active` 取当前字母；不假设 Linux 的 `mmcblk0` 永远代表某种介质，也不按全局分区标签误选另一张卡。
 
 内核侧另有一道门禁：`scripts/verify-kernel-dtb.py` 从本次构建的 `linux-dtb-current-rockchip64` deb 里取出板级 DTB，断言 RK3528 看门狗节点存在、`compatible` 含 `snps,dw-wdt` 且未被 `status = "disabled"` 关掉。该节点不在主线 6.18（v7.0 才合入 `rk3528.dtsi`），由 `armbian-build/userpatches/kernel/archive/rockchip64-6.18/` 的补丁回移；Armbian 只从 `userpatches/kernel/<KERNELPATCHDIR>` 读用户补丁，放错目录不会报错，只会让镜像里没有 `/dev/watchdog0`，所以这里用构建失败兜住。
 
@@ -181,7 +182,7 @@ R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。后台上
 
 ```bash
 # /dev/目标整盘 是占位符，必须替换为已核对的目标设备
-test -b /dev/目标整盘 && sudo dd if=output/ab/hive-nanopi-zero2-ab-1.0.0.img \
+test -b /dev/目标整盘 && sudo dd if=output/ab/hive-nanopi-zero2-factory-1.0.0.img \
   of=/dev/目标整盘 bs=4M conv=fsync status=progress
 sync
 ```
@@ -198,17 +199,17 @@ make build-ab VERSION=1.1.0
 # 上传 output/ota/hive-firmware-nanopi-zero2-v1.1.0.tar.gz；无需再 dd 整盘镜像
 ```
 
-设备验证签名、板型、布局和镜像内版本后，只写未运行且未挂载的备用根分区。写入完成后读回计算 SHA256，再检查/扩展 ext4（并把该槽的文件系统 UUID 重新随机化——payload 与 A 槽同源，直接写入会让两个槽同 UUID），保存任务状态，最后通过一次冗余环境更新设置候选槽及 **3 次试启动**，然后重启。
+设备验证签名、板型、布局和包内每个文件的 SHA256 后，把 `boot/Image`、`boot/uInitrd` 与 `boot/dtb/**` 写进未激活字母（`/boot/Image.<候选字母>`、`/boot/uInitrd.<候选字母>`、`/boot/dtb.<候选字母>/`），内核模块和固件 blob 原地增补——`/usr/lib/modules/<内核版本>/` 天然按版本隔离，旧字母的内核仍用自己的目录。写入后逐个读回计算 SHA256，任何不匹配都不设置候选字母。包内出现 `boot/Image`、`boot/uInitrd`、`boot/dtb/**`、`usr/lib/modules/**`、`usr/lib/firmware/**` 之外的路径直接拒绝：用户态变更必须走带文件级回滚的应用包，否则等于在同一棵树上开第二条更弱的更新通道。最后通过一次冗余环境更新设置候选字母及 **3 次试启动**，然后重启。
 
-U-Boot 在每次试启动前先持久化扣减尝试次数。新内核/DTB/initramfs 无法加载时立即尝试原槽；次数耗尽后清除候选槽并回到原槽。启动配置含 `panic=10`，内核 panic 可触发重启。用户态确认服务有总超时和失败重启策略。
+U-Boot 在每次试启动前先持久化扣减尝试次数。新内核/DTB/initramfs 无法加载时立即尝试原字母；次数耗尽后清除候选字母并回到原字母。启动配置含 `panic=10`，内核 panic 可触发重启。用户态确认服务有总超时和失败重启策略。
 
-确认槽自身无法加载（`/boot/Image`、`/boot/uInitrd` 或 DTB 读不出来）时，引导脚本不改写任何槽变量，先尝试另一个槽一次，再 `bootflow scan -lb` 兜底，仍失败才复位；重复启动做出的仍是同一个决定，不会因为反复复位而更坏。环境不可写（`saveenv` 失败）时不再 `reset`：初始化失败直接启动出厂槽，试启动计数无法持久化时退回已确认槽不启动未记录的候选，A/B 记录降级但不进入复位循环。
+确认字母自身无法加载（`/boot/Image.<字母>`、`/boot/uInitrd.<字母>` 或 DTB 读不出来）时，引导脚本不改写任何槽变量，先尝试另一个字母一次，再 `bootflow scan -lb` 兜底，仍失败才复位；重复启动做出的仍是同一个决定，不会因为反复复位而更坏。环境不可写（`saveenv` 失败）时不再 `reset`：初始化失败直接启动出厂字母，试启动计数无法持久化时退回已确认字母不启动未记录的候选，A/B 记录降级但不进入复位循环。
 
-`hive-firmware-confirm.service` 验证当前槽和新版本、NetworkManager/Nginx/Xray/Cloudflared/EasyTier 服务、OTA 与订阅守护定时器、携带设备凭证的 Registry 连接。也可安装可执行的 `/etc/hive/firmware-health-check` 增加实际业务检查。只有这些检查通过才将新槽标记为已确认；如果回到了旧槽，则恢复旧版本记录并上报 `rolled_back`。管理服务在试启动期间持续失联也会导致回切。
+`hive-firmware-confirm.service` 验证当前字母确实带着本次安装的载荷（比对 `/boot/Image.<字母>` 的 SHA256）、NetworkManager/Nginx/Xray/Cloudflared/EasyTier 服务、OTA 与订阅守护定时器、携带设备凭证的 Registry 连接。也可安装可执行的 `/etc/hive/firmware-health-check` 增加实际业务检查。只有这些检查通过才把该字母标记为已确认；如果回到了旧字母，则恢复旧版本记录并上报 `rolled_back`。管理服务在试启动期间持续失联也会导致回切。
 
 回切分支先删掉 `firmware-pending.json` 再清理其余状态：该文件是确认服务的 `ConditionPathExists` 门控，先失败退出会配合 `FailureAction=reboot` 变成无限重启，而环境不可写时 `hive_pending` 根本清不掉。清环境失败只记警告并继续回切。
 
-数据分区在正常服务启动前绑定以下目录，因此槽位切换保留身份和运行状态：`/etc/hive`、`/etc/ssh`、`/root/.ssh`、Nginx 站点配置、`/etc/cloudflared`、`/etc/frp`、`/etc/xray`、`/etc/mihomo`、NetworkManager 连接配置，以及 Hive、Tailscale、WARP、EasyTier 的对应 `/var/lib` 目录。不会共享整个 `/etc`、包管理器数据库或系统二进制。跨版本数据格式变更必须兼容旧版本，否则回切旧程序也无法恢复已迁移的数据。
+数据分区在正常服务启动前绑定以下目录，因此字母切换保留身份和运行状态：`/etc/hive`、`/etc/ssh`、`/root/.ssh`、Nginx 站点配置、`/etc/cloudflared`、`/etc/frp`、`/etc/xray`、`/etc/mihomo`、NetworkManager 连接配置，以及 Hive、Tailscale、WARP、EasyTier 的对应 `/var/lib` 目录。不会共享整个 `/etc`、包管理器数据库或系统二进制。跨版本数据格式变更必须兼容旧版本，否则回切旧程序也无法恢复已迁移的数据。
 
 ## 真机验收与当前边界
 
@@ -216,11 +217,11 @@ U-Boot 在每次试启动前先持久化扣减尝试次数。新内核/DTB/initr
 
 1. 分别使用 32 GB / 64 GB TF 卡冷启动，确认数据分区扩容到卡尾，再确认正确识别启动卡、两份环境可读写、数据分区成功绑定，设备身份跨重启保持。
 2. 正常升级：从 A 到 B，再从 B 到 A；版本只在健康确认后变更。
-3. 在下载、备用槽写入、环境切换、第一次启动期间分别断电；恢复后确认仍有可启动系统、身份不变、任务结果可上报。
-4. 注入服务检查失败、Registry 不可达和坏内核文件，验证回切旧槽及 `rolled_back` 状态。
+3. 在下载、载荷写入、环境切换、第一次启动期间分别断电；恢复后确认仍有可启动系统、身份不变、任务结果可上报。
+4. 注入服务检查失败、Registry 不可达和坏内核文件，验证回切旧字母及 `rolled_back` 状态。
 5. 验证真实内核卡死与硬件看门狗。**看门狗节点不在主线 6.18（v7.0 才合入 `rk3528.dtsi`），由 `userpatches/kernel/archive/rockchip64-6.18/` 的补丁回移，构建期 `scripts/verify-kernel-dtb.py` 断言它确实进了镜像；PID 1 用 `RuntimeWatchdogSec=30s` 打开 `/dev/watchdog0`。** systemd 起来之后的卡死 30 秒内由 SoC 硬复位，`hive_tries` 随后递减。仍未覆盖：systemd 启动之前的卡死（U-Boot 没有 WDT 驱动，SPL→内核早期没有喂狗者）只能断电，断电后已扣减的 `hive_tries` 继续生效。30 秒超时在慢卡 fsck/介质探测下是否误复位，须在真机确认。
 
-A/B 不能修复损坏的 U-Boot、介质物理故障或两个系统槽同时损坏。固件安装阶段不修改 GPT 或引导器；首启数据扩容仅增大最后一个分区。改变系统槽大小、分区顺序或引导器仍需离线维护。
+引导 A/B 不能修复损坏的 U-Boot、介质物理故障或两套引导载荷同时损坏。固件安装阶段不修改 GPT 或引导器；首启数据扩容仅增大最后一个分区。改变根文件系统大小、分区顺序或引导器仍需离线维护。
 
 实现依据：[U-Boot Rockchip 支持说明](https://docs.u-boot.org/en/latest/board/rockchip/rockchip.html)、[U-Boot 冗余环境配置](https://github.com/u-boot/u-boot/blob/master/env/Kconfig)、[Rockchip 启动介质选择实现](https://github.com/u-boot/u-boot/blob/master/arch/arm/mach-rockchip/board.c)。仓库继续使用板型配置中固定的 U-Boot 版本，不在设备上自动切换到上游最新版本。
 

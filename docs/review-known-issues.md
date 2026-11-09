@@ -43,7 +43,7 @@
 | P1，上线前阻断 | 完整 Armbian 镜像尚未构建，三组设备未真机验收 | Zero2 1 GB/2 GB、R28S 1 GB 的 U-Boot 编译和隔离测试不能证明完整系统可启动。需在足够磁盘空间的构建机实编译，再用 32/64 GB TF 卡验证冷启动、网络、内存负载、A/B 升降级与断电恢复。R28S 的厂商内核/AIC8800 集成尤其需要实机验证。`Request Image Build` 至今零运行，说明这条链路从未在 GitHub 侧走通一次。 |
 | P1，无人值守恢复限制 | 内核或引导阶段硬锁死，无法触发下一次重启 | **已在用户态与内核态补齐硬件看门狗**：RK3528 片上 DesignWare 看门狗（`watchdog@ffac0000`，`snps,dw-wdt`）内核基线支持（`CONFIG_DW_WATCHDOG=y`），但该节点直到 v7.0 才进主线 `rk3528.dtsi`，6.18 由 `userpatches/kernel/archive/rockchip64-6.18/` 的补丁回移，并由 `scripts/verify-kernel-dtb.py` 在构建期断言；此前只是没有任何用户态使用者。现在 `etc/systemd/system.conf.d/10-hive-watchdog.conf` 让 PID 1 以 `RuntimeWatchdogSec=30s` 打开 `/dev/watchdog0`，systemd 主进程死锁即由 SoC 硬复位；内核侧补 `CONFIG_DEBUG_KERNEL`/`SOFTLOCKUP_DETECTOR`/`HARDLOCKUP_DETECTOR` 与 `irqchip.gicv3_pseudo_nmi=1`，使 boot.cmd 的 `softlockup_panic=1`/`hardlockup_panic=1`/`panic=10` 真正生效。仍存在的缺口：U-Boot 自身损坏或卡死（U-Boot 的 DTS 副本没有 wdt 节点、defconfig 未开 `CONFIG_WDT`，SPL→U-Boot 阶段无保护）、TF 卡物理损坏、U-Boot 环境区损坏需 USB/rockusb 人工救援。这些不属于 A/B 或 OTA 能覆盖的范围。 |
 | P1，存量升级要求 | 升级共享凭证/旧代理，或首次从单系统迁移到 A/B | 新后台拒绝旧凭证和旧 `GET/POST /nodes/{mac}/xray-users` 计费接口；migration 28 默认关闭所有出口权限，需逐台核对控制权、签发独立服务器密钥。仅升级后台会中断旧设备服务。需维护窗口和可信 SSH 安装独立 token/新版代理；A/B 首刷必须离线备份、整盘刷写后恢复身份。 |
-| P1，计费协议与回滚兼容 | 启用 migration 29 的递增周期后，回滚到无周期编号的出口脚本或混跑旧后台 | 旧请求会被拒绝；回滚包、备用槽及全部 Registry 写入实例须支持新协议。数据库恢复须与出口待传状态一致。旧出口在配套升级前继续保留历史计数，不能手动删除去重状态。 |
+| P1，计费协议与回滚兼容 | 启用 migration 29 的递增周期后，回滚到无周期编号的出口脚本或混跑旧后台 | 旧请求会被拒绝；回滚包、下一次固件包及全部 Registry 写入实例须支持新协议。数据库恢复须与出口待传状态一致。旧出口在配套升级前继续保留历史计数，不能手动删除去重状态。 |
 | P2，**文档与实现漂移**（本次新增） | 运维按文档操作 | 见下方"文档漂移清单"，其中 `NODE-OPERATIONS.md` 的 `Bearer <API_SECRET>` 调用 `/prometheus-targets` 在 `76e3810` 之后会直接 401。 |
 | P2，**定时清理工作流长期失败**（本次新增） | `cleanup-gitea-build-refs.yml` | 53/53 次失败，`ci/build/*` 一次性 ref 从未被回收。页面只暴露 "exit code 1"，完整日志需登录；匿名访问 `gitea.sakurapuare.com` API 返回 403，最可能是 `GITEA_TOKEN` secret 缺失或失效。需补 token，或加失败 annotation 把异常原因打到页面上。 |
 | P2，套餐执行不完整 | 设置套餐速度或并发设备数限制 | `plans.speed_limit` / `device_limit` 仅存库并透传到 API 与导出，设备脚本中没有任何强制实现；不能按"已强制执行"售卖这两项保证。 |
@@ -77,7 +77,7 @@
 
 1. 备份数据库和设备状态；先更新所有 Registry 实例，再配套更新运营方出口脚本与独立服务器密钥。migration 28 默认关闭存量出口角色；migration 29 调整计数表主键，大表应预留维护时间。
 2. 核对客户端与可信出口的实际控制权。出口 root 仍在计费信任范围内；不能把客户控制的网关登记为可信出口。本项目未实现原版 v2node 的 UniProxy 接口兼容。
-3. A/B 备用槽与应用回滚包应支持新计费周期协议；保留当前计数水位及出口待传数据。密钥轮换、额度重置均不能清空这些数据。
+3. 下一次固件包与应用回滚包应支持新计费周期协议；保留当前计数水位及出口待传数据。密钥轮换、额度重置均不能清空这些数据。
 4. `ADMIN_API_SECRET` 必须与 `API_SECRET` 不同，否则进程启动时直接退出（`main.go` 的 fail-fast 检查）。
 5. OTA 设备侧按需下载；管理后台继续执行 30 天保留规则，但没有总容量额度。删除数据库记录后的 InnoDB 空间通常可复用，不保证磁盘文件立即缩小。
 

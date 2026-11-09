@@ -74,7 +74,7 @@ run-qemu: ## 启动 QEMU 虚拟机（SSH: localhost:2222）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # OTA
 
-build-ab: ## NanoPi Zero2 1/2 GB A/B 出厂镜像和系统 OTA 包（VERSION 必填）
+build-ab: ## NanoPi Zero2 1/2 GB 引导 A/B 出厂镜像和系统 OTA 包（VERSION 必填）
 	HIVE_AB=yes HIVE_IMAGE_VERSION=$(VERSION) ./scripts/build.sh nanopi-zero2
 
 build-ab-r28s: ## NanoPi R28S 1 GB A/B 出厂镜像和系统 OTA 包（VERSION 必填）
