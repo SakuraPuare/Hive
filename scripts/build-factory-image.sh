@@ -13,10 +13,10 @@ hive_board_config "${4:-nanopi-zero2}" || { echo 'Unsupported board'; exit 1; }
 [ -f "$SOURCE_IMAGE" ] && [ ! -b "$SOURCE_IMAGE" ] || exit 1
 # One root filesystem, not two. Kernel rollback comes from the two payloads
 # inside /boot, so a second copy of the whole filesystem is dead weight in the
-# factory image. 3328 MiB is the measured floor for this payload: the tree
-# occupies 2782 MiB and the filesystem needs headroom for metadata and for a
-# future firmware payload's kernel modules.
-ROOT_MIB=${HIVE_ROOT_MIB:-3328}
+# factory image. The tree occupies 2975 MiB and one cross-version kernel upgrade
+# adds a further ~166 MiB of modules, so 4096 MiB leaves ~1.1 GiB of room
+# instead of forcing an early rebuild on the device.
+ROOT_MIB=${HIVE_ROOT_MIB:-4096}
 # The data partition ships small on purpose. hive-data-grow expands it to the
 # end of the card before /data is first mounted, so every MiB reserved here is
 # dead weight in the factory image that the device would have allocated anyway.

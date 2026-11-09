@@ -289,7 +289,7 @@ exit 0
         r = self.factory_plan('nanopi-zero2', env={'HIVE_ROOT_MIB': '', 'HIVE_DATA_MIB': ''})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         plan = dict(line.split('=', 1) for line in r.stdout.split())
-        self.assertEqual((plan['root_mib'], plan['data_mib']), ('3328', '512'))
+        self.assertEqual((plan['root_mib'], plan['data_mib']), ('4096', '512'))
         for version in ['../escape', '.hidden', 'has space', 'x' * 65]:
             with self.subTest(version=version):
                 source = self.root / 'source.img'

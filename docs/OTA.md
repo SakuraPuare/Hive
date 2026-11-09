@@ -160,17 +160,17 @@ make build-ab-r28s VERSION=1.0.0  # R28S 1 GB
 
 R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。后台上传完成后显示固件目标板型；设备同时校验实际设备树、已安装布局及签名清单板型，拒绝跨板型安装。
 
-出厂镜像约 4.0 GB（3857 MiB），8 GB 及以上的 TF 卡即可写入。首次启动自动扩容数据分区：
+出厂镜像约 4.5 GB（4625 MiB），8 GB 及以上的 TF 卡即可写入。首次启动自动扩容数据分区：
 
 | 区域 | 默认位置/容量 | 用途 |
 |---|---|---|
 | 引导保留区 | 前 16 MiB | GPT、U-Boot、两份启动环境 |
 | U-Boot | LBA 64 起 | 首刷写入；OTA 不更新 |
 | 启动环境 | `0xc00000` 与 `0xc10000`，每份 `0x8000` 字节 | 冗余保存已确认字母、候选字母、剩余尝试次数 |
-| `hive-root` | 第 1 分区，3328 MiB | 唯一的根文件系统，含 `/boot/Image.<字母>`、`/boot/uInitrd.<字母>`、`/boot/dtb.<字母>/` 两套引导载荷 |
+| `hive-root` | 第 1 分区，4096 MiB | 唯一的根文件系统，含 `/boot/Image.<字母>`、`/boot/uInitrd.<字母>`、`/boot/dtb.<字母>/` 两套引导载荷 |
 | `hive-data` | 第 2 分区，初始 512 MiB，首启扩至卡尾 | 设备身份、运行配置、OTA 状态和下载暂存 |
 
-只有一套根文件系统：字母只决定 U-Boot 加载哪一套内核载荷。3328 MiB 是按实测占用（2975 MiB，含两套各约 90 MiB 的引导载荷）留出约 353 MiB 余量的下限，`HIVE_ROOT_MIB` 可覆盖；一次跨内核版本升级还要再放下约 166 MiB 的模块树，所以这点余量只够一两次内核版本变化。两套载荷在出厂镜像里内容相同，第一次固件更新写入未激活的那一套。
+只有一套根文件系统：字母只决定 U-Boot 加载哪一套内核载荷。4096 MiB 是按实测占用（2975 MiB，含两套各约 90 MiB 的引导载荷）留出约 1.1 GiB 余量，`HIVE_ROOT_MIB` 可覆盖；一次跨内核版本升级还要再放下约 166 MiB 的模块树，余量因此足够多次版本变化而不必回炉重刷。两套载荷在出厂镜像里内容相同，第一次固件更新写入未激活的那一套。
 
 启动环境的偏移量只是默认值：编译期由 `hive-rk3528.inc` 写入 U-Boot `.config`，`post_uboot_custom_postprocess` 从最终 `.config` 抄成 `/usr/lib/hive/uboot-env`，运行期 `hive-firmware` 直接从这份 stamp 读 `CONFIG_ENV_SIZE`/`CONFIG_ENV_OFFSET`/`CONFIG_ENV_OFFSET_REDUND` 生成 `fw_setenv` 配置。改偏移只需改一处；stamp 缺失或格式错误时固件更新直接失败，不会写到 U-Boot 不读的位置。
 
