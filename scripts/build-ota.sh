@@ -211,7 +211,11 @@ fi
 echo ">>> 生成 manifest.json..."
 
 RELOAD_DAEMON=false
-FILE_ENTRIES="[]"
+# One JSON object per line instead of one growing JSON array: a firmware bundle
+# carries the whole /usr/lib/modules tree, and passing thousands of entries as a
+# single jq argument overruns MAX_ARG_STRLEN ("Argument list too long").
+FILE_LIST="${STAGING}/file-entries.jsonl"
+: > "${FILE_LIST}"
 
 cd "${FILES_DIR}"
 while IFS= read -r -d '' f; do
@@ -225,8 +229,8 @@ while IFS= read -r -d '' f; do
         etc/NetworkManager/dispatcher.d/*) MODE="0755" ;;
         etc/update-motd.d/*) MODE="0755" ;;
     esac
-    FILE_ENTRIES=$(echo "${FILE_ENTRIES}" | jq --arg p "$f" --arg s "$SHA" --arg m "$MODE" \
-        '. + [{"path": $p, "sha256": $s, "mode": $m}]')
+    jq -nc --arg p "$f" --arg s "$SHA" --arg m "$MODE" \
+        '{path: $p, sha256: $s, mode: $m}' >> "${FILE_LIST}" || exit 1
     # systemd unit → 需要 daemon-reload
     [[ "${f}" == etc/systemd/system/* ]] && RELOAD_DAEMON=true
 done < <(find . -type f -print0 | sort -z)
@@ -259,7 +263,7 @@ jq -n \
     --arg health_hook_sha256 "$HEALTH_HOOK_SHA256" --argjson rollback_paths "$BACKUP_JSON" \
     --arg version "${VERSION}" \
     --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --argjson files "${FILE_ENTRIES}" \
+    --slurpfile files "${FILE_LIST}" \
     --argjson restart_services "${RESTART_JSON}" \
     --argjson enable_services "${ENABLE_JSON}" \
     --argjson reload_daemon "${RELOAD_DAEMON}" \
@@ -285,7 +289,7 @@ jq -n \
         }
     }' > "${BUNDLE_DIR}/manifest.json"
 
-FILE_COUNT=$(echo "${FILE_ENTRIES}" | jq 'length')
+FILE_COUNT=$(jq -s 'length' "${FILE_LIST}")
 echo "  版本: ${VERSION}"
 echo "  文件数: ${FILE_COUNT}"
 echo "  daemon-reload: ${RELOAD_DAEMON}"
