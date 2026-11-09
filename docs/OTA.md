@@ -170,7 +170,7 @@ R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。后台上
 | `hive-root` | 第 1 分区，3328 MiB | 唯一的根文件系统，含 `/boot/Image.<字母>`、`/boot/uInitrd.<字母>`、`/boot/dtb.<字母>/` 两套引导载荷 |
 | `hive-data` | 第 2 分区，初始 512 MiB，首启扩至卡尾 | 设备身份、运行配置、OTA 状态和下载暂存 |
 
-只有一套根文件系统：字母只决定 U-Boot 加载哪一套内核载荷。3328 MiB 是按实测载荷（2782 MiB）留出约 7% 余量的下限，`HIVE_ROOT_MIB` 可覆盖；两套载荷在出厂镜像里内容相同，第一次固件更新写入未激活的那一套。
+只有一套根文件系统：字母只决定 U-Boot 加载哪一套内核载荷。3328 MiB 是按实测占用（2975 MiB，含两套各约 90 MiB 的引导载荷）留出约 353 MiB 余量的下限，`HIVE_ROOT_MIB` 可覆盖；一次跨内核版本升级还要再放下约 166 MiB 的模块树，所以这点余量只够一两次内核版本变化。两套载荷在出厂镜像里内容相同，第一次固件更新写入未激活的那一套。
 
 启动环境的偏移量只是默认值：编译期由 `hive-rk3528.inc` 写入 U-Boot `.config`，`post_uboot_custom_postprocess` 从最终 `.config` 抄成 `/usr/lib/hive/uboot-env`，运行期 `hive-firmware` 直接从这份 stamp 读 `CONFIG_ENV_SIZE`/`CONFIG_ENV_OFFSET`/`CONFIG_ENV_OFFSET_REDUND` 生成 `fw_setenv` 配置。改偏移只需改一处；stamp 缺失或格式错误时固件更新直接失败，不会写到 U-Boot 不读的位置。
 
