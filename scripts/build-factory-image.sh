@@ -120,26 +120,45 @@ systemctl --root="$WORK/root" enable xray.service cloudflared.service frpc.servi
 # U-Boot attempt counter is the only thing that decides which one runs. The
 # unsuffixed copies are removed so nothing can quietly load a stale kernel that
 # a package manager dropped there.
+#
+# Armbian makes /boot/Image, /boot/uInitrd and /boot/dtb symlinks into the
+# versioned files beside them. Copy through the links (-L): a copied symlink
+# leaves both letters pointing at one shared target, so a firmware update could
+# not replace a single letter's payload, and the payload tar would carry a
+# dangling device-tree link instead of the tree.
 for letter in A B; do
-    cp -a "$WORK/root/boot/Image" "$WORK/root/boot/Image.$letter"
-    cp -a "$WORK/root/boot/uInitrd" "$WORK/root/boot/uInitrd.$letter"
-    cp -a "$WORK/root/boot/dtb" "$WORK/root/boot/dtb.$letter"
+    cp -aL --preserve=mode,timestamps "$WORK/root/boot/Image" "$WORK/root/boot/Image.$letter"
+    cp -aL --preserve=mode,timestamps "$WORK/root/boot/uInitrd" "$WORK/root/boot/uInitrd.$letter"
+    cp -aL --preserve=mode,timestamps "$WORK/root/boot/dtb" "$WORK/root/boot/dtb.$letter"
 done
 rm -rf -- "$WORK/root/boot/Image" "$WORK/root/boot/uInitrd" "$WORK/root/boot/dtb"
 for letter in A B; do
-    test -e "$WORK/root/boot/Image.$letter" || { echo "Root filesystem is missing /boot/Image.$letter"; exit 1; }
-    test -e "$WORK/root/boot/uInitrd.$letter" || { echo "Root filesystem is missing /boot/uInitrd.$letter"; exit 1; }
-    test -e "$WORK/root/boot/dtb.$letter/$HIVE_DTB" || { echo "Root filesystem is missing /boot/dtb.$letter/$HIVE_DTB"; exit 1; }
+    test -f "$WORK/root/boot/Image.$letter" && [ ! -L "$WORK/root/boot/Image.$letter" ] \
+        || { echo "Root filesystem is missing /boot/Image.$letter as a regular file"; exit 1; }
+    test -f "$WORK/root/boot/uInitrd.$letter" && [ ! -L "$WORK/root/boot/uInitrd.$letter" ] \
+        || { echo "Root filesystem is missing /boot/uInitrd.$letter as a regular file"; exit 1; }
+    test -d "$WORK/root/boot/dtb.$letter" && [ ! -L "$WORK/root/boot/dtb.$letter" ] \
+        || { echo "Root filesystem is missing /boot/dtb.$letter as a real directory"; exit 1; }
+    test -f "$WORK/root/boot/dtb.$letter/$HIVE_DTB" \
+        || { echo "Root filesystem is missing /boot/dtb.$letter/$HIVE_DTB"; exit 1; }
 done
 # Firmware OTA ships this bundle. It carries the boot payload under its
 # destination names plus the kernel modules and firmware blobs that must match
 # the kernel; every other path stays with the application transaction.
 mkdir -p "$WORK/payload/boot" "$WORK/payload/usr/lib/hive"
-cp -a "$WORK/root/boot/Image.A" "$WORK/payload/boot/Image"
-cp -a "$WORK/root/boot/uInitrd.A" "$WORK/payload/boot/uInitrd"
-cp -a "$WORK/root/boot/dtb.A" "$WORK/payload/boot/dtb"
+cp -aL --preserve=mode,timestamps "$WORK/root/boot/Image.A" "$WORK/payload/boot/Image"
+cp -aL --preserve=mode,timestamps "$WORK/root/boot/uInitrd.A" "$WORK/payload/boot/uInitrd"
+cp -aL --preserve=mode,timestamps "$WORK/root/boot/dtb.A" "$WORK/payload/boot/dtb"
 cp -a "$WORK/root/usr/lib/modules" "$WORK/payload/usr/lib/modules"
 [ ! -d "$WORK/root/usr/lib/firmware" ] || cp -a "$WORK/root/usr/lib/firmware" "$WORK/payload/usr/lib/firmware"
+# The installer renames these to boot/Image.<letter> and boot/dtb.<letter>/,
+# so the payload must carry the real files, not links into paths it omits.
+test -f "$WORK/payload/boot/Image" && [ ! -L "$WORK/payload/boot/Image" ] \
+    || { echo 'Boot payload carries no regular Image'; exit 1; }
+test -f "$WORK/payload/boot/uInitrd" && [ ! -L "$WORK/payload/boot/uInitrd" ] \
+    || { echo 'Boot payload carries no regular uInitrd'; exit 1; }
+test -f "$WORK/payload/boot/dtb/$HIVE_DTB" \
+    || { echo "Boot payload is missing boot/dtb/$HIVE_DTB"; exit 1; }
 printf '{"board":"%s","layout":"%s","version":"%s"}\n' \
     "$HIVE_BOARD" "$HIVE_LAYOUT" "$VERSION" > "$WORK/payload/usr/lib/hive/boot-payload.json"
 sync
