@@ -132,6 +132,12 @@ for letter in A B; do
     cp -aL --preserve=mode,timestamps "$WORK/root/boot/dtb" "$WORK/root/boot/dtb.$letter"
 done
 rm -rf -- "$WORK/root/boot/Image" "$WORK/root/boot/uInitrd" "$WORK/root/boot/dtb"
+# The versioned files those links pointed at are now dead weight: both letters
+# own real copies, and nothing loads the originals. Dropping them keeps /boot to
+# exactly two payloads and returns ~110 MiB, which the next kernel upgrade needs
+# for its own /usr/lib/modules tree.
+rm -rf -- "$WORK/root/boot"/vmlinuz-* "$WORK/root/boot"/uInitrd-* \
+    "$WORK/root/boot"/initrd.img-* "$WORK/root/boot"/dtb-*
 for letter in A B; do
     test -f "$WORK/root/boot/Image.$letter" && [ ! -L "$WORK/root/boot/Image.$letter" ] \
         || { echo "Root filesystem is missing /boot/Image.$letter as a regular file"; exit 1; }
