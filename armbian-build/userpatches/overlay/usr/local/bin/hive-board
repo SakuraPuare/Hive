@@ -13,7 +13,11 @@ hive_board_config() {
             ;;
         *) return 1;;
     esac
-    HIVE_LAYOUT="${HIVE_BOARD}-ab-v1"
+    # v2: one root filesystem plus an A/B boot payload inside /boot. The name
+    # is a runtime contract, not a label: v1 tooling must refuse a v2 disk
+    # (no second partition to write) and v2 tooling must refuse a v1 disk (no
+    # per-letter boot files to switch).
+    HIVE_LAYOUT="${HIVE_BOARD}-bootab-v1"
 }
 
 hive_detect_board() {

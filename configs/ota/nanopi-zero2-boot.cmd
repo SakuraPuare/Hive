@@ -1,5 +1,5 @@
 # Embedded into U-Boot's default bootcmd. No mutable slot script controls slot
-# selection. Environment offsets are reserved by build-ab-image.sh.
+# selection. Environment offsets are reserved by build-factory-image.sh.
 echo HIVE_AB_V1;
 # The first SD probe can time out on this board. Reload the persistent boot
 # state after warming the controller, before inspecting any slot variables.
@@ -23,7 +23,10 @@ if test "${hive_active}" != A && test "${hive_active}" != B; then
     # slot and leave the A/B bookkeeping degraded for the OS to report.
     if saveenv; then echo Initialized Hive slots; else echo WARNING: environment not writable; fi;
 fi;
-setenv hive_boot_slot 'if test "${hive_slot}" = A; then setenv hive_part 1; else setenv hive_part 2; fi; if part uuid mmc ${hive_mmc}:${hive_part} hive_rootuuid && load mmc ${hive_mmc}:${hive_part} ${kernel_addr_r} /boot/Image && load mmc ${hive_mmc}:${hive_part} ${ramdisk_addr_r} /boot/uInitrd && load mmc ${hive_mmc}:${hive_part} ${fdt_addr_r} /boot/dtb/rockchip/rk3528-nanopi-zero2.dtb; then setenv bootargs console=ttyS0,1500000 root=PARTUUID=${hive_rootuuid} rootfstype=ext4 rootwait=60 rw panic=10 oops=panic softlockup_panic=1 hardlockup_panic=1 irqchip.gicv3_pseudo_nmi=1 hive.slot=${hive_slot}; booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}; fi';
+# Both letters live in the single root filesystem: the letter only selects
+# which kernel payload to load, so a bad kernel never needs a second
+# partition and never costs the factory image another root filesystem.
+setenv hive_boot_slot 'if part uuid mmc ${hive_mmc}:1 hive_rootuuid && load mmc ${hive_mmc}:1 ${kernel_addr_r} /boot/Image.${hive_slot} && load mmc ${hive_mmc}:1 ${ramdisk_addr_r} /boot/uInitrd.${hive_slot} && load mmc ${hive_mmc}:1 ${fdt_addr_r} /boot/dtb.${hive_slot}/rockchip/rk3528-nanopi-zero2.dtb; then setenv bootargs console=ttyS0,1500000 root=PARTUUID=${hive_rootuuid} rootfstype=ext4 rootwait=60 rw panic=10 oops=panic softlockup_panic=1 hardlockup_panic=1 irqchip.gicv3_pseudo_nmi=1 hive.slot=${hive_slot}; booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}; fi';
 if test "${hive_pending}" = A || test "${hive_pending}" = B; then
     # Hush's `test -gt` cannot tell a digit from a corrupted value: "x" or an
     # empty counter made the comparison fail, so the armed trial was dropped and

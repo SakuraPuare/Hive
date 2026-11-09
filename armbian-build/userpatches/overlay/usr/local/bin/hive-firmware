@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# NanoPi Zero2/R28S A/B firmware installer. This is sourced only after signature and
+# NanoPi Zero2/R28S boot payload installer. This is sourced only after signature and
 # payload verification by hive-updater; standalone mode confirms a trial boot.
 FW_STATE=/var/lib/hive
 FW_PENDING="$FW_STATE/firmware-pending.json"
 FW_ENV=/run/hive-fw-env.config
+# Empty in production. Tests point it at a sandbox so the installer can be
+# exercised without writing to a real /boot.
+FW_ROOT=""
 # hive-updater defines log(); the standalone (systemd) run needs the same helper.
 declare -F log >/dev/null || log() { echo "[hive-firmware] $*"; logger -t "hive-firmware" "$*" 2>/dev/null || true; }
 source /usr/local/bin/hive-board
@@ -22,27 +25,28 @@ firmware_environment_config() {
 }
 
 firmware_layout() {
-    local root label part
+    local root label part active
     hive_detect_board || return 1
     [ "$(cat /usr/lib/hive/ab-layout 2>/dev/null)" = "$HIVE_LAYOUT" ] || return 1
     root=$(readlink -f "$(findmnt -n -o SOURCE /)") || return 1
     FW_DISK="/dev/$(lsblk -dn -o PKNAME "$root")"
     [[ "$FW_DISK" =~ ^/dev/mmcblk[0-9]+$ ]] || return 1
-    for part in 1 2 3; do
+    for part in 1 2; do
         [ -b "${FW_DISK}p${part}" ] || return 1
         label=$(lsblk -dn -o PARTLABEL "${FW_DISK}p${part}")
-        case "$part:$label" in 1:hive-rootA|2:hive-rootB|3:hive-data) ;; *) return 1;; esac
+        case "$part:$label" in 1:hive-root|2:hive-data) ;; *) return 1;; esac
     done
     [ "$(cat "/sys/class/block/${FW_DISK##*/}p1/start")" = 32768 ] || return 1
-    case "$root" in
-        "${FW_DISK}p1") FW_SLOT=A; FW_OTHER=B; FW_TARGET="${FW_DISK}p2";;
-        "${FW_DISK}p2") FW_SLOT=B; FW_OTHER=A; FW_TARGET="${FW_DISK}p1";;
-        *) return 1;;
-    esac
+    # There is one root filesystem; only the running letter can update it.
+    [ "$root" = "${FW_DISK}p1" ] || return 1
     # Use the actual boot disk, not a Linux mmc index assumed at build time.
     firmware_environment_config > "$FW_ENV" || { log '缺少 /usr/lib/hive/uboot-env，无法定位 U-Boot 环境（镜像不是以 HIVE_AB=yes 构建？）'; return 1; }
-    [ "$(fw_printenv -c "$FW_ENV" -n hive_active)" = A ] || \
-        [ "$(fw_printenv -c "$FW_ENV" -n hive_active)" = B ]
+    active=$(fw_printenv -c "$FW_ENV" -n hive_active)
+    case "$active" in
+        A) FW_SLOT=A; FW_OTHER=B;;
+        B) FW_SLOT=B; FW_OTHER=A;;
+        *) return 1;;
+    esac
 }
 
 firmware_environment() {
@@ -52,52 +56,77 @@ firmware_environment() {
 }
 
 firmware_stage() {
-    local payload="$1" version="$2" sha="$3" assignment="$4" manifest image size expected actual
+    local payload="$1" version="$2" sha="$3" assignment="$4" manifest count i fpath src dest expected actual image_sha
     manifest="$payload/manifest.json"
-    firmware_layout || { log '设备没有受支持的 A/B 分区或引导器'; return 1; }
+    firmware_layout || { log '设备没有受支持的 Hive 布局或引导器'; return 1; }
     # Firmware pending/receipt live on /data. Staging without it would arm a
-    # trial that the next slot can never confirm (its /var/lib/hive is empty).
+    # trial whose confirmation could never be recorded.
     ota_state_persistent || { log '持久化 /data 未挂载，拒绝固件更新'; return 1; }
     [ ! -e "$FW_PENDING" ] && [ ! -f "$OTA_TX/active" ] || return 1
-    [ "$(fw_printenv -c "$FW_ENV" -n hive_active)" = "$FW_SLOT" ] || return 1
     [ -z "$(fw_printenv -c "$FW_ENV" -n hive_pending 2>/dev/null)" ] || return 1
-    jq -e --arg board "$HIVE_BOARD" --arg layout "$HIVE_LAYOUT" '.kind == "firmware" and .board == $board and .layout == $layout
-        and (.files | length == 1) and .files[0].path == "rootfs.img"' "$manifest" >/dev/null || return 1
-    image="$payload/files/rootfs.img"
-    size=$(stat -c %s "$image")
-    [ "$size" -gt 0 ] && [ "$size" -le "$(blockdev --getsize64 "$FW_TARGET")" ] || return 1
-    ! findmnt -rn -S "$FW_TARGET" >/dev/null || return 1
-    [ "$(blkid -p -s TYPE -o value "$image")" = ext4 ] || return 1
-    [ "$(debugfs -R 'cat /usr/lib/hive/ab-layout' "$image" 2>/dev/null)" = "$HIVE_LAYOUT" ] || return 1
-    [ "$(debugfs -R 'cat /usr/lib/hive/firmware-version' "$image" 2>/dev/null)" = "$version" ] || return 1
-    log "写入备用系统槽 $FW_OTHER"
-    ota_save_ack installing "writing inactive slot $FW_OTHER" "$assignment" "$version" || return 1
+    jq -e --arg board "$HIVE_BOARD" --arg layout "$HIVE_LAYOUT" \
+        '.kind == "firmware" and .board == $board and .layout == $layout' "$manifest" >/dev/null || return 1
+    count=$(jq '.files | length' "$manifest")
+    [ "$count" -gt 0 ] || return 1
+    # A firmware bundle may only move the boot payload and the kernel data that
+    # has to match it. Everything else is an application change and belongs in
+    # the signed application bundle, which has file-level rollback; allowing it
+    # here would create a second, weaker update path over the same files.
+    for i in $(seq 0 $((count - 1))); do
+        fpath=$(jq -r ".files[$i].path" "$manifest")
+        case "$fpath" in
+            boot/Image|boot/uInitrd|boot/dtb/*|usr/lib/modules/*|usr/lib/firmware/*) ;;
+            usr/lib/hive/boot-payload.json) ;;
+            *) log "固件包包含不允许的路径: $fpath"; return 1 ;;
+        esac
+        src="$payload/files/$fpath"
+        { [ -f "$src" ] && [ ! -L "$src" ]; } || { log "文件缺失: $fpath"; return 1; }
+        actual=$(sha256sum "$src" | awk '{print $1}')
+        [ "$actual" = "$(jq -r ".files[$i].sha256" "$manifest")" ] || { log "文件 sha256 不匹配: $fpath"; return 1; }
+    done
+    jq -e '[.files[].path] | (index("boot/Image") != null) and (index("boot/uInitrd") != null)' "$manifest" >/dev/null || return 1
+    log "写入引导载荷 $FW_OTHER"
+    ota_save_ack installing "writing boot payload $FW_OTHER" "$assignment" "$version" || return 1
     flush_ack || true
-    dd if="$image" of="$FW_TARGET" bs=4M conv=fsync status=none || return 1
-    expected=$(jq -r '.files[0].sha256' "$manifest")
-    actual=$(head -c "$size" "$FW_TARGET" | sha256sum | cut -d ' ' -f1) || return 1
-    [ "$actual" = "$expected" ] || { log '写入后校验失败，保留原系统启动'; return 1; }
-    e2fsck -pf "$FW_TARGET"
-    local check=$?
-    [ "$check" -le 1 ] || return 1
-    resize2fs "$FW_TARGET" || return 1
-    # The payload is built from the same filesystem the factory A slot was
-    # copied from, so writing it verbatim leaves both slots with one UUID and
-    # nothing that resolves a filesystem by UUID (blkid, mount -U, systemd's
-    # duplicate detection) can tell them apart. Label alone is not enough.
-    tune2fs -L "hive-root$FW_OTHER" -U random "$FW_TARGET" || return 1
+    for i in $(seq 0 $((count - 1))); do
+        fpath=$(jq -r ".files[$i].path" "$manifest")
+        src="$payload/files/$fpath"
+        case "$fpath" in
+            boot/Image) dest="$FW_ROOT/boot/Image.$FW_OTHER" ;;
+            boot/uInitrd) dest="$FW_ROOT/boot/uInitrd.$FW_OTHER" ;;
+            # dtb travels with the kernel it describes: a payload that cannot
+            # boot must never take the confirmed letter's device tree with it.
+            boot/dtb/*) dest="$FW_ROOT/boot/dtb.$FW_OTHER/${fpath#boot/dtb/}" ;;
+            *) dest="$FW_ROOT/$fpath" ;;
+        esac
+        mkdir -p "$(dirname "$dest")" || return 1
+        cp -f "$src" "$dest.fw-new" || return 1
+        chmod 0644 "$dest.fw-new" || return 1
+        mv -f "$dest.fw-new" "$dest" || return 1
+    done
+    sync || return 1
+    # Read the payload back. The bootloader loads exactly these files, and a
+    # short write is otherwise indistinguishable from a finished update.
+    image_sha=$(jq -r '.files[] | select(.path == "boot/Image") | .sha256' "$manifest")
+    [ "$(sha256sum "$FW_ROOT/boot/Image.$FW_OTHER" | awk '{print $1}')" = "$image_sha" ] || {
+        log '写入后校验失败，保留原引导载荷'; return 1; }
+    expected=$(jq -r '.files[] | select(.path == "boot/uInitrd") | .sha256' "$manifest")
+    [ "$(sha256sum "$FW_ROOT/boot/uInitrd.$FW_OTHER" | awk '{print $1}')" = "$expected" ] || {
+        log '写入后校验失败，保留原引导载荷'; return 1; }
     [ ! -f "$FW_STATE/ota-installed.json" ] || cp -a "$FW_STATE/ota-installed.json" "$FW_STATE/firmware-previous-receipt.json" || return 1
     [ ! -f /etc/hive/ota-version ] || cp -a /etc/hive/ota-version "$FW_STATE/firmware-previous-version" || return 1
     jq -n --arg version "$version" --arg sha "$sha" --arg target "$FW_OTHER" --arg previous "$FW_SLOT" \
-        --arg assignment "$assignment" --arg boot_id "$(cat /proc/sys/kernel/random/boot_id)" \
-        '{version:$version,sha256:$sha,target:$target,previous:$previous,assignment:$assignment,boot_id:$boot_id}' > "$FW_PENDING.new" || return 1
+        --arg assignment "$assignment" --arg boot_id "$(cat /proc/sys/kernel/random/boot_id)" --arg image_sha "$image_sha" \
+        '{version:$version,sha256:$sha,target:$target,previous:$previous,assignment:$assignment,boot_id:$boot_id,image_sha256:$image_sha}' \
+        > "$FW_PENDING.new" || return 1
     mv -f "$FW_PENDING.new" "$FW_PENDING" || return 1
     sync || return 1
     # One redundant environment write arms the trial. A power loss before this
-    # point boots the old slot; afterwards bootcmd consumes a bounded attempt.
+    # point boots the confirmed letter; afterwards bootcmd consumes a bounded
+    # attempt and returns to the confirmed letter on its own.
     firmware_environment "hive_pending $FW_OTHER
 hive_tries 3" || return 1
-    ota_save_ack installing "slot $FW_OTHER ready; waiting for reboot validation" "$assignment" "$version"
+    ota_save_ack installing "boot payload $FW_OTHER ready; waiting for reboot validation" "$assignment" "$version"
 }
 
 firmware_confirm() {
@@ -128,7 +157,9 @@ hive_tries 0' || log 'warning: hive_pending could not be cleared; the bootloader
         ota_save_ack rolled_back 'trial boot failed; bootloader returned to the confirmed system' "$assignment" "$version" || log 'warning: rollback receipt not delivered'
         return 0
     fi
-    [ "$(cat /usr/lib/hive/firmware-version)" = "$version" ] || return 1
+    # The boot payload has no version file of its own; prove the letter that
+    # booted is carrying exactly the payload this update installed.
+    [ "$(sha256sum "$FW_ROOT/boot/Image.$FW_SLOT" | awk '{print $1}')" = "$(jq -r .image_sha256 "$FW_PENDING")" ] || return 1
     for svc in NetworkManager.service nginx.service cloudflared.service easytier.service hive-subscription-guard.timer hive-updater.timer hive-command-agent.timer; do
         # 没有 Cloudflare 凭证的节点由 provision-node.sh 记录在案并跳过启用。
         # 它在管理面根本没有可确认的 cloudflared 通道，等它 active 就等于把
@@ -139,7 +170,7 @@ hive_tries 0' || log 'warning: hive_pending could not be cleared; the bootloader
         systemctl is-active --quiet "$svc" || return 1
     done
     # Xray serves only operator-controlled exits. Customer images intentionally
-    # keep it stopped, which must not make a healthy A/B trial roll back.
+    # keep it stopped, which must not make a healthy boot-payload trial roll back.
     if [ -s /etc/hive/server-token ]; then
         systemctl is-active --quiet xray.service || return 1
     fi
@@ -157,10 +188,10 @@ hive_tries 0' || log 'warning: hive_pending could not be cleared; the bootloader
     # Flip the bootloader first: it is the authoritative switch and nothing may
     # claim the new version before the bootloader agrees. Writing the receipt
     # and /etc/hive/ota-version first left a window where the node reported the
-    # new version while hive_active still pointed at the old slot, so a failed
+    # new version while hive_active still pointed at the old letter, so a failed
     # or interrupted environment write made the receipt lie about what boots.
     # If a later write fails, the pending marker is still present and the next
-    # confirm retries on this slot.
+    # confirm retries on this letter.
     firmware_environment "hive_active $FW_SLOT
 hive_pending
 hive_tries 0" || return 1
@@ -170,7 +201,7 @@ hive_tries 0" || return 1
     printf '%s\n' "$version" > /etc/hive/ota-version.new || return 1
     mv -f /etc/hive/ota-version.new /etc/hive/ota-version || return 1
     sync || return 1
-    ota_save_ack done "firmware boot and management checks passed in slot $FW_SLOT" "$assignment" "$version" || return 1
+    ota_save_ack done "firmware boot and management checks passed on letter $FW_SLOT" "$assignment" "$version" || return 1
     rm -f "$FW_PENDING" "$FW_STATE/firmware-previous-receipt.json" "$FW_STATE/firmware-previous-version"
     sync -f "$FW_STATE"
 }

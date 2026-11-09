@@ -67,7 +67,7 @@ usage() {
     echo "  --post-hook <script> post-install hook 脚本路径"
     echo "  --health-hook <file> 安装后功能检查，失败回滚"
     echo "  --backup <path>     hook 会修改的额外文件（相对根目录）"
-    echo "  --firmware <image>  NanoPi Zero2/R28S A/B rootfs 镜像（自动识别板型）"
+    echo "  --firmware <tar>    引导载荷包（build-factory-image.sh 产出的 boot tar）"
     echo "  --no-sign            跳过签名（测试用）"
     exit 1
 }
@@ -124,12 +124,8 @@ KIND=application
 BOARD=""
 LAYOUT=""
 if [ -n "$FIRMWARE" ]; then
-    [ -f "$FIRMWARE" ] || { echo 'Firmware image not found'; exit 1; }
-    LAYOUT=$(debugfs -R 'cat /usr/lib/hive/ab-layout' "$FIRMWARE" 2>/dev/null)
-    case "$LAYOUT" in nanopi-zero2-ab-v1|nanopi-r28s-ab-v1) BOARD=${LAYOUT%-ab-v1};;
-        *) echo 'Unsupported A/B rootfs layout'; exit 1;; esac
+    [ -f "$FIRMWARE" ] || { echo 'Boot payload bundle not found'; exit 1; }
     KIND=firmware
-    BUNDLE_NAME="hive-firmware-${BOARD}-v${VERSION}"
 fi
 BUNDLE_DIR="${STAGING}/${BUNDLE_NAME}"
 FILES_DIR="${BUNDLE_DIR}/files"
@@ -142,9 +138,31 @@ echo ">>> 收集 OTA 文件..."
 
 if [ -n "$FIRMWARE" ]; then
     [ "${#INCLUDES[@]}" -eq 0 ] && [ -z "$PRE_HOOK$POST_HOOK$HEALTH_HOOK" ] || { echo 'Firmware cannot include application files/hooks'; exit 1; }
-    [ -f "$FIRMWARE" ] || { echo 'Firmware image not found'; exit 1; }
-    [ "$(debugfs -R 'cat /usr/lib/hive/firmware-version' "$FIRMWARE" 2>/dev/null)" = "$VERSION" ] || { echo 'Rootfs version mismatch'; exit 1; }
-    cp --sparse=always "$FIRMWARE" "$FILES_DIR/rootfs.img"
+    tar -C "${FILES_DIR}" -xf "$FIRMWARE" || { echo 'Cannot extract boot payload'; exit 1; }
+    META="${FILES_DIR}/usr/lib/hive/boot-payload.json"
+    [ -f "$META" ] || { echo 'Boot payload metadata missing'; exit 1; }
+    BOARD=$(jq -r '.board // empty' "$META")
+    LAYOUT=$(jq -r '.layout // empty' "$META")
+    [ "$(jq -r '.version // empty' "$META")" = "$VERSION" ] || { echo 'Boot payload version mismatch'; exit 1; }
+    case "$BOARD:$LAYOUT" in
+        nanopi-zero2:nanopi-zero2-bootab-v1|nanopi-r28s:nanopi-r28s-bootab-v1) ;;
+        *) echo 'Unsupported boot payload layout'; exit 1;;
+    esac
+    # The device rejects anything outside this set, so fail the build instead of
+    # shipping a bundle every node would refuse.
+    while IFS= read -r f; do
+        case "$f" in
+            boot/Image|boot/uInitrd|boot/dtb/*|usr/lib/modules/*|usr/lib/firmware/*|usr/lib/hive/boot-payload.json) ;;
+            *) echo "ERROR: unexpected firmware payload path: $f"; exit 1;;
+        esac
+    done < <(cd "${FILES_DIR}" && find . -type f -printf '%P\n')
+    # Rename now that the board is known; the device validates the layout stamp
+    # before it trusts any of these files.
+    BUNDLE_NAME="hive-firmware-${BOARD}-v${VERSION}"
+    mv "${BUNDLE_DIR}" "${STAGING}/${BUNDLE_NAME}"
+    BUNDLE_DIR="${STAGING}/${BUNDLE_NAME}"
+    FILES_DIR="${BUNDLE_DIR}/files"
+    HOOKS_DIR="${BUNDLE_DIR}/hooks"
 elif [ ${#INCLUDES[@]} -eq 0 ]; then
     # The bundled sync agents refuse to authorize without the lease watchdog.
     ENABLE_SERVICES+=(hive-ota-recover.service hive-updater.timer hive-subscription-guard.timer hive-xray-sync.timer hive-clash-sync.timer)

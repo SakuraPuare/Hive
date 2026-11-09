@@ -42,11 +42,11 @@ apply() {
     root=$(readlink -f "$(findmnt -n -o SOURCE /)")
     disk="/dev/$(lsblk -dn -o PKNAME "$root")"
     [[ "$disk" =~ ^/dev/mmcblk[0-9]+$ ]] || exit 1
-    [ "$(lsblk -dn -o PARTLABEL "${disk}p3")" = hive-data ] || exit 1
+    [ "$(lsblk -dn -o PARTLABEL "${disk}p2")" = hive-data ] || exit 1
     mkdir -p /data
     if ! mountpoint -q /data; then
         /usr/local/bin/hive-data-grow "$disk"
-        mount -o nosuid,nodev "${disk}p3" /data
+        mount -o nosuid,nodev "${disk}p2" /data
     fi
     for path in etc/hive etc/ssh root/.ssh etc/cloudflared etc/frp etc/xray etc/mihomo etc/nginx/sites-available \
         etc/NetworkManager/system-connections var/lib/hive var/lib/tailscale \

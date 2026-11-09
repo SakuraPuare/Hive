@@ -608,35 +608,40 @@ class FirmwareTests(unittest.TestCase):
     run_script = base.DeviceRegressionTests.run_script
 
     def firmware_fixture(self):
-        tree = self.root / 'image-tree/usr/lib/hive'
-        tree.mkdir(parents=True)
-        (tree / 'ab-layout').write_text(self.board + '-ab-v1\n')
-        (tree / 'firmware-version').write_text('2.0\n')
         payload = self.root / 'firmware'
-        (payload / 'files').mkdir(parents=True)
-        image = payload / 'files/rootfs.img'
-        with image.open('wb') as f: f.truncate(16 * 1024**2)
-        subprocess.run(['mkfs.ext4', '-q', '-F', '-d', str(self.root / 'image-tree'), str(image)], check=True, capture_output=True)
-        manifest = {'kind': 'firmware', 'board': self.board, 'layout': self.board + '-ab-v1', 'version': '2.0',
-                    'files': [{'path': 'rootfs.img', 'sha256': hashlib.sha256(image.read_bytes()).hexdigest()}]}
-        (payload / 'manifest.json').write_text(json.dumps(manifest))
-        with (self.root / 'inactive-slot').open('wb') as f: f.truncate(32 * 1024**2)
-        (self.root / 'active-slot').write_bytes(b'current system must remain unchanged')
+        files = payload / 'files'
+        (files / 'boot/dtb/rockchip').mkdir(parents=True)
+        (files / 'usr/lib/modules/6.18.59').mkdir(parents=True)
+        (files / 'usr/lib/hive').mkdir(parents=True)
+        (files / 'boot/Image').write_bytes(b'new kernel payload\n')
+        (files / 'boot/uInitrd').write_bytes(b'new initramfs\n')
+        (files / 'boot/dtb/rockchip/rk3528-nanopi-zero2.dtb').write_bytes(b'new device tree\n')
+        (files / 'usr/lib/modules/6.18.59/hive.ko').write_bytes(b'new module\n')
+        (files / 'usr/lib/hive/boot-payload.json').write_text(
+            json.dumps({'board': self.board, 'layout': self.board + '-bootab-v1', 'version': '2.0'}))
+        entries = [{'path': str(p.relative_to(files)), 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()}
+                   for p in sorted(files.rglob('*')) if p.is_file()]
+        (payload / 'manifest.json').write_text(json.dumps({
+            'kind': 'firmware', 'board': self.board, 'layout': self.board + '-bootab-v1',
+            'version': '2.0', 'files': entries}))
+        # The confirmed letter is what a failed update must leave untouched.
+        (self.root / 'boot').mkdir(exist_ok=True)
+        (self.root / 'boot/Image.A').write_bytes(b'current system must remain unchanged')
+        (self.root / 'boot/uInitrd.A').write_bytes(b'current initramfs\n')
+        (self.root / 'image-tree/usr/lib/hive').mkdir(parents=True, exist_ok=True)
+        (self.root / 'image-tree/usr/lib/hive/ab-layout').write_text(self.board + '-bootab-v1\n')
         (self.root / 'etc/hive/ota-version').write_text('1.0\n')
         (self.root / 'var/lib/hive/ota-installed.json').write_text('{"version":"1.0","sha256":"old"}')
         (self.root / 'etc/hive/device-token').write_text('test-token')
         (self.root / 'assignment.json').write_text('{}')
-        self.mock('blockdev', '#!/bin/sh\necho 33554432\n')
         self.mock('findmnt', '#!/bin/sh\nexit 1\n')
         self.mock('fw_printenv', '#!/bin/sh\n[ "$4" != hive_active ] || echo A\n')
         self.mock('fw_setenv', '#!/bin/sh\ncat "$4" >> "$HIVE_TEST_ROOT/environment-writes"\n')
-        self.mock('dd', '#!/bin/sh\nexec /bin/dd "$@" conv=fsync,notrunc\n')
         helper = self.script('hive-ota-transaction')
         firmware = self.script('hive-firmware')
-        firmware.write_text(firmware.read_text().replace('$(cat /usr/lib/hive/firmware-version)', '$(cat ' + str(tree / 'firmware-version') + ')'))
         runner = self.root / 'firmware-test'
         runner.write_text('set -uo pipefail\nexport TEST_BOARD=' + self.board + '\nsource "' + str(helper) + '"\nsource "' + str(firmware) + '"\n' + '''
-firmware_layout() { hive_board_config "$TEST_BOARD"; FW_SLOT="${TEST_SLOT:-A}"; FW_OTHER=B; FW_TARGET="$HIVE_TEST_ROOT/inactive-slot"; }
+firmware_layout() { hive_board_config "$TEST_BOARD"; FW_SLOT="${TEST_SLOT:-A}"; FW_OTHER=B; }
 log() { echo "$*"; }
 flush_ack() { return 0; }
 if [ "$1" = stage ]; then firmware_stage "$HIVE_TEST_ROOT/firmware" 2.0 new-sha assignment;
@@ -669,61 +674,69 @@ else firmware_confirm; fi
     def test_write_verified_before_boot_switch(self):
         runner = self.firmware_fixture()
         self.run_script(runner, 'stage')
-        self.assertEqual((self.root / 'active-slot').read_bytes(), b'current system must remain unchanged')
+        # The confirmed letter is never touched; the inactive one gets the payload.
+        self.assertEqual((self.root / 'boot/Image.A').read_bytes(), b'current system must remain unchanged')
+        self.assertEqual((self.root / 'boot/Image.B').read_bytes(), b'new kernel payload\n')
+        self.assertEqual((self.root / 'boot/dtb.B/rockchip/rk3528-nanopi-zero2.dtb').read_bytes(),
+                         b'new device tree\n')
+        self.assertEqual((self.root / 'usr/lib/modules/6.18.59/hive.ko').read_bytes(), b'new module\n')
         self.assertIn('hive_pending B\nhive_tries 3', (self.root / 'environment-writes').read_text())
         self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), '1.0\n')
         pending = json.loads((self.root / 'var/lib/hive/firmware-pending.json').read_text())
         self.assertEqual(pending['target'], 'B')
+        self.assertEqual(pending['image_sha256'], hashlib.sha256(b'new kernel payload\n').hexdigest())
 
-    def fs_info(self, path):
-        result = subprocess.run(['dumpe2fs', '-h', str(path)], text=True, capture_output=True, check=True)
-        return {key.strip(): value.strip() for key, _, value in
-                (line.partition(':') for line in result.stdout.splitlines())}
-
-    def test_slot_write_gets_a_fresh_filesystem_uuid(self):
-        # The factory A slot is a copy of the filesystem the OTA payload is
-        # built from, so writing the payload verbatim leaves both slots with
-        # one UUID; blkid, `mount -U` and systemd's duplicate detection then
-        # cannot tell them apart. Relabelling does not fix that.
+    def test_payload_outside_the_boot_set_is_rejected(self):
+        # An application file in a firmware bundle would create a second,
+        # weaker update path over the same tree, without file-level rollback.
         runner = self.firmware_fixture()
-        payload_uuid = self.fs_info(self.root / 'firmware/files/rootfs.img')['Filesystem UUID']
-        self.run_script(runner, 'stage')
-        info = self.fs_info(self.root / 'inactive-slot')
-        self.assertNotEqual(info['Filesystem UUID'], payload_uuid)
-        self.assertEqual(info['Filesystem volume name'], 'hive-rootB')
+        manifest_path = self.root / 'firmware/manifest.json'
+        manifest = json.loads(manifest_path.read_text())
+        rogue = self.root / 'firmware/files/usr/local/bin/hive-data'
+        rogue.parent.mkdir(parents=True)
+        rogue.write_bytes(b'rogue\n')
+        manifest['files'].append({'path': 'usr/local/bin/hive-data',
+                                  'sha256': hashlib.sha256(b'rogue\n').hexdigest()})
+        manifest_path.write_text(json.dumps(manifest))
+        self.run_script(runner, 'stage', expected=1)
+        self.assertFalse((self.root / 'environment-writes').exists())
+        self.assertFalse((self.root / 'boot/Image.B').exists())
 
     def test_firmware_builder_produces_distinct_board_bundle(self):
         self.firmware_fixture()
+        files = self.root / 'firmware/files'
+        payload_tar = self.root / 'boot-payload.tar'
+        with tarfile.open(payload_tar, 'w') as archive:
+            for path in sorted(files.rglob('*')):
+                if path.is_file():
+                    archive.add(path, arcname=str(path.relative_to(files)))
         source = (base.REPO / 'scripts/build-ota.sh').read_text()
         source = source.replace('ROOT_DIR="$(dirname "$SCRIPT_DIR")"', 'ROOT_DIR="' + str(base.REPO) + '"')
         source = source.replace('OUTPUT_DIR="${ROOT_DIR}/output/ota"', 'OUTPUT_DIR="' + str(self.root / 'output') + '"')
         builder = self.root / 'build-ota'
         builder.write_text(source)
-        self.run_script(builder, '2.0', '--firmware', str(self.root / 'firmware/files/rootfs.img'), '--no-sign')
+        self.run_script(builder, '2.0', '--firmware', str(payload_tar), '--no-sign')
         archive_path = self.root / ('output/hive-firmware-' + self.board + '-v2.0.tar.gz')
         with tarfile.open(archive_path) as archive:
             self.assertTrue(archive.getnames()[0].endswith('/manifest.json'))
             manifest = json.load(archive.extractfile(archive.getnames()[0]))
             self.assertEqual(manifest['kind'], 'firmware')
             self.assertEqual(manifest['board'], self.board)
-            self.assertEqual(manifest['files'][0]['path'], 'rootfs.img')
+            self.assertEqual(manifest['layout'], self.board + '-bootab-v1')
+            self.assertIn('boot/Image', [f['path'] for f in manifest['files']])
 
-    def test_failed_write_never_switches_boot_slot(self):
+    def test_failed_write_never_switches_boot_letter(self):
         runner = self.firmware_fixture()
-        self.mock('dd', '#!/bin/sh\nexit 1\n')
+        self.mock('cp', '#!/bin/sh\nexit 1\n')
         self.run_script(runner, 'stage', expected=1)
         self.assertFalse((self.root / 'environment-writes').exists())
         self.assertFalse((self.root / 'var/lib/hive/firmware-pending.json').exists())
 
-    def test_readback_mismatch_never_switches_boot_slot(self):
+    def test_readback_mismatch_never_switches_boot_letter(self):
+        # A payload that does not land byte-for-byte must never be armed: the
+        # bootloader would load a truncated kernel on the next boot.
         runner = self.firmware_fixture()
-        self.mock('head', '#!/bin/sh\nprintf corrupted\n')
-        self.run_script(runner, 'stage', expected=1)
-        self.assertFalse((self.root / 'environment-writes').exists())
-
-    def test_mounted_target_is_rejected(self):
-        runner = self.firmware_fixture()
-        self.mock('findmnt', '#!/bin/sh\nexit 0\n')
+        self.mock('mv', '#!/bin/sh\nexit 0\n')
         self.run_script(runner, 'stage', expected=1)
         self.assertFalse((self.root / 'environment-writes').exists())
 
@@ -864,11 +877,12 @@ class R28SFirmwareTests(FirmwareTests):
         runner = self.firmware_fixture()
         path = self.root / 'firmware/manifest.json'
         manifest = json.loads(path.read_text())
-        manifest.update(board='nanopi-zero2', layout='nanopi-zero2-ab-v1')
+        manifest.update(board='nanopi-zero2', layout='nanopi-zero2-bootab-v1')
         path.write_text(json.dumps(manifest))
         self.run_script(runner, 'stage', expected=1)
         self.assertFalse((self.root / 'environment-writes').exists())
-        self.assertEqual((self.root / 'inactive-slot').read_bytes(), bytes(32 * 1024**2))
+        self.assertFalse((self.root / 'boot/Image.B').exists())
+        self.assertEqual((self.root / 'boot/Image.A').read_bytes(), b'current system must remain unchanged')
 
 
 class BootPolicyTests(unittest.TestCase):

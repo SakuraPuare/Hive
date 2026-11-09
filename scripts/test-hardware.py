@@ -42,7 +42,7 @@ class HardwareTests(unittest.TestCase):
                                   ('friendlyelec,nanopi-r28s','nanopi-r28s')]:
             (self.root / 'compatible').write_bytes(compatible.encode()+b'\0rockchip,rk3528\0')
             result = self.run_script(source+'\nhive_detect_board && echo "$HIVE_BOARD:$HIVE_LAYOUT"')
-            self.assertEqual(result.stdout.strip(), f'{board}:{board}-ab-v1')
+            self.assertEqual(result.stdout.strip(), f'{board}:{board}-bootab-v1')
         (self.root / 'compatible').write_bytes(b'friendlyarm,nanopi-r3s\0rockchip,rk3566\0')
         self.run_script(source+'\nhive_detect_board', 1)
 
@@ -58,11 +58,10 @@ class HardwareTests(unittest.TestCase):
             self.assertEqual((out/'cloudflared.service.d/50-hive-memory.conf').exists(), kib < 1572864)
 
     def fixture_growth(self, capacity=32_000_000_000, expanded=False):
-        start = 32768 + 2*4096*2048
+        start = 32768 + 3328*2048
         size = (capacity//512-34-start)//2048*2048 if expanded else 512*2048
         layout = {'partitiontable': {'label':'gpt','sectorsize':512,'partitions':[
-            {'name':'hive-rootA','start':32768,'size':4096*2048},
-            {'name':'hive-rootB','start':32768+4096*2048,'size':4096*2048},
+            {'name':'hive-root','start':32768,'size':3328*2048},
             {'name':'hive-data','start':start,'size':size}]}}
         (self.root/'layout').write_text(json.dumps(layout))
         (self.root/'capacity').write_text(str(capacity//512))
@@ -74,11 +73,11 @@ r=Path(os.environ['HIVE_TEST_ROOT']); args=sys.argv[1:]
 with (r/'calls').open('a') as f: f.write('sfdisk '+' '.join(args)+'\n')
 if '--json' in args: print((r/'layout').read_text())
 elif '-N' in args:
-    assert args[args.index('-N')+1] == '3'
+    assert args[args.index('-N')+1] == '2'
     (r/'size').write_text(sys.stdin.read().strip().split('=')[1])
 ''')
         self.mock('blockdev', '''#!/bin/sh
-case "$2" in *p3) cat "$HIVE_TEST_ROOT/size";; *) cat "$HIVE_TEST_ROOT/capacity";; esac
+case "$2" in *p2) cat "$HIVE_TEST_ROOT/size";; *) cat "$HIVE_TEST_ROOT/capacity";; esac
 ''')
         self.mock('findmnt', '#!/bin/sh\nexit 1\n')
         for tool in ['partx','sync','e2fsck','resize2fs']:
@@ -91,19 +90,18 @@ case "$2" in *p3) cat "$HIVE_TEST_ROOT/size";; *) cat "$HIVE_TEST_ROOT/capacity"
             self.run_script(source, 0, '/dev/mmcblk0')
             new_size = int((self.root/'size').read_text())
             self.assertGreater(new_size,512*2048)
-            self.assertLessEqual((32768+8192*2048+new_size+34)*512, capacity)
+            self.assertLessEqual((32768+3328*2048+new_size+34)*512, capacity)
             calls = (self.root/'calls').read_text()
-            self.assertIn('-N 3 /dev/mmcblk0', calls)
-            self.assertIn('resize2fs /dev/mmcblk0p3', calls)
+            self.assertIn('-N 2 /dev/mmcblk0', calls)
+            self.assertIn('resize2fs /dev/mmcblk0p2', calls)
             self.assertNotIn('-N 1', calls)
-            self.assertNotIn('-N 2', calls)
 
     def test_growth_resumes_filesystem_resize_after_gpt_write(self):
         source = self.fixture_growth(expanded=True)
         self.run_script(source, 0, '/dev/mmcblk0')
         calls = (self.root/'calls').read_text()
         self.assertNotIn('-N', calls)
-        self.assertIn('partx --update --nr 3', calls)
+        self.assertIn('partx --update --nr 2', calls)
         self.assertIn('resize2fs', calls)
 
     def test_non_hive_and_mounted_layouts_are_never_changed(self):
@@ -125,16 +123,16 @@ case "$2" in *p3) cat "$HIVE_TEST_ROOT/size";; *) cat "$HIVE_TEST_ROOT/capacity"
         with image.open('wb') as f: f.truncate(64*1024**2)
         def sfdisk(*args, data=None):
             return subprocess.run(['sfdisk', *args, str(image)],input=data,text=True,capture_output=True,check=True).stdout
-        sfdisk(data='label: gpt\nstart=32768,size=16384,name="hive-rootA"\nsize=16384,name="hive-rootB"\nsize=32768,name="hive-data"\n')
+        sfdisk(data='label: gpt\nstart=32768,size=16384,name="hive-root"\nsize=32768,name="hive-data"\n')
         before = json.loads(sfdisk('--json'))['partitiontable']['partitions']
         with image.open('r+b') as f: f.truncate(96*1024**2)
         sfdisk('--no-reread','--no-tell-kernel','--relocate','gpt-bak-std')
-        sfdisk('--no-reread','--no-tell-kernel','-N','3',data='size=100000\n')
+        sfdisk('--no-reread','--no-tell-kernel','-N','2',data='size=100000\n')
         after = json.loads(sfdisk('--json'))['partitiontable']['partitions']
-        self.assertEqual(before[:2],after[:2])
-        self.assertEqual(before[2]['uuid'],after[2]['uuid'])
-        self.assertEqual(before[2]['start'],after[2]['start'])
-        self.assertEqual(after[2]['size'],100000)
+        self.assertEqual(before[0],after[0])
+        self.assertEqual(before[1]['uuid'],after[1]['uuid'])
+        self.assertEqual(before[1]['start'],after[1]['start'])
+        self.assertEqual(after[1]['size'],100000)
 
     def test_identity_prefers_soc_ethernet_over_wifi_and_pcie(self):
         net = self.root/'net'; net.mkdir()
@@ -245,69 +243,69 @@ exit 0
         timeout = int(re.search(r'^TimeoutStartSec=(\d+)', unit, re.M).group(1))
         self.assertGreater(timeout, budget * 1.4)
 
-    def ab_plan(self, *args, env=None):
+    def factory_plan(self, *args, env=None):
         source = self.root / 'source.img'
         source.write_bytes(b'')
         extra = dict(self.env)
-        extra['HIVE_AB_PLAN_ONLY'] = '1'
+        extra['HIVE_FACTORY_PLAN_ONLY'] = '1'
         if env:
             extra.update(env)
-        r = subprocess.run(['bash', str(REPO / 'scripts/build-ab-image.sh'), str(source),
+        r = subprocess.run(['bash', str(REPO / 'scripts/build-factory-image.sh'), str(source),
                             str(self.root / 'out'), '1.0.0', *args],
                            env=extra, capture_output=True, text=True)
         return r
 
-    def test_ab_image_geometry_matches_the_runtime_contract(self):
+    def test_factory_image_geometry_matches_the_runtime_contract(self):
         # hive-firmware refuses a disk whose first partition does not start at
         # 32768, and the boot script reserves the first 16 MiB for GPT, U-Boot
-        # and both environment copies. build-ab-image.sh must lay out exactly
-        # that, so the numbers are checked against the runtime, not repeated.
-        r = self.ab_plan('nanopi-zero2')
+        # and both environment copies. build-factory-image.sh must lay out
+        # exactly that, so the numbers are checked against the runtime, not
+        # repeated.
+        r = self.factory_plan('nanopi-zero2')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         plan = dict(line.split('=', 1) for line in r.stdout.split())
-        start_a = int(plan['start_a'])
-        slot_mib = int(plan['slot_mib'])
-        slot_sectors = int(plan['slot_sectors'])
-        self.assertEqual(slot_sectors, slot_mib * 2048)
-        self.assertEqual(int(plan['start_b']), start_a + slot_sectors)
-        self.assertEqual(int(plan['start_data']), start_a + 2 * slot_sectors)
+        start_root = int(plan['start_root'])
+        root_mib = int(plan['root_mib'])
+        root_sectors = int(plan['root_sectors'])
+        self.assertEqual(root_sectors, root_mib * 2048)
+        self.assertEqual(int(plan['start_data']), start_root + root_sectors)
         self.assertEqual(int(plan['factory_mib']),
-                         int(plan['boot_area_mib']) + 2 * slot_mib + int(plan['data_mib']) + 1)
+                         int(plan['boot_area_mib']) + root_mib + int(plan['data_mib']) + 1)
         firmware = (BIN / 'hive-firmware').read_text()
         runtime_start = re.search(r'p1/start"\)"\s*=\s*(\d+)\s*\]', firmware)
         self.assertIsNotNone(runtime_start)
-        self.assertEqual(int(runtime_start.group(1)), start_a)
+        self.assertEqual(int(runtime_start.group(1)), start_root)
         # The bootloader must fit in the reserved area ahead of the first
-        # partition, otherwise flashing it overwrites slot A's filesystem.
+        # partition, otherwise flashing it overwrites the root filesystem.
         self.assertLess(12 * 1024 * 1024, int(plan['boot_area_mib']) * 1024 * 1024)
 
-    def test_ab_image_rejects_impossible_geometry(self):
-        for env in [{'HIVE_AB_SLOT_MIB': '512'}, {'HIVE_AB_DATA_MIB': '128'},
-                    {'HIVE_AB_SLOT_MIB': '4g'}, {'HIVE_AB_DATA_MIB': '8192x'}]:
+    def test_factory_image_rejects_impossible_geometry(self):
+        for env in [{'HIVE_ROOT_MIB': '512'}, {'HIVE_DATA_MIB': '128'},
+                    {'HIVE_ROOT_MIB': '4g'}, {'HIVE_DATA_MIB': '8192x'}]:
             with self.subTest(env=env):
-                r = self.ab_plan('nanopi-zero2', env=env)
+                r = self.factory_plan('nanopi-zero2', env=env)
                 self.assertNotEqual(r.returncode, 0, f'{env} was accepted')
         # An unset or empty override means "use the default", not "zero".
-        r = self.ab_plan('nanopi-zero2', env={'HIVE_AB_SLOT_MIB': '', 'HIVE_AB_DATA_MIB': ''})
+        r = self.factory_plan('nanopi-zero2', env={'HIVE_ROOT_MIB': '', 'HIVE_DATA_MIB': ''})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         plan = dict(line.split('=', 1) for line in r.stdout.split())
-        self.assertEqual((plan['slot_mib'], plan['data_mib']), ('4096', '512'))
+        self.assertEqual((plan['root_mib'], plan['data_mib']), ('3328', '512'))
         for version in ['../escape', '.hidden', 'has space', 'x' * 65]:
             with self.subTest(version=version):
                 source = self.root / 'source.img'
                 source.write_bytes(b'')
-                r = subprocess.run(['bash', str(REPO / 'scripts/build-ab-image.sh'),
+                r = subprocess.run(['bash', str(REPO / 'scripts/build-factory-image.sh'),
                                     str(source), str(self.root / 'out'), version, 'nanopi-zero2'],
-                                   env=dict(self.env, HIVE_AB_PLAN_ONLY='1'),
+                                   env=dict(self.env, HIVE_FACTORY_PLAN_ONLY='1'),
                                    capture_output=True, text=True)
                 self.assertNotEqual(r.returncode, 0, f'version {version!r} was accepted')
 
-    def test_ab_image_refuses_to_run_without_root(self):
+    def test_factory_image_refuses_to_run_without_root(self):
         if os.geteuid() == 0:
             self.skipTest('running as root')
         source = self.root / 'source.img'
         source.write_bytes(b'')
-        r = subprocess.run(['bash', str(REPO / 'scripts/build-ab-image.sh'), str(source),
+        r = subprocess.run(['bash', str(REPO / 'scripts/build-factory-image.sh'), str(source),
                             str(self.root / 'out'), '1.0.0', 'nanopi-zero2'],
                            env=self.env, capture_output=True, text=True)
         self.assertNotEqual(r.returncode, 0)
@@ -316,7 +314,7 @@ exit 0
     def test_boot_policy_contains_matching_kernel_dtb(self):
         for board, dtb in [('nanopi-zero2','rk3528-nanopi-zero2.dtb'), ('nanopi-r28s','rk3528-nanopi-rev03.dtb')]:
             text = subprocess.check_output([str(REPO/'scripts/render-ab-boot.sh'),board],text=True)
-            self.assertIn('/boot/dtb/rockchip/'+dtb,text)
+            self.assertIn('/boot/dtb.${hive_slot}/rockchip/'+dtb,text)
             self.assertIn('${hive_slot}',text)  # Not expanded by the host shell.
 
     def easytier_launcher(self, node_info, config_env):

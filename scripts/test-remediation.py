@@ -75,6 +75,7 @@ if flag.exists():flag.unlink();sys.exit(1)
         for helper in ['hive-ota-transaction', 'hive-firmware', 'hive-board']:
             text = text.replace('/usr/local/bin/' + helper, str(self.root / helper))
         text = text.replace('OTA_ROOT=""', 'OTA_ROOT="' + str(self.root) + '"')
+        text = text.replace('FW_ROOT=""', 'FW_ROOT="' + str(self.root) + '"')
         text = text.replace('/usr/local/bin/hive-node-info', str(self.node_info))
         for prefix in ['/etc/hive', '/etc/ssh', '/var/lib/hive', '/run', '/tmp/hive-ota', '/tmp/hive-xray-adu']:
             pattern = rf'(?<![A-Za-z0-9_.-]){re.escape(prefix)}(?=$|[/\s"\'])'
