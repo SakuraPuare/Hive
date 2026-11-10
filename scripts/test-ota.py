@@ -705,6 +705,9 @@ else firmware_confirm; fi
     def test_firmware_builder_produces_distinct_board_bundle(self):
         self.firmware_fixture()
         files = self.root / 'firmware/files'
+        (files / 'usr/lib/firmware').mkdir(parents=True)
+        (files / 'usr/lib/firmware/real.bin').write_bytes(b'firmware blob\n')
+        (files / 'usr/lib/firmware/alias.bin').symlink_to('real.bin')
         payload_tar = self.root / 'boot-payload.tar'
         with tarfile.open(payload_tar, 'w') as archive:
             for path in sorted(files.rglob('*')):
@@ -718,12 +721,20 @@ else firmware_confirm; fi
         self.run_script(builder, '2.0', '--firmware', str(payload_tar), '--no-sign')
         archive_path = self.root / ('output/hive-firmware-' + self.board + '-v2.0.tar.gz')
         with tarfile.open(archive_path) as archive:
-            self.assertTrue(archive.getnames()[0].endswith('/manifest.json'))
-            manifest = json.load(archive.extractfile(archive.getnames()[0]))
+            members = archive.getmembers()
+            self.assertTrue(members[0].name.endswith('/manifest.json'))
+            manifest = json.load(archive.extractfile(members[0]))
             self.assertEqual(manifest['kind'], 'firmware')
             self.assertEqual(manifest['board'], self.board)
             self.assertEqual(manifest['layout'], self.board + '-bootab-v1')
             self.assertIn('boot/Image', [f['path'] for f in manifest['files']])
+            # hive-updater rejects symlinks/hardlinks before extraction. Firmware
+            # payloads are copied from the rootfs with cp -a, so aliases under
+            # /usr/lib/firmware must be dropped unless they are regular files.
+            self.assertFalse([m.name for m in members if m.issym() or m.islnk()])
+            names = archive.getnames()
+            self.assertIn('hive-firmware-' + self.board + '-v2.0/files/usr/lib/firmware/real.bin', names)
+            self.assertNotIn('hive-firmware-' + self.board + '-v2.0/files/usr/lib/firmware/alias.bin', names)
 
     def test_failed_write_never_switches_boot_letter(self):
         runner = self.firmware_fixture()

@@ -207,6 +207,21 @@ fi
 [ -z "$POST_HOOK" ] || cp "$POST_HOOK" "$HOOKS_DIR/post-install.sh"
 [ -z "$HEALTH_HOOK" ] || cp "$HEALTH_HOOK" "$HOOKS_DIR/health-check.sh"
 
+# ── 清除设备会拒绝的归档成员 ────────────────────────────────────────────
+# hive-updater 在解压前拒绝任何符号链接/硬链接/特殊文件。固件载荷用
+# cp -a 从 rootfs 复制 /usr/lib/firmware，会带入发行版的固件别名链接；
+# 这些链接不在 manifest（find -type f）里，设备本来也不会安装它们。
+# 在打包前移除，避免生成“签名有效但设备拒绝解压”的固件包。
+link_count=0
+while IFS= read -r -d '' entry; do
+    link_count=$((link_count + 1))
+    if [ "$link_count" -le 5 ]; then
+        echo ">>> 跳过非普通文件: ${entry#${BUNDLE_DIR}/}"
+    fi
+    rm -f -- "$entry"
+done < <(find "${FILES_DIR}" -mindepth 1 ! -type f ! -type d -print0)
+[ "$link_count" -eq 0 ] || echo "  已跳过 ${link_count} 个链接/特殊文件（manifest 只包含普通文件）"
+
 # ── 生成 manifest.json ──────────────────────────────────────────────────
 echo ">>> 生成 manifest.json..."
 
@@ -315,7 +330,17 @@ mkdir -p "${OUTPUT_DIR}"
 BUNDLE_FILE="${OUTPUT_DIR}/${BUNDLE_NAME}.tar.gz"
 # Put the manifest first so the Registry can read metadata without scanning a
 # multi-gigabyte rootfs. Devices still verify signature + every payload hash.
-tar czf "${BUNDLE_FILE}" -C "${STAGING}" "${BUNDLE_NAME}/manifest.json" "${BUNDLE_NAME}/manifest.sig" "${BUNDLE_NAME}/files" "${BUNDLE_NAME}/hooks"
+# --hard-dereference keeps hardlinked payload files as separate regular files:
+# the manifest lists each path and the installer writes each path independently.
+tar czf "${BUNDLE_FILE}" --hard-dereference -C "${STAGING}" "${BUNDLE_NAME}/manifest.json" "${BUNDLE_NAME}/manifest.sig" "${BUNDLE_NAME}/files" "${BUNDLE_NAME}/hooks"
+
+# Keep builder and device policy in lockstep. A future cp -a or hook must fail
+# the build here, not produce a signed package every node refuses to extract.
+if ! tar tvzf "${BUNDLE_FILE}" | awk 'substr($0,1,1) != "-" && substr($0,1,1) != "d" {bad=1} END {exit bad}'; then
+    rm -f -- "${BUNDLE_FILE}" "${BUNDLE_FILE}.sha256"
+    echo "ERROR: OTA bundle contains links or special files; devices reject it before extraction" >&2
+    exit 1
+fi
 
 BUNDLE_SHA256=$(sha256sum "${BUNDLE_FILE}" | awk '{print $1}')
 echo "${BUNDLE_SHA256}  ${BUNDLE_NAME}.tar.gz" > "${BUNDLE_FILE}.sha256"
