@@ -485,10 +485,12 @@ export default function PlansPage() {
   const [saveLinesError, setSaveLinesError] = useState('');
   const [lineSearch, setLineSearch] = useState('');
   const [linesLoading, setLinesLoading] = useState(false);
+  const [linesLoadError, setLinesLoadError] = useState('');
 
   async function openLineEdit(p: model_Plan) {
     setLineEditPlan(p);
     setSaveLinesError('');
+    setLinesLoadError('');
     setLineSearch('');
     setLinesLoading(true);
     try {
@@ -498,9 +500,12 @@ export default function PlansPage() {
       ]);
       setAllLines(lines ?? []);
       setSelectedLineIds(new Set(assigned));
-    } catch {
+    } catch (e) {
+      // An empty list after a failed read must never be saved: the backend
+      // replaces the mapping, so "no lines selected" would clear the plan.
       setAllLines([]);
       setSelectedLineIds(new Set());
+      setLinesLoadError(getErrorMessage(e, t('linesSaveFailed')));
     } finally {
       setLinesLoading(false);
     }
@@ -515,7 +520,7 @@ export default function PlansPage() {
   }
 
   async function handleSaveLines() {
-    if (!lineEditPlan) return;
+    if (!lineEditPlan || linesLoading || linesLoadError) return;
     setSavingLines(true); setSaveLinesError('');
     try {
       await sessionApi(AdminService.adminSetPlanLines({ id: lineEditPlan.id!, requestBody: { lines: Array.from(selectedLineIds) } }));
@@ -834,12 +839,17 @@ export default function PlansPage() {
                 {saveLinesError}
               </p>
             )}
+            {linesLoadError && (
+              <p role="alert" className="flex items-center gap-1.5 rounded-lg bg-md-error-container px-3 py-2 text-sm text-md-on-error-container">
+                {linesLoadError}
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setLineEditPlan(null)} disabled={savingLines}>
               {tCommon('cancel')}
             </Button>
-            <Button type="button" onClick={handleSaveLines} loading={savingLines}>
+            <Button type="button" onClick={handleSaveLines} loading={savingLines} disabled={linesLoading || !!linesLoadError}>
               {savingLines ? tCommon('saving') : tCommon('save')}
             </Button>
           </DialogFooter>
