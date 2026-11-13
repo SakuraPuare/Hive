@@ -6,8 +6,8 @@
 # 使用策略：
 # - 默认拒绝所有入站连接
 # - 允许必要的出站连接
-# - 仅开放 SSH 和 Node Exporter 端口
-# - 限制 SSH 访问来源（可选）
+# - SSH 只对运营方通道开放（Tailscale、EasyTier、本机 FRP），不对 LAN/热点开放
+# - 节点登录是公钥，不是密码
 #
 
 set -e
@@ -45,20 +45,15 @@ ufw allow out on lo
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SSH 访问控制
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# SSH 端口 22 - 限制访问来源
-echo "配置 SSH 访问..."
-
-# 允许本地网络 SSH（根据实际网络调整）
-ufw allow from 192.168.0.0/16 to any port 22 comment 'SSH - Local Network'
-ufw allow from 10.0.0.0/8 to any port 22 comment 'SSH - Private Network'
-ufw allow from 172.16.0.0/12 to any port 22 comment 'SSH - Private Network'
-
-# Tailscale 网络范围（CGNAT 段 100.64.0.0/10，非整个 100/8——后者含公网可路由地址）
-ufw allow from 100.64.0.0/10 to any port 22 comment 'SSH - Tailscale'
-
-# 如果需要允许特定公网 IP，取消注释并修改：
-# ufw allow from YOUR_OFFICE_IP to any port 22 comment 'SSH - Office IP'
+# LAN（192.168/16）、热点（10/8 里的 10.42/24 等）和客户侧 172.16/12 不开 22。
+# 旧的 `ufw limit ssh` 会把 22 对全世界限速放行，不能留。
+# FRP 转到 127.0.0.1:22，靠上面的 lo 放行。
+echo "配置 SSH 访问（仅 Tailscale / EasyTier；FRP 走 lo）..."
+ufw limit from 100.64.0.0/10 to any port 22 proto tcp comment 'SSH - Tailscale'
+ufw limit from 172.20.0.0/16 to any port 22 proto tcp comment 'SSH - EasyTier'
+# Tailscale IPv6 ULA。IPV6=no 时这条会失败，不能因此丢掉整份防火墙。
+ufw limit from fd7a:115c:a1e0::/48 to any port 22 proto tcp comment 'SSH - Tailscale IPv6' \
+    || echo ">>> Tailscale IPv6 SSH rule skipped"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 监控和管理服务
@@ -205,8 +200,7 @@ ufw --force enable
 # 配置日志记录（记录被阻止的连接）
 ufw logging medium
 
-# 设置速率限制防止 SSH 爆破攻击
-ufw limit ssh comment 'SSH Rate Limiting'
+# 不对任意来源限速放行 SSH。限速只加在上面的运营方网段上。
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 显示配置结果
@@ -219,7 +213,7 @@ echo "当前规则："
 ufw status verbose
 echo ""
 echo "📋 开放的端口："
-echo "  - SSH (22): 本地网络 + Tailscale"
+echo "  - SSH (22): 仅 Tailscale、EasyTier；FRP 经 lo。LAN/热点不开"
 echo "  - Node Exporter (9100): 仅 Tailscale"
 echo "  - EasyTier P2P (11010-11012 tcp, 11010-11011 udp): 全网段直连"
 echo "  - 透明网关 TUN 口 (Meta): in/out/forward 放行（system 栈转发投递）"
@@ -227,13 +221,13 @@ echo "  - 出站: DNS, NTP, HTTPS, CF Tunnel(7844,443), CF WARP(2408,1701), Tail
 echo ""
 echo "🔐 安全特性："
 echo "  - 默认拒绝所有入站连接"
-echo "  - SSH 速率限制"
+echo "  - SSH 只对运营方网段限速，不对全世界放行"
 echo "  - 连接状态跟踪"
 echo "  - 日志记录已启用"
 echo ""
 echo "⚠️  注意："
-echo "  - 如果丢失 SSH 连接，请通过物理控制台访问"
-echo "  - 根据实际网络环境调整 SSH 访问范围"
+echo "  - 丢了 SSH 走 Tailscale、EasyTier 或 FRP。串口只有内核 log，没有登录壳"
+echo "  - 不要 ufw allow 22 / ufw limit ssh，那会把局域网和热点重新打开"
 echo "  - 监控日志：journalctl -f -u ufw"
 
 exit 0

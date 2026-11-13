@@ -72,26 +72,13 @@ systemctl restart ssh.service 2>/dev/null || systemctl restart ssh 2>/dev/null |
 
 echo ">>> Identity set. random SSH host keys ready"
 
-# ── 导入 GitHub 公钥作为 root authorized_keys ─────────────────────
-# 来源由 config.env 的 SSH_IMPORT_GITHUB 配置（逗号分隔多用户）；留空则跳过。
-# 拉取失败非致命：root 仍可用预设密码登录，不因网络抖动中止整个 provision。
-mkdir -p /root/.ssh && chmod 700 /root/.ssh
-if [ -n "${SSH_IMPORT_GITHUB:-}" ]; then
-    echo ">>> Importing SSH public keys from GitHub: ${SSH_IMPORT_GITHUB}"
-    IFS=',' read -ra GH_USERS <<< "${SSH_IMPORT_GITHUB}"
-    for gh_user in "${GH_USERS[@]}"; do
-        gh_user=$(echo "$gh_user" | tr -d ' ')
-        [ -z "$gh_user" ] && continue
-        if curl -fsSL --connect-timeout 10 --max-time 30 "https://github.com/${gh_user}.keys" >> /root/.ssh/authorized_keys; then
-            echo ">>> imported keys for ${gh_user}"
-        else
-            echo ">>> WARN: failed to fetch keys for ${gh_user} (non-fatal)"
-        fi
-    done
-    chmod 600 /root/.ssh/authorized_keys
-    echo ">>> $(wc -l < /root/.ssh/authorized_keys 2>/dev/null || echo 0) authorized keys installed."
-else
-    echo ">>> SSH_IMPORT_GITHUB empty, skipping GitHub key import (password login only)."
+# ── 刷新运营方公钥。失败不回退密码，也不清掉镜像里已有的钥匙。──
+# 一把钥匙都没有时中止本次 provision（不写 DONE_MARKER），下次开机再试。
+if ! /usr/local/bin/hive-install-operator-keys \
+        --dest /root/.ssh/authorized_keys \
+        --github "${SSH_IMPORT_GITHUB:-}"; then
+    echo "!!! FATAL: no operator SSH key. Password login stays disabled."
+    exit 1
 fi
 
 # ─────────────────────────────────────────────
@@ -537,9 +524,9 @@ systemctl disable provision-node.service
 echo "=== provision-node done: $(date) ==="
 echo "============================================"
 echo "  NODE    : ${HOSTNAME}"
-echo "  Tailscale: ssh root@${HOSTNAME}  (MagicDNS)"
-echo "  EasyTier : ssh root@${EASYTIER_IP}"
-echo "  FRP      : ssh -p ${FRP_PORT} root@<VPS>"
+echo "  Tailscale: ssh root@${HOSTNAME}  (MagicDNS, public key)"
+echo "  EasyTier : ssh root@${EASYTIER_IP}  (public key)"
+echo "  FRP      : ssh -p ${FRP_PORT} root@<VPS>  (public key)"
 echo "  CF Proxy : https://${FULL_DOMAIN}"
 echo "  CF Mesh  : ${MESH_IP:-pending} (tunnel: ${MESH_TUNNEL_ID:-none})"
 echo "============================================"

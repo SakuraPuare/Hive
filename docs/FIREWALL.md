@@ -27,8 +27,9 @@ Hive Network 节点使用 `ufw` (Uncomplicated Firewall) 作为防火墙管理�
 
 | 端口 | 服务 | 访问范围 | 说明 |
 |------|------|----------|------|
-| 22   | SSH  | 本地网络 + Tailscale | 远程管理访问 |
-| 9100 | Node Exporter | Tailscale 网络 | Prometheus 监控指标 |
+| 22   | SSH  | Tailscale `100.64.0.0/10` 与 `fd7a:115c:a1e0::/48`，EasyTier `172.20.0.0/16`，FRP 经本机 lo | 仅运营方公钥。LAN、热点不开 |
+| 9100 | Node Exporter | Tailscale + EasyTier | Prometheus 监控指标 |
+| 9550 | Xray Exporter | Tailscale + EasyTier | 流量指标 |
 
 ### 出站连接
 
@@ -90,23 +91,17 @@ sudo ufw allow out 1234
 sudo ufw delete allow from 192.168.1.0/24 to any port 8080
 ```
 
-### 修改 SSH 访问范围
+### SSH 不要对局域网重新打开
 
-编辑防火墙初始化脚本：
+节点 root 没有可用密码。SSH 只接受运营方公钥，并且防火墙只放行：
 
-```bash
-sudo nano /usr/local/bin/setup-firewall.sh
-```
+- Tailscale：`100.64.0.0/10`、`fd7a:115c:a1e0::/48`
+- EasyTier：`172.20.0.0/16`
+- FRP：转到 `127.0.0.1:22`（环回已放行）
 
-找到 SSH 配置部分，根据需要修改网络范围：
+不要执行 `ufw allow 22` 或 `ufw limit ssh`。那两条会把盒子的 LAN 和热点重新暴露出去。客户侧 `192.168.0.0/16`、`10.0.0.0/8`、`172.16.0.0/12` 不是 SSH 来源。
 
-```bash
-# 允许特定办公室 IP
-ufw allow from YOUR_OFFICE_IP to any port 22 comment 'SSH - Office IP'
-
-# 或者移除某些网络范围
-# ufw allow from 172.16.0.0/12 to any port 22 comment 'SSH - Private Network'
-```
+`hive-firewall allow-ssh <IP>` 只给已经拿着运营方私钥的人多开一个来源，不会打开密码登录。
 
 ## 🔍 日志监控
 
@@ -133,48 +128,14 @@ sudo ss -tulpn
 
 ## ⚠️ 安全注意事项
 
-### 1. SSH 密钥认证
+### 1. 只有运营方公钥
 
-强烈建议使用 SSH 密钥而非密码：
+镜像不设 root 密码，`sshd` 是 `AuthenticationMethods publickey`。导入公钥失败不会退回密码。串口 getty 已关掉，内核 log 还在。
 
-```bash
-# 生成密钥对（在客户端）
-ssh-keygen -t ed25519 -C "your-email@example.com"
+拔下 TF 卡、挂载根分区，仍然可以改系统：根分区没有磁盘加密，改密码、写入公钥、改 sshd 都不需要原来的口令。这一层要另做引导链和加密，并先验证能启动，不要在没验证的情况下改分区。
 
-# 复制公钥到节点（在客户端）
-ssh-copy-id root@hive-node-ip
+丢了管理通道时，从 Tailscale、EasyTier 或 FRP 用运营方私钥连。串口不能登录。不要在设备上把 22 对全世界或局域网放开。
 
-# 禁用密码认证（在节点上）
-sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-sudo systemctl reload sshd
-```
-
-### 2. 更改默认端口
-
-考虑更改 SSH 默认端口：
-
-```bash
-# 编辑 SSH 配置
-sudo nano /etc/ssh/sshd_config
-
-# 修改端口（例如改为 2222）
-Port 2222
-
-# 重启服务
-sudo systemctl restart sshd
-
-# 更新防火墙规则
-sudo ufw delete allow 22
-sudo ufw allow from 192.168.0.0/16 to any port 2222
-```
-
-### 3. 失效保护措施
-
-防止防火墙配置错误导致无法访问：
-
-1. **物理访问**：确保有设备物理访问权限
-2. **带外管理**：如有可能，配置 IPMI 或串口访问
-3. **测试环境**：先在测试设备验证规则
 
 ### 4. 监控告警
 
@@ -216,10 +177,11 @@ awk '$1 > 50 {print "Alert: " $2 " blocked " $1 " times"}'
    sudo ufw disable
    ```
 
-4. **通过其他通道访问**：
+4. **通过其他通道访问**（运营方私钥）：
    - Tailscale: `ssh root@hive-a4b2c1`
+   - EasyTier: `ssh root@172.20.x.x`
    - FRP: `ssh -p 12345 root@your-vps`
-   - 物理控制台访问
+   - 串口只有启动 log，没有 root shell。拔卡能改未加密的根分区，那不是登录口，也不要当成日常入口。
 
 ### 服务无法正常工作
 

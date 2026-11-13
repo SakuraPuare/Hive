@@ -21,9 +21,6 @@ FRP_SERVER_ADDR=${FRP_SERVER_ADDR}
 FRP_SERVER_PORT=${FRP_SERVER_PORT}
 FRP_AUTH_TOKEN=${FRP_AUTH_TOKEN}
 
-# ===== 预设账号密码 =====
-DEFAULT_ROOT_PASSWORD=${DEFAULT_ROOT_PASSWORD}
-
 # ===== Node Registry（可选，无则跳过注册）=====
 NODE_REGISTRY_URL=${NODE_REGISTRY_URL}
 # Per-device token, issued via POST /admin/nodes/{mac}/credential. Never use the shared registry secret.
@@ -32,7 +29,8 @@ NODE_REGISTRY_API_SECRET=${DEVICE_API_TOKEN}
 # ===== 伪装跳转目标（CF Pages 或任意 URL）=====
 CAMOUFLAGE_URL=${CAMOUFLAGE_URL}
 
-# ===== 节点 SSH 授权公钥来源（GitHub 用户名，逗号分隔；留空则不导入）=====
+# ===== 运营方 SSH 公钥来源（GitHub 用户名，逗号分隔）=====
+# 构建时写入镜像；首启再刷新。刷新失败不打开密码登录，已有公钥保留。
 SSH_IMPORT_GITHUB=${SSH_IMPORT_GITHUB}
 
 # ===== WiFi 热点（插无线网卡自动开热点）=====

@@ -1,0 +1,140 @@
+#!/bin/bash
+# Install operator SSH public keys for root.
+# A failed fetch keeps whatever is already at --dest. This script never
+# enables password login and never writes a password.
+set -euo pipefail
+
+DEST=/root/.ssh/authorized_keys
+GITHUB=""
+FILE=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --dest) DEST="${2:?}"; shift 2 ;;
+        --github) GITHUB="${2-}"; shift 2 ;;
+        --file) FILE="${2:?}"; shift 2 ;;
+        *) echo "hive-install-operator-keys: unknown argument: $1" >&2; exit 2 ;;
+    esac
+done
+
+valid_key_line() {
+    local line=${1%$'\r'}
+    local key_re='^(ssh-ed25519|ssh-rsa|ssh-dss|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)[[:space:]][A-Za-z0-9+/]+=*([[:space:]].*)?$'
+    [[ "$line" =~ $key_re ]]
+}
+
+valid_github_user() {
+    local user_re='^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$'
+    [[ "$1" =~ $user_re ]]
+}
+
+collect_valid() {
+    local src="$1" line
+    [ -f "$src" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=${line%$'\r'}
+        valid_key_line "$line" || continue
+        printf '%s\n' "$line"
+    done < "$src"
+}
+
+dest_has_key() {
+    [ -f "$DEST" ] || return 1
+    local line
+    while IFS= read -r line || [ -n "$line" ]; do
+        valid_key_line "$line" && return 0
+    done < "$DEST"
+    return 1
+}
+
+install_keys() {
+    local src="$1" dir tmp
+    dir=$(dirname "$DEST")
+    mkdir -p "$dir"
+    chmod 700 "$dir"
+    tmp=$(mktemp "${dir}/.authorized_keys.XXXXXX")
+    awk 'NF && !seen[$0]++' "$src" > "$tmp"
+    chmod 600 "$tmp"
+    mv -f "$tmp" "$DEST"
+    echo ">>> operator keys installed: $(grep -c . "$DEST" || echo 0) -> ${DEST}"
+}
+
+keep_existing() {
+    if dest_has_key; then
+        chmod 700 "$(dirname "$DEST")" 2>/dev/null || true
+        chmod 600 "$DEST" 2>/dev/null || true
+        echo ">>> operator key fetch incomplete; keeping existing ${DEST}. Password login stays disabled."
+        exit 0
+    fi
+    echo "!!! no operator SSH public key. Refusing to enable password login." >&2
+    exit 1
+}
+
+file_keys=$(mktemp)
+github_keys=$(mktemp)
+trap 'rm -f "$file_keys" "$github_keys"' EXIT
+
+if [ -n "$FILE" ]; then
+    [ -f "$FILE" ] || { echo "!!! SSH key file not found: ${FILE}" >&2; exit 1; }
+    collect_valid "$FILE" > "$file_keys"
+fi
+
+github_failed=0
+github_attempted=0
+if [ -n "$GITHUB" ]; then
+    IFS=',' read -ra GH_USERS <<< "$GITHUB"
+    for gh_user in "${GH_USERS[@]}"; do
+        gh_user=${gh_user//[[:space:]]/}
+        [ -z "$gh_user" ] && continue
+        github_attempted=1
+        if ! valid_github_user "$gh_user"; then
+            echo ">>> WARN: rejected GitHub username: ${gh_user}" >&2
+            github_failed=1
+            break
+        fi
+        raw=$(mktemp)
+        if ! curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 \
+            "https://github.com/${gh_user}.keys" > "$raw"; then
+            rm -f "$raw"
+            echo ">>> WARN: failed to fetch keys for ${gh_user}" >&2
+            github_failed=1
+            break
+        fi
+        before=$(wc -c < "$github_keys" | tr -d ' ')
+        collect_valid "$raw" >> "$github_keys"
+        rm -f "$raw"
+        after=$(wc -c < "$github_keys" | tr -d ' ')
+        if [ "$before" = "$after" ]; then
+            echo ">>> WARN: no usable keys for ${gh_user}" >&2
+            github_failed=1
+            break
+        fi
+        echo ">>> fetched keys for ${gh_user}"
+    done
+fi
+
+# GitHub is authoritative only when every requested user returned a key.
+# A partial or failed fetch must not replace a working authorized_keys.
+if [ "$github_failed" -eq 1 ]; then
+    if [ -s "$file_keys" ]; then
+        install_keys "$file_keys"
+        exit 0
+    fi
+    keep_existing
+fi
+
+combined=$(mktemp)
+trap 'rm -f "$file_keys" "$github_keys" "$combined"' EXIT
+cat "$file_keys" "$github_keys" > "$combined"
+
+if [ -s "$combined" ]; then
+    install_keys "$combined"
+    exit 0
+fi
+
+# Nothing new to install (no users, empty file, or both omitted).
+if [ "$github_attempted" -eq 0 ] && [ -z "$FILE" ]; then
+    keep_existing
+fi
+
+keep_existing

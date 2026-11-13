@@ -90,8 +90,12 @@ EASYTIER_PEERS=     # 境外 VPS IP:11010（多中继逗号分隔）
 EASYTIER_NETWORK_NAME=hive
 EASYTIER_SECRET=    # 自定义密钥
 
-# ─── 账号 ─────────────────────────────────────────
-DEFAULT_ROOT_PASSWORD=   # 节点 root 初始密码（provision 后应通过 key 登录）
+# ─── 运营方 SSH（没有 root 密码）────────────────
+# 构建时拉取公钥写进镜像。拉不到且没有 SSH_AUTHORIZED_KEYS_FILE 就失败，
+# 不会退回 root/1234。LAN、热点、串口都不能用密码拿 root。
+# 拔卡仍可改未加密的根分区；封拔卡要单独做引导链和磁盘加密，并先验证能启动。
+SSH_IMPORT_GITHUB=SakuraPuare
+# SSH_AUTHORIZED_KEYS_FILE=   # 可选，离线构建用的公钥文件
 
 # ─── 可选 ─────────────────────────────────────────
 NODE_REGISTRY_URL=https://registry.example.com

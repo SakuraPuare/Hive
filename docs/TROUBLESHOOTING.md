@@ -309,27 +309,24 @@ bash -x /usr/local/bin/setup-firewall.sh 2>&1 | head -50
 systemctl start hive-firewall
 ```
 
----
-
 ### 4.2 UFW 误封 SSH
 
 **症状**：SSH 突然断开且无法重连。
 
-**恢复**（需要物理控制台或其他管理通道）：
+**恢复**（用运营方私钥，从还通的管理通道）：
 
 ```bash
-# 方式一：EasyTier（如果可用）
-ssh root@10.x.x.x
+# EasyTier
+ssh root@172.20.x.x
 
-# 方式二：FRP 应急
+# FRP
 ssh -p <frp_port> root@<vps-ip>
 
-# 临时禁用 UFW
-ufw disable
-
-# 或允许所有 SSH
-ufw allow 22
+# Tailscale
+ssh root@hive-<mac6>
 ```
+
+串口只能看内核 log，不能登录。不要 `ufw allow 22` 或 `ufw limit ssh`：那会把 LAN 和热点的 22 重新打开。根分区没有加密，拔卡改系统仍然可行，但那不是登录恢复步骤。
 
 ---
 

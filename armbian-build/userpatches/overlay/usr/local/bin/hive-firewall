@@ -16,7 +16,7 @@ Hive Network 防火墙管理工具
     $SCRIPT_NAME status              显示防火墙状态
     $SCRIPT_NAME logs               显示防火墙日志
     $SCRIPT_NAME rules              显示详细规则
-    $SCRIPT_NAME allow-ssh <IP>     允许指定 IP SSH 访问
+    $SCRIPT_NAME allow-ssh <IP>     允许指定 IP SSH 访问（仍要运营方私钥，不开密码）
     $SCRIPT_NAME deny-ssh <IP>      拒绝指定 IP SSH 访问
     $SCRIPT_NAME reset              重置所有规则（危险！）
     $SCRIPT_NAME help               显示此帮助

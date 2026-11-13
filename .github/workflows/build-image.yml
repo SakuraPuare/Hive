@@ -134,7 +134,6 @@ jobs:
           FRP_SERVER_ADDR: ${{ secrets.FRP_SERVER_ADDR }}
           FRP_SERVER_PORT: ${{ secrets.FRP_SERVER_PORT }}
           FRP_AUTH_TOKEN: ${{ secrets.FRP_AUTH_TOKEN }}
-          DEFAULT_ROOT_PASSWORD: ${{ secrets.DEFAULT_ROOT_PASSWORD }}
           NODE_REGISTRY_URL: ${{ secrets.NODE_REGISTRY_URL }}
           CAMOUFLAGE_URL: ${{ secrets.CAMOUFLAGE_URL }}
         run: |
@@ -149,7 +148,6 @@ jobs:
           printf 'FRP_SERVER_ADDR=%s\n'         "$FRP_SERVER_ADDR"         >> .env
           printf 'FRP_SERVER_PORT=%s\n'         "$FRP_SERVER_PORT"         >> .env
           printf 'FRP_AUTH_TOKEN=%s\n'          "$FRP_AUTH_TOKEN"          >> .env
-          printf 'DEFAULT_ROOT_PASSWORD=%s\n'   "$DEFAULT_ROOT_PASSWORD"   >> .env
           printf 'NODE_REGISTRY_URL=%s\n'       "$NODE_REGISTRY_URL"       >> .env
           printf 'CAMOUFLAGE_URL=%s\n'          "$CAMOUFLAGE_URL"          >> .env
 

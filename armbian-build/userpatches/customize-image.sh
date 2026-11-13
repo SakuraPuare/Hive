@@ -18,8 +18,8 @@ if [ -d "/tmp/overlay" ]; then
     # Do not import the build user's UID/GID into privileged image directories.
     chown -R root:root /etc/hive /etc/xray /etc/frp /etc/cloudflared \
         /etc/systemd/system /etc/nginx /etc/update-motd.d \
-        /etc/NetworkManager /etc/udev/rules.d /etc/mihomo \
-        /usr/local/bin /var/www 2>/dev/null || true
+        /etc/NetworkManager /etc/udev/rules.d /etc/mihomo /etc/ssh \
+        /usr/local/bin /root/.ssh /var/www 2>/dev/null || true
     chmod +x /etc/update-motd.d/* 2>/dev/null || true
     echo ">>> Overlay files copied to root directory"
 else
@@ -272,6 +272,9 @@ else
     echo ">>> WARNING: /usr/local/bin/provision-node.sh not found (run download-binaries.sh first)"
     MISSING_BINARIES="${MISSING_BINARIES} provision-node.sh"
 fi
+if [ -f "/usr/local/bin/hive-install-operator-keys" ]; then
+    chmod +x /usr/local/bin/hive-install-operator-keys
+fi
 
 if [ -f "/usr/local/bin/hive-regen-hostkeys.sh" ]; then
     chmod +x /usr/local/bin/hive-regen-hostkeys.sh
@@ -297,45 +300,52 @@ chmod 600 /etc/hive/config.env 2>/dev/null || true
 chmod 644 /etc/hive/ota-pubkey.pem 2>/dev/null || true
 
 # ─────────────────────────────────────────────
-# 5.5. 预设账号密码（跳过首次启动交互）
+# 5.5. root 无口令；运营方只靠公钥
 # ─────────────────────────────────────────────
-echo ">>> Setting up pre-configured user accounts..."
-
-# 从 overlay 渲染好的配置文件读取密码
+# 客户从 LAN、热点、串口都不能用密码进 root。发行版预置的口令先换成
+# 构建进程里丢掉的随机值再锁定，避免 shadow 里留下能解开的 1234。
+# 拔卡仍可改未加密的根分区；这里只封登录口，不改分区。
+echo ">>> Locking root password (no shared credential)..."
 [ -f /etc/hive/config.env ] && . /etc/hive/config.env
+pw=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+printf 'root:%s\n' "$pw" | chpasswd
+pw=''
+unset pw
+passwd -l root
 
-ROOT_PASSWORD="${DEFAULT_ROOT_PASSWORD:-1234}"
-echo "root:${ROOT_PASSWORD}" | chpasswd
-echo ">>> Root password configured"
-
-# 完全禁用首次登录交互（只保留root账号）
-echo ">>> Disabling first login interactive setup..."
-
-# 移除首次登录触发文件
 rm -f /root/.not_logged_in_yet
-
-# 禁用首次登录检查脚本
 chmod -x /etc/profile.d/armbian-check-first-login.sh 2>/dev/null || true
 chmod -x /etc/profile.d/armbian-check-first-login-reboot.sh 2>/dev/null || true
-
-# 禁用首次登录服务
 systemctl disable armbian-firstrun.service 2>/dev/null || true
 systemctl mask armbian-firstrun.service 2>/dev/null || true
+find /etc/systemd -name '*autologin*' -delete 2>/dev/null || true
+# 串口继续打内核 log（console=/earlycon）。getty 不再提供登录壳。
+systemctl disable 'serial-getty@ttyS0.service' 2>/dev/null || true
+systemctl mask 'serial-getty@.service' 2>/dev/null || true
 
-# 设置root默认shell为zsh
 chsh -s /bin/zsh root
 
-# SSH 安全加固
-echo ">>> Hardening SSH configuration..."
-cat > /etc/ssh/sshd_config.d/99-hive-hardening.conf << 'EOF'
-PermitRootLogin yes
-PasswordAuthentication yes
-KbdInteractiveAuthentication no
-MaxAuthTries 3
-LoginGraceTime 30
-X11Forwarding no
-AllowAgentForwarding no
-EOF
+sshd_dropin=/etc/ssh/sshd_config.d/99-hive-hardening.conf
+if [ ! -f "$sshd_dropin" ] \
+    || ! grep -qx 'PasswordAuthentication no' "$sshd_dropin" \
+    || ! grep -qx 'PermitRootLogin prohibit-password' "$sshd_dropin" \
+    || ! grep -qx 'AuthenticationMethods publickey' "$sshd_dropin"; then
+    echo "!!! sshd drop-in missing key-only policy: ${sshd_dropin}"
+    exit 1
+fi
+if command -v sshd >/dev/null 2>&1; then
+    sshd -t
+fi
+echo ">>> SSH password login disabled"
+
+if [ ! -x /usr/local/bin/hive-install-operator-keys ]; then
+    echo "!!! hive-install-operator-keys missing"
+    exit 1
+fi
+/usr/local/bin/hive-install-operator-keys \
+    --dest /root/.ssh/authorized_keys \
+    --github "${SSH_IMPORT_GITHUB:-}"
+echo ">>> Operator SSH keys required; password fallback is not available"
 
 echo ">>> First login interactive setup completely disabled - root only mode"
 

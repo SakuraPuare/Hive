@@ -332,10 +332,18 @@ echo "生成优化内核配置: ${BASE_KERNEL_CONFIG} → userpatches/config/ker
 echo "渲染配置模板..."
 
 # /etc/hive/config.env — 设备凭证独立签发，共用镜像不包含 Registry 管理密钥
-# SSH 公钥来源默认值：.env 未设 SSH_IMPORT_GITHUB 时回退历史值，避免渲染成空串。
+# 公钥来源默认 SakuraPuare。拉不到钥匙且没有本地公钥文件就停止，
+# 不要做出没有运营入口、只能靠密码进的镜像。
 export SSH_IMPORT_GITHUB="${SSH_IMPORT_GITHUB:-SakuraPuare}"
 envsubst < "${ROOT_DIR}/configs/hive/config.env.tpl" \
     > "${ARMBIAN_DIR}/userpatches/overlay/etc/hive/config.env"
+OPERATOR_KEYS_DEST="${ARMBIAN_DIR}/userpatches/overlay/root/.ssh/authorized_keys"
+KEY_INSTALLER="${ROOT_DIR}/armbian-build/userpatches/overlay/usr/local/bin/hive-install-operator-keys"
+KEY_ARGS=(--dest "${OPERATOR_KEYS_DEST}" --github "${SSH_IMPORT_GITHUB}")
+if [ -n "${SSH_AUTHORIZED_KEYS_FILE:-}" ]; then
+    KEY_ARGS+=(--file "${SSH_AUTHORIZED_KEYS_FILE}")
+fi
+bash "${KEY_INSTALLER}" "${KEY_ARGS[@]}"
 
 # /etc/frp/frpc.toml — 服务端信息在构建时渲染
 envsubst < "${ROOT_DIR}/configs/frp/frpc.toml.tpl" \
