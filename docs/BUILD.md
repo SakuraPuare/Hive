@@ -147,6 +147,9 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 ./scripts/build.sh nanopi-zero2   # NanoPi Zero2  (RK3528)
 ./scripts/build.sh nanopi-r3s     # NanoPi R3S    (RK3566)
 ./scripts/build.sh orangepi4-lts  # 香橙派 Pi 4 LTS (RK3399)
+
+# 内核源码获取方式（默认 shallow；需要完整历史/bisect 时才用 full）
+KERNEL_GIT=full ./scripts/build.sh nanopi-zero2
 ```
 
 > 内核精简 config 由 `configs/kernel/<profile>.sh` 在构建时生成，写入
