@@ -25,7 +25,8 @@ firmware_environment_config() {
 }
 
 firmware_layout() {
-    local root label part active
+    local root label part argument slot=""
+    local -a cmdline=()
     hive_detect_board || return 1
     [ "$(cat /usr/lib/hive/ab-layout 2>/dev/null)" = "$HIVE_LAYOUT" ] || return 1
     root=$(readlink -f "$(findmnt -n -o SOURCE /)") || return 1
@@ -41,8 +42,20 @@ firmware_layout() {
     [ "$root" = "${FW_DISK}p1" ] || return 1
     # Use the actual boot disk, not a Linux mmc index assumed at build time.
     firmware_environment_config > "$FW_ENV" || { log '缺少 /usr/lib/hive/uboot-env，无法定位 U-Boot 环境（镜像不是以 HIVE_AB=yes 构建？）'; return 1; }
-    active=$(fw_printenv -c "$FW_ENV" -n hive_active)
-    case "$active" in
+    # hive_active is the confirmed letter, which is still the previous letter
+    # during a trial. Only the kernel command line identifies the running one.
+    IFS=$' \t\n' read -r -a cmdline < /proc/cmdline || return 1
+    for argument in "${cmdline[@]}"; do
+        case "$argument" in
+            hive.slot=*)
+                [ -z "$slot" ] || return 1
+                slot=${argument#hive.slot=}
+                case "$slot" in A|B) ;; *) return 1;; esac
+                ;;
+            hive.slot) return 1;;
+        esac
+    done
+    case "$slot" in
         A) FW_SLOT=A; FW_OTHER=B;;
         B) FW_SLOT=B; FW_OTHER=A;;
         *) return 1;;
@@ -56,7 +69,8 @@ firmware_environment() {
 }
 
 firmware_stage() {
-    local payload="$1" version="$2" sha="$3" assignment="$4" manifest count i fpath src dest expected actual image_sha
+    local payload="$1" version="$2" sha="$3" assignment="$4" manifest count i fpath src dest expected actual image_sha checksum_dest
+    local -a hashes=() readback_checks=()
     manifest="$payload/manifest.json"
     firmware_layout || { log '设备没有受支持的 Hive 布局或引导器'; return 1; }
     # Firmware pending/receipt live on /data. Staging without it would arm a
@@ -82,7 +96,9 @@ firmware_stage() {
         src="$payload/files/$fpath"
         { [ -f "$src" ] && [ ! -L "$src" ]; } || { log "文件缺失: $fpath"; return 1; }
         actual=$(sha256sum "$src" | awk '{print $1}')
-        [ "$actual" = "$(jq -r ".files[$i].sha256" "$manifest")" ] || { log "文件 sha256 不匹配: $fpath"; return 1; }
+        expected=$(jq -r ".files[$i].sha256" "$manifest")
+        [ "$actual" = "$expected" ] || { log "文件 sha256 不匹配: $fpath"; return 1; }
+        hashes[$i]="$expected"
     done
     jq -e '[.files[].path] | (index("boot/Image") != null) and (index("boot/uInitrd") != null)' "$manifest" >/dev/null || return 1
     log "写入引导载荷 $FW_OTHER"
@@ -103,16 +119,18 @@ firmware_stage() {
         cp -f "$src" "$dest.fw-new" || return 1
         chmod 0644 "$dest.fw-new" || return 1
         mv -f "$dest.fw-new" "$dest" || return 1
+        # Record the exact installed destination once. Escape checksum filenames
+        # so spaces, backslashes and newlines are preserved by sha256sum --check.
+        checksum_dest=${dest//\\/\\\\}
+        checksum_dest=${checksum_dest//$'\n'/\\n}
+        readback_checks+=("\\${hashes[$i]}  $checksum_dest")
     done
     sync || return 1
-    # Read the payload back. The bootloader loads exactly these files, and a
-    # short write is otherwise indistinguishable from a finished update.
+    # Verify every installed file after sync, including the letter-specific DTB
+    # and shared kernel data, before writing either the pending marker or env.
+    printf '%s\n' "${readback_checks[@]}" | sha256sum --check --status || {
+        log '写入后校验失败，保留原引导载荷'; return 1; }
     image_sha=$(jq -r '.files[] | select(.path == "boot/Image") | .sha256' "$manifest")
-    [ "$(sha256sum "$FW_ROOT/boot/Image.$FW_OTHER" | awk '{print $1}')" = "$image_sha" ] || {
-        log '写入后校验失败，保留原引导载荷'; return 1; }
-    expected=$(jq -r '.files[] | select(.path == "boot/uInitrd") | .sha256' "$manifest")
-    [ "$(sha256sum "$FW_ROOT/boot/uInitrd.$FW_OTHER" | awk '{print $1}')" = "$expected" ] || {
-        log '写入后校验失败，保留原引导载荷'; return 1; }
     [ ! -f "$FW_STATE/ota-installed.json" ] || cp -a "$FW_STATE/ota-installed.json" "$FW_STATE/firmware-previous-receipt.json" || return 1
     [ ! -f /etc/hive/ota-version ] || cp -a /etc/hive/ota-version "$FW_STATE/firmware-previous-version" || return 1
     jq -n --arg version "$version" --arg sha "$sha" --arg target "$FW_OTHER" --arg previous "$FW_SLOT" \
@@ -131,7 +149,10 @@ hive_tries 3" || return 1
 
 firmware_confirm() {
     [ -f "$FW_PENDING" ] || return 0
-    firmware_layout || return 1
+    # 2 = cannot even name the running letter. A reboot cannot fix that, and the
+    # unit's FailureAction=reboot would turn it into a loop; report it separately
+    # so the caller can leave the trial countdown to the bootloader instead.
+    firmware_layout || { log '无法确定设备布局或运行槽位，保留 pending 交由引导器计数回退'; return 2; }
     local target version assignment sha svc
     target=$(jq -r .target "$FW_PENDING")
     version=$(jq -r .version "$FW_PENDING")
@@ -190,20 +211,27 @@ hive_tries 0' || log 'warning: hive_pending could not be cleared; the bootloader
     # and /etc/hive/ota-version first left a window where the node reported the
     # new version while hive_active still pointed at the old letter, so a failed
     # or interrupted environment write made the receipt lie about what boots.
-    # If a later write fails, the pending marker is still present and the next
-    # confirm retries on this letter.
+    #
+    # Once this write lands the boot is confirmed: hive_tries is 0, so a reboot
+    # can no longer fall back, and FailureAction=reboot on the still-present
+    # gate file would restart the node forever over a bookkeeping error. Every
+    # later step is therefore best-effort and must not fail the unit.
     firmware_environment "hive_active $FW_SLOT
 hive_pending
 hive_tries 0" || return 1
-    sync || return 1
-    jq -n --arg version "$version" --arg sha256 "$sha" '{version:$version,sha256:$sha256}' > "$FW_STATE/ota-installed.json.new" || return 1
-    mv -f "$FW_STATE/ota-installed.json.new" "$FW_STATE/ota-installed.json" || return 1
-    printf '%s\n' "$version" > /etc/hive/ota-version.new || return 1
-    mv -f /etc/hive/ota-version.new /etc/hive/ota-version || return 1
-    sync || return 1
-    ota_save_ack done "firmware boot and management checks passed on letter $FW_SLOT" "$assignment" "$version" || return 1
+    if ! { sync &&
+        jq -n --arg version "$version" --arg sha256 "$sha" '{version:$version,sha256:$sha256}' > "$FW_STATE/ota-installed.json.new" &&
+        mv -f "$FW_STATE/ota-installed.json.new" "$FW_STATE/ota-installed.json" &&
+        printf '%s\n' "$version" > /etc/hive/ota-version.new &&
+        mv -f /etc/hive/ota-version.new /etc/hive/ota-version; }; then
+        log "warning: 引导器已确认 $FW_SLOT，但版本回执写入失败；下次固件更新会覆盖回执"
+        rm -f "$FW_STATE/ota-installed.json.new" /etc/hive/ota-version.new
+    fi
+    ota_save_ack done "firmware boot and management checks passed on letter $FW_SLOT" "$assignment" "$version" \
+        || log 'warning: firmware confirmation receipt not delivered'
     rm -f "$FW_PENDING" "$FW_STATE/firmware-previous-receipt.json" "$FW_STATE/firmware-previous-version"
-    sync -f "$FW_STATE"
+    sync -f "$FW_STATE" || log "warning: sync $FW_STATE failed"
+    return 0
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
@@ -220,7 +248,14 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     # reach the registry.
     deadline=$((SECONDS + ${CONFIRM_BUDGET:-150}))
     while [ "$SECONDS" -lt "$deadline" ]; do
-        firmware_confirm && exit 0
+        firmware_confirm
+        case "$?" in
+            0) exit 0 ;;
+            # Nothing to confirm against: never reboot a healthy device that
+            # cannot name its running letter. The bootloader still decrements
+            # hive_tries on its own and returns to the confirmed slot.
+            2) log '固件确认暂不可判定（布局/槽位），退出并等待下一次启动'; exit 0 ;;
+        esac
         sleep 5
     done
     exit 1

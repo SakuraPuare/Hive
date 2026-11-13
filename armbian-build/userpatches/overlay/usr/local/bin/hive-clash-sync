@@ -9,7 +9,7 @@ hive_load_node_info /etc/hive/node-info
 source /usr/local/bin/hive-subscription-state
 exec 9>"$HIVE_ACCESS_DIR/gateway.sync.lock"
 flock -n 9 || exit 0
-case "${GATEWAY_ENABLED:-on}" in off|0|false|no) hive_stop_gateway; exit 0;; esac
+if ! hive_gateway_enabled; then hive_disable_gateway; exit 0; fi
 fail() {
     echo "[hive-clash-sync] $*"
     if ! hive_lease_valid gateway; then hive_stop_gateway || true; fi

@@ -61,7 +61,7 @@ sudo bash hive-ota-bootstrap-1.0.0/install.sh --install
 3. 后台「OTA 更新 → 创建 Rollout」选择 `.tar.gz`。浏览器按 16 MiB 分片上传，自动填写版本和整个包的 SHA256，包上限 2 GiB。也可填写外部 HTTP(S) 下载地址。
 4. 先分配一台测试节点，通过后再分配更多节点。列表和详情显示等待、安装/试启动、完成、失败、已回滚及设备结果。
 
-上传会话绑定创建管理员，分片重复提交必须内容相同，完成请求可重试。已完成的会话不再接收分片；重试完成请求会重新检查包是否仍存在并续期保留时间。发布包按 SHA256 去重保存。
+上传会话绑定创建管理员，分片重复提交必须内容相同，完成请求可重试。组装、复制或发布发生服务端存储错误时返回 5xx，并保留会话和分片，修复存储后可直接重试完成请求；非法包或超过大小限制仍清理该无效会话。保留的失败会话遵守下方 24 小时无活动回收策略。已完成的会话不再接收分片；重试完成请求会重新检查包是否仍存在并续期保留时间。发布包按 SHA256 去重保存。
 
 ### 存储保留与回收
 
@@ -174,7 +174,7 @@ R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。后台上
 
 启动环境的偏移量只是默认值：编译期由 `hive-rk3528.inc` 写入 U-Boot `.config`，`post_uboot_custom_postprocess` 从最终 `.config` 抄成 `/usr/lib/hive/uboot-env`，运行期 `hive-firmware` 直接从这份 stamp 读 `CONFIG_ENV_SIZE`/`CONFIG_ENV_OFFSET`/`CONFIG_ENV_OFFSET_REDUND` 生成 `fw_setenv` 配置。改偏移只需改一处；stamp 缺失或格式错误时固件更新直接失败，不会写到 U-Boot 不读的位置。
 
-构建脚本会检查 U-Boot 中的 A/B 标记及大小（从 LBA 64 起的引导镜像必须在 12 MiB 环境区之前结束），拒绝普通引导器或会覆盖启动环境的产物。`post_uboot_custom_postprocess` 在 `olddefconfig` 之后复核最终 `.config` 的 `ENV_IS_IN_MMC`、`ENV_REDUNDANT`、`ENV_SIZE`/`ENV_OFFSET`/`ENV_OFFSET_REDUND`、`CMD_SAVEENV`/`CMD_SETEXPR`/`CMD_PART`/`CMD_FDT` 并要求 `ENV_IS_NOWHERE` 关闭，缺任何一项直接中断构建；同时把这份配置写入镜像的 `/usr/lib/hive/uboot-env`。`scripts/check-uboot-env.sh` 在建厂镜像时再对照两份证据：stamp 内容，以及 `u-boot-rockchip.bin` 里确实存在 MMC 环境驱动、冗余读写、`saveenv`、`setexpr`、`part uuid`、`booti`、`fdt` 的字符串。只匹配 `HIVE_AB_V1` 不能证明环境可写。固件安装时从**实际当前根分区反查父磁盘**（必须是 `/dev/mmcblk[0-9]+`），校验 `p1` 标签为 `hive-root` 且起始于 32768、`p2` 为 `hive-data`，再用 `fw_printenv hive_active` 取当前字母；不假设 Linux 的 `mmcblk0` 永远代表某种介质，也不按全局分区标签误选另一张卡。
+构建脚本会检查 U-Boot 中的 A/B 标记及大小（从 LBA 64 起的引导镜像必须在 12 MiB 环境区之前结束），拒绝普通引导器或会覆盖启动环境的产物。`post_uboot_custom_postprocess` 在 `olddefconfig` 之后复核最终 `.config` 的 `ENV_IS_IN_MMC`、`ENV_REDUNDANT`、`ENV_SIZE`/`ENV_OFFSET`/`ENV_OFFSET_REDUND`、`CMD_SAVEENV`/`CMD_SETEXPR`/`CMD_PART`/`CMD_FDT` 并要求 `ENV_IS_NOWHERE` 关闭，缺任何一项直接中断构建；同时把这份配置写入镜像的 `/usr/lib/hive/uboot-env`。`scripts/check-uboot-env.sh` 在建厂镜像时再对照两份证据：stamp 内容，以及 `u-boot-rockchip.bin` 里确实存在 MMC 环境驱动、冗余读写、`saveenv`、`setexpr`、`part uuid`、`booti`、`fdt` 的字符串。只匹配 `HIVE_AB_V1` 不能证明环境可写。固件安装时从**实际当前根分区反查父磁盘**（必须是 `/dev/mmcblk[0-9]+`），校验 `p1` 标签为 `hive-root` 且起始于 32768、`p2` 为 `hive-data`，再从内核命令行中唯一的 `hive.slot=A|B` 取实际运行字母；缺失、无效或重复参数直接拒绝，`hive_active` 只表示已确认字母，不能用于识别试启动；不假设 Linux 的 `mmcblk0` 永远代表某种介质，也不按全局分区标签误选另一张卡。
 
 内核侧另有一道门禁：`scripts/verify-kernel-dtb.py` 从本次构建的 `linux-dtb-current-rockchip64` deb 里取出板级 DTB，断言 RK3528 看门狗节点存在、`compatible` 含 `snps,dw-wdt` 且未被 `status = "disabled"` 关掉。该节点不在主线 6.18（v7.0 才合入 `rk3528.dtsi`），由 `armbian-build/userpatches/kernel/archive/rockchip64-6.18/` 的补丁回移；Armbian 只从 `userpatches/kernel/<KERNELPATCHDIR>` 读用户补丁，放错目录不会报错，只会让镜像里没有 `/dev/watchdog0`，所以这里用构建失败兜住。
 
@@ -210,6 +210,8 @@ U-Boot 在每次试启动前先持久化扣减尝试次数。新内核/DTB/initr
 `hive-firmware-confirm.service` 验证当前字母确实带着本次安装的载荷（比对 `/boot/Image.<字母>` 的 SHA256）、NetworkManager/Nginx/Xray/Cloudflared/EasyTier 服务、OTA 与订阅守护定时器、携带设备凭证的 Registry 连接。也可安装可执行的 `/etc/hive/firmware-health-check` 增加实际业务检查。只有这些检查通过才把该字母标记为已确认；如果回到了旧字母，则恢复旧版本记录并上报 `rolled_back`。管理服务在试启动期间持续失联也会导致回切。
 
 回切分支先删掉 `firmware-pending.json` 再清理其余状态：该文件是确认服务的 `ConditionPathExists` 门控，先失败退出会配合 `FailureAction=reboot` 变成无限重启，而环境不可写时 `hive_pending` 根本清不掉。清环境失败只记警告并继续回切。
+
+确认成功路径同理但顺序相反：`hive_active` 翻到新字母、`hive_tries` 归零之后，引导器已经没有可回退的次数，之后的版本回执、`/etc/hive/ota-version` 与完成 ACK 都只是记账，失败只记警告并照常删除门控文件，绝不返回失败——否则一个只读的 `/data` 就会让这台已经健康启动的设备每 150 秒重启一次。反过来，如果连运行字母都无法判定（布局、cmdline 或环境戳损坏），确认服务直接以成功退出并保留 `firmware-pending.json`，重启也解决不了判定问题，试启动次数仍由 U-Boot 自己递减并回切。
 
 数据分区在正常服务启动前绑定以下目录，因此字母切换保留身份和运行状态：`/etc/hive`、`/etc/ssh`、`/root/.ssh`、Nginx 站点配置、`/etc/cloudflared`、`/etc/frp`、`/etc/xray`、`/etc/mihomo`、NetworkManager 连接配置，以及 Hive、Tailscale、WARP、EasyTier 的对应 `/var/lib` 目录。不会共享整个 `/etc`、包管理器数据库或系统二进制。跨版本数据格式变更必须兼容旧版本，否则回切旧程序也无法恢复已迁移的数据。
 

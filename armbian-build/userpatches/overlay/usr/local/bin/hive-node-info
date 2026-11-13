@@ -16,7 +16,7 @@ import sys
 allowed = set('HOSTNAME MAC MAC6 EASYTIER_IP FRP_PORT TAILSCALE_HOST TAILSCALE_IP '
               'CF_URL XRAY_UUID TUNNEL_ID MESH_TUNNEL_ID MESH_IP WIFI_PSK WIFI_SSID '
               'WIFI_IFACE WIFI_SSID_2G WIFI_IFACE_2G WIFI_SSID_5G WIFI_IFACE_5G '
-              'WIFI_5G_WIDTH'.split())
+              'WIFI_5G_WIDTH GATEWAY_WAN_IFACE GATEWAY_LAN_IFACES GATEWAY_LAN_IP'.split())
 path = pathlib.Path(sys.argv[1])
 if path.is_file():
     for line in path.read_text().splitlines():

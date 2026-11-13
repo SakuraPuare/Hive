@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -351,6 +352,301 @@ exit 0
         args = (self.root / 'core-args').read_text().split()
         self.assertIn('172.20.1.5/16', args)
         self.assertIn('s3cret', args)
+
+    def test_node_info_preserves_gateway_topology_without_evaluation(self):
+        info = self.root / 'node-info'
+        marker = self.root / 'evaluated'
+        expected = ['eth0', 'eth1 eth2', '10.42.2.1']
+        malicious = f'$(touch {marker})'
+        cases = [
+            ('GATEWAY_WAN_IFACE=eth0\nGATEWAY_LAN_IFACES=eth1 eth2\n'
+             'GATEWAY_LAN_IP=10.42.2.1\n', expected),
+            ("GATEWAY_WAN_IFACE='eth0'\nGATEWAY_LAN_IFACES=eth1\\ eth2\n"
+             "GATEWAY_LAN_IP='10.42.2.1'\n", expected),
+            (f'GATEWAY_WAN_IFACE={malicious}\n'
+             f'GATEWAY_LAN_IFACES={malicious}\n'
+             f'GATEWAY_LAN_IP={malicious}\n', [malicious] * 3),
+        ]
+        for content, values in cases:
+            with self.subTest(content=content):
+                info.write_text(content + f'BASH_ENV={marker}\n')
+                source = (BIN / 'hive-node-info').read_text()
+                source += '\nunset GATEWAY_WAN_IFACE GATEWAY_LAN_IFACES GATEWAY_LAN_IP BASH_ENV\n'
+                source += 'hive_load_node_info "$HIVE_TEST_ROOT/node-info"\n'
+                source += (r'''printf '%s\0' "${GATEWAY_WAN_IFACE-}" "${GATEWAY_LAN_IFACES-}" "${GATEWAY_LAN_IP-}" "${BASH_ENV-}"''' + '\n')
+                result = self.run_script(source)
+                self.assertEqual(result.stdout.split('\0'), values + ['', ''])
+                self.assertFalse(marker.exists())
+
+    def hotspot_fixture(self, bands='2g 5g', prefer='5'):
+        # Relocate paths only; run actual detection, activation and ACK logic.
+        for path in ['etc/hive', 'etc/NetworkManager/system-connections',
+                     'usr/local/bin', 'run', 'tmp', 'sys/class/net']:
+            (self.root / path).mkdir(parents=True)
+        if bands:
+            net = self.root / 'sys/class/net/wlan0'
+            (net / 'phy80211').mkdir(parents=True)
+            (net / 'device/driver').mkdir(parents=True)
+            (net / 'address').write_text('02:00:00:00:00:01\n')
+        (self.root / 'bands').write_text(bands)
+        (self.root / 'etc/hive/config.env').write_text('NODE_REGISTRY_URL=https://registry.invalid\n')
+        (self.root / 'etc/hive/device-token').write_text('test-device-token')
+        (self.root / 'etc/hive/node-info').write_text('MAC=aabbccddeeff\n')
+        (self.root / 'etc/hive/default-hotspot-psk').write_text('default-test-password')
+        (self.root / 'services.json').write_text('{}')
+        (self.root / 'nm-active.json').write_text('[]')
+        params = {'ssid2g': 'Command 2G', 'ssid5g': 'Command 5G',
+                  'psk': 'command-password', 'preferBand': prefer}
+        (self.root / 'commands.json').write_text(json.dumps(
+            [{'id': 42, 'action': 'hotspot-config', 'params': json.dumps(params)}]))
+        for name in ['logger', 'chown', 'sysctl', 'sleep', 'ufw', 'journalctl']:
+            self.mock(name, '#!/bin/sh\nexit 0\n')
+        self.mock('curl', r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
+if '-d' in args:
+    assert args[-1].endswith('/nodes/aabbccddeeff/commands/42/ack')
+    with (r/'acks').open('a') as out:
+        out.write(json.dumps(json.loads(args[args.index('-d')+1]))+'\n')
+else:
+    print((r/'commands.json').read_text())
+''')
+        self.mock('iw', r'''#!/usr/bin/env python3
+import os, sys
+from pathlib import Path
+if sys.argv[1] == 'phy':
+    print('Supported interface modes:\n\t * AP\nBand 1:')
+    bands = (Path(os.environ['HIVE_TEST_ROOT'])/'bands').read_text().split()
+    if '2g' in bands: print(' * 2412 MHz [1]')
+    if '5g' in bands: print(' * 5745 MHz [149]')
+''')
+        self.mock('systemctl', r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
+state = json.loads((r/'services.json').read_text())
+if args[0] == 'restart':
+    failure = r/'failed-service'
+    if failure.exists() and failure.read_text() == args[1]: sys.exit(1)
+    state[args[1]] = True
+elif args[0] == 'stop':
+    for service in args[1:]: state[service] = False
+elif args[0] == 'is-active':
+    sys.exit(0 if state.get(args[-1], False) else 3)
+(r/'services.json').write_text(json.dumps(state))
+''')
+        self.mock('nmcli', r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
+state = json.loads((r/'nm-active.json').read_text())
+if args[:2] == ['connection', 'up']:
+    if (r/'fail-nm').exists(): sys.exit(1)
+    state = [args[2]]
+elif args[:2] in [['connection', 'down'], ['connection', 'delete']]:
+    state = [name for name in state if name != args[2]]
+elif args[:2] == ['device', 'disconnect']: state = []
+elif args[-2:] == ['device', 'status']: print('wlan0')
+(r/'nm-active.json').write_text(json.dumps(state))
+''')
+        self.mock('ip', r'''#!/usr/bin/env python3
+import os, sys
+from pathlib import Path
+with (Path(os.environ['HIVE_TEST_ROOT'])/'ip-calls').open('a') as out:
+    out.write(' '.join(sys.argv[1:])+'\n')
+''')
+        for name in ['hive-command-agent', 'hive-hotspot.sh', 'hive-node-info']:
+            source = (BIN / name).read_text()
+            for path in ['/tmp/', '/etc/', '/run/', '/sys/class/net', '/usr/local/bin/']:
+                source = source.replace(path, str(self.root) + path)
+            target = self.root / 'usr/local/bin' / name
+            target.write_text(source)
+            target.chmod(0o755)
+        return (self.root / 'usr/local/bin/hive-command-agent').read_text()
+
+    def test_hotspot_command_reports_5g_failure_and_cleans_ap(self):
+        agent = self.hotspot_fixture()
+        for service in ['hive-hotspot-5g.service', 'hive-hotspot-5g-dnsmasq.service']:
+            with self.subTest(service=service):
+                # Failed restart must not count as applied even if old units
+                # remain active until the hotspot script cleans them up.
+                (self.root / 'services.json').write_text(json.dumps({
+                    'hive-hotspot-5g.service': True,
+                    'hive-hotspot-5g-dnsmasq.service': True}))
+                (self.root / 'failed-service').write_text(service)
+                self.run_script(agent)
+                ack = json.loads((self.root / 'acks').read_text().splitlines()[-1])
+                self.assertEqual(ack['status'], 'failed')
+                self.assertIn('hotspot apply failed', ack['result'])
+                self.assertFalse(any(json.loads((self.root / 'services.json').read_text()).values()))
+                self.assertEqual(json.loads((self.root / 'nm-active.json').read_text()), [])
+                self.assertIn('addr flush dev wlan0', (self.root / 'ip-calls').read_text())
+                self.assertNotIn('WIFI_IFACE', (self.root / 'etc/hive/node-info').read_text())
+
+    def test_hotspot_command_reports_success_after_applying_5g(self):
+        self.run_script(self.hotspot_fixture())
+        ack = json.loads((self.root / 'acks').read_text())
+        self.assertEqual(ack['status'], 'done')
+        state = json.loads((self.root / 'services.json').read_text())
+        self.assertTrue(state['hive-hotspot-5g.service'])
+        self.assertTrue(state['hive-hotspot-5g-dnsmasq.service'])
+        config = (self.root / 'etc/hostapd/hive-5g.conf').read_text()
+        self.assertIn('ssid=Command 5G\n', config)
+        self.assertIn('sae_password=command-password\n', config)
+        self.assertIn('WIFI_IFACE_5G=wlan0\n', (self.root / 'etc/hive/node-info').read_text())
+
+    def test_hotspot_command_reports_2g_activation_failure(self):
+        agent = self.hotspot_fixture(prefer='2.4')
+        (self.root / 'fail-nm').touch()
+        self.run_script(agent)
+        self.assertEqual(json.loads((self.root / 'acks').read_text())['status'], 'failed')
+        self.assertEqual(json.loads((self.root / 'nm-active.json').read_text()), [])
+        self.assertNotIn('WIFI_IFACE', (self.root / 'etc/hive/node-info').read_text())
+
+    def test_hotspot_command_accepts_intentionally_unassigned_5g(self):
+        self.run_script(self.hotspot_fixture(prefer='2.4'))
+        self.assertEqual(json.loads((self.root / 'acks').read_text())['status'], 'done')
+        self.assertEqual(json.loads((self.root / 'nm-active.json').read_text()), ['hive-hotspot-2g'])
+        self.assertFalse(any(json.loads((self.root / 'services.json').read_text()).values()))
+        self.assertIn('WIFI_IFACE_2G=wlan0\n', (self.root / 'etc/hive/node-info').read_text())
+
+    def test_hotspot_command_accepts_unsupported_5g_fallback(self):
+        self.run_script(self.hotspot_fixture(bands='2g'))
+        self.assertEqual(json.loads((self.root / 'acks').read_text())['status'], 'done')
+        self.assertEqual(json.loads((self.root / 'nm-active.json').read_text()), ['hive-hotspot-2g'])
+
+    def test_hotspot_without_wireless_hardware_remains_optional(self):
+        self.run_script(self.hotspot_fixture(bands=''))
+        self.assertEqual(json.loads((self.root / 'acks').read_text())['status'], 'done')
+        self.assertFalse(any(json.loads((self.root / 'services.json').read_text()).values()))
+        self.assertEqual(json.loads((self.root / 'nm-active.json').read_text()), [])
+
+    def gateway_fixture(self, default_route=''):
+        # Relocate paths only; run the production WAN/LAN selection and keyfile
+        # writer against a mocked NetworkManager.
+        for path in ['etc/hive', 'etc/NetworkManager/system-connections', 'run', 'sys/class/net']:
+            (self.root / path).mkdir(parents=True, exist_ok=True)
+        for iface, mac in [('eth0', '02:00:00:00:00:10'), ('eth1', '02:00:00:00:00:11')]:
+            net = self.root / 'sys/class/net' / iface
+            (net / 'device').mkdir(parents=True)
+            (net / 'address').write_text(mac + '\n')
+            (net / 'operstate').write_text('up\n')
+        (self.root / 'etc/hive/node-info').write_text('MAC=aabbccddeeff\n')
+        (self.root / 'etc/hive/config.env').write_text('')
+        (self.root / 'default-route').write_text(default_route)
+        (self.root / 'nm-state.json').write_text(json.dumps(
+            {'connections': {}, 'active': [], 'interfaces': ['eth0', 'eth1']}))
+        for name in ['logger', 'chown']:
+            self.mock(name, '#!/bin/sh\nexit 0\n')
+        self.mock('ip', r'''#!/usr/bin/env python3
+import os, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT'])
+dev = (r/'default-route').read_text().strip()
+args = sys.argv[1:]
+if args[:3] == ['route', 'show', 'default'] and dev:
+    print('default via 192.0.2.1 dev ' + dev)
+''')
+        self.mock('nmcli', r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
+state = json.loads((r/'nm-state.json').read_text())
+def save(): (r/'nm-state.json').write_text(json.dumps(state))
+with (r/'nm-calls').open('a') as out: out.write(' '.join(args)+'\n')
+fields = ''
+if '-t' in args: args.remove('-t')
+if '-f' in args:
+    i = args.index('-f'); fields = args[i+1]; del args[i:i+2]
+if args[:2] == ['connection', 'show'] and len(args) == 2:
+    for name, conn in state['connections'].items():
+        if fields == 'NAME,DEVICE':
+            print(name + ':' + conn.get('device', ''))
+        elif fields == 'NAME':
+            print(name)
+    sys.exit(0)
+if args[:2] == ['connection', 'show'] and len(args) == 3:
+    conn = state['connections'][args[2]]
+    if fields == 'ipv4.method':
+        print('ipv4.method:' + conn['method'])
+    elif fields == 'connection.interface-name':
+        print('connection.interface-name:' + conn['iface'])
+    sys.exit(0)
+if args[:2] == ['connection', 'modify']:
+    state['connections'][args[2]]['method'] = args[4]
+    save(); sys.exit(0)
+if args[:2] == ['connection', 'delete']:
+    state['connections'].pop(args[2], None); save(); sys.exit(0)
+if args[:2] == ['connection', 'up']:
+    state['active'] = [args[2]]; save(); sys.exit(0)
+if args == ['connection', 'reload']:
+    sys.exit(0)
+if args == ['device', 'status']:
+    print('\n'.join(state['interfaces']))
+    sys.exit(0)
+sys.exit(1)
+''')
+        source = (BIN / 'hive-gateway.sh').read_text()
+        for path in ['/etc/NetworkManager/system-connections', '/etc/hive', '/run/', '/sys/class/net']:
+            source = source.replace(path, str(self.root) + path)
+        return source
+
+    def test_gateway_drops_lan_profile_from_the_former_lan_port(self):
+        # A profile left on a port that later became WAN keeps method=shared and
+        # autoconnect-priority=50; NM would turn the upstream port into a shared
+        # gateway on the next boot and take the node offline.
+        source = self.gateway_fixture(default_route='eth1')
+        keyfiles = self.root / 'etc/NetworkManager/system-connections'
+        stale = keyfiles / 'hive-lan-eth1.nmconnection'
+        stale.write_text('[connection]\nid=hive-lan-eth1\ninterface-name=eth1\n\n[ipv4]\nmethod=shared\n')
+        (self.root / 'nm-state.json').write_text(json.dumps({
+            'connections': {'hive-lan-eth1': {'iface': 'eth1', 'device': '', 'method': 'shared'}},
+            'active': [], 'interfaces': ['eth0', 'eth1']}))
+
+        self.run_script(source)
+
+        self.assertFalse(stale.exists())
+        self.assertTrue((keyfiles / 'hive-lan-eth0.nmconnection').exists())
+        connections = json.loads((self.root / 'nm-state.json').read_text())['connections']
+        self.assertNotIn('hive-lan-eth1', connections)
+        self.assertIn('connection delete hive-lan-eth1', (self.root / 'nm-calls').read_text())
+        info = (self.root / 'etc/hive/node-info').read_text()
+        self.assertIn('GATEWAY_WAN_IFACE=eth1', info)
+        self.assertIn('GATEWAY_LAN_IFACES=eth0', info)
+
+    def test_gateway_fixes_wan_profile_that_is_not_active(self):
+        # At boot the WAN has no default route yet, so its profile is inactive.
+        # Looking it up by DEVICE found nothing and a method=shared profile kept
+        # the upstream port configured as a gateway.
+        source = self.gateway_fixture(default_route='eth0')
+        (self.root / 'nm-state.json').write_text(json.dumps({
+            'connections': {'Wired connection 1': {'iface': 'eth0', 'device': '', 'method': 'shared'}},
+            'active': [], 'interfaces': ['eth0', 'eth1']}))
+
+        self.run_script(source)
+
+        connections = json.loads((self.root / 'nm-state.json').read_text())['connections']
+        self.assertEqual(connections['Wired connection 1']['method'], 'auto')
+
+    def test_gateway_prunes_lan_profiles_after_a_port_disappears(self):
+        # A removed USB NIC or a switch back to a single port leaves keyfiles
+        # bound to an interface that no longer exists; NM may still activate one
+        # and give that port a shared 10.42.2.1/24.
+        source = self.gateway_fixture()
+        keyfiles = self.root / 'etc/NetworkManager/system-connections'
+        stale = keyfiles / 'hive-lan-eth1.nmconnection'
+        stale.write_text('[connection]\nid=hive-lan-eth1\ninterface-name=eth1\n\n[ipv4]\nmethod=shared\n')
+        (self.root / 'nm-state.json').write_text(json.dumps({
+            'connections': {'hive-lan-eth1': {'iface': 'eth1', 'device': '', 'method': 'shared'}},
+            'active': [], 'interfaces': ['eth0']}))
+        shutil.rmtree(self.root / 'sys/class/net/eth1')
+
+        self.run_script(source)
+
+        self.assertFalse(stale.exists())
+        self.assertNotIn('hive-lan-eth1',
+                         json.loads((self.root / 'nm-state.json').read_text())['connections'])
 
 
 if __name__ == '__main__':

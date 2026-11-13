@@ -49,6 +49,11 @@ hive_stop_xray() {
     systemctl stop xray || systemctl kill --kill-who=all --signal=KILL xray || return 1
     rm -f "$HIVE_ACCESS_DIR/xray.lease" "$HIVE_ACCESS_DIR/xray.applied"
 }
+hive_gateway_enabled() (
+    [ ! -f /etc/hive/config.env ] || source /etc/hive/config.env
+    enabled=${GATEWAY_ENABLED:-on}
+    case "${enabled,,}" in off|0|false|no) exit 1;; esac
+)
 hive_gateway_block_forward() {
     local tool
     for tool in iptables ip6tables; do
@@ -63,6 +68,15 @@ hive_gateway_unblock_forward() {
             "$tool" -w 3 -D FORWARD -m comment --comment hive-subscription -j DROP || return 1
         done
     done
+}
+hive_gateway_clear_access() {
+    rm -f "$HIVE_ACCESS_DIR/gateway.lease" || return 1
+    hive_gateway_unblock_forward
+}
+hive_disable_gateway() {
+    # Stopping Mihomo removes its TUN path without touching other forwarding.
+    systemctl stop hive-mihomo || systemctl kill --kill-who=all --signal=KILL hive-mihomo || return 1
+    hive_gateway_clear_access
 }
 hive_gateway_block_config() {
     local tmp

@@ -13,7 +13,7 @@ OVERLAY = REPO / 'armbian-build/userpatches/overlay'
 UUID = '11111111-2222-4333-8444-555555555555'
 
 MOCK = r'''#!/usr/bin/env python3
-import json,os,sys
+import json,os,shlex,subprocess,sys
 from pathlib import Path
 root=Path(os.environ['HIVE_TEST_ROOT'])
 name=Path(sys.argv[0]).name; args=sys.argv[1:]
@@ -32,8 +32,17 @@ if name=='systemctl':
         elif action=='restart' or not state['xray']:
             state.update(xray=True,epoch=state['epoch']+1,clients=[],connections=False,stats=[])
         save()
-    elif service=='hive-mihomo' and action in ['start','restart','stop']:
-        state['mihomo']=action!='stop';state['gateway_connections']=False;save()
+    elif service=='hive-mihomo' and action in ['start','restart','stop','kill']:
+        if (root/('fail-mihomo-'+action)).exists():sys.exit(1)
+        state['mihomo']=False;state['gateway_connections']=False;save()
+        if action in ['start','restart']:
+            for line in (root/'hive-mihomo.service').read_text().splitlines():
+                key,sep,value=line.partition('=')
+                if not sep or key not in ['ExecCondition','ExecStartPre']:continue
+                result=subprocess.run(shlex.split(value))
+                if result.returncode:
+                    sys.exit(0 if key=='ExecCondition' and 1<=result.returncode<=254 else 1)
+            state=json.loads(p.read_text());state['mihomo']=True;save()
 elif name=='xray':
     if args[0]=='run':sys.exit(0)
     action=args[1]
@@ -74,9 +83,25 @@ elif name=='curl':
         shutil=None
         Path(args[args.index('-o')+1]).write_text((root/'gateway.yaml').read_text())
 elif name in ['iptables','ip6tables']:
-    if '-C' in args:sys.exit(0 if state.get(name,False) else 1)
-    if '-I' in args:state[name]=True
-    if '-D' in args:state[name]=False
+    if args[:2]==['-w','3']:args=args[2:]
+    if (root/('fail-'+name)).exists():sys.exit(1)
+    table='filter'
+    if args[:1]==['-t']:table=args[1];args=args[2:]
+    action=args[0];chain=args[1] if len(args)>1 else None
+    rules=state.setdefault('firewall',{}).setdefault(name,[])
+    spec=args[2:]
+    if action=='-I' and spec and spec[0].isdigit():spec=spec[1:]
+    rule=[table,chain]+spec
+    if action=='-C':sys.exit(0 if rule in rules else 1)
+    elif action=='-I':rules.insert(0,rule)
+    elif action=='-A':rules.append(rule)
+    elif action=='-D':
+        if rule not in rules:sys.exit(1)
+        rules.remove(rule)
+    elif action in ['-F','-X']:
+        rules[:]=[r for r in rules if r[0]!=table or (chain and r[1]!=chain)]
+    else:sys.exit(2)
+    state[name]=['filter','FORWARD','-m','comment','--comment','hive-subscription','-j','DROP'] in rules
     save()
 elif name=='mihomo':
     if (root/'fail-config-test').exists():sys.exit(1)
@@ -97,6 +122,8 @@ class SubscriptionScripts(unittest.TestCase):
             source=(OVERLAY/'usr/local/bin'/name).read_text()
             for old,new in [('/usr/local/bin',str(self.root/'bin')),('/etc/hive',str(self.root/'etc/hive')),('/etc/xray',str(self.root/'etc/xray')),('/etc/mihomo',str(self.root/'etc/mihomo')),('/var/lib/hive',str(self.root/'var/lib/hive')),('/run/hive-subscriptions',str(self.root/'run/hive-subscriptions'))]:source=source.replace(old,new)
             p=self.root/'bin'/name;p.write_text(source);p.chmod(0o755)
+        unit=(OVERLAY/'etc/systemd/system/hive-mihomo.service').read_text()
+        (self.root/'hive-mihomo.service').write_text(unit.replace('/usr/local/bin',str(self.root/'bin')))
         (self.root/'etc/hive/config.env').write_text('NODE_REGISTRY_URL=https://registry.invalid\nNODE_REGISTRY_API_SECRET=test-token\n')
         (self.root/'etc/hive/server-token').write_text('server-only-token')
         (self.root/'etc/hive/node-info').write_text('MAC=aabbccddeeff\n')
@@ -115,6 +142,22 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertEqual(p.returncode,expected,p.stdout+p.stderr)
         return p
     def expire(self,role): (self.root/f'run/hive-subscriptions/{role}.lease').write_text('0\n')
+
+    def set_gateway_enabled(self,value):
+        with (self.root/'etc/hive/config.env').open('a') as f:f.write(f'GATEWAY_ENABLED={value}\n')
+
+    def seed_gateway_firewall(self,blocked=False):
+        unrelated=[
+            ['filter','FORWARD','-j','ts-forward'],
+            ['filter','FORWARD','-i','easytier0','-j','ACCEPT'],
+            ['filter','FORWARD','-m','comment','--comment','admin-policy','-j','DROP'],
+            ['filter','INPUT','-m','comment','--comment','hive-subscription','-j','DROP'],
+            ['nat','POSTROUTING','-o','eth0','-j','MASQUERADE'],
+        ]
+        owned=['filter','FORWARD','-m','comment','--comment','hive-subscription','-j','DROP']
+        # Duplicate old drops must all be removed without touching another owner.
+        self.state_update(firewall={name:([owned,owned] if blocked else [])+unrelated for name in ['iptables','ip6tables']})
+        return {name:unrelated for name in ['iptables','ip6tables']}
 
     def test_customer_device_never_reports_even_with_device_or_legacy_key(self):
         (self.root/'etc/hive/server-token').unlink()
@@ -298,6 +341,136 @@ class SubscriptionScripts(unittest.TestCase):
         p.write_text(json.dumps(config))
         self.run_agent('hive-xray-prepare')
         self.assertEqual(json.loads(p.read_text())['inbounds'][0]['settings']['clients'],[])
+
+    def test_gateway_off_entrypoints_preserve_unrelated_forwarding(self):
+        self.set_gateway_enabled('off')
+        access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
+        xray_lease=access/'xray.lease';xray_lease.write_text('9999999999\n')
+        lease=access/'gateway.lease'
+        for name in ['hive-clash-sync','hive-gateway-prepare','hive-subscription-guard']:
+            for previous in ['clean','blocked','leased','blocked-leased','expired']:
+                with self.subTest(entrypoint=name,previous=previous):
+                    lease.unlink(missing_ok=True)
+                    if 'leased' in previous:lease.write_text('9999999999\n')
+                    elif previous=='expired':lease.write_text('0\n')
+                    expected=self.seed_gateway_firewall(blocked=previous.startswith('blocked'))
+                    # Startup conditions run before there is a Mihomo process.
+                    running=name!='hive-gateway-prepare'
+                    self.state_update(mihomo=running,gateway_connections=running)
+                    config=(self.root/'etc/mihomo/config.yaml').read_text()
+                    self.run_agent(name,expected=1 if name=='hive-gateway-prepare' else 0)
+                    self.assertEqual(self.state()['firewall'],expected)
+                    self.assertFalse(lease.exists())
+                    self.assertFalse(self.state()['mihomo'])
+                    self.assertFalse(self.state()['gateway_connections'])
+                    self.assertEqual((self.root/'etc/mihomo/config.yaml').read_text(),config)
+                    self.assertTrue(self.state()['xray'])
+                    self.assertTrue(self.state()['connections'])
+                    self.assertEqual(xray_lease.read_text(),'9999999999\n')
+
+    def test_gateway_off_aliases_skip_mihomo_service_start(self):
+        for value in ['off','0','false','no','OFF']:
+            with self.subTest(value=value):
+                self.set_gateway_enabled(value)
+                expected=self.seed_gateway_firewall(blocked=True)
+                result=subprocess.run(['systemctl','restart','hive-mihomo'],env=self.env,capture_output=True,text=True,timeout=15)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                self.assertFalse(self.state()['mihomo'])
+                self.assertEqual(self.state()['firewall'],expected)
+
+    def test_gateway_off_keeps_expired_exit_enforcement(self):
+        self.set_gateway_enabled('off')
+        access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
+        self.expire('xray')
+        expected=self.seed_gateway_firewall(blocked=True)
+        self.run_agent('hive-subscription-guard')
+        self.assertFalse(self.state()['xray'])
+        self.assertFalse(self.state()['connections'])
+        self.assertFalse((access/'xray.lease').exists())
+        self.assertFalse(self.state()['mihomo'])
+        self.assertEqual(self.state()['firewall'],expected)
+
+    def test_gateway_off_preserves_block_when_mihomo_cannot_stop(self):
+        self.set_gateway_enabled('off')
+        access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
+        lease=access/'gateway.lease';lease.write_text('9999999999\n')
+        (self.root/'fail-mihomo-stop').touch()
+        (self.root/'fail-mihomo-kill').touch()
+        self.seed_gateway_firewall(blocked=True)
+        original=self.state()['firewall']
+        for name in ['hive-clash-sync','hive-subscription-guard']:
+            with self.subTest(entrypoint=name):
+                self.run_agent(name,expected=1)
+                self.assertTrue(self.state()['mihomo'])
+                self.assertEqual(self.state()['firewall'],original)
+                self.assertTrue(lease.exists())
+
+    def test_gateway_on_without_authorization_still_blocks(self):
+        self.set_gateway_enabled('on')
+        access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
+        (self.root/'fail-network').touch()
+        for name in ['hive-clash-sync','hive-gateway-prepare','hive-subscription-guard']:
+            with self.subTest(entrypoint=name):
+                self.expire('gateway')
+                unrelated=self.seed_gateway_firewall()
+                self.run_agent(name,expected=1 if name=='hive-clash-sync' else 0)
+                self.assertTrue(self.state()['iptables'])
+                self.assertTrue(self.state()['ip6tables'])
+                for tool,rules in self.state()['firewall'].items():
+                    self.assertEqual(rules[1:],unrelated[tool])
+                self.assertIn('MATCH,REJECT',(self.root/'etc/mihomo/config.yaml').read_text())
+
+    def test_gateway_prepare_reports_firewall_failure_instead_of_skipping(self):
+        # ExecCondition exit codes 1..254 mean "condition not met": systemd skips
+        # Mihomo and reports the unit as successful. A real failure must exit 255,
+        # otherwise GATEWAY_ENABLED=off and a broken firewall are indistinguishable
+        # and both silently disable the gateway.
+        self.set_gateway_enabled('on')
+        self.seed_gateway_firewall()
+        (self.root/'fail-iptables').touch()
+        self.run_agent('hive-gateway-prepare',expected=255)
+        (self.root/'fail-iptables').unlink()
+        self.run_agent('hive-gateway-prepare')
+        self.set_gateway_enabled('off')
+        access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
+        (access/'gateway.lease').write_text('9999999999\n')
+        self.run_agent('hive-gateway-prepare',expected=1)
+        self.assertFalse((access/'gateway.lease').exists())
+
+    def test_gateway_prepare_reports_blocked_config_failure(self):
+        self.set_gateway_enabled('on')
+        self.seed_gateway_firewall()
+        access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
+        self.expire('gateway')
+        config=(self.root/'etc/mihomo/config.yaml')
+        original=config.read_text()
+        config.chmod(0o400)
+        (self.root/'etc/mihomo').chmod(0o500)
+        self.addCleanup((self.root/'etc/mihomo').chmod,0o700)
+        # An unwritable /etc/mihomo must fail the unit, not skip it.
+        self.run_agent('hive-gateway-prepare',expected=255)
+        self.assertEqual(config.read_text(),original)
+        # No configuration at all yet is a condition, not a failure: waiting for
+        # hive-clash-sync must not make Mihomo look permanently broken.
+        (self.root/'etc/mihomo').chmod(0o700)
+        config.chmod(0o600)
+        config.write_text('')
+        self.run_agent('hive-gateway-prepare',expected=1)
+
+    def test_gateway_reenable_requires_fresh_authorization(self):
+        self.set_gateway_enabled('off')
+        expected=self.seed_gateway_firewall(blocked=True)
+        self.run_agent('hive-clash-sync')
+        self.set_gateway_enabled('on')
+        (self.root/'fail-network').touch()
+        self.run_agent('hive-clash-sync',expected=1)
+        self.assertTrue(self.state()['iptables'])
+        self.assertTrue(self.state()['ip6tables'])
+        (self.root/'fail-network').unlink()
+        self.run_agent('hive-clash-sync')
+        self.assertTrue(self.state()['mihomo'])
+        self.assertEqual(self.state()['firewall'],expected)
+        self.assertTrue((self.root/'run/hive-subscriptions/gateway.lease').exists())
 
     def test_gateway_expiry_blocks_ipv4_ipv6_and_closes_tunnels(self):
         self.run_agent('hive-clash-sync')

@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source /usr/local/bin/hive-subscription-state
-hive_gateway_block_forward
-if ! hive_lease_valid gateway; then hive_gateway_block_config; fi
+# Exit-code contract of an ExecCondition= command: 1..254 makes systemd skip the
+# unit and report it as successful, 255 marks it failed (Restart=on-failure then
+# retries). Only "the gateway is intentionally off" and "no configuration exists
+# yet" may use the skip range; every real failure must exit 255, otherwise a
+# broken firewall silently disables the gateway exactly like GATEWAY_ENABLED=off.
+fail() { echo "[hive-gateway-prepare] $*" >&2; exit 255; }
+source /usr/local/bin/hive-subscription-state || fail 'cannot load gateway state helpers'
+if ! hive_gateway_enabled; then
+    hive_gateway_clear_access || fail 'cannot clear gateway access while disabled'
+    exit 1
+fi
+hive_gateway_block_forward || fail 'cannot install the forwarding block'
+if ! hive_lease_valid gateway; then
+    # Nothing to start before hive-clash-sync writes the first configuration.
+    [ -s /etc/mihomo/config.yaml ] || exit 1
+    hive_gateway_block_config || fail 'cannot replace the gateway rules with the blocked policy'
+fi

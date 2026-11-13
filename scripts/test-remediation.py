@@ -119,7 +119,9 @@ if flag.exists():flag.unlink();sys.exit(1)
         self.assertFalse(proof.exists())
         # Run the actual hotspot state writer on an SSID/PSK with shell syntax.
         source = (BIN / 'hive-hotspot.sh').read_text()
-        writer = source[source.index('# ── 7.'):source.index('# ── 8.')].replace('/etc/hive', str(self.root / 'etc/hive'))
+        start = source.index('# ── 8. 把凭证记入 node-info')
+        end = source.index('} >> "$NODE_INFO"', start) + len('} >> "$NODE_INFO"')
+        writer = source[start:end].replace('/etc/hive', str(self.root / 'etc/hive'))
         script.write_text('NODE_INFO="$1"; PSK="$2"; SSID_2G="$(printf %s \'x;y $HOME\')"; DONE_2G=wlan0; DONE_5G=""; NODE_MAC=aabbccddeeff\n' + writer)
         self.run_script(script, str(info), psk)
         loader = self.root / 'load-written'
@@ -363,6 +365,43 @@ seed_path "$base" etc/hive || exit 1
             self.run_script(script)
             self.assertEqual(live.read_bytes(), Path('/usr/bin/true').read_bytes())
         self.assertIsNone(process.poll())
+
+
+class DeploymentRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='hive-deploy-regression-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.env_file = self.root / 'hive-registry.env'
+        source = (REPO / 'management/setup-vps.sh').read_text()
+        start = source.index('# 写入 EnvironmentFile')
+        end = source.index('chmod 600 /etc/hive-registry.env', start)
+        block = source[start:end] + 'chmod 600 /etc/hive-registry.env\n'
+        self.script = self.root / 'write-env'
+        self.script.write_text('set -e\n' + block.replace('/etc/hive-registry.env', str(self.env_file)))
+
+    def deploy(self, explicit=''):
+        result = subprocess.run(['bash', str(self.script)],
+                                env=dict(os.environ, ADMIN_API_SECRET=explicit),
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        values = dict(line.split('=', 1) for line in self.env_file.read_text().splitlines())
+        self.assertEqual(self.env_file.stat().st_mode & 0o777, 0o600)
+        return values['ADMIN_API_SECRET']
+
+    def test_generated_admin_secret_survives_redeploy_and_explicit_rotation(self):
+        generated = self.deploy()
+        self.assertRegex(generated, r'^[0-9a-f]{64}$')
+        self.assertEqual(self.deploy(), generated)
+        self.assertEqual(self.deploy('replacement-admin-token'), 'replacement-admin-token')
+        self.assertEqual(self.deploy(), 'replacement-admin-token')
+
+    def test_saved_environment_is_read_as_data(self):
+        proof = self.root / 'executed'
+        self.env_file.write_text('MYSQL_PASSWORD=$(touch ' + str(proof) + ')\n'
+                                 'ADMIN_API_SECRET=existing-token\n')
+        self.assertEqual(self.deploy(), 'existing-token')
+        self.assertFalse(proof.exists())
 
 
 if __name__ == '__main__':

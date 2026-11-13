@@ -68,6 +68,26 @@ mkuuid() {
         "$(( 0x${h:16:2} & 0x3f | 0x80 ))" "${h:18:2}" "${h:20:12}"
 }
 
+# 删除不再由本脚本管理的 hive-lan-* 连接。$@ = 仍需保留的接口名（可为空）。
+# 角色互换或网口消失后，旧 keyfile 会留在现在的 WAN 口上，仍带 method=shared
+# 与 autoconnect-priority=50；NM 下次会把上游口配成共享网关+HNAT，节点失联。
+prune_lan_profiles() {
+    local kf stale_conn stale_iface keep iface
+    for kf in "$KF_DIR"/hive-lan-*.nmconnection; do
+        [ -f "$kf" ] || continue
+        stale_conn=$(basename "$kf" .nmconnection)
+        stale_iface=$(sed -n 's/^interface-name=//p' "$kf" | head -1)
+        keep=0
+        for iface in "$@"; do
+            [ "$iface" = "$stale_iface" ] && { keep=1; break; }
+        done
+        [ "$keep" -eq 1 ] && continue
+        log "清理过期 LAN 连接：${stale_conn}${stale_iface:+（接口 ${stale_iface} 已不是 LAN）}"
+        nmcli connection delete "$stale_conn" >/dev/null 2>&1 || true
+        rm -f "$kf"
+    done
+}
+
 # ── 2. 枚举物理有线网卡（排除虚拟口与无线口）──────────────────────────
 is_wired_phys() {  # $1=iface → 0 表示是物理有线口
     local iface="$1"
@@ -91,6 +111,8 @@ log "发现 ${NWIRED} 个物理有线口: [${WIRED[*]:-none}]"
 
 if [ "$NWIRED" -lt 2 ]; then
     log "仅 ${NWIRED} 个有线口，不配置 WAN/LAN（非路由器场景；网关仍由 Mihomo 接管本机转发）"
+    # 网口减少（拔掉 USB 网卡/改单口）后这些连接已无对应 LAN，留着会被 NM 激活。
+    prune_lan_profiles
     exit 0
 fi
 
@@ -134,13 +156,28 @@ else
     done
 fi
 if [ "${#LANS[@]}" -eq 0 ]; then
-    log "未找到可用 LAN 口（仅 WAN=$WAN），跳过 LAN 配置"; exit 0
+    log "未找到可用 LAN 口（仅 WAN=$WAN），跳过 LAN 配置"
+    prune_lan_profiles
+    exit 0
 fi
+
+# ── 4b. 清理已不属于当前 LAN 的旧连接 ──────────────────────────────────
+# 下面的 WAN 检查按 profile 的接口名查找，但旧 hive-lan-* 必须先消失：它绑定在
+# 现在的 WAN 口上、autoconnect-priority=50，NM 下次会自动接管上游口。
+prune_lan_profiles "${LANS[@]}"
 
 # ── 5. WAN 口确保为 DHCP 客户端（method=auto）────────────────────────
 # WAN 口通常本就是 NM 默认连接（auto）。仅当存在绑定该口的连接且非 auto 时才纠正，
 # 避免误动用户/其它机制配的连接；找不到现有连接时不强行新建，交给 NM 默认行为。
-wan_conn=$(nmcli -t -f NAME,DEVICE connection show 2>/dev/null | awk -F: -v d="$WAN" '$2==d{print $1; exit}')
+# 按 connection.interface-name 枚举，包含未激活的 profile：开机时 WAN 尚未
+# 激活，按 DEVICE 查找会得到空结果并漏掉一条 method=shared 的残留连接。
+wan_conn=""
+while IFS= read -r conn; do
+    [ -n "$conn" ] || continue
+    iface=$(nmcli -t -f connection.interface-name connection show "$conn" 2>/dev/null | cut -d: -f2)
+    [ "$iface" = "$WAN" ] || continue
+    wan_conn="$conn"; break
+done < <(nmcli -t -f NAME connection show 2>/dev/null)
 if [ -n "$wan_conn" ]; then
     wan_method=$(nmcli -t -f ipv4.method connection show "$wan_conn" 2>/dev/null | cut -d: -f2)
     if [ "$wan_method" != "auto" ]; then

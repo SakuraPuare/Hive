@@ -607,16 +607,18 @@ class FirmwareTests(unittest.TestCase):
     script = base.DeviceRegressionTests.script
     run_script = base.DeviceRegressionTests.run_script
 
-    def firmware_fixture(self):
+    def firmware_fixture(self, slot='A'):
         payload = self.root / 'firmware'
         files = payload / 'files'
         (files / 'boot/dtb/rockchip').mkdir(parents=True)
         (files / 'usr/lib/modules/6.18.59').mkdir(parents=True)
+        (files / 'usr/lib/firmware').mkdir(parents=True)
         (files / 'usr/lib/hive').mkdir(parents=True)
         (files / 'boot/Image').write_bytes(b'new kernel payload\n')
         (files / 'boot/uInitrd').write_bytes(b'new initramfs\n')
         (files / 'boot/dtb/rockchip/rk3528-nanopi-zero2.dtb').write_bytes(b'new device tree\n')
         (files / 'usr/lib/modules/6.18.59/hive.ko').write_bytes(b'new module\n')
+        (files / 'usr/lib/firmware/radio.bin').write_bytes(b'new radio firmware\n')
         (files / 'usr/lib/hive/boot-payload.json').write_text(
             json.dumps({'board': self.board, 'layout': self.board + '-bootab-v1', 'version': '2.0'}))
         entries = [{'path': str(p.relative_to(files)), 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()}
@@ -626,28 +628,83 @@ class FirmwareTests(unittest.TestCase):
             'version': '2.0', 'files': entries}))
         # The confirmed letter is what a failed update must leave untouched.
         (self.root / 'boot').mkdir(exist_ok=True)
-        (self.root / 'boot/Image.A').write_bytes(b'current system must remain unchanged')
-        (self.root / 'boot/uInitrd.A').write_bytes(b'current initramfs\n')
+        (self.root / ('boot/Image.' + slot)).write_bytes(b'current system must remain unchanged')
+        (self.root / ('boot/uInitrd.' + slot)).write_bytes(b'current initramfs\n')
         (self.root / 'image-tree/usr/lib/hive').mkdir(parents=True, exist_ok=True)
         (self.root / 'image-tree/usr/lib/hive/ab-layout').write_text(self.board + '-bootab-v1\n')
         (self.root / 'etc/hive/ota-version').write_text('1.0\n')
         (self.root / 'var/lib/hive/ota-installed.json').write_text('{"version":"1.0","sha256":"old"}')
         (self.root / 'etc/hive/device-token').write_text('test-token')
         (self.root / 'assignment.json').write_text('{}')
-        self.mock('findmnt', '#!/bin/sh\nexit 1\n')
-        self.mock('fw_printenv', '#!/bin/sh\n[ "$4" != hive_active ] || echo A\n')
-        self.mock('fw_setenv', '#!/bin/sh\ncat "$4" >> "$HIVE_TEST_ROOT/environment-writes"\n')
+        # Relocate hardware inputs, but execute the production layout decision.
+        # hive_active remains the confirmed letter during a trial boot.
+        (self.root / 'proc/device-tree').mkdir(parents=True)
+        (self.root / 'proc/device-tree/compatible').write_bytes(
+            ('friendlyarm,' + self.board + '\0rockchip,rk3528\0').encode())
+        self.set_running_slot(slot)
+        (self.root / 'dev').mkdir()
+        for part in (1, 2):
+            (self.root / ('dev/mmcblk0p' + str(part))).touch()
+        (self.root / 'sys/class/block/mmcblk0p1').mkdir(parents=True)
+        (self.root / 'sys/class/block/mmcblk0p1/start').write_text('32768\n')
+        (self.root / 'image-tree/usr/lib/hive/uboot-env').write_text(
+            'CONFIG_ENV_SIZE=0x8000\nCONFIG_ENV_OFFSET=0xc00000\n'
+            'CONFIG_ENV_OFFSET_REDUND=0xc10000\n')
+        (self.root / 'uboot-active').write_text(slot + '\n')
+        self.mock('findmnt', '#!/bin/sh\ncase "$*" in "-n -o SOURCE /") echo /dev/mmcblk0p1;; *) exit 1;; esac\n')
+        self.mock('lsblk', '''#!/bin/sh
+case "$3:$4" in
+    PKNAME:/dev/mmcblk0p1) echo mmcblk0;;
+    PARTLABEL:/dev/mmcblk0p1) echo hive-root;;
+    PARTLABEL:/dev/mmcblk0p2) echo hive-data;;
+    *) exit 1;;
+esac
+''')
+        self.mock('fw_printenv', '''#!/bin/sh
+case "$4" in
+    hive_active) cat "$HIVE_TEST_ROOT/uboot-active";;
+    hive_pending) [ ! -f "$HIVE_TEST_ROOT/uboot-pending" ] || cat "$HIVE_TEST_ROOT/uboot-pending";;
+    *) exit 1;;
+esac
+''')
+        self.mock('fw_setenv', '''#!/bin/sh
+cat "$4" >> "$HIVE_TEST_ROOT/environment-writes"
+while read -r name value; do
+    case "$name" in
+        hive_active) printf '%s\\n' "$value" > "$HIVE_TEST_ROOT/uboot-active";;
+        hive_pending) printf '%s\\n' "$value" > "$HIVE_TEST_ROOT/uboot-pending";;
+    esac
+done < "$4"
+''')
         helper = self.script('hive-ota-transaction')
         firmware = self.script('hive-firmware')
+        text = firmware.read_text()
+        for source, target in [
+            ('/usr/lib/hive/ab-layout', 'image-tree/usr/lib/hive/ab-layout'),
+            ('/usr/lib/hive/uboot-env', 'image-tree/usr/lib/hive/uboot-env'),
+            ('/sys/class/block', 'sys/class/block'),
+            ('/proc/cmdline', 'proc/cmdline'),
+        ]:
+            text = text.replace(source, str(self.root / target))
+        # Only the block-device predicate needs substitution; all disk, label,
+        # layout, stamp and running-slot decisions remain production code.
+        text = text.replace('[ -b "${FW_DISK}p${part}" ]',
+                            '[ -f "$HIVE_TEST_ROOT/dev/${FW_DISK##*/}p${part}" ]')
+        firmware.write_text(text)
+        board = self.root / 'hive-board'
+        board.write_text(board.read_text().replace('/proc/device-tree/compatible',
+                                                   str(self.root / 'proc/device-tree/compatible')))
         runner = self.root / 'firmware-test'
-        runner.write_text('set -uo pipefail\nexport TEST_BOARD=' + self.board + '\nsource "' + str(helper) + '"\nsource "' + str(firmware) + '"\n' + '''
-firmware_layout() { hive_board_config "$TEST_BOARD"; FW_SLOT="${TEST_SLOT:-A}"; FW_OTHER=B; }
+        runner.write_text('set -uo pipefail\nsource "' + str(helper) + '"\nsource "' + str(firmware) + '"\n' + '''
 log() { echo "$*"; }
 flush_ack() { return 0; }
 if [ "$1" = stage ]; then firmware_stage "$HIVE_TEST_ROOT/firmware" 2.0 new-sha assignment;
 else firmware_confirm; fi
 ''')
         return runner
+
+    def set_running_slot(self, slot):
+        (self.root / 'proc/cmdline').write_text('root=PARTUUID=test hive.slot=' + slot + ' quiet\n')
 
     def test_environment_offsets_come_from_the_build_stamp(self):
         # fw_setenv must write where the U-Boot in this image reads. Deriving the
@@ -680,6 +737,9 @@ else firmware_confirm; fi
         self.assertEqual((self.root / 'boot/dtb.B/rockchip/rk3528-nanopi-zero2.dtb').read_bytes(),
                          b'new device tree\n')
         self.assertEqual((self.root / 'usr/lib/modules/6.18.59/hive.ko').read_bytes(), b'new module\n')
+        self.assertEqual((self.root / 'usr/lib/firmware/radio.bin').read_bytes(), b'new radio firmware\n')
+        self.assertEqual((self.root / 'usr/lib/hive/boot-payload.json').read_bytes(),
+                         (self.root / 'firmware/files/usr/lib/hive/boot-payload.json').read_bytes())
         self.assertIn('hive_pending B\nhive_tries 3', (self.root / 'environment-writes').read_text())
         self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), '1.0\n')
         pending = json.loads((self.root / 'var/lib/hive/firmware-pending.json').read_text())
@@ -705,7 +765,7 @@ else firmware_confirm; fi
     def test_firmware_builder_produces_distinct_board_bundle(self):
         self.firmware_fixture()
         files = self.root / 'firmware/files'
-        (files / 'usr/lib/firmware').mkdir(parents=True)
+        (files / 'usr/lib/firmware').mkdir(parents=True, exist_ok=True)
         (files / 'usr/lib/firmware/real.bin').write_bytes(b'firmware blob\n')
         (files / 'usr/lib/firmware/alias.bin').symlink_to('real.bin')
         payload_tar = self.root / 'boot-payload.tar'
@@ -751,6 +811,60 @@ else firmware_confirm; fi
         self.run_script(runner, 'stage', expected=1)
         self.assertFalse((self.root / 'environment-writes').exists())
 
+    def test_every_destination_is_verified_after_sync_before_arming(self):
+        runner = self.firmware_fixture()
+        self.mock('sync', '''#!/bin/sh
+if [ "$#" -eq 0 ] && [ -n "${CORRUPT_DEST:-}" ]; then
+    printf 'corrupted after sync\\n' > "$HIVE_TEST_ROOT/$CORRUPT_DEST"
+fi
+''')
+        for destination in ['boot/Image.B', 'boot/uInitrd.B',
+                            'boot/dtb.B/rockchip/rk3528-nanopi-zero2.dtb',
+                            'usr/lib/modules/6.18.59/hive.ko',
+                            'usr/lib/firmware/radio.bin', 'usr/lib/hive/boot-payload.json']:
+            with self.subTest(destination=destination):
+                self.env['CORRUPT_DEST'] = destination
+                self.run_script(runner, 'stage', expected=1)
+                self.assertEqual((self.root / destination).read_bytes(), b'corrupted after sync\n')
+                self.assertFalse((self.root / 'environment-writes').exists())
+                self.assertFalse((self.root / 'var/lib/hive/firmware-pending.json').exists())
+                self.assertEqual((self.root / 'uboot-active').read_text(), 'A\n')
+        # A clean retry must still install the same complete manifest.
+        del self.env['CORRUPT_DEST']
+        self.run_script(runner, 'stage')
+        self.assertIn('hive_pending B', (self.root / 'environment-writes').read_text())
+
+    def test_invalid_running_slot_cannot_stage_or_confirm(self):
+        # confirm reports "cannot decide" with 2 instead of a plain failure so the
+        # standalone unit can exit without asking systemd to reboot; a reboot
+        # cannot invent the running letter.
+        runner = self.firmware_fixture()
+        cmdline = self.root / 'proc/cmdline'
+        for action in ('stage', 'confirm'):
+            if action == 'confirm':
+                self.set_running_slot('A')
+                self.run_script(runner, 'stage')
+                path = self.root / 'var/lib/hive/firmware-pending.json'
+                pending = json.loads(path.read_text())
+                pending['boot_id'] = 'previous-boot'
+                path.write_text(json.dumps(pending))
+                (self.root / 'environment-writes').unlink()
+            for arguments in ['', 'root=PARTUUID=test', 'hive.slot=', 'hive.slot=C',
+                              'hive.slot=AB', 'hive.slot=b', 'hive.slot=A hive.slot=B',
+                              'hive.slot=B hive.slot=B', 'hive.slot=A hive.slot=invalid',
+                              'hive.slot hive.slot=A']:
+                with self.subTest(action=action, cmdline=arguments):
+                    cmdline.write_text(arguments + '\n')
+                    self.run_script(runner, action, expected=2 if action == 'confirm' else 1)
+                    self.assertFalse((self.root / 'environment-writes').exists())
+                    self.assertEqual((self.root / 'uboot-active').read_text(), 'A\n')
+                    self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), '1.0\n')
+                    if action == 'confirm':
+                        self.assertEqual(json.loads(path.read_text()), pending)
+                    else:
+                        self.assertFalse((self.root / 'boot/Image.B').exists())
+                        self.assertFalse((self.root / 'var/lib/hive/firmware-pending.json').exists())
+
     def test_staging_requires_the_persistent_data_mount(self):
         # The pending marker and the receipt live on /data; arming a trial whose
         # marker the next slot cannot read would strand the update unconfirmed.
@@ -770,7 +884,8 @@ else firmware_confirm; fi
     def test_new_boot_is_confirmed_only_after_reboot_and_health_checks(self):
         runner = self.firmware_fixture()
         self.run_script(runner, 'stage')
-        self.env['TEST_SLOT'] = 'B'
+        self.assertEqual((self.root / 'uboot-active').read_text(), 'A\n')
+        self.set_running_slot('B')
         self.run_script(runner, 'confirm', expected=1)  # Still the old boot ID.
         path = self.root / 'var/lib/hive/firmware-pending.json'
         pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
@@ -779,6 +894,62 @@ else firmware_confirm; fi
         self.assertFalse(path.exists())
         self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), '2.0\n')
         self.assertIn('hive_active B', (self.root / 'environment-writes').read_text())
+        self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-pending-ack.json').read_text())['status'], 'done')
+        self.assertEqual((self.root / 'uboot-active').read_text(), 'B\n')
+
+    def test_receipt_failure_after_confirmation_does_not_fail_the_unit(self):
+        # hive_active has already flipped and hive_tries is 0, so no reboot can
+        # roll back. hive-firmware-confirm has FailureAction=reboot and its
+        # ConditionPathExists still matches the pending file; returning failure
+        # here rebooted the node every ~150s over a bookkeeping write.
+        runner = self.firmware_fixture()
+        self.run_script(runner, 'stage')
+        self.set_running_slot('B')
+        path = self.root / 'var/lib/hive/firmware-pending.json'
+        pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
+        path.write_text(json.dumps(pending))
+        self.mock('mv', '#!/bin/sh\ncase "$*" in *ota-installed.json*) exit 1;; esac\nexec /usr/bin/mv "$@"\n')
+
+        result = self.run_script(runner, 'confirm')
+
+        self.assertIn('hive_active B', (self.root / 'environment-writes').read_text())
+        self.assertIn('版本回执写入失败', result.stdout)
+        self.assertFalse(path.exists())
+        self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), '1.0\n')
+        self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-pending-ack.json').read_text())['status'], 'done')
+
+    def test_standalone_confirmation_exits_cleanly_when_layout_is_unknown(self):
+        # The production entrypoint must not hand an undecidable layout to
+        # FailureAction=reboot. Leaving the pending marker alone is safe: bootcmd
+        # keeps decrementing hive_tries and returns to the confirmed letter.
+        self.firmware_fixture()
+        pending = self.root / 'var/lib/hive/firmware-pending.json'
+        pending.write_text(json.dumps({
+            'version': '2.0', 'sha256': 'new-sha', 'target': 'B', 'previous': 'A',
+            'assignment': 'assignment', 'boot_id': 'previous-boot', 'image_sha256': 'x'}))
+        self.env['CONFIRM_BUDGET'] = '1'
+
+        result = self.run_script(self.script('hive-firmware'))
+
+        self.assertIn('固件确认暂不可判定', result.stdout)
+        self.assertTrue(pending.exists())
+        self.assertFalse((self.root / 'environment-writes').exists())
+
+    def test_trial_a_confirms_while_b_is_still_the_confirmed_letter(self):
+        runner = self.firmware_fixture(slot='B')
+        self.run_script(runner, 'stage')
+        self.assertEqual((self.root / 'uboot-active').read_text(), 'B\n')
+        self.assertEqual((self.root / 'boot/Image.B').read_bytes(), b'current system must remain unchanged')
+        path = self.root / 'var/lib/hive/firmware-pending.json'
+        pending = json.loads(path.read_text())
+        self.assertEqual((pending['target'], pending['previous']), ('A', 'B'))
+        pending['boot_id'] = 'previous-boot'
+        path.write_text(json.dumps(pending))
+        self.set_running_slot('A')
+        self.run_script(runner, 'confirm')
+        self.assertFalse(path.exists())
+        self.assertEqual((self.root / 'uboot-active').read_text(), 'A\n')
+        self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), '2.0\n')
         self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-pending-ack.json').read_text())['status'], 'done')
 
     def test_failed_activation_never_claims_the_new_version(self):
@@ -789,7 +960,7 @@ else firmware_confirm; fi
         # rollback restores the wrong receipt.
         runner = self.firmware_fixture()
         self.run_script(runner, 'stage')
-        self.env['TEST_SLOT'] = 'B'
+        self.set_running_slot('B')
         path = self.root / 'var/lib/hive/firmware-pending.json'
         pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
         path.write_text(json.dumps(pending))
@@ -809,6 +980,22 @@ else firmware_confirm; fi
         self.run_script(runner, 'confirm')
         self.assertFalse(path.exists())
         self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), '1.0\n')
+        self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-pending-ack.json').read_text())['status'], 'rolled_back')
+        self.assertEqual((self.root / 'uboot-active').read_text(), 'A\n')
+
+    def test_fallback_to_b_restores_receipt_and_reports_rollback(self):
+        runner = self.firmware_fixture(slot='B')
+        self.run_script(runner, 'stage')
+        path = self.root / 'var/lib/hive/firmware-pending.json'
+        pending = json.loads(path.read_text())
+        pending['boot_id'] = 'previous-boot'
+        path.write_text(json.dumps(pending))
+        (self.root / 'etc/hive/ota-version').write_text('2.0\n')
+        self.run_script(runner, 'confirm')
+        self.assertFalse(path.exists())
+        self.assertEqual((self.root / 'uboot-active').read_text(), 'B\n')
+        self.assertEqual((self.root / 'etc/hive/ota-version').read_text(), '1.0\n')
+        self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-installed.json').read_text())['version'], '1.0')
         self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-pending-ack.json').read_text())['status'], 'rolled_back')
 
     def test_fallback_clears_pending_even_if_environment_write_fails(self):
@@ -848,7 +1035,7 @@ else firmware_confirm; fi
         runner = self.firmware_fixture()
         self.run_script(runner, 'stage')
         (self.root / 'etc/hive/cloudflare-unavailable').touch()
-        self.env['TEST_SLOT'] = 'B'
+        self.set_running_slot('B')
         path = self.root / 'var/lib/hive/firmware-pending.json'
         pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
         path.write_text(json.dumps(pending))
@@ -859,7 +1046,7 @@ else firmware_confirm; fi
     def test_customer_firmware_confirms_with_xray_stopped(self):
         runner = self.firmware_fixture()
         self.run_script(runner, 'stage')
-        self.env['TEST_SLOT'] = 'B'
+        self.set_running_slot('B')
         path = self.root / 'var/lib/hive/firmware-pending.json'
         pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
         path.write_text(json.dumps(pending))
@@ -871,7 +1058,7 @@ else firmware_confirm; fi
         runner = self.firmware_fixture()
         (self.root / 'etc/hive/server-token').write_text('server-only-token')
         self.run_script(runner, 'stage')
-        self.env['TEST_SLOT'] = 'B'
+        self.set_running_slot('B')
         path = self.root / 'var/lib/hive/firmware-pending.json'
         pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
         path.write_text(json.dumps(pending))

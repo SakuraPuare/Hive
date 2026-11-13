@@ -355,7 +355,7 @@ apply_ufw_5g() {
 # 2.4G 仍走 NM shared（WPA2-PSK）。5G 改走独立 hostapd（WPA3-SAE 在 hostapd 配置里）。
 SEC_WPA2=$'[wifi-security]\nkey-mgmt=wpa-psk\nproto=rsn\npairwise=ccmp\ngroup=ccmp\npsk='"$PSK"
 
-DONE_2G=""; DONE_5G=""
+DONE_2G=""; DONE_5G=""; APPLY_FAILED=0
 if [ "$i2" -ge 0 ]; then
     write_kf x "$CONN_2G" "$UUID_2G" "$SSID_2G" "${C_MAC[$i2]}" bg "$SEC_WPA2" "10.42.0.1/24"
     DONE_2G="${C_IF[$i2]}"
@@ -371,20 +371,21 @@ if [ "$i5" -ge 0 ]; then
     write_dnsmasq_conf "$IF5"
     apply_ufw_5g "$IF5"
     systemctl daemon-reload 2>/dev/null || true
-    systemctl restart hive-hotspot-5g.service 2>/dev/null || true
-    sleep 2
-    if systemctl is-active --quiet hive-hotspot-5g.service; then
-        systemctl restart hive-hotspot-5g-dnsmasq.service 2>/dev/null || true
+    if systemctl restart hive-hotspot-5g.service 2>/dev/null &&
+        sleep 2 && systemctl is-active --quiet hive-hotspot-5g.service &&
+        systemctl restart hive-hotspot-5g-dnsmasq.service 2>/dev/null &&
+        systemctl is-active --quiet hive-hotspot-5g-dnsmasq.service; then
         DONE_5G="$IF5"
         log "5G hostapd 已启动：$SSID_5G on $IF5 @ ch$CH5G/${WIDTH_5G}MHz"
     else
         # 无回退：干净失败，不留半吊子（NM 已摘管、又无 hostapd，接口不能悬空）。
-        log "ERROR: hostapd 未能在 $IF5 起 5G AP，清理并放弃（不回退 NM）"
+        log "ERROR: 5G AP 或 DHCP/DNS 未能在 $IF5 启动，清理并放弃（不回退 NM）"
         journalctl -u hive-hotspot-5g -n 20 --no-pager 2>/dev/null \
             | while read -r l; do log "  hostapd: $l"; done
         systemctl stop hive-hotspot-5g.service hive-hotspot-5g-dnsmasq.service 2>/dev/null || true
         ip addr flush dev "$IF5" 2>/dev/null || true
         DONE_5G=""
+        APPLY_FAILED=1
     fi
 else
     # 无 5G 卡：停单元、清生成的配置、把接口交还 NM（删 unmanaged conf.d）。
@@ -395,7 +396,27 @@ else
     rm -f "$KF_DIR/$CONN_5G.nmconnection" 2>/dev/null
 fi
 
-# ── 7. 把凭证记入 node-info（运维查阅 + MOTD + 测试）──────────────────
+# ── 7. 让 NM 重载并激活 2.4G（5G 已由上方 hostapd 单元拉起，不走 NM）───────
+nmcli connection reload 2>/dev/null || true
+bring_up() {  # $1=conn_id $2=iface
+    [ -n "$2" ] || return 0
+    for _ in $(seq 1 10); do
+        nmcli -t -f DEVICE device status 2>/dev/null | grep -qx "$2" && break; sleep 1
+    done
+    nmcli device disconnect "$2" >/dev/null 2>&1 || true
+    if nmcli connection up "$1" >/dev/null 2>&1; then
+        log "热点已启动：$1 on $2"
+    else
+        log "$1 nmcli up 失败（将由 autoconnect 重试）"
+        return 1
+    fi
+}
+if ! bring_up "$CONN_2G" "$DONE_2G"; then
+    DONE_2G=""
+    APPLY_FAILED=1
+fi
+
+# ── 8. 把凭证记入 node-info（运维查阅 + MOTD + 测试）──────────────────
 mkdir -p /etc/hive
 if [ -f "$NODE_INFO" ]; then
     sed -i '/^WIFI_/d' "$NODE_INFO"
@@ -410,21 +431,9 @@ grep -q '^MAC=' "$NODE_INFO" 2>/dev/null || echo "MAC=${NODE_MAC}" >> "$NODE_INF
     elif [ -n "$DONE_5G" ]; then printf 'WIFI_SSID=%q\n' "${SSID_5G}"; printf 'WIFI_IFACE=%q\n' "${DONE_5G}"; fi
 } >> "$NODE_INFO"
 
-# ── 8. 让 NM 重载并激活 2.4G（5G 已由上方 hostapd 单元拉起，不走 NM）───────
-nmcli connection reload 2>/dev/null || true
-bring_up() {  # $1=conn_id $2=iface
-    [ -n "$2" ] || return
-    for _ in $(seq 1 10); do
-        nmcli -t -f DEVICE device status 2>/dev/null | grep -qx "$2" && break; sleep 1
-    done
-    nmcli device disconnect "$2" >/dev/null 2>&1 || true
-    if nmcli connection up "$1" >/dev/null 2>&1; then
-        log "热点已启动：$1 on $2"
-    else
-        log "$1 nmcli up 失败（将由 autoconnect 重试）"
-    fi
-}
-bring_up "$CONN_2G" "$DONE_2G"
-
+if [ "$APPLY_FAILED" -ne 0 ]; then
+    log "ERROR: 热点配置未完整应用。2.4G=[${DONE_2G:-none}] 5G=[${DONE_5G:-none}]"
+    exit 1
+fi
 log "完成。2.4G=[${SSID_2G}@${DONE_2G:-none}] 5G=[${SSID_5G}@${DONE_5G:-none}] PSK=$PSK"
 exit 0
