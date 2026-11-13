@@ -230,3 +230,25 @@ func TestSuperadminCanManageSuperadmin(t *testing.T) {
 		t.Fatal("superadmin should be able to grant superadmin")
 	}
 }
+
+func TestChangePasswordRevokesExistingSession(t *testing.T) {
+	// Sessions carry the account's session epoch; changing the password bumps it
+	// so a stolen cookie stops working even though its signature is still valid.
+	resetDB(t)
+	uid := uint(scalar(t, "SELECT id FROM users WHERE username = 'admin'"))
+	old := adminCookie()
+
+	resp := doJSON("POST", fmt.Sprintf("/admin/users/%d/password", uid),
+		map[string]string{"password": "brandnew123"}, old)
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	resp = doJSON("GET", "/admin/me", nil, old)
+	assertStatus(t, resp, http.StatusUnauthorized)
+	resp.Body.Close()
+
+	// The new password still logs in and the fresh cookie works.
+	resp = doJSON("POST", "/admin/login", map[string]string{"username": "admin", "password": "brandnew123"}, nil)
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+}

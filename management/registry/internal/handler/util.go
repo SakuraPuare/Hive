@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"hive/registry/internal/model"
 )
@@ -113,4 +114,18 @@ func hashClaimCode(code string) string {
 	norm := strings.ToUpper(strings.NewReplacer("-", "", " ", "").Replace(strings.TrimSpace(code)))
 	sum := sha256.Sum256([]byte(norm))
 	return hex.EncodeToString(sum[:])
+}
+
+// truncateUTF8 cuts s to at most limit bytes without leaving a partial rune.
+// MySQL rejects invalid UTF-8 under STRICT_TRANS_TABLES, so slicing a device
+// result at an arbitrary byte turned an oversized ACK into a 500.
+func truncateUTF8(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }

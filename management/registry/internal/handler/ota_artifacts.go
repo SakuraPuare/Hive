@@ -132,8 +132,13 @@ func (h *Handler) uploadOTABundle(w http.ResponseWriter, r *http.Request, storag
 	size, err := io.Copy(io.MultiWriter(f, digest), r.Body)
 	if err != nil {
 		var tooLarge *http.MaxBytesError
+		var storageError *os.PathError
 		if errors.As(err, &tooLarge) {
 			h.jsonErr(w, 413, "bundle exceeds 2 GiB")
+		} else if storageLocked || errors.As(err, &storageError) {
+			// Completion reads server-side chunks; direct uploads can also fail
+			// while writing the temporary file. Neither invalidates the bundle.
+			h.jsonErr(w, 500, "cannot copy upload")
 		} else {
 			h.jsonErr(w, 400, "incomplete upload")
 		}

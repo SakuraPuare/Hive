@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 )
 
@@ -116,36 +117,58 @@ func (h *Handler) otaUpload(r *http.Request) (string, otaUploadMetadata, bool) {
 // @Success 200 {object} StatusResponse
 // @Router /admin/ota/uploads/{id}/{part} [put]
 func (h *Handler) HandleOTAUploadPart(w http.ResponseWriter, r *http.Request) {
+	// The global storage lock guards directory mutations only. A 16 MiB body can
+	// take minutes on a slow link, and every other OTA call gives up after 30s.
 	unlock, ok := h.requireOTAStorageLock(w, r)
 	if !ok {
 		return
 	}
-	defer unlock()
 	dir, meta, ok := h.otaUpload(r)
 	if !ok {
+		unlock()
 		h.jsonErr(w, 404, "upload not found")
 		return
 	}
 	if _, err := os.Stat(filepath.Join(dir, "result.json")); err == nil {
+		unlock()
 		h.jsonErr(w, 409, "upload already completed")
 		return
 	} else if !os.IsNotExist(err) {
+		unlock()
 		h.jsonErr(w, 500, "cannot read upload state")
 		return
 	}
 	part, err := strconv.ParseInt(r.PathValue("part"), 10, 64)
 	if err != nil || part < 0 || part >= (meta.Size+otaChunkSize-1)/otaChunkSize {
+		unlock()
 		h.jsonErr(w, 400, "invalid chunk index")
 		return
 	}
 	expected := min(otaChunkSize, meta.Size-part*otaChunkSize)
 	f, err := os.CreateTemp(dir, ".part-*")
 	if err != nil {
+		unlock()
 		h.jsonErr(w, 500, "cannot write chunk")
 		return
 	}
 	defer os.Remove(f.Name())
 	defer f.Close()
+	// Renew the session before releasing the lock so the cleanup loop cannot
+	// treat a long-running upload as abandoned while its body is in flight.
+	if err := os.Chtimes(dir, time.Now(), time.Now()); err != nil {
+		unlock()
+		h.jsonErr(w, 500, "cannot renew upload session")
+		return
+	}
+	// Same-part concurrency is serialized by this lock; other parts and other
+	// OTA operations proceed concurrently.
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		unlock()
+		h.jsonErr(w, 500, "cannot protect chunk")
+		return
+	}
+	unlock()
+
 	digest := sha256.New()
 	n, err := io.Copy(io.MultiWriter(f, digest), http.MaxBytesReader(w, r.Body, expected))
 	if err != nil || n != expected {
@@ -157,6 +180,12 @@ func (h *Handler) HandleOTAUploadPart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.Close()
+
+	unlock, ok = h.requireOTAStorageLock(w, r)
+	if !ok {
+		return
+	}
+	defer unlock()
 	dest := filepath.Join(dir, strconv.FormatInt(part, 10))
 	if err := os.Link(f.Name(), dest); err != nil {
 		if !os.IsExist(err) {
@@ -175,10 +204,6 @@ func (h *Handler) HandleOTAUploadPart(w http.ResponseWriter, r *http.Request) {
 			h.jsonErr(w, 409, "chunk already uploaded with different contents")
 			return
 		}
-	}
-	if err := os.Chtimes(dir, time.Now(), time.Now()); err != nil {
-		h.jsonErr(w, 500, "cannot renew upload session")
-		return
 	}
 	h.jsonOK(w, StatusResponse{Status: "ok"})
 }
@@ -239,7 +264,9 @@ func (h *Handler) HandleCompleteOTAUpload(w http.ResponseWriter, r *http.Request
 		for i := range parts {
 			os.Remove(filepath.Join(dir, strconv.Itoa(i)))
 		}
-	} else {
+	} else if result.status < http.StatusInternalServerError {
+		// Invalid bundles cannot be retried; storage failures retain the session
+		// and chunks until the usual abandoned-upload cleanup expires them.
 		os.RemoveAll(dir)
 	}
 	for key, values := range result.header {

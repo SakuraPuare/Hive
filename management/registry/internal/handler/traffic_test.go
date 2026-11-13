@@ -390,3 +390,38 @@ func TestCollectTraffic_NoSubscriptions(t *testing.T) {
 	// Should not panic with empty DB
 	testH.collectTraffic()
 }
+
+func TestResetTrafficLiftsQuotaSuspension(t *testing.T) {
+	// Resetting traffic_used while leaving status='suspended' kept the paid
+	// customer offline until the next month, because the monthly reset skips
+	// rows whose traffic_reset_at is already this month.
+	resetDB(t)
+	cid := insertTestCustomer(t, "quota@example.com")
+	pid := insertTestPlan(t, "QuotaPlan")
+	now := time.Now().UTC().Format(model.TimeLayout)
+	token := strings.Repeat("c", 64)
+	mustExec(t, `INSERT INTO customer_subscriptions
+		(customer_id, plan_id, token, xray_uuid, status, suspension_reason, traffic_used, traffic_limit, device_limit, started_at, expires_at, created_at, updated_at)
+		VALUES (?,?,?,'22222222-3333-4444-8555-666666666666','suspended','traffic',107374182400,107374182400,3,?,?,?,?)`,
+		cid, pid, token, now, time.Now().UTC().Add(20*24*time.Hour).Format(model.TimeLayout), now, now)
+	subID := uint(scalar(t, "SELECT id FROM customer_subscriptions WHERE customer_id = ?", cid))
+
+	resp := doJSON("POST", fmt.Sprintf("/admin/subscriptions/%d/reset-traffic", subID), nil, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	var status, reason string
+	testDB.Raw("SELECT status FROM customer_subscriptions WHERE id = ?", subID).Scan(&status)
+	testDB.Raw("SELECT suspension_reason FROM customer_subscriptions WHERE id = ?", subID).Scan(&reason)
+	if status != "active" || reason != "" {
+		t.Fatalf("after reset status=%q reason=%q, want active/''", status, reason)
+	}
+	if used := scalar(t, "SELECT traffic_used FROM customer_subscriptions WHERE id = ?", subID); used != 0 {
+		t.Fatalf("traffic_used=%d, want 0", used)
+	}
+
+	// A second reset while already active is not a 404.
+	resp = doJSON("POST", fmt.Sprintf("/admin/subscriptions/%d/reset-traffic", subID), nil, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+}

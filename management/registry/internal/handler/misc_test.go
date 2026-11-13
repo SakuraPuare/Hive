@@ -273,3 +273,25 @@ func TestLabels_Unauthorized(t *testing.T) {
 	resp := doJSON("GET", "/labels", nil, nil)
 	assertStatus(t, resp, http.StatusUnauthorized)
 }
+
+func TestLabels_EscapesDeviceControlledFields(t *testing.T) {
+	// cf_url is written by whichever device holds the registration credential, and
+	// an administrator opens this page in the same session that can mutate nodes.
+	resetDB(t)
+	insertTestNode(t, "aabbccddee32")
+	mustExec(t, "UPDATE nodes SET cf_url = ?, location = ? WHERE mac = ?",
+		`https://x.example/"><script>alert(1)</script>`, "<img src=x onerror=alert(1)>", "aabbccddee32")
+
+	resp := doJSON("GET", "/labels", nil, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	body := readBody(resp)
+	if strings.Contains(body, "<script>alert(1)</script>") {
+		t.Fatal("cf_url rendered unescaped: device-controlled markup executes in the admin session")
+	}
+	if strings.Contains(body, "<img src=x onerror=alert(1)>") {
+		t.Fatal("location rendered unescaped")
+	}
+	if !strings.Contains(body, "&lt;script&gt;alert(1)&lt;/script&gt;") {
+		t.Fatal("escaped cf_url is missing from the label output")
+	}
+}

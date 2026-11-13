@@ -621,6 +621,17 @@ ALTER TABLE node_traffic_counters
     ADD PRIMARY KEY (node_mac, generation, epoch, counter_name);
 `,
 	},
+	{
+		version: 30,
+		desc:    "session revocation epochs, email-width columns, separate expired-notice flag",
+		up: `
+ALTER TABLE users ADD COLUMN session_epoch BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '会话代际：改密后自增使旧 cookie 失效';
+ALTER TABLE customers ADD COLUMN session_epoch BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '会话代际：改密后自增使旧 cookie 失效';
+ALTER TABLE customer_subscriptions ADD COLUMN expired_notified_at DATETIME DEFAULT NULL COMMENT '过期通知发送时间' AFTER expiry_notified_at;
+ALTER TABLE ticket_replies MODIFY COLUMN author VARCHAR(128) NOT NULL COMMENT '回复者(admin username 或 customer email)';
+ALTER TABLE audit_logs MODIFY COLUMN username VARCHAR(128) NOT NULL COMMENT '操作用户';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

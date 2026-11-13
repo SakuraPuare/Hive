@@ -327,7 +327,8 @@ func (h *Handler) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UTC().Format(model.TimeLayout)
-	result := h.DB.Exec("UPDATE users SET password_hash=?, updated_at=? WHERE id=?", string(hash), now, id)
+	// session_epoch bump revokes every cookie minted before this change.
+	result := h.DB.Exec("UPDATE users SET password_hash=?, session_epoch=session_epoch+1, updated_at=? WHERE id=?", string(hash), now, id)
 	if result.Error != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+result.Error.Error())
 		return

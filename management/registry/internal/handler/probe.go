@@ -77,7 +77,12 @@ func (h *Handler) runProbe() {
 	uptimeMap := h.promQueryInstant(`node_time_seconds{job="hives"} - node_boot_time_seconds{job="hives"}`)
 	latencyMap := h.promQueryInstant(`scrape_duration_seconds{job="hives"}`)
 
-	now := time.Now().UTC().Format(model.TimeLayout)
+	now := time.Now().UTC()
+	nowStr := now.Format(model.TimeLayout)
+	// Heartbeat writes status and live metrics every minute; the Prometheus probe
+	// must not overwrite them with NULL/unknown just because a scrape is missing.
+	// Only rows older than this are considered dead and marked offline.
+	freshCutoff := now.Add(-5 * time.Minute).Format(model.TimeLayout)
 	updated := 0
 
 	for hostname, mac := range hostnameToMAC {
@@ -86,12 +91,24 @@ func (h *Handler) runProbe() {
 		var cpuPct, memPct, diskPct *float64
 		var uptimeSec *int64
 
-		if v, ok := upMap[hostname]; ok {
-			if v == 1 {
-				status = "online"
-			} else {
-				status = "offline"
+		up, haveUp := upMap[hostname]
+		if !haveUp {
+			// No series at all (Prometheus down, target removed, or the node only
+			// reports through heartbeat). Leave a recent row untouched and only
+			// age out a stale one.
+			var fresh int64
+			if err := h.DB.Raw("SELECT COUNT(*) FROM node_status_checks WHERE mac = ? AND checked_at >= ?", mac, freshCutoff).Scan(&fresh).Error; err != nil {
+				log.Printf("probe: freshness %s (%s): %v", hostname, mac, err)
+				continue
 			}
+			if fresh > 0 {
+				continue
+			}
+			status = "offline"
+		} else if up == 1 {
+			status = "online"
+		} else {
+			status = "offline"
 		}
 
 		if v, ok := cpuMap[hostname]; ok {
@@ -115,18 +132,19 @@ func (h *Handler) runProbe() {
 			latencyMs = &ms
 		}
 
+		// COALESCE keeps the last known value when this scrape lacks that metric.
 		if err := h.DB.Exec(`
 			INSERT INTO node_status_checks (mac, status, latency_ms, cpu_pct, mem_pct, disk_pct, uptime_sec, checked_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			ON DUPLICATE KEY UPDATE
 				status     = VALUES(status),
-				latency_ms = VALUES(latency_ms),
-				cpu_pct    = VALUES(cpu_pct),
-				mem_pct    = VALUES(mem_pct),
-				disk_pct   = VALUES(disk_pct),
-				uptime_sec = VALUES(uptime_sec),
+				latency_ms = COALESCE(VALUES(latency_ms), latency_ms),
+				cpu_pct    = COALESCE(VALUES(cpu_pct), cpu_pct),
+				mem_pct    = COALESCE(VALUES(mem_pct), mem_pct),
+				disk_pct   = COALESCE(VALUES(disk_pct), disk_pct),
+				uptime_sec = COALESCE(VALUES(uptime_sec), uptime_sec),
 				checked_at = VALUES(checked_at)
-		`, mac, status, latencyMs, cpuPct, memPct, diskPct, uptimeSec, now).Error; err != nil {
+		`, mac, status, latencyMs, cpuPct, memPct, diskPct, uptimeSec, nowStr).Error; err != nil {
 			log.Printf("probe: upsert %s (%s): %v", hostname, mac, err)
 			continue
 		}

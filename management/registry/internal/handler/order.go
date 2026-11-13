@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 
 	"hive/registry/internal/model"
@@ -268,6 +270,7 @@ func (h *Handler) HandleCreatePromoCode(w http.ResponseWriter, r *http.Request) 
 // @Param        body body UpdatePromoCodeRequest true "要更新的字段"
 // @Success      200 {object} StatusResponse
 // @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
 // @Failure      500 {object} ErrorResponse
 // @Router       /admin/promo-codes/{id} [patch]
 func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) {
@@ -279,6 +282,14 @@ func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) 
 	}
 	now := time.Now().UTC().Format(model.TimeLayout)
 	updates := map[string]any{"updated_at": now}
+	if req.Code != nil {
+		code := strings.TrimSpace(*req.Code)
+		if code == "" {
+			h.jsonErr(w, http.StatusBadRequest, "code cannot be empty")
+			return
+		}
+		updates["code"] = code
+	}
 	if req.DiscountPct != nil {
 		updates["discount_pct"] = *req.DiscountPct
 	}
@@ -302,8 +313,22 @@ func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) 
 		updates["enabled"] = v
 	}
 
-	if err := h.DB.Table("promo_codes").Where("id = ?", id).Updates(updates).Error; err != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+	if len(updates) == 1 {
+		h.jsonErr(w, http.StatusBadRequest, "no fields to update")
+		return
+	}
+
+	res := h.DB.Table("promo_codes").Where("id = ?", id).Updates(updates)
+	if res.Error != nil {
+		if mysqlErr, ok := res.Error.(*mysql.MySQLError); ok && mysqlErr.Number == 1062 {
+			h.jsonErr(w, http.StatusBadRequest, "promo code already exists")
+			return
+		}
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())
+		return
+	}
+	if res.RowsAffected == 0 {
+		h.jsonErr(w, http.StatusNotFound, "promo code not found")
 		return
 	}
 
@@ -322,12 +347,18 @@ func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) 
 // @Produce      json
 // @Param        id path int true "优惠码 ID"
 // @Success      200 {object} StatusResponse
+// @Failure      404 {object} ErrorResponse
 // @Failure      500 {object} ErrorResponse
 // @Router       /admin/promo-codes/{id} [delete]
 func (h *Handler) HandleDeletePromoCode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := h.DB.Exec("DELETE FROM promo_codes WHERE id=?", id).Error; err != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+	res := h.DB.Exec("DELETE FROM promo_codes WHERE id=?", id)
+	if res.Error != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())
+		return
+	}
+	if res.RowsAffected == 0 {
+		h.jsonErr(w, http.StatusNotFound, "promo code not found")
 		return
 	}
 

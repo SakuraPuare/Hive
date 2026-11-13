@@ -567,6 +567,10 @@ func (h *Handler) HandlePortalCreateTicket(w http.ResponseWriter, r *http.Reques
 	now := time.Now().UTC().Format(model.TimeLayout)
 
 	var tid uint
+	var email string
+	// The ticket and its first message are one unit: a reply that fails to
+	// insert (column too narrow, storage error) left an empty ticket behind
+	// while the API reported success.
 	if err := h.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(
 			"INSERT INTO tickets (customer_id, subject, status, created_at, updated_at) VALUES (?,?,?,?,?)",
@@ -574,22 +578,19 @@ func (h *Handler) HandlePortalCreateTicket(w http.ResponseWriter, r *http.Reques
 		).Error; err != nil {
 			return err
 		}
-		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&tid).Error
+		if err := tx.Raw("SELECT LAST_INSERT_ID()").Scan(&tid).Error; err != nil {
+			return err
+		}
+		if err := tx.Raw("SELECT email FROM customers WHERE id = ?", cid).Scan(&email).Error; err != nil {
+			return err
+		}
+		return tx.Exec(
+			"INSERT INTO ticket_replies (ticket_id, author, is_admin, content, created_at) VALUES (?,?,0,?,?)",
+			tid, email, req.Content, now,
+		).Error
 	}); err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
-	}
-
-	// 插入首条内容作为回复
-	var email string
-	if err := h.DB.Raw("SELECT email FROM customers WHERE id = ?", cid).Scan(&email).Error; err != nil {
-		log.Printf("create ticket: lookup email for customer %d: %v", cid, err)
-	}
-	if err := h.DB.Exec(
-		"INSERT INTO ticket_replies (ticket_id, author, is_admin, content, created_at) VALUES (?,?,0,?,?)",
-		tid, email, req.Content, now,
-	).Error; err != nil {
-		log.Printf("create ticket: insert first reply for ticket %d: %v", tid, err)
 	}
 
 	store.WriteAuditLog(h.DB, email, "portal_ticket_create", fmt.Sprintf("ticket_id: %d", tid), getClientIP(r))

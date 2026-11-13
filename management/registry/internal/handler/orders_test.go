@@ -179,6 +179,109 @@ func TestUpdateOrderStatus_NotFound(t *testing.T) {
 	assertStatus(t, resp, http.StatusNotFound)
 }
 
+func TestRefundAfterReferrerDeletion(t *testing.T) {
+	resetDB(t)
+	cid := insertTestCustomer(t, "referee@example.com")
+	pid := insertTestPlan(t, "ReferredPlan")
+	referrer := insertTestCustomer(t, "referrer@example.com")
+	mustExec(t, "UPDATE customers SET balance=300, referred_by=? WHERE id=?", referrer, cid)
+	order, err := testH.createCustomerOrder(cid, PortalCreateOrderRequest{PlanID: pid, UseBalance: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.Amount != 700 || order.BalanceDeducted != 300 {
+		t.Fatalf("unexpected payment amounts: %+v", order)
+	}
+	path := fmt.Sprintf("/admin/orders/%d/status", order.ID)
+	resp := doJSON("PATCH", path, map[string]string{"status": "paid"}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	before := readRenewalState(t, cid, pid)
+	if before.ID == 0 || before.Status != "active" {
+		t.Fatalf("payment did not activate subscription: %+v", before)
+	}
+	rid := scalar(t, "SELECT referral_id FROM order_fulfillments WHERE order_id=?", order.ID)
+	if rid == 0 || scalar(t, "SELECT balance FROM customers WHERE id=?", referrer) != 70 {
+		t.Fatal("payment did not credit referral")
+	}
+	if scalar(t, "SELECT COUNT(*) FROM orders WHERE customer_id=?", referrer) != 0 {
+		t.Fatal("referrer must have no orders")
+	}
+	resp = doJSON("DELETE", fmt.Sprintf("/admin/customers/%d", referrer), nil, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	if scalar(t, "SELECT COUNT(*) FROM customers WHERE id=?", referrer) != 0 || scalar(t, "SELECT COUNT(*) FROM referrals WHERE id=?", rid) != 0 {
+		t.Fatal("deleting referrer did not cascade referral deletion")
+	}
+	if scalar(t, "SELECT referral_id FROM order_fulfillments WHERE order_id=?", order.ID) != rid {
+		t.Fatal("historical fulfillment must retain its referral ID")
+	}
+	// Only refunds may tolerate a missing historical referral.
+	resp = doJSON("PATCH", fmt.Sprintf("/admin/referrals/%d", rid), map[string]string{"status": "cancelled"}, adminCookie())
+	assertStatus(t, resp, http.StatusNotFound)
+	resp.Body.Close()
+	for range 2 {
+		resp = doJSON("PATCH", path, map[string]string{"status": "refunded"}, adminCookie())
+		assertStatus(t, resp, http.StatusOK)
+		resp.Body.Close()
+		var refunded model.Order
+		if err := testDB.Raw("SELECT * FROM orders WHERE id=?", order.ID).Scan(&refunded).Error; err != nil {
+			t.Fatal(err)
+		}
+		if refunded.Status != "refunded" || !refunded.BalanceReturned || refunded.Amount != 700 || refunded.BalanceDeducted != 300 || refunded.OriginalAmount != 1000 {
+			t.Fatalf("refund did not preserve payment accounting: %+v", refunded)
+		}
+		if balance := scalar(t, "SELECT balance FROM customers WHERE id=?", cid); balance != 300 {
+			t.Fatalf("refunded balance=%d, want 300", balance)
+		}
+		after := readRenewalState(t, cid, pid)
+		if after.ID != before.ID || after.Status != "expired" || !after.ExpiresAt.Before(before.ExpiresAt) || after.ExpiresAt.After(time.Now().UTC()) {
+			t.Fatalf("refund did not revoke subscription time: %+v", after)
+		}
+	}
+}
+
+func TestReferralStatusChangesPreserveCommission(t *testing.T) {
+	resetDB(t)
+	oid, cid, _ := insertTestOrder(t)
+	referrer := insertTestCustomer(t, "commission@example.com")
+	mustExec(t, "UPDATE customers SET referred_by=? WHERE id=?", referrer, cid)
+	if _, err := testH.updateOrderStatus(fmt.Sprint(oid), "paid"); err != nil {
+		t.Fatal(err)
+	}
+	rid := scalar(t, "SELECT referral_id FROM order_fulfillments WHERE order_id=?", oid)
+	if rid == 0 || scalar(t, "SELECT balance FROM customers WHERE id=?", referrer) != 100 {
+		t.Fatal("payment did not credit commission")
+	}
+	// Spending commission must not erase the debt when it is cancelled.
+	mustExec(t, "UPDATE customers SET balance=20 WHERE id=?", referrer)
+	for _, step := range []struct {
+		status  string
+		balance int64
+	}{{"cancelled", -80}, {"cancelled", -80}, {"paid", 20}, {"paid", 20}, {"pending", 20}} {
+		resp := doJSON("PATCH", fmt.Sprintf("/admin/referrals/%d", rid), map[string]string{"status": step.status}, adminCookie())
+		assertStatus(t, resp, http.StatusOK)
+		resp.Body.Close()
+		if balance := scalar(t, "SELECT balance FROM customers WHERE id=?", referrer); balance != step.balance {
+			t.Fatalf("referral %s balance=%d, want %d", step.status, balance, step.balance)
+		}
+	}
+	for range 2 {
+		if _, err := testH.updateOrderStatus(fmt.Sprint(oid), "refunded"); err != nil {
+			t.Fatal(err)
+		}
+		if scalar(t, "SELECT balance FROM customers WHERE id=?", referrer) != -80 || scalar(t, "SELECT COUNT(*) FROM referrals WHERE id=? AND status='cancelled'", rid) != 1 {
+			t.Fatal("refund did not cancel commission exactly once")
+		}
+	}
+	resp := doJSON("PATCH", fmt.Sprintf("/admin/referrals/%d", rid), map[string]string{"status": "paid"}, adminCookie())
+	assertStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+	if scalar(t, "SELECT balance FROM customers WHERE id=?", referrer) != -80 {
+		t.Fatal("refunded order restored commission")
+	}
+}
+
 // ── Promo Codes ──────────────────────────────────────────────────────────────
 
 func TestCreatePromoCode(t *testing.T) {
@@ -345,4 +448,59 @@ func TestOrders_PermissionDenied(t *testing.T) {
 
 	resp = doJSON("DELETE", "/admin/promo-codes/1", nil, cookie)
 	assertStatus(t, resp, http.StatusForbidden)
+}
+
+func TestCancelUnpaidOrderReleasesPromoCode(t *testing.T) {
+	// A pending order reserves a redemption immediately. Without a release, one
+	// abandoned order burns a max_uses=1 code forever.
+	resetDB(t)
+	cid := insertTestCustomer(t, "promo-release@example.com")
+	pid := insertTestPlan(t, "PromoPlan")
+	promoID := insertTestPromoCode(t, "ONESHOT", 10)
+	mustExec(t, "UPDATE promo_codes SET max_uses = 1 WHERE id = ?", promoID)
+
+	order, err := testH.createCustomerOrder(cid, PortalCreateOrderRequest{PlanID: pid, PromoCode: "ONESHOT"})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if used := scalar(t, "SELECT used_count FROM promo_codes WHERE id = ?", promoID); used != 1 {
+		t.Fatalf("after order used_count=%d, want 1", used)
+	}
+	if _, err := testH.updateOrderStatus(fmt.Sprintf("%d", order.ID), "cancelled"); err != nil {
+		t.Fatalf("cancel order: %v", err)
+	}
+	if used := scalar(t, "SELECT used_count FROM promo_codes WHERE id = ?", promoID); used != 0 {
+		t.Fatalf("after cancel used_count=%d, want 0", used)
+	}
+	// The code is usable again by the next customer.
+	other := insertTestCustomer(t, "promo-release-2@example.com")
+	if _, err := testH.createCustomerOrder(other, PortalCreateOrderRequest{PlanID: pid, PromoCode: "ONESHOT"}); err != nil {
+		t.Fatalf("released promo rejected: %v", err)
+	}
+}
+
+func TestUpdatePromoCodeAppliesCodeAndReportsMissing(t *testing.T) {
+	resetDB(t)
+	resp := doJSON("POST", "/admin/promo-codes", map[string]any{
+		"code": "OLDCODE", "discount_pct": 5,
+		"valid_from": "2020-01-01 00:00:00", "valid_to": "2099-12-31 23:59:59",
+	}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	id := uint(parseJSON(resp)["id"].(float64))
+
+	resp = doJSON("PATCH", fmt.Sprintf("/admin/promo-codes/%d", id), map[string]any{"code": "NEWCODE"}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	var code string
+	testDB.Raw("SELECT code FROM promo_codes WHERE id = ?", id).Scan(&code)
+	if code != "NEWCODE" {
+		t.Fatalf("stored code=%q, want NEWCODE", code)
+	}
+
+	resp = doJSON("PATCH", "/admin/promo-codes/999999", map[string]any{"discount_pct": 7}, adminCookie())
+	assertStatus(t, resp, http.StatusNotFound)
+	resp.Body.Close()
+	resp = doJSON("DELETE", "/admin/promo-codes/999999", nil, adminCookie())
+	assertStatus(t, resp, http.StatusNotFound)
+	resp.Body.Close()
 }

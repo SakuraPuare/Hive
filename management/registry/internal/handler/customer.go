@@ -269,10 +269,23 @@ func (h *Handler) HandleUpdateCustomer(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Param        id path int true "客户 ID"
 // @Success      200 {object} StatusResponse
+// @Failure      409 {object} ErrorResponse
 // @Failure      500 {object} ErrorResponse
 // @Router       /admin/customers/{id} [delete]
 func (h *Handler) HandleDeleteCustomer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	// Orders reference the customer with no ON DELETE action: deleting the row
+	// would destroy financial history, and attempting it surfaced as a raw
+	// MySQL 1451. Report the real constraint instead.
+	var orders int64
+	if err := h.DB.Raw("SELECT COUNT(*) FROM orders WHERE customer_id = ?", id).Scan(&orders).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	if orders > 0 {
+		h.jsonErr(w, http.StatusConflict, "customer has orders; keep the account for financial history")
+		return
+	}
 	if err := h.DB.Exec("DELETE FROM customers WHERE id = ?", id).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
@@ -447,7 +460,7 @@ func (h *Handler) HandleResetCustomerPassword(w http.ResponseWriter, r *http.Req
 	}
 
 	now := time.Now().UTC().Format(model.TimeLayout)
-	if err := h.DB.Exec("UPDATE customers SET password_hash = ?, updated_at = ? WHERE id = ?", string(hash), now, id).Error; err != nil {
+	if err := h.DB.Exec("UPDATE customers SET password_hash = ?, session_epoch = session_epoch + 1, updated_at = ? WHERE id = ?", string(hash), now, id).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}

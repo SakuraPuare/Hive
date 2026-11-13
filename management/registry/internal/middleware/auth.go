@@ -32,10 +32,28 @@ func (a *Auth) hmacKey(domain string) []byte {
 	return []byte(a.Config.AdminSessionSecret + "\x00" + domain)
 }
 
-// MakeSessionValue generates a signed cookie value: {expUnix}.{username}.{role}.{sig}
+// userSessionEpoch returns the account's current session epoch. Bumping the
+// column revokes every cookie minted before the password changed.
+func (a *Auth) userSessionEpoch(username string) uint64 {
+	if a.DB == nil {
+		return 0
+	}
+	var row struct {
+		ID    uint
+		Epoch uint64
+	}
+	a.DB.Raw("SELECT id, session_epoch AS epoch FROM users WHERE username = ?", username).Scan(&row)
+	if row.ID == 0 {
+		return 0
+	}
+	return row.Epoch
+}
+
+// MakeSessionValue generates a signed cookie value: {expUnix}.{username}.{role}.{epoch}.{sig}
 func (a *Auth) MakeSessionValue(exp int64, username, role string) string {
 	expStr := strconv.FormatInt(exp, 10)
-	payload := expStr + "." + username + "." + role
+	epochStr := strconv.FormatUint(a.userSessionEpoch(username), 10)
+	payload := expStr + "." + username + "." + role + "." + epochStr
 	mac := hmac.New(sha256.New, a.hmacKey("admin"))
 	_, _ = mac.Write([]byte(payload))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
@@ -65,18 +83,27 @@ func (a *Auth) ParseSession(r *http.Request) (username, role string, valid bool)
 		return "", "", false
 	}
 
+	// {expUnix}.{username}.{role}.{epoch}; the username may itself contain dots.
 	parts := strings.Split(payload, ".")
-	if len(parts) >= 3 {
-		parts = []string{parts[0], strings.Join(parts[1:len(parts)-1], "."), parts[len(parts)-1]}
-	}
-	if len(parts) != 3 {
+	if len(parts) < 4 {
 		return "", "", false
 	}
+	epochUnix, err := strconv.ParseUint(parts[len(parts)-1], 10, 64)
+	if err != nil {
+		return "", "", false
+	}
+	role = parts[len(parts)-2]
+	username = strings.Join(parts[1:len(parts)-2], ".")
 	expUnix, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil || time.Now().Unix() > expUnix {
 		return "", "", false
 	}
-	return parts[1], parts[2], true
+	// A password change bumps the stored epoch, so cookies minted earlier stop
+	// authenticating even though their signature and expiry are still valid.
+	if a.DB != nil && a.userSessionEpoch(username) != epochUnix {
+		return "", "", false
+	}
+	return username, role, true
 }
 
 // automationContextKey marks a request that RequirePerm admitted through the
@@ -125,11 +152,28 @@ func (a *Auth) RequirePerm(perm string) func(http.HandlerFunc) http.HandlerFunc 
 	}
 }
 
-// MakeCustomerSessionValue generates a signed customer cookie: {expUnix}.{customerID}.{sig}
+// customerSessionEpoch returns the account's current session epoch.
+func (a *Auth) customerSessionEpoch(customerID uint) uint64 {
+	if a.DB == nil {
+		return 0
+	}
+	var row struct {
+		ID    uint
+		Epoch uint64
+	}
+	a.DB.Raw("SELECT id, session_epoch AS epoch FROM customers WHERE id = ?", customerID).Scan(&row)
+	if row.ID == 0 {
+		return 0
+	}
+	return row.Epoch
+}
+
+// MakeCustomerSessionValue generates a signed customer cookie: {expUnix}.{customerID}.{epoch}.{sig}
 func (a *Auth) MakeCustomerSessionValue(exp int64, customerID uint) string {
 	expStr := strconv.FormatInt(exp, 10)
 	cidStr := strconv.FormatUint(uint64(customerID), 10)
-	payload := expStr + "." + cidStr
+	epochStr := strconv.FormatUint(a.customerSessionEpoch(customerID), 10)
+	payload := expStr + "." + cidStr + "." + epochStr
 	mac := hmac.New(sha256.New, a.hmacKey("customer"))
 	_, _ = mac.Write([]byte(payload))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
@@ -159,8 +203,8 @@ func (a *Auth) ParseCustomerSession(r *http.Request) (customerID uint, valid boo
 		return 0, false
 	}
 
-	parts := strings.SplitN(payload, ".", 2)
-	if len(parts) != 2 {
+	parts := strings.Split(payload, ".")
+	if len(parts) != 3 {
 		return 0, false
 	}
 	expUnix, err := strconv.ParseInt(parts[0], 10, 64)
@@ -169,6 +213,13 @@ func (a *Auth) ParseCustomerSession(r *http.Request) (customerID uint, valid boo
 	}
 	cid, err := strconv.ParseUint(parts[1], 10, 64)
 	if err != nil || cid == 0 {
+		return 0, false
+	}
+	epoch, err := strconv.ParseUint(parts[2], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	if a.DB != nil && a.customerSessionEpoch(uint(cid)) != epoch {
 		return 0, false
 	}
 	return uint(cid), true

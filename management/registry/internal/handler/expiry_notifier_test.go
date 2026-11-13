@@ -222,3 +222,69 @@ func TestPortalPasswordEndpoints_NoAuthRequired(t *testing.T) {
 		t.Fatal("reset-password should not require auth")
 	}
 }
+
+func TestExpiredNoticeIsEligibleAfterReminder(t *testing.T) {
+	// The 3-day reminder and the expired notice shared expiry_notified_at, so any
+	// subscription that got a reminder could never receive the expired notice.
+	resetDB(t)
+	cid := insertTestCustomer(t, "expired-after-reminder@example.com")
+	pid := insertTestPlan(t, "ExpirePlan")
+	subID := insertTestSubscription(t, cid, pid, "active", time.Now().UTC().Add(30*time.Minute))
+
+	ml := newTestMailer()
+	ml.RunExpiryCheck() // 3-day reminder
+	var notified *string
+	testDB.Raw("SELECT expiry_notified_at FROM customer_subscriptions WHERE id = ?", subID).Scan(&notified)
+	if notified == nil || *notified == "" {
+		t.Fatal("precondition failed: reminder was not recorded")
+	}
+
+	later := time.Now().UTC().Add(2 * time.Hour)
+	testH.expireSubscriptions(later.Format(model.TimeLayout))
+	var status string
+	testDB.Raw("SELECT status FROM customer_subscriptions WHERE id = ?", subID).Scan(&status)
+	if status != "expired" {
+		t.Fatalf("precondition failed: status=%q, want expired", status)
+	}
+
+	ml.RunExpiryCheck()
+	var expiredAt *string
+	testDB.Raw("SELECT expired_notified_at FROM customer_subscriptions WHERE id = ?", subID).Scan(&expiredAt)
+	if expiredAt == nil || *expiredAt == "" {
+		t.Fatal("expired notice was suppressed by the earlier reminder flag")
+	}
+}
+
+func TestRenewalRearmsExpiryReminder(t *testing.T) {
+	// The reminder flag is per term. A renewal moves expires_at forward, so the
+	// next term's reminder must not stay suppressed by the previous one.
+	resetDB(t)
+	cid := insertTestCustomer(t, "renew-rearm@example.com")
+	pid := insertTestPlan(t, "RenewPlan")
+	subID := insertTestSubscription(t, cid, pid, "active", time.Now().UTC().Add(2*24*time.Hour))
+
+	ml := newTestMailer()
+	ml.RunExpiryCheck()
+	var notified *string
+	testDB.Raw("SELECT expiry_notified_at FROM customer_subscriptions WHERE id = ?", subID).Scan(&notified)
+	if notified == nil || *notified == "" {
+		t.Fatal("precondition failed: reminder was not recorded")
+	}
+
+	now := time.Now().UTC()
+	mustExec(t, `INSERT INTO orders (order_no, customer_id, plan_id, amount, original_amount, status, created_at, updated_at)
+		VALUES (?,?,?,1000,1000,'paid',?,?)`, "HVREARMRENEW1", cid, pid, now.Format(model.TimeLayout), now.Format(model.TimeLayout))
+	order := model.Order{ID: uint(scalar(t, "SELECT id FROM orders WHERE order_no = ?", "HVREARMRENEW1")), CustomerID: cid, PlanID: pid}
+	plan := model.Plan{ID: pid, DurationDays: 30, TrafficLimit: 1000, DeviceLimit: 3}
+	if err := testDB.Transaction(func(tx *gorm.DB) error {
+		return fulfillSubscriptionOrder(tx, &order, plan, now)
+	}); err != nil {
+		t.Fatalf("renewal: %v", err)
+	}
+
+	var after *string
+	testDB.Raw("SELECT expiry_notified_at FROM customer_subscriptions WHERE id = ?", subID).Scan(&after)
+	if after != nil && *after != "" {
+		t.Fatal("renewed term still carries the previous reminder flag")
+	}
+}

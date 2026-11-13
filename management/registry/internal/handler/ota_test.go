@@ -4,13 +4,17 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 func otaTestBundle(t *testing.T) []byte {
@@ -259,6 +263,159 @@ func TestOTAChunkUploadRetriesAndCompletion(t *testing.T) {
 	}
 	resp = doJSON("POST", base+"/complete", nil, adminCookie())
 	assertStatus(t, resp, 409)
+	resp.Body.Close()
+}
+
+func TestOTAUploadCopyErrors(t *testing.T) {
+	otaStorage(t)
+	closedFile, err := os.CreateTemp(t.TempDir(), "unreadable-chunk-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := closedFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name       string
+		body       io.Reader
+		completion bool
+		status     int
+		message    string
+	}{
+		{"direct filesystem error", closedFile, false, http.StatusInternalServerError, "cannot copy upload"},
+		{"direct interrupted client", iotest.ErrReader(io.ErrUnexpectedEOF), false, http.StatusBadRequest, "incomplete upload"},
+		{"direct size limit", iotest.ErrReader(&http.MaxBytesError{Limit: otaUploadLimit}), false, http.StatusRequestEntityTooLarge, "bundle exceeds 2 GiB"},
+		{"completion read error", iotest.ErrReader(io.ErrUnexpectedEOF), true, http.StatusInternalServerError, "cannot copy upload"},
+		{"completion size limit", iotest.ErrReader(&http.MaxBytesError{Limit: otaUploadLimit}), true, http.StatusRequestEntityTooLarge, "bundle exceeds 2 GiB"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/admin/ota/bundles", tc.body)
+			rec := httptest.NewRecorder()
+			if tc.completion {
+				unlock, err := testH.lockOTAStorage(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer unlock()
+				testH.uploadOTABundle(rec, req, true)
+			} else {
+				testH.HandleAdminUploadOTA(rec, req)
+			}
+			resp := rec.Result()
+			assertStatus(t, resp, tc.status)
+			var failure ErrorResponse
+			decodeBody(t, resp, &failure)
+			if failure.Error != tc.message {
+				t.Fatalf("copy failure=%q, want %q", failure.Error, tc.message)
+			}
+			entries, err := os.ReadDir(testCfg.OTAArtifactDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, entry := range entries {
+				if entry.Name() != ".storage.lock" {
+					t.Fatalf("failed copy left artifact or temporary file: %s", entry.Name())
+				}
+			}
+		})
+	}
+}
+
+func TestOTAChunkCompletionRetainsChunksAfterStorageFailure(t *testing.T) {
+	resetDB(t)
+	otaStorage(t)
+	data := otaTestBundle(t)
+	sha := fmt.Sprintf("%x", sha256.Sum256(data))
+	resp := doJSON("POST", "/admin/ota/uploads", otaUploadRequest{Size: int64(len(data))}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	var session otaUploadSession
+	decodeBody(t, resp, &session)
+	base := "/admin/ota/uploads/" + session.ID
+	dir := filepath.Join(testCfg.OTAArtifactDir, ".uploads", session.ID)
+	req, err := http.NewRequest("PUT", testServer.URL+base+"/0", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(adminCookie())
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	// An unavailable artifact target fails the final storage update even when
+	// tests run as root, unlike a chmod-based permission failure.
+	artifactPath := testH.otaArtifactPath(sha)
+	if err := os.Symlink(filepath.Join(t.TempDir(), "unavailable.tar.gz"), artifactPath); err != nil {
+		t.Fatal(err)
+	}
+	resp = doJSON("POST", base+"/complete", nil, adminCookie())
+	assertStatus(t, resp, http.StatusInternalServerError)
+	var failure ErrorResponse
+	decodeBody(t, resp, &failure)
+	if failure.Error != "cannot refresh artifact retention" {
+		t.Fatalf("unexpected completion failure: %+v", failure)
+	}
+	chunk, err := os.ReadFile(filepath.Join(dir, "0"))
+	if err != nil || !bytes.Equal(chunk, data) {
+		t.Fatalf("retryable completion discarded uploaded chunk: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "metadata.json")); err != nil {
+		t.Fatalf("retryable completion discarded session: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "result.json")); !os.IsNotExist(err) {
+		t.Fatalf("failed completion has a receipt: %v", err)
+	}
+	if err := os.Remove(artifactPath); err != nil {
+		t.Fatal(err)
+	}
+	// Recover storage and retry only completion; no chunks are uploaded again.
+	for range 2 {
+		resp = doJSON("POST", base+"/complete", nil, adminCookie())
+		assertStatus(t, resp, http.StatusOK)
+		var artifact otaArtifactResponse
+		decodeBody(t, resp, &artifact)
+		if artifact.SHA256 != sha || artifact.Size != int64(len(data)) || artifact.Version != "2.0" || artifact.URL != otaArtifactPrefix+sha {
+			t.Fatalf("retry returned wrong artifact: %+v", artifact)
+		}
+	}
+	stored, err := os.ReadFile(artifactPath)
+	if err != nil || !bytes.Equal(stored, data) {
+		t.Fatalf("retry did not publish original bundle: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "0")); !os.IsNotExist(err) {
+		t.Fatalf("successful completion retained chunk: %v", err)
+	}
+}
+
+func TestOTAChunkCompletionRemovesInvalidBundle(t *testing.T) {
+	resetDB(t)
+	otaStorage(t)
+	data := []byte("not an OTA bundle")
+	resp := doJSON("POST", "/admin/ota/uploads", otaUploadRequest{Size: int64(len(data))}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	var session otaUploadSession
+	decodeBody(t, resp, &session)
+	base := "/admin/ota/uploads/" + session.ID
+	req, err := http.NewRequest("PUT", testServer.URL+base+"/0", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(adminCookie())
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	resp = doJSON("POST", base+"/complete", nil, adminCookie())
+	assertStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+	if _, err := os.Stat(filepath.Join(testCfg.OTAArtifactDir, ".uploads", session.ID)); !os.IsNotExist(err) {
+		t.Fatalf("invalid bundle session was not removed: %v", err)
+	}
+	resp = doJSON("POST", base+"/complete", nil, adminCookie())
+	assertStatus(t, resp, http.StatusNotFound)
 	resp.Body.Close()
 }
 

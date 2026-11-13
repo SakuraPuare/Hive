@@ -40,6 +40,7 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		XrayUUID     string `json:"xray_uuid"`
 		MeshTunnelID string `json:"mesh_tunnel_id"`
 		MeshIP       string `json:"mesh_ip"`
+		TailscaleIP  string `json:"tailscale_ip"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
 		h.jsonErr(w, http.StatusBadRequest, "invalid json")
@@ -77,6 +78,11 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 			"mesh_tunnel_id": body.MeshTunnelID,
 			"mesh_ip":        body.MeshIP,
 			"last_seen":      now,
+		}
+		// A re-registration is how a node reports its current tailnet address;
+		// dropping it keeps the node 'pending' and out of Prometheus forever.
+		if body.TailscaleIP != "" {
+			updates["tailscale_ip"] = body.TailscaleIP
 		}
 		// 历史节点（v18 之前注册）无 claim_code_hash，补铸一次。
 		if existing.ClaimCodeHash == "" {
@@ -125,9 +131,15 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		} else {
 			log.Printf("register: easytier alloc for %s failed (non-fatal): %v", body.MAC, err)
 		}
+		tailscaleIP := body.TailscaleIP
+		if tailscaleIP == "" {
+			// Unknown yet (Tailscale not joined during provisioning); an
+			// administrator or a later re-registration fills it in.
+			tailscaleIP = "pending"
+		}
 		if err := h.DB.Exec(
-			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, frp_port, tailscale_ip, easytier_ip, xray_uuid, mesh_tunnel_id, mesh_ip, claim_code_hash, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)",
-			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, body.FRPPort, easytierIP, body.XrayUUID, body.MeshTunnelID, body.MeshIP, claimHash, now, now,
+			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, frp_port, tailscale_ip, easytier_ip, xray_uuid, mesh_tunnel_id, mesh_ip, claim_code_hash, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, body.FRPPort, tailscaleIP, easytierIP, body.XrayUUID, body.MeshTunnelID, body.MeshIP, claimHash, now, now,
 		).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return

@@ -133,7 +133,9 @@ func (h *Handler) HandleActivateSubscription(w http.ResponseWriter, r *http.Requ
 	nowStr := time.Now().UTC().Format(model.TimeLayout)
 
 	result := h.DB.Exec(
-		"UPDATE customer_subscriptions SET status = 'active', suspension_reason = '', updated_at = ? WHERE id = ? AND status != 'active'",
+		`UPDATE customer_subscriptions SET status = 'active', suspension_reason = '',
+			expiry_notified_at = NULL, expired_notified_at = NULL, updated_at = ?
+		WHERE id = ? AND status != 'active'`,
 		nowStr, id,
 	)
 	if result.Error != nil {
@@ -249,7 +251,7 @@ func (h *Handler) HandleBanCustomer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Exec(
-		"UPDATE customer_subscriptions SET status = 'suspended', updated_at = ? WHERE customer_id = ? AND status = 'active'",
+		"UPDATE customer_subscriptions SET status = 'suspended', suspension_reason = 'ban', updated_at = ? WHERE customer_id = ? AND status = 'active'",
 		nowStr, id,
 	).Error; err != nil {
 		if rbErr := tx.Rollback().Error; rbErr != nil {
@@ -286,16 +288,37 @@ func (h *Handler) HandleUnbanCustomer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	nowStr := time.Now().UTC().Format(model.TimeLayout)
 
-	result := h.DB.Exec(
+	tx := h.DB.Begin()
+	res := tx.Exec(
 		"UPDATE customers SET status = 'active', updated_at = ? WHERE id = ? AND status = 'banned'",
 		nowStr, id,
 	)
-	if result.Error != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+result.Error.Error())
+	if res.Error != nil {
+		tx.Rollback()
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())
 		return
 	}
-	if result.RowsAffected == 0 {
+	if res.RowsAffected == 0 {
+		tx.Rollback()
 		h.jsonErr(w, http.StatusNotFound, "customer not found or not banned")
+		return
+	}
+	// Ban suspended paid subscriptions; unban must hand the same service back.
+	// Only rows suspended by the ban are revived, so an administrator's manual
+	// pause or an ended term is not silently overridden.
+	if err := tx.Exec(`
+		UPDATE customer_subscriptions SET
+			status = CASE WHEN expires_at > ? THEN 'active' ELSE 'expired' END,
+			suspension_reason = '', updated_at = ?
+		WHERE customer_id = ? AND status = 'suspended' AND suspension_reason = 'ban'`,
+		nowStr, nowStr, id,
+	).Error; err != nil {
+		tx.Rollback()
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	if err := tx.Commit().Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
 

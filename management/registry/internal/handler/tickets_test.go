@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -340,4 +341,33 @@ func TestTickets_NoAuth(t *testing.T) {
 
 	resp := doJSON("GET", "/admin/tickets", nil, nil)
 	assertStatus(t, resp, http.StatusUnauthorized)
+}
+
+func TestPortalTicketKeepsFirstMessageForLongEmail(t *testing.T) {
+	// customers.email allows 128 characters but ticket_replies.author used to be
+	// 64: the reply INSERT failed under strict mode and the API still returned
+	// 200 with an empty ticket.
+	resetDB(t)
+	email := strings.Repeat("a", 60) + "@example.com"
+	// nickname is VARCHAR(64): register through the portal with a short one,
+	// exactly as a real customer with a long mail address does.
+	resp := doJSON("POST", "/portal/register", map[string]string{
+		"email": email, "password": "pass12345", "nickname": "longmail",
+	}, nil)
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	cid := uint(scalar(t, "SELECT id FROM customers WHERE email = ?", email))
+
+	resp = doJSON("POST", "/portal/tickets", map[string]string{
+		"subject": "long email", "content": "my message body",
+	}, customerCookie(cid))
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	if n := scalar(t, "SELECT COUNT(*) FROM ticket_replies WHERE content = ?", "my message body"); n != 1 {
+		t.Fatalf("first ticket message rows=%d, want 1", n)
+	}
+	if n := scalar(t, "SELECT COUNT(*) FROM audit_logs WHERE action = 'portal_ticket_create' AND username = ?", email); n != 1 {
+		t.Fatalf("audit rows=%d, want 1", n)
+	}
 }

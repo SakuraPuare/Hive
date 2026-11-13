@@ -56,7 +56,8 @@ func fulfillSubscriptionOrder(tx *gorm.DB, order *model.Order, plan model.Plan, 
 		if sub.Status == "suspended" {
 			status = "suspended"
 		}
-		if err := tx.Exec("UPDATE customer_subscriptions SET expires_at = ?, status = ?, updated_at = ? WHERE id = ?",
+		if err := tx.Exec(`UPDATE customer_subscriptions SET expires_at = ?, status = ?,
+            expiry_notified_at = NULL, expired_notified_at = NULL, updated_at = ? WHERE id = ?`,
 			base.AddDate(0, 0, plan.DurationDays), status, now, sub.ID).Error; err != nil {
 			return err
 		}

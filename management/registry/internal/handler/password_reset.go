@@ -175,7 +175,7 @@ func (h *Handler) HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		if err := tx.Exec("UPDATE customers SET password_hash = ?, updated_at = ? WHERE id = ?", string(hash), time.Now().UTC(), cid).Error; err != nil {
+		if err := tx.Exec("UPDATE customers SET password_hash = ?, session_epoch = session_epoch + 1, updated_at = ? WHERE id = ?", string(hash), time.Now().UTC(), cid).Error; err != nil {
 			return err
 		}
 		if err := tx.Exec("UPDATE password_reset_codes SET used = 1 WHERE email = ? AND used = 0", req.Email).Error; err != nil {

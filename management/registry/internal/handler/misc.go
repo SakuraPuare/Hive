@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"strings"
@@ -143,7 +144,8 @@ func (h *Handler) HandleLabels(w http.ResponseWriter, r *http.Request) {
 			<div class="url">%s</div>
 			<div class="loc">%s</div>
 			<div class="ts">%s</div>
-		</div>`, i+1, row.MAC6, row.CFURL, location, date)
+		</div>`, i+1, html.EscapeString(row.MAC6), html.EscapeString(row.CFURL),
+			html.EscapeString(location), html.EscapeString(date))
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

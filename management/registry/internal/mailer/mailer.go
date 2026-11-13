@@ -187,7 +187,7 @@ func (m *Mailer) RunExpiryCheck() {
 		FROM customer_subscriptions cs
 		JOIN customers c ON c.id = cs.customer_id
 		WHERE cs.status = 'expired'
-		  AND cs.expiry_notified_at IS NULL
+		  AND cs.expired_notified_at IS NULL
 	`).Scan(&expired)
 
 	for _, row := range expired {
@@ -195,7 +195,9 @@ func (m *Mailer) RunExpiryCheck() {
 			"expires_at": row.ExpiresAt,
 		})
 		if err := m.SendMail(row.Email, "订阅已过期通知", body); err == nil {
-			m.DB.Exec(`UPDATE customer_subscriptions SET expiry_notified_at = ? WHERE id = ?`, nowStr, row.SubID)
+			// A dedicated column: reusing expiry_notified_at made the 3-day
+			// reminder suppress the later "expired" notice forever.
+			m.DB.Exec(`UPDATE customer_subscriptions SET expired_notified_at = ? WHERE id = ?`, nowStr, row.SubID)
 		}
 	}
 	if len(expired) > 0 {

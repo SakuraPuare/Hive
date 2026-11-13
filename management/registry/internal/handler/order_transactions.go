@@ -149,6 +149,14 @@ func (h *Handler) transitionOrder(tx *gorm.DB, o *model.Order, status string) er
 			return err
 		}
 	} else {
+		// An unpaid order reserves a promo redemption; cancelling it must give
+		// the redemption back, or a single abandoned order can burn a
+		// max_uses=1 code forever. Refunds keep the usage: the discount was used.
+		if status == "cancelled" && o.Status == "pending" && o.PromoCodeID != nil {
+			if err := tx.Exec("UPDATE promo_codes SET used_count = GREATEST(used_count - 1, 0) WHERE id = ?", *o.PromoCodeID).Error; err != nil {
+				return err
+			}
+		}
 		if status == "refunded" {
 			var f struct {
 				OrderID        uint
@@ -168,7 +176,12 @@ func (h *Handler) transitionOrder(tx *gorm.DB, o *model.Order, status string) er
 			}
 			if f.ReferralID != nil {
 				if err := changeReferralStatus(tx, *f.ReferralID, "cancelled"); err != nil {
-					return err
+					// Referrer deletion cascades the referral, but not this historical ID.
+					// Use the locked lookup's result rather than a racy existence check.
+					var missing *orderRequestError
+					if !errors.As(err, &missing) || missing.status != http.StatusNotFound {
+						return err
+					}
 				}
 			}
 		}

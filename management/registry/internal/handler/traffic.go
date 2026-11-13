@@ -145,17 +145,29 @@ func (h *Handler) HandleTrafficSummary(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleResetSubscriptionTraffic(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	now := time.Now().UTC().Format(model.TimeLayout)
-	res := h.DB.Exec(
-		"UPDATE customer_subscriptions SET traffic_used = 0, traffic_reset_at = ?, updated_at = ? WHERE id = ?",
-		now, now, id,
-	)
-	if res.Error != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())
+	var exists int64
+	if err := h.DB.Raw("SELECT COUNT(*) FROM customer_subscriptions WHERE id = ?", id).Scan(&exists).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
-	if res.RowsAffected == 0 {
+	if exists == 0 {
 		h.jsonErr(w, http.StatusNotFound, "subscription not found")
+		return
+	}
+
+	now := time.Now().UTC().Format(model.TimeLayout)
+	// Resetting the quota must also lift a quota suspension, otherwise the paid
+	// customer stays offline until the next month even though traffic_used is 0.
+	// Manual suspensions and expired terms keep their status.
+	if err := h.DB.Exec(`
+		UPDATE customer_subscriptions SET
+			status = CASE WHEN status = 'suspended' AND suspension_reason = 'traffic'
+				THEN CASE WHEN expires_at > ? THEN 'active' ELSE 'expired' END
+				ELSE status END,
+			suspension_reason = CASE WHEN suspension_reason = 'traffic' THEN '' ELSE suspension_reason END,
+			traffic_used = 0, traffic_reset_at = ?, updated_at = ?
+		WHERE id = ?`, now, now, now, id).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
 

@@ -358,10 +358,7 @@ func (h *Handler) HandleNodeOtaAck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status := body.Status
-	result := body.Result
-	if len(result) > 1024 {
-		result = result[:1024]
-	}
+	result := truncateUTF8(body.Result, 1024)
 	now := time.Now().UTC().Format(model.TimeLayout)
 
 	query := `UPDATE ota_assignments a JOIN ota_rollouts r ON r.id = a.rollout_id

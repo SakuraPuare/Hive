@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"gorm.io/gorm"
+
 	"hive/registry/internal/model"
 	"hive/registry/internal/store"
 )
@@ -126,17 +128,22 @@ func (h *Handler) enqueueCommand(w http.ResponseWriter, mac, actor string, body 
 		return 0, false
 	}
 	now := time.Now().UTC().Format(model.TimeLayout)
-	res := h.DB.Exec(
-		"INSERT INTO node_commands (node_mac, action, params, status, created_by, created_at) "+
-			"VALUES (?, ?, ?, 'pending', ?, ?)",
-		mac, body.Action, body.Params, actor, now,
-	)
-	if res.Error != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())
+	var id uint64
+	// LAST_INSERT_ID() is connection state; the INSERT and the lookup must share
+	// one transaction or the pool can hand out a different connection and return 0.
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"INSERT INTO node_commands (node_mac, action, params, status, created_by, created_at) "+
+				"VALUES (?, ?, ?, 'pending', ?, ?)",
+			mac, body.Action, body.Params, actor, now,
+		).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&id).Error
+	}); err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return 0, false
 	}
-	var id uint64
-	h.DB.Raw("SELECT LAST_INSERT_ID()").Scan(&id)
 	store.WriteAuditLog(h.DB, actor, "device_command_enqueue", "mac="+mac+" action="+body.Action, ip)
 	return id, true
 }
@@ -272,7 +279,7 @@ func (h *Handler) HandleAdminListCommands(w http.ResponseWriter, r *http.Request
 // HandleNodePullCommands godoc
 // @Summary      节点拉取待执行命令
 // @ID           NodePullCommands
-// @Description  节点定时轮询本机 MAC 的 pending 命令。返回前把它们置为 sent 并记录 sent_at；超过 TTL 的 pending 惰性标记 expired、不再下发。设备鉴权（Bearer API_SECRET）。
+// @Description  节点定时轮询本机 MAC 的待执行命令。返回前把 pending 置为 sent 并记录 sent_at；超过 TTL 的 pending 与 sent 都惰性标记 expired、不再下发（设备端 ACK 失败会无界重领，重启命令尤其不能重复执行）。设备鉴权（Bearer API_SECRET）。
 // @Tags         nodes
 // @Security     BearerAuth
 // @Produce      json
@@ -292,6 +299,16 @@ func (h *Handler) HandleNodePullCommands(w http.ResponseWriter, r *http.Request)
 	cutoff := now.Add(-commandTTL).Format(model.TimeLayout)
 	if err := h.DB.Exec(
 		"UPDATE node_commands SET status = 'expired' WHERE node_mac = ? AND status = 'pending' AND created_at < ?",
+		mac, cutoff,
+	).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	// sent 同样有租期。领取结果会一直返回给设备，而设备端 ACK 只记日志、
+	// 失败后下一轮照常执行（含 reboot），所以丢失的 ACK 会让同一条命令
+	// 无限重复。超过租期的 sent 视为已投递过，不再重发。
+	if err := h.DB.Exec(
+		"UPDATE node_commands SET status = 'expired' WHERE node_mac = ? AND status = 'sent' AND COALESCE(sent_at, created_at) < ?",
 		mac, cutoff,
 	).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
@@ -351,10 +368,7 @@ func (h *Handler) HandleNodeAckCommand(w http.ResponseWriter, r *http.Request) {
 	if body.Status == "failed" {
 		status = "failed"
 	}
-	result := body.Result
-	if len(result) > 1024 {
-		result = result[:1024]
-	}
+	result := truncateUTF8(body.Result, 1024)
 	now := time.Now().UTC().Format(model.TimeLayout)
 	// 只接受对本机 sent 命令的 ACK（防跨设备/重复 ACK 改写终态）。
 	res := h.DB.Exec(
