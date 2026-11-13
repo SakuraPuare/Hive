@@ -69,8 +69,8 @@ firmware_environment() {
 }
 
 firmware_stage() {
-    local payload="$1" version="$2" sha="$3" assignment="$4" manifest count i fpath src dest expected actual image_sha checksum_dest
-    local -a hashes=() readback_checks=()
+    local payload="$1" version="$2" sha="$3" assignment="$4" manifest count i fpath src dest expected actual image_sha verified
+    local -a hashes=() readback_dests=()
     manifest="$payload/manifest.json"
     firmware_layout || { log '设备没有受支持的 Hive 布局或引导器'; return 1; }
     # Firmware pending/receipt live on /data. Staging without it would arm a
@@ -119,17 +119,26 @@ firmware_stage() {
         cp -f "$src" "$dest.fw-new" || return 1
         chmod 0644 "$dest.fw-new" || return 1
         mv -f "$dest.fw-new" "$dest" || return 1
-        # Record the exact installed destination once. Escape checksum filenames
-        # so spaces, backslashes and newlines are preserved by sha256sum --check.
-        checksum_dest=${dest//\\/\\\\}
-        checksum_dest=${checksum_dest//$'\n'/\\n}
-        readback_checks+=("\\${hashes[$i]}  $checksum_dest")
+        # Record the exact installed destination; it is hashed again after sync.
+        readback_dests[$i]="$dest"
     done
     sync || return 1
     # Verify every installed file after sync, including the letter-specific DTB
     # and shared kernel data, before writing either the pending marker or env.
-    printf '%s\n' "${readback_checks[@]}" | sha256sum --check --status || {
-        log '写入后校验失败，保留原引导载荷'; return 1; }
+    # Hash each destination directly instead of feeding a generated list to
+    # `sha256sum --check`: the escaped-list format is GNU-specific, and Ubuntu
+    # 26.04 ships uutils where such lines do not parse at all.
+    verified=0
+    for i in $(seq 0 $((count - 1))); do
+        [ -n "${readback_dests[$i]:-}" ] || continue
+        actual=$(sha256sum -- "${readback_dests[$i]}" | awk '{print $1}')
+        actual=${actual#\\}
+        [ "$actual" = "${hashes[$i]}" ] || {
+            log "写入后校验失败，保留原引导载荷: ${readback_dests[$i]}"; return 1; }
+        verified=$((verified + 1))
+    done
+    [ "$verified" -eq "$count" ] || {
+        log '写入后校验失败，保留原引导载荷（校验清单不完整）'; return 1; }
     image_sha=$(jq -r '.files[] | select(.path == "boot/Image") | .sha256' "$manifest")
     [ ! -f "$FW_STATE/ota-installed.json" ] || cp -a "$FW_STATE/ota-installed.json" "$FW_STATE/firmware-previous-receipt.json" || return 1
     [ ! -f /etc/hive/ota-version ] || cp -a /etc/hive/ota-version "$FW_STATE/firmware-previous-version" || return 1
