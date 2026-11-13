@@ -303,7 +303,7 @@ mkdir -p /opt/hive/ansible/{inventory,playbooks,roles}
 
 cat > /opt/hive/ansible/ansible.cfg << 'EOF'
 [defaults]
-inventory         = inventory/tailscale.yaml
+inventory         = inventory/tailscale.py
 host_key_checking = False
 remote_user       = root
 private_key_file  = ~/.ssh/id_ed25519
@@ -313,19 +313,18 @@ stdout_callback   = yaml
 ssh_args = -o ConnectTimeout=10 -o StrictHostKeyChecking=no
 EOF
 
-cat > /opt/hive/ansible/inventory/tailscale.yaml << 'EOF'
-plugin: community.general.tailscale
-filters:
-  - "tag:hive"
-EOF
+# Tailscale 没有 community.general 的 inventory 插件；用仓库自带的脚本
+# 从 `tailscale status --json` 生成 tag:hive 节点清单。
+install -m 0755 ansible/inventory/tailscale.py /opt/hive/ansible/inventory/tailscale.py
 ```
 
 ### 测试 Ansible 连通性（等设备上线后）
 
 ```bash
 cd /opt/hive/ansible
-ansible all -m ping
-ansible all -m command -a "uptime"
+ansible-inventory --list | head
+ansible hive_nodes -m ping
+ansible hive_nodes -m command -a "uptime"
 ```
 
 ---

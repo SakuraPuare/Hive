@@ -160,8 +160,11 @@ MYSQL_PASSWORD=yourpassword \
 
 脚本会要求输入 `yes` 确认，然后：
 
-- DROP 并重建 `hive_registry` 数据库
+- 校验备份完整性，并先导入临时校验库；缺少 `schema_migrations`/`users`/`nodes`/`customers` 等核心表则中止
+- 校验通过后才 DROP 并重建 `hive_registry` 数据库
 - 导入备份数据
+
+备份脚本本身也只在 `mysqldump` 成功、gzip 完整且解压内容非空时才把文件发布为最终文件名，失败会删除 `.partial`，不会留下看似可用的空备份。
 
 3. 重启服务（服务启动时会自动执行迁移检查）：
 

@@ -12,8 +12,10 @@ services:
       - '--storage.tsdb.retention.time=30d'
       - '--web.enable-lifecycle'
       - '--web.listen-address=127.0.0.1:4230'
-      - '--web.external-url=${PROMETHEUS_EXTERNAL_URL:-/prometheus/}'
-      - '--web.route-prefix=/'                             # 内部路由保持 /，nginx 负责剥前缀
+      # Alertmanager/Prometheus derive the served route prefix from the path of
+      # external-url. Forcing route-prefix=/ made every /prometheus/* request
+      # 404 behind the prefix-preserving nginx location.
+      - '--web.external-url=${PROMETHEUS_EXTERNAL_URL:-http://localhost/prometheus}'
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
@@ -47,12 +49,23 @@ services:
     container_name: alertmanager
     restart: unless-stopped
     network_mode: host
+    # Alertmanager does not expand environment variables in its YAML, and the
+    # image does not ship envsubst. Render the webhook URL into a temporary copy
+    # before starting; mounting the template directly failed with "invalid URL".
+    entrypoint:
+      - /bin/sh
+      - -c
     command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
-      - '--web.listen-address=127.0.0.1:9093'
-      - '--web.external-url=${ALERTMANAGER_EXTERNAL_URL:-/alertmanager/}'
-      - '--web.route-prefix=/'
-      - '--storage.path=/alertmanager'
+      - |
+        set -eu
+        url="$${ALERTMANAGER_WEBHOOK_URL:-http://localhost:9999/alert}"
+        escaped=$$(printf '%s' "$$url" | sed 's/[&|\\]/\\&/g')
+        sed "s|__ALERTMANAGER_WEBHOOK_URL__|$$escaped|g" /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
+        exec /bin/alertmanager \
+          --config.file=/tmp/alertmanager.yml \
+          --web.listen-address=127.0.0.1:9093 \
+          --web.external-url="$${ALERTMANAGER_EXTERNAL_URL:-http://localhost/alertmanager}" \
+          --storage.path=/alertmanager
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager

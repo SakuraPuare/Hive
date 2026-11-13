@@ -1,11 +1,12 @@
 # Alertmanager 配置
 # 文档：https://prometheus.io/docs/alerting/latest/configuration/
 #
-# 使用前请将 WEBHOOK_URL 替换为实际的告警接收地址，例如：
-#   - Telegram Bot: https://api.telegram.org/bot<TOKEN>/sendMessage
-#   - 企业微信: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=<KEY>
-#   - 飞书: https://open.feishu.cn/open-apis/bot/v2/hook/<TOKEN>
-#   - 自建 webhook: http://your-server/alert
+# Alertmanager 不展开 YAML 里的环境变量。docker-compose.yml 在启动前把
+# __ALERTMANAGER_WEBHOOK_URL__ 替换成 ALERTMANAGER_WEBHOOK_URL 的值。
+# 例：Telegram https://api.telegram.org/bot<TOKEN>/sendMessage
+#     企业微信 https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=<KEY>
+#     飞书 https://open.feishu.cn/open-apis/bot/v2/hook/<TOKEN>
+#     自建 webhook http://your-server/alert
 
 global:
   resolve_timeout: 5m
@@ -28,7 +29,7 @@ route:
 receivers:
   - name: 'default-webhook'
     webhook_configs:
-      - url: '${ALERTMANAGER_WEBHOOK_URL:-http://localhost:9999/alert}'
+      - url: '__ALERTMANAGER_WEBHOOK_URL__'
         send_resolved: true
 
 # 抑制规则：critical 告警触发时，抑制同名 warning 告警

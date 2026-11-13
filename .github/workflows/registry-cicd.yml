@@ -168,6 +168,26 @@ jobs:
           fi
           exit "$status"
 
+      - name: Management scripts regression
+        working-directory: .
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set +e
+          set -o pipefail
+          python3 -u scripts/test-management.py 2>&1 | tee "$RUNNER_TEMP/management-test.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            failed=$(grep -E '^(FAIL|ERROR): |^FAILED |^Traceback|^AssertionError|^  File ' "$RUNNER_TEMP/management-test.log" | tail -n 16 | tr '\n' ' ' || true)
+            failed=${failed//%/%25}
+            failed=${failed//$'\r'/%0D}
+            failed=${failed//$'\n'/%0A}
+            failed=${failed//::/%3A%3A}
+            echo "::error file=scripts/test-management.py,line=1::${failed:-management script regression failed; inspect the test output}"
+          fi
+          exit "$status"
+
       - name: Build (amd64)
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /dev/null .
 

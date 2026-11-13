@@ -16,22 +16,29 @@
 #
 # 输出文件格式：
 #   {BACKUP_DIR}/hive_registry_YYYYMMDD_HHMMSS.sql.gz
+#
+# 备份先写 .partial 并在改名发布前校验：恢复流程会先删库再导入，一份损坏
+# 但文件名正常的备份等于没有备份。
 
 set -euo pipefail
 
-MYSQL_HOST="${MYSQL_HOST:-127.0.0.1}"
-MYSQL_PORT="${MYSQL_PORT:-3306}"
-MYSQL_USER="${MYSQL_USER:-hive}"
-MYSQL_PASSWORD="${MYSQL_PASSWORD:-}"
-MYSQL_DB="${MYSQL_DB:-hive_registry}"
+# 部署 .env 使用 REGISTRY_MYSQL_*，systemd 环境文件使用 MYSQL_*。两者都接受，
+# 否则按文档执行会连到空的默认实例并把失败吞成一份空备份。
+MYSQL_HOST="${MYSQL_HOST:-${REGISTRY_MYSQL_HOST:-127.0.0.1}}"
+MYSQL_PORT="${MYSQL_PORT:-${REGISTRY_MYSQL_PORT:-3306}}"
+MYSQL_USER="${MYSQL_USER:-${REGISTRY_MYSQL_USER:-hive}}"
+MYSQL_PASSWORD="${MYSQL_PASSWORD:-${REGISTRY_MYSQL_PASSWORD:-}}"
+MYSQL_DB="${MYSQL_DB:-${REGISTRY_MYSQL_DB:-hive_registry}}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/hive-db}"
 BACKUP_KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
 
 TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
 FILENAME="${MYSQL_DB}_${TIMESTAMP}.sql.gz"
 FILEPATH="${BACKUP_DIR}/${FILENAME}"
+PARTIAL="${FILEPATH}.partial"
 
 mkdir -p "${BACKUP_DIR}"
+trap 'rm -f "${PARTIAL}"' EXIT
 
 echo "[backup] 开始备份 ${MYSQL_DB} → ${FILEPATH}"
 
@@ -45,7 +52,21 @@ MYSQL_PWD="${MYSQL_PASSWORD}" mysqldump \
   --triggers \
   --set-gtid-purged=OFF \
   "${MYSQL_DB}" \
-  | gzip -9 > "${FILEPATH}"
+  | gzip -9 > "${PARTIAL}"
+
+# mysqldump 失败时 pipefail 已经让脚本退出，但 gzip 仍会留下一个可解压的
+# 空文件。发布前同时检查完整性与实际内容。
+gzip -t "${PARTIAL}" || {
+  echo "[backup] 错误：备份压缩包损坏，未发布 ${FILENAME}" >&2
+  exit 1
+}
+if [ "$(gzip -dc "${PARTIAL}" | wc -c)" -eq 0 ]; then
+  echo "[backup] 错误：备份内容为空，未发布 ${FILENAME}" >&2
+  exit 1
+fi
+
+mv -f "${PARTIAL}" "${FILEPATH}"
+trap - EXIT
 
 SIZE=$(du -sh "${FILEPATH}" | cut -f1)
 echo "[backup] 完成：${FILEPATH} (${SIZE})"

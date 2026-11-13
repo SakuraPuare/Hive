@@ -50,7 +50,7 @@ cd /opt/hive
 # 1. 拉取代码
 git pull --ff-only
 
-# 2. 备份数据库
+# 2. 备份数据库（失败会中止发布，不会继续替换二进制）
 bash management/scripts/backup-db.sh
 
 # 3. 编译后端

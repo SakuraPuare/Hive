@@ -170,6 +170,14 @@ mv /usr/local/bin/hive-registry.new /usr/local/bin/hive-registry
 echo ">>> hive-registry built and installed"
 
 # 写入 EnvironmentFile（每次执行都刷新，确保密码等变量同步）
+# 未显式轮换时复用已安装密钥，避免重跑部署撤销外部自动化凭据。
+if [ -z "${ADMIN_API_SECRET:-}" ] && [ -f /etc/hive-registry.env ]; then
+    while IFS= read -r env_line || [ -n "$env_line" ]; do
+        case "$env_line" in
+            ADMIN_API_SECRET=*) ADMIN_API_SECRET="${env_line#ADMIN_API_SECRET=}" ;;
+        esac
+    done < /etc/hive-registry.env
+fi
 ADMIN_API_SECRET="${ADMIN_API_SECRET:-$(openssl rand -hex 32)}"
 cat > /etc/hive-registry.env << EOF
 OTA_ARTIFACT_DIR=/var/lib/hive-registry/ota

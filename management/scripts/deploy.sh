@@ -62,9 +62,13 @@ if [ -d "${UI_DEPLOY}" ]; then
     echo "  frontend backed up"
 fi
 
-# 备份数据库
+# 备份数据库。恢复流程会先删库再导入，没有可用备份就没有可回退点，
+# 所以这里失败必须中止发布，而不是打印警告继续。
 echo "  backing up database..."
-bash "${SCRIPT_DIR}/backup-db.sh" || echo "  WARNING: db backup failed (non-fatal)"
+if ! bash "${SCRIPT_DIR}/backup-db.sh"; then
+    echo "ERROR: database backup failed; aborting deploy before replacing anything" >&2
+    exit 1
+fi
 
 # ── 3. 编译后端 ──────────────────────────────────────────────────────────
 echo ">>> Building hive-registry..."
