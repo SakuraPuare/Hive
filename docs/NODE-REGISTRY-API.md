@@ -30,6 +30,7 @@
 |------|------|------|------|
 | POST | /api/admin/login | 无 | 管理端登录（设置 `hive_admin_session` cookie） |
 | POST | /api/admin/logout | 无 | 退出登录（清除 cookie） |
+| POST | /api/nodes/enroll | 无（按 IP 限流 20/min） | 首启自助上线：凭 MAC 换取本机凭证 + 认领码 |
 | POST | /api/nodes/register | Cookie 或 Bearer | 节点注册（幂等） |
 | GET | /api/nodes | Cookie 或 Bearer | 列出所有节点 |
 | GET | /api/nodes/{mac} | Cookie 或 Bearer | 单节点详情 |
@@ -39,6 +40,8 @@
 | GET | /api/subscription/clash | Cookie 或 Bearer | Clash/Mihomo YAML 订阅 |
 | GET | /api/prometheus-targets | Cookie 或 Bearer | Prometheus file_sd JSON |
 | GET | /api/labels | Cookie 或 Bearer | 可打印标签 HTML |
+| GET | /api/portal/devices/{mac}/dashboard | 客户会话 | 网关节点 Mihomo 面板地址 + per-node secret |
+| GET | /api/portal/devices/{mac}/mihomo/{version\|connections} | 客户会话 | 只读代理节点 9090（门户内实时流量） |
 | GET | /api/health | Cookie 或 Bearer | 健康检查 |
 | GET | /api/ | Cookie 或 Bearer | 控制台 Dashboard |
 
@@ -73,6 +76,31 @@
 ```json
 { "status": "ok" }
 ```
+
+---
+
+## POST /api/nodes/enroll
+
+设备第一次上电的引导入口。共享镜像不带任何凭证，`RequireDeviceAuth` 又只认
+`device_credentials` 表里该 MAC 的 token，所以没有这个入口时新设备连发号/注册都做不到，
+管理面板上也永远不会出现它。
+
+```bash
+POST /api/nodes/enroll
+{"mac":"a646c233fce7","mac6":"33fce7","hostname":"hive-33fce7"}
+# → {"mac":"a646c233fce7","token":"<64 hex>","claim_code":"K7QF-2M9X"}
+```
+
+- 立刻写入节点行（`registered_at`/`last_seen`）→ 面板马上能看到"谁上线了"；
+- `token` 是此后所有设备接口的凭证；`claim_code` 明文只回一次，registry 只存 sha256；
+- 判定顺序：已认领 → 409；已发过凭证 → 409（凭证丢失走管理员轮换 `POST /api/admin/nodes/{mac}/credential`）；
+- 公开接口，按来源 IP 限流 20 次/分钟，只能在设备未认领且未发证时产生副作用。
+
+> **已知取舍**：MAC 不是秘密（机壳/MOTD 上就有），所以理论上有人可以在真机首启前
+> 抢先入网并认领该 MAC。后果是**真机上线被 409 阻塞、且不会真的被对方控制**；
+> 管理员在面板把该节点的凭证轮换（`POST /api/admin/nodes/{mac}/credential`）并解除
+> 归属即可恢复。硬件侧没有 TPM/证书，做到"抢占也拿不到设备"需要额外的出厂凭证，
+> 不在本接口范围内。
 
 ---
 

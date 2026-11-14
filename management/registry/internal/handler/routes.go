@@ -17,11 +17,15 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// ── 限流器 ──────────────────────────────────────────────────────────
 	loginRL := middleware.NewRateLimiter(5, 1*time.Minute)
 	forgotPwRL := middleware.NewRateLimiter(3, 1*time.Minute)
+	// 自助上线入口没有凭证可验，只能按 IP 限流；正常设备一辈子调一次。
+	enrollRL := middleware.NewRateLimiter(20, 1*time.Minute)
 	h.loginRL = loginRL
 	h.forgotPwRL = forgotPwRL
 
 	// ── 节点注册（设备端调用，Bearer token 认证）──────────────────────────
 	mux.HandleFunc("POST /nodes/register", h.HandleRegister)
+	// 首启自助上线：共享镜像不带凭证，设备凭 MAC 领自己的凭证 + 认领码（限流，见 handler）。
+	mux.HandleFunc("POST /nodes/enroll", enrollRL.Wrap(h.HandleNodeEnroll))
 	mux.HandleFunc("POST /admin/nodes/{mac}/credential", perm("node:write")(h.HandleIssueDeviceCredential))
 	// EasyTier IP 早期分配（provision 首步调用，仅需 MAC，幂等）
 	mux.HandleFunc("POST /nodes/allocate-easytier", h.HandleAllocateEasytier)
@@ -217,6 +221,8 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("POST /portal/devices/{mac}/unbind", cust(h.HandlePortalUnbindDevice))
 	mux.HandleFunc("GET /portal/devices/{mac}/commands", cust(h.HandlePortalListCommands))
 	mux.HandleFunc("POST /portal/devices/{mac}/commands", cust(h.HandlePortalEnqueueCommand))
+	mux.HandleFunc("GET /portal/devices/{mac}/dashboard", cust(h.HandlePortalDeviceDashboard))
+	mux.HandleFunc("GET /portal/devices/{mac}/mihomo/{path}", cust(h.HandlePortalDeviceMihomo))
 
 	// ── 客户门户 — 邀请返利 ──────────────────────────────────────────────────
 	mux.HandleFunc("GET /portal/referral", cust(h.HandlePortalReferral))

@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
 import { useCustomer } from '@/lib/portal-auth';
-import { portalSessionApi } from '@/lib/openapi-session';
+import { apiPath, portalSessionApi } from '@/lib/openapi-session';
+import { useClipboard } from '@/lib/use-clipboard';
 import { getErrorMessage } from '@/lib/i18n';
 import { PortalService } from '@/src/generated/client';
 import type { model_Node, model_DeviceCommand } from '@/src/generated/client';
@@ -25,7 +26,7 @@ import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import {
   RefreshCw, Plus, Router as RouterIcon, AlertCircle, InboxIcon,
-  Play, Square, RotateCw, Activity, Settings2, Wifi,
+  Play, Square, RotateCw, Activity, Settings2, Wifi, Gauge, ExternalLink,
 } from 'lucide-react';
 
 // 白名单命令动作（与后端 commandActions 一致）。
@@ -50,6 +51,21 @@ type HotspotConfig = {
   width5g: string;
   preferBand: string;
 };
+
+type DashboardInfo = { urls: string[]; secret: string };
+type LiveTraffic = { up: number; down: number; active: number; upSpeed: number; downSpeed: number };
+
+function formatBytes(value: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let n = Math.max(0, value);
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i += 1; }
+  return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function formatSpeed(bytesPerSecond: number): string {
+  return `${formatBytes(bytesPerSecond)}/s`;
+}
 
 const DEFAULT_HOTSPOT_CONFIG: HotspotConfig = {
   ssid2g: '', ssid5g: '', psk: '', country: 'CN', channel5g: '149', width5g: '80', preferBand: '5',
@@ -100,6 +116,14 @@ export default function PortalDevicesPage() {
   // 解绑确认
   const [unbindDevice, setUnbindDevice] = useState<model_Node | null>(null);
   const [unbinding, setUnbinding] = useState(false);
+
+  // 网关 Mihomo 面板：地址/密钥 + 门户内实时流量（registry 代理节点 9090）
+  const [dashDevice, setDashDevice] = useState<model_Node | null>(null);
+  const [dashInfo, setDashInfo] = useState<DashboardInfo | null>(null);
+  const [dashError, setDashError] = useState('');
+  const [live, setLive] = useState<LiveTraffic | null>(null);
+  const dashSample = useRef<{ at: number; up: number; down: number } | null>(null);
+  const { copied: secretCopied, copy: copySecret } = useClipboard();
 
   const loadDevices = useCallback(async () => {
     setLoading(true);
@@ -222,6 +246,58 @@ export default function PortalDevicesPage() {
     }
   }, [unbindDevice, t, toast, loadDevices]);
 
+  const openDashboard = useCallback(async (device: model_Node) => {
+    setDashDevice(device);
+    setDashInfo(null);
+    setDashError('');
+    setLive(null);
+    dashSample.current = null;
+    try {
+      const res = await fetch(apiPath(`/portal/devices/${device.mac}/dashboard`), { credentials: 'include' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw { error: body?.error || t('mihomoUnavailable') };
+      setDashInfo(body as DashboardInfo);
+    } catch (e) {
+      setDashError(getErrorMessage(e, t('mihomoUnavailable')));
+    }
+  }, [t]);
+
+  // 实时速率：/mihomo/connections 只有累计值，按两次采样的差算瞬时速率。
+  // 节点离线 / EasyTier 断链时 registry 返回 503，这里显示"不可达"而不是卡住。
+  useEffect(() => {
+    const mac = dashDevice?.mac;
+    if (!mac) return;
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const res = await fetch(apiPath(`/portal/devices/${mac}/mihomo/connections`), { credentials: 'include' });
+        if (!res.ok) throw new Error('unreachable');
+        const data = await res.json();
+        const up = Number(data?.uploadTotal ?? 0);
+        const down = Number(data?.downloadTotal ?? 0);
+        const active = Array.isArray(data?.connections) ? data.connections.length : 0;
+        const now = Date.now();
+        const prev = dashSample.current;
+        let upSpeed = 0;
+        let downSpeed = 0;
+        if (prev) {
+          const seconds = (now - prev.at) / 1000;
+          if (seconds > 0) {
+            upSpeed = Math.max(0, (up - prev.up) / seconds);
+            downSpeed = Math.max(0, (down - prev.down) / seconds);
+          }
+        }
+        dashSample.current = { at: now, up, down };
+        if (!stopped) setLive({ up, down, active, upSpeed, downSpeed });
+      } catch {
+        if (!stopped) setLive(null);
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 2000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [dashDevice?.mac]);
+
   if (authLoading) return (
     <div className="flex items-center justify-center py-24" role="status" aria-live="polite" aria-busy="true">
       <div className="flex flex-col items-center gap-4">
@@ -277,6 +353,8 @@ export default function PortalDevicesPage() {
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colHostname')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colMac')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colStatus')}</TableHead>
+                  <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colAddress')}</TableHead>
+                  <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colLastSeen')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colClaimedAt')}</TableHead>
                   <TableHead scope="col" className="text-right text-xs font-500 uppercase tracking-wide text-muted-foreground">{tCommon('actions')}</TableHead>
                 </TableRow>
@@ -287,14 +365,22 @@ export default function PortalDevicesPage() {
                     <TableCell className="font-500">{d.hostname || '—'}</TableCell>
                     <TableCell className="font-mono text-sm text-muted-foreground">{d.mac}</TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center gap-1.5 text-sm ${d.status === 'active' ? 'text-md-primary' : 'text-muted-foreground'}`}>
-                        <span className={`size-1.5 rounded-full ${d.status === 'active' ? 'bg-md-primary' : 'bg-muted-foreground'}`} aria-hidden="true" />
-                        {d.status || t('notAvailable')}
+                      {/* probe_status 由设备心跳/服务端探活维护（heartbeat 写 online），
+                          比运维用的 status 字段更能代表"现在在不在线"。 */}
+                      <span className={`inline-flex items-center gap-1.5 text-sm ${d.probe_status === 'online' ? 'text-md-primary' : 'text-muted-foreground'}`}>
+                        <span className={`size-1.5 rounded-full ${d.probe_status === 'online' ? 'bg-md-primary' : 'bg-muted-foreground'}`} aria-hidden="true" />
+                        {d.probe_status === 'online' ? t('statusOnline')
+                          : d.probe_status === 'offline' ? t('statusOffline') : t('statusUnknown')}
                       </span>
                     </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{d.easytier_ip || d.tailscale_ip || '—'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{d.last_seen ? fmt.dateTime(d.last_seen) : '—'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{d.claimed_at ? fmt.dateTime(d.claimed_at) : '—'}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                        {d.gateway_enabled && (
+                          <Button variant="ghost" size="sm" onClick={() => openDashboard(d)}>{t('mihomoPanel')}</Button>
+                        )}
                         <Button variant="ghost" size="sm" onClick={() => openCommands(d)}>{t('cmdManage')}</Button>
                         <Button variant="ghost" size="sm" className="text-md-error hover:bg-md-error/10" onClick={() => setUnbindDevice(d)}>{t('unbind')}</Button>
                       </div>
@@ -474,6 +560,75 @@ export default function PortalDevicesPage() {
                 </ul>
               )}
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mihomo 面板：密钥 + 候选地址 + 实时流量 */}
+      <Dialog open={!!dashDevice} onOpenChange={(o) => { if (!o) { setDashDevice(null); setDashInfo(null); setLive(null); setDashError(''); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('mihomoPanel')} · {dashDevice?.hostname || dashDevice?.mac || ''}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <section className="space-y-2 rounded-lg bg-md-surface-container-high/50 p-3" aria-live="polite">
+              <div className="flex items-center gap-2">
+                <Gauge className="size-4 text-md-primary" aria-hidden="true" />
+                <p className="text-sm font-600">{t('mihomoLive')}</p>
+              </div>
+              {live ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t('mihomoDownSpeed')}</p>
+                      <p className="font-mono">{formatSpeed(live.downSpeed)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t('mihomoUpSpeed')}</p>
+                      <p className="font-mono">{formatSpeed(live.upSpeed)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t('mihomoActive')}</p>
+                      <p className="font-mono">{live.active}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {t('mihomoTotal')}: ↓ {formatBytes(live.down)} / ↑ {formatBytes(live.up)}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">{dashError || t('mihomoUnreachable')}</p>
+              )}
+            </section>
+
+            {dashInfo && (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="mihomo-secret">{t('mihomoSecret')}</Label>
+                  <div className="flex gap-2">
+                    <Input id="mihomo-secret" readOnly value={dashInfo.secret} className="font-mono text-xs" />
+                    <Button variant="secondary" className="shrink-0" onClick={() => copySecret(dashInfo.secret)}>
+                      {secretCopied ? t('mihomoCopied') : t('mihomoCopy')}
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-500">{t('mihomoOpen')}</p>
+                  <ul className="space-y-1">
+                    {dashInfo.urls.map((url) => (
+                      <li key={url}>
+                        <a href={url} target="_blank" rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-md-primary hover:underline">
+                          {url}
+                          <ExternalLink className="size-3" aria-hidden="true" />
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-muted-foreground">{t('mihomoHint')}</p>
+                </div>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>

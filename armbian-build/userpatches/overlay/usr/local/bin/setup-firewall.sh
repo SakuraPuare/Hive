@@ -74,6 +74,14 @@ ufw allow from 172.20.0.0/16 to any port 9100 comment 'Node Exporter - EasyTier'
 ufw allow from 100.64.0.0/10 to any port 9550 comment 'Xray Exporter - Tailscale'
 ufw allow from 172.20.0.0/16 to any port 9550 comment 'Xray Exporter - EasyTier'
 
+# Mihomo 面板（MetaCubeXD 9090）：客户在门户里看到网关实时流量/会话，要能直接打开
+# 面板。只放行内网与管理网段（不暴露公网），面板自身还有 per-node secret
+# （HMAC(server key, mac)，见 registry gatewaySecret）。
+ufw allow from 192.168.0.0/16 to any port 9090 comment 'Mihomo dashboard - LAN'
+ufw allow from 10.0.0.0/8 to any port 9090 comment 'Mihomo dashboard - LAN/hotspot'
+ufw allow from 172.16.0.0/12 to any port 9090 comment 'Mihomo dashboard - EasyTier'
+ufw allow from 100.64.0.0/10 to any port 9090 comment 'Mihomo dashboard - Tailscale'
+
 # 如果有其他监控系统，取消注释并调整：
 # ufw allow from YOUR_MONITORING_IP to any port 9100 comment 'Node Exporter - Monitoring'
 

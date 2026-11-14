@@ -49,6 +49,56 @@ HOSTNAME="hive-${MAC6}"
 
 echo ">>> Device: ${HOSTNAME}  MAC: ${MAC}  IFACE: ${IFACE}"
 
+# 共享镜像不带任何凭证：第一次上电凭 MAC 自助上线（POST /nodes/enroll），拿回
+# 本机凭证和认领码。凭证落 /etc/hive/device-token（/etc/hive 已被 hive-data 持久化，
+# A/B 换槽、OTA、重刷系统盘都不丢），认领码落 /etc/hive/claim-code（MOTD 展示，
+# 客户在门户认领）。registry 只在"未认领且未发过证"时签发，所以顶号/重复领证都
+# 会被 409 拒绝：凭证丢失必须由管理员轮换，不能靠再刷一次固件。
+if [ -n "${NODE_REGISTRY_URL}" ] && [ -z "${NODE_REGISTRY_API_SECRET}" ]; then
+    echo ">>> No device credential; enrolling ${MAC} at ${NODE_REGISTRY_URL}/nodes/enroll ..."
+    ENROLL_ERR=""
+    for enroll_try in $(seq 1 6); do
+        enroll_body=$(mktemp)
+        # -4 同其余调用：避开 IPv6+Mihomo 半开死路。
+        enroll_code=$(curl -4 -s -o "$enroll_body" -w '%{http_code}' --max-time 15 \
+            -X POST "${NODE_REGISTRY_URL}/nodes/enroll" \
+            -H 'Content-Type: application/json' \
+            -d "{\"mac\":\"${MAC}\",\"mac6\":\"${MAC6}\",\"hostname\":\"${HOSTNAME}\"}" \
+            2>/dev/null || echo 000)
+        enroll_token=$(jq -r '.token // empty' "$enroll_body" 2>/dev/null || true)
+        enroll_claim=$(jq -r '.claim_code // empty' "$enroll_body" 2>/dev/null || true)
+        ENROLL_ERR=$(jq -r '.error // empty' "$enroll_body" 2>/dev/null || true)
+        rm -f "$enroll_body"
+        if [ -n "$enroll_token" ]; then
+            umask 077
+            printf '%s\n' "$enroll_token" > /etc/hive/device-token
+            if [ -n "$enroll_claim" ]; then
+                printf '%s\n' "$enroll_claim" > /etc/hive/claim-code.new
+                mv -f /etc/hive/claim-code.new /etc/hive/claim-code
+            fi
+            NODE_REGISTRY_API_SECRET="$enroll_token"
+            echo ">>> Enrolled. Claim code: ${enroll_claim:-<already minted>}"
+            break
+        fi
+        case "$enroll_code" in
+            409)
+                echo "!!! FATAL: 设备 ${MAC} 已被认领或已发过凭证（${ENROLL_ERR:-409}）。"
+                echo "!!!        凭证丢失请让管理员在面板轮换："
+                echo "!!!        POST ${NODE_REGISTRY_URL}/admin/nodes/${MAC}/credential（ADMIN_API_SECRET）"
+                exit 1
+                ;;
+        esac
+        echo ">>> enroll 第 ${enroll_try}/6 次失败（http=${enroll_code} ${ENROLL_ERR}），5s 后重试..."
+        sleep 5
+    done
+fi
+if [ -n "${NODE_REGISTRY_URL}" ] && [ -z "${NODE_REGISTRY_API_SECRET}" ]; then
+    echo "!!! FATAL: 无法从 registry 领取设备凭证（网络不可达或服务端 5xx）。"
+    echo "!!!        可手工签发后写入 /etc/hive/device-token 再重跑："
+    echo "!!!        POST ${NODE_REGISTRY_URL}/admin/nodes/${MAC}/credential（ADMIN_API_SECRET）"
+    exit 1
+fi
+
 # 设主机名：直接写文件最可靠。systemd-hostnamed 跑在 sandbox 里，在精简内核上
 # 可能把 /etc 误判为只读并返回非零，绝不能让它触发 set -e 拖垮整个 provision。
 echo "$HOSTNAME" > /etc/hostname 2>/dev/null || true
@@ -139,14 +189,23 @@ if [ -n "${NODE_REGISTRY_URL}" ]; then
     # （TLS 握手成功但响应回不来，超时 → 注册失败）。IPv4 走 Mihomo 上游中继实测可通。
     # 带重试：代理网关上游中继会间歇抽风（偶发 SSL 握手失败 http=000），单次抖动
     # 不该让「拿号」这个 FATAL 步骤把整个首启置备打断。最多 6 次、间隔 5s。
+    # 401/403 不是抖动：凭证缺失或被吊销，重试只会白等 30s。
     for et_try in $(seq 1 6); do
-        ET_ALLOC_RESP=$(curl -4 -sf --max-time 15 -X POST "${NODE_REGISTRY_URL}/nodes/allocate-easytier" \
+        ET_ALLOC_CODE=$(curl -4 -s -o /tmp/easytier-alloc.json -w '%{http_code}' --max-time 15 \
+            -X POST "${NODE_REGISTRY_URL}/nodes/allocate-easytier" \
             -H "Content-Type: application/json" \
-            ${NODE_REGISTRY_API_SECRET:+-H "Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"} \
-            -d "{\"mac\": \"${MAC}\"}" || true)
+            -H "Authorization: Bearer ${NODE_REGISTRY_API_SECRET}" \
+            -d "{\"mac\": \"${MAC}\"}" 2>/dev/null || echo 000)
+        ET_ALLOC_RESP=$(cat /tmp/easytier-alloc.json 2>/dev/null || true)
+        rm -f /tmp/easytier-alloc.json
         EASYTIER_IP=$(echo "$ET_ALLOC_RESP" | jq -r '.easytier_ip // empty' 2>/dev/null)
         [ -n "${EASYTIER_IP}" ] && break
-        echo ">>> allocate-easytier 第 ${et_try}/6 次失败（registry 抖动？），5s 后重试..."
+        if [ "$ET_ALLOC_CODE" = 401 ] || [ "$ET_ALLOC_CODE" = 403 ]; then
+            echo "!!! FATAL: registry 拒绝设备凭证（http=${ET_ALLOC_CODE}）：${ET_ALLOC_RESP:-<empty>}"
+            echo "!!!        该 MAC 的 credential 缺失/已轮换，重新签发后写入 /etc/hive/device-token。"
+            exit 1
+        fi
+        echo ">>> allocate-easytier 第 ${et_try}/6 次失败（http=${ET_ALLOC_CODE}），5s 后重试..."
         sleep 5
     done
 fi

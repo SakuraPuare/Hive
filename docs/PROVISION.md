@@ -130,6 +130,34 @@ EASYTIER_IP=$(curl -sf -X POST "${NODE_REGISTRY_URL}/nodes/allocate-easytier" \
 - 旧版按 MAC6 自算 `10.x` 已废弃——那会与 K8S 的 Pod(10.244/16)/Service(10.96/12)段撞。
 - `172.20.0.0/24` 为 infra 保留段（relay/阿里云/集群 pod 手动指派），自动发号从 `172.20.1.0` 起。
 
+**设备凭证先自助领取，再谈发号**（`RequireDeviceAuth` 只认 `device_credentials` 表里该 MAC 的 token，共享密钥一律拒绝）。共享镜像不带任何 token，所以首启第一步是自助入网：
+
+```bash
+POST ${NODE_REGISTRY_URL}/nodes/enroll
+{"mac":"a646c233fce7","mac6":"33fce7","hostname":"hive-33fce7"}
+# → {"mac":"...","token":"...","claim_code":"K7QF-2M9X"}
+```
+
+`provision-node.sh` 会自动做这件事，并把结果落到持久化目录（`/etc/hive` 由 `hive-data` 绑到 `/data`，换槽/OTA/重刷系统盘都不丢）：
+
+| 文件 | 内容 | 用途 |
+|------|------|------|
+| `/etc/hive/device-token` | 本机凭证（每 MAC 一把） | 发号、注册、心跳、命令、OTA、订阅拉取 |
+| `/etc/hive/claim-code` | 认领码（一次性，registry 只存 sha256） | MOTD 展示，客户在门户"我的设备 → 认领"绑定 |
+
+入网同时会**立刻建出节点行**（`registered_at`/`last_seen`）——管理面板在设备第一次上电就能看到它上线，不必等 Cloudflare/Tailscale 那些外部步骤成功；后续 `register` 只是补齐 `cf_url`/`tailscale_ip`/`easytier_ip` 等字段。
+
+规则是刻意保守的：已被客户认领、或已经发过凭证的设备，`/nodes/enroll` 一律 409。
+凭证丢失（换卡/清盘）只能由管理员在面板轮换：
+
+```bash
+curl -fsS -X POST "${NODE_REGISTRY_URL}/admin/nodes/${MAC}/credential" \
+  -H "Authorization: Bearer ${ADMIN_API_SECRET}"
+# → {"mac":"...","token":"..."}；把 token 写进设备的 /etc/hive/device-token 后重跑 provision
+```
+
+`hive-command-agent` 每分钟还会 `POST /nodes/heartbeat`（CPU/内存/磁盘/uptime），面板的"在线"和资源曲线靠它；心跳失败只记日志，不影响命令通道。
+
 ---
 
 ## 七、Cloudflare Tunnel 创建（幂等）

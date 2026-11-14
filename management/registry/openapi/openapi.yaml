@@ -217,6 +217,28 @@ definitions:
       total_upload:
         type: integer
     type: object
+  handler.DashboardResponse:
+    properties:
+      mac:
+        type: string
+      secret:
+        description: 面板 API 密钥（per-node，HMAC(server key, mac)）
+        type: string
+      urls:
+        description: 直接打开面板的候选地址（需在节点 LAN/mesh 内）
+        items:
+          type: string
+        type: array
+    type: object
+  handler.EnrollResponse:
+    properties:
+      claim_code:
+        type: string
+      mac:
+        type: string
+      token:
+        type: string
+    type: object
   handler.ErrorResponse:
     properties:
       error:
@@ -1698,6 +1720,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/handler.StatusResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
@@ -3075,6 +3101,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/handler.StatusResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
@@ -3110,6 +3140,10 @@ paths:
             $ref: '#/definitions/handler.StatusResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
         "500":
@@ -4459,8 +4493,8 @@ paths:
       - nodes
   /nodes/{mac}/commands:
     get:
-      description: 节点定时轮询本机 MAC 的 pending 命令。返回前把它们置为 sent 并记录 sent_at；超过 TTL 的 pending
-        惰性标记 expired、不再下发。设备鉴权（Bearer API_SECRET）。
+      description: 节点定时轮询本机 MAC 的待执行命令。返回前把 pending 置为 sent 并记录 sent_at；超过 TTL 的 pending
+        与 sent 都惰性标记 expired、不再下发（设备端 ACK 失败会无界重领，重启命令尤其不能重复执行）。设备鉴权（Bearer API_SECRET）。
       operationId: NodePullCommands
       parameters:
       - description: node MAC
@@ -4648,6 +4682,45 @@ paths:
       security:
       - BearerAuth: []
       summary: Allocate EasyTier IP for a MAC
+      tags:
+      - nodes
+  /nodes/enroll:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Issues this device's MAC-scoped credential so a newly flashed node
+        can authenticate. Creates the node row immediately (admin panel shows
+        the device as soon as it boots) and mints the customer claim code once.
+        Refuses claimed or already-enrolled devices: re-issuing needs an admin.
+      operationId: NodeEnroll
+      parameters:
+      - description: mac, mac6, hostname
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.EnrollResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Device self-enrollment (first boot)
       tags:
       - nodes
   /nodes/heartbeat:
@@ -4848,6 +4921,76 @@ paths:
       security:
       - CustomerSessionCookie: []
       summary: 给我的设备下发命令
+      tags:
+      - portal
+  /portal/devices/{mac}/dashboard:
+    get:
+      description: |-
+        返回网关节点 Mihomo 面板的候选地址与 per-node secret。客户在节点
+        WiFi（10.42.x）、EasyTier（172.20.x）或 Tailscale（100.64.x）内时可直接打开。
+      operationId: PortalDeviceDashboard
+      parameters:
+      - description: 设备 MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.DashboardResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 我的设备的 Mihomo 面板地址
+      tags:
+      - portal
+  /portal/devices/{mac}/mihomo/{path}:
+    get:
+      description: |-
+        把门户会话换成节点侧 per-node secret，向节点 :9090 取只读数据。
+        用于门户里展示实时速率与活跃会话，客户无需在节点的 LAN/mesh 内。
+      operationId: PortalDeviceMihomo
+      parameters:
+      - description: 设备 MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      - description: version|connections
+        in: path
+        name: path
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 代理节点 Mihomo API（只读）
       tags:
       - portal
   /portal/devices/{mac}/unbind:

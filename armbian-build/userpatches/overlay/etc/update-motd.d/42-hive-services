@@ -130,6 +130,11 @@ if [[ -n "$MAC_ADDR" ]]; then
     printf " \e[1;36m%-18s\e[0m: \e[0;94mhive-%s\e[0m\n" "Node ID" "$MAC6"
     [[ -n "${CF_DOMAIN}" ]] && \
         printf " \e[1;36m%-18s\e[0m: \e[0;94mhive-%s.%s\e[0m\n" "Public Domain" "$MAC6" "${CF_DOMAIN}"
+    # 首次上线时由 provision-node.sh 从 registry 领取；客户在门户输入它认领本机。
+    if [[ -s /etc/hive/claim-code ]]; then
+        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m  (客户门户 → 我的设备 → 认领设备)\n" \
+            "Claim Code" "$(cat /etc/hive/claim-code)"
+    fi
 fi
 
 # Connection Info

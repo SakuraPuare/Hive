@@ -30,6 +30,39 @@ MAC_NORM="${MAC_NORM: -12}"
 AUTH="Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"
 BASE="${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/commands"
 
+# ── 心跳 ───────────────────────────────────────────────────────────────
+# 面板上的"在线"和 CPU/内存/磁盘曲线全靠它（registry 写 last_seen + node_status_checks）。
+# 放在拉命令之前：命令通道故障不应让节点显示离线。所有取数失败都退化成 0，绝不致命。
+heartbeat() {
+    [ -r /proc/uptime ] || return 0
+    local up cpu=0 mem=0 disk=0 total avail
+    read -r up _ < /proc/uptime || up=0
+    up=${up%.*}
+    total=$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    avail=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    [ "${total:-0}" -gt 0 ] 2>/dev/null && mem=$(( (total - ${avail:-0}) * 100 / total ))
+    disk=$(df -P / 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}' || echo 0)
+    disk=${disk:-0}
+    # /proc/stat 两次采样（1s）算 CPU 占用；timer 每分钟才跑一次，1s 可接受。
+    local u1 n1 s1 i1 w1 ir1 si1 st1 u2 n2 s2 i2 w2 ir2 si2 st2 dtotal didle
+    if read -r _ u1 n1 s1 i1 w1 ir1 si1 st1 _ < /proc/stat 2>/dev/null; then
+        sleep 1
+        if read -r _ u2 n2 s2 i2 w2 ir2 si2 st2 _ < /proc/stat 2>/dev/null; then
+            dtotal=$(( (u2+n2+s2+i2+w2+ir2+si2+st2) - (u1+n1+s1+i1+w1+ir1+si1+st1) ))
+            didle=$(( (i2+w2) - (i1+w1) ))
+            [ "$dtotal" -gt 0 ] && cpu=$(( (dtotal - didle) * 100 / dtotal ))
+        fi
+    fi
+    curl -4 -sf --max-time 10 -H "${AUTH}" -H 'Content-Type: application/json' \
+        -d "$(jq -nc --arg mac "${MAC_NORM}" --argjson cpu "${cpu:-0}" --argjson mem "${mem:-0}" \
+              --argjson disk "${disk:-0}" --argjson up "${up:-0}" \
+              '{mac:$mac,cpu_pct:$cpu,mem_pct:$mem,disk_pct:$disk,uptime_sec:$up}')" \
+        "${NODE_REGISTRY_URL}/nodes/heartbeat" >/dev/null 2>&1 \
+        && log "heartbeat ok (cpu=${cpu}% mem=${mem}% disk=${disk}%)" \
+        || log "heartbeat failed（registry 不可达，下轮重试）"
+}
+heartbeat
+
 # ── 领取待执行命令 ─────────────────────────────────────────────────────
 # -4 强制 IPv4：避开 IPv6+Mihomo 半开死路（详见 provision-node.sh 注册段注释）。
 RESP=$(curl -4 -sf --max-time 15 -H "${AUTH}" "${BASE}" 2>/dev/null) || { log "拉取命令失败（registry 不可达？）"; exit 0; }
