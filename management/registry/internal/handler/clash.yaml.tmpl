@@ -147,6 +147,11 @@ rule-providers:
     url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/{{ .File }}.mrs"
 {{ end }}
 rules:
+  # 节点自身出站永远直连：auto-route 把本机流量也送进 TUN，源地址就是 TUN 地址。
+  # PROCESS-NAME 在这块板子上匹配不到（见 docs/GATEWAY.md），而 registry/FRP 等
+  # 控制面域名都是普通 .cn 名，会命中 cn_domain 之类的 REJECT —— 漏掉这条，节点
+  # 既拉不到订阅也发不出心跳，面板永久离线。
+  - SRC-IP-CIDR,198.18.0.1/32,DIRECT
   - AND,(AND,(DST-PORT,443),(NETWORK,UDP)),(NOT,((GEOSITE,cn))),REJECT
   - RULE-SET,private_ip,直连,no-resolve
   - RULE-SET,github_domain,Github

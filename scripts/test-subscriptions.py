@@ -489,6 +489,16 @@ class SubscriptionScripts(unittest.TestCase):
         self.run_agent('hive-clash-sync')
         self.assertGreater(int((self.root/'run/hive-subscriptions/gateway.lease').read_text()),0)
 
+    def test_installed_config_lets_the_node_reach_the_registry(self):
+        # 实测：registry 域名是普通 .cn 名，会命中下发配置里的 cn_domain -> REJECT；
+        # 而 PROCESS-NAME 在本机匹配不到（docs/GATEWAY.md），节点于是既拉不到订阅也发不出
+        # 心跳，面板一直离线。源地址规则必须在装上之前就补进配置里。
+        self.run_agent('hive-clash-sync')
+        rules=[line.strip() for line in (self.root/'etc/mihomo/config.yaml').read_text().splitlines()
+               if line.strip().startswith('- ')]
+        self.assertEqual(rules[0],'- SRC-IP-CIDR,198.18.0.1/32,DIRECT')
+        self.assertLess(rules.index('- SRC-IP-CIDR,198.18.0.1/32,DIRECT'),rules.index('- MATCH,DIRECT'))
+
     def test_blocked_gateway_keeps_the_node_reachable(self):
         # 实测：本机 mihomo 匹配不到 PROCESS-NAME（连 find-process-mode=always 也不行），
         # 只按进程名白名单时，节点自己到 registry 的 TLS 会落到 MATCH,REJECT 被掐掉 ——
@@ -497,11 +507,20 @@ class SubscriptionScripts(unittest.TestCase):
         self.seed_gateway_firewall()
         access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
         self.expire('gateway')
+        # registry 下发的配置带 dns.respect-rules: true，解析请求因此也走规则引擎。
+        config=self.root/'etc/mihomo/config.yaml'
+        text=config.read_text().replace('dns:\n', 'dns:\n  respect-rules: true\n', 1)
+        config.write_text(text)
         self.run_agent('hive-gateway-prepare')
-        rules=[line.strip() for line in (self.root/'etc/mihomo/config.yaml').read_text().splitlines()
-               if line.strip().startswith('- ')]
+        text=config.read_text()
+        rules=[line.strip() for line in text.splitlines() if line.strip().startswith('- ')]
         self.assertIn('- SRC-IP-CIDR,198.18.0.1/32,DIRECT',rules)
         self.assertLess(rules.index('- SRC-IP-CIDR,198.18.0.1/32,DIRECT'),rules.index('- MATCH,REJECT'))
+        # 实测日志 "[TCP] mihomo --> 223.5.5.5:443 match Match using REJECT"：fail-closed
+        # 下 DNS 若仍受规则约束，解析全灭、租约永远拉不到，节点永久离线。
+        dns_part=text.split('\nrules:\n')[0]
+        self.assertIn('respect-rules: false',dns_part)
+        self.assertNotIn('respect-rules: true',text)
 
     def test_blocked_gateway_follows_a_configured_tun_address(self):
         self.set_gateway_enabled('on')

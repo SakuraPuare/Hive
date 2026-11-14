@@ -85,7 +85,7 @@ hive_tun_ipv4() {
     # 也不行），于是 curl/openssl 等一律落到 MATCH,REJECT —— 节点连注册和配置拉取都
     # 做不到，永远拿不到"真"配置，形成自锁。地址来源依次是配置里的 inet4-address、
     # mihomo 默认值 198.18.0.1（fallback 与 registry 两份模板都用 RAW 默认）。
-    local addr
+    local addr file=${1:-/etc/mihomo/config.yaml}
     addr=$(awk '
         /^tun:[[:space:]]*$/ { in_tun = 1; next }
         in_tun && /^[^[:space:]#]/ { in_tun = 0 }
@@ -102,9 +102,34 @@ hive_tun_ipv4() {
             sub(/#.*/, "", value); gsub(/[",[:space:]]/, "", value); sub(/\/.*/, "", value)
             if (value ~ /^[0-9.]+$/) { print value; exit }
         }
-    ' /etc/mihomo/config.yaml 2>/dev/null)
+    ' "$file" 2>/dev/null)
     [ -n "$addr" ] || addr=198.18.0.1
     printf '%s/32\n' "$addr"
+}
+# Delivered configs are written for customer traffic; the node's own control plane
+# has to be carved out of them. registry/frp/easytier hosts are ordinary .cn names
+# and land in rule sets such as cn_domain -> REJECT, and PROCESS-NAME does not match
+# on this board (measured, see docs/GATEWAY.md). The TUN source address is the only
+# stable handle, so prepend it to whatever config is about to be installed.
+hive_gateway_self_direct() {
+    local file=${1:-} tun_src tmp
+    [ -n "$file" ] && [ -s "$file" ] || return 1
+    tun_src=$(hive_tun_ipv4 "$file") || return 1
+    tmp=$(mktemp "$(dirname "$file")/.selfdirect.XXXXXX") || return 1
+    if ! awk -v tun="$tun_src" '
+        done {print; next}
+        /^rules:[[:space:]]*$/ {
+            print
+            print "  - SRC-IP-CIDR," tun ",DIRECT"
+            done = 1
+            next
+        }
+    ' "$file" > "$tmp"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    chmod 600 "$tmp"
+    mv -f "$tmp" "$file"
 }
 hive_gateway_block_config() {
     local tmp tun_src
@@ -113,17 +138,26 @@ hive_gateway_block_config() {
     tmp=$(mktemp /etc/mihomo/.blocked.XXXXXX) || return 1
     # 客户流量照旧拒绝；但节点自己的控制面（注册、订阅、CF API、FRP、tailscale、NTP/DNS）
     # 必须永远通，否则 fail-closed 会把自己关死。PROCESS-NAME 保留，作为能匹配时的精确白名单。
-    awk -v tun="$tun_src" '/^rules:/ {exit} {print} END {
-        print "rules:"
-        print "  - SRC-IP-CIDR," tun ",DIRECT"
-        print "  - PROCESS-NAME,curl,DIRECT"
-        print "  - PROCESS-NAME,xray,DIRECT"
-        print "  - PROCESS-NAME,cloudflared,DIRECT"
-        print "  - PROCESS-NAME,easytier-core,DIRECT"
-        print "  - PROCESS-NAME,frpc,DIRECT"
-        print "  - PROCESS-NAME,tailscaled,DIRECT"
-        print "  - MATCH,REJECT"
-    }' /etc/mihomo/config.yaml > "$tmp"
+    #
+    # dns.respect-rules 必须在这里关掉：它让 mihomo 自己的解析请求也走规则引擎，而
+    # MATCH,REJECT 会把它们全部拒掉（实测日志 "[TCP] mihomo --> 223.5.5.5:443 match
+    # Match using REJECT"）。解析一死，节点连 registry 的域名都解不出来，订阅租约永远
+    # 拿不到，fail-closed 就变成永久自锁。关掉后 DNS 走默认直连出口，不改客户侧策略。
+    awk -v tun="$tun_src" '
+        /^rules:/ {exit}
+        /^[[:space:]]*respect-rules:/ {print "  respect-rules: false"; next}
+        {print}
+        END {
+            print "rules:"
+            print "  - SRC-IP-CIDR," tun ",DIRECT"
+            print "  - PROCESS-NAME,curl,DIRECT"
+            print "  - PROCESS-NAME,xray,DIRECT"
+            print "  - PROCESS-NAME,cloudflared,DIRECT"
+            print "  - PROCESS-NAME,easytier-core,DIRECT"
+            print "  - PROCESS-NAME,frpc,DIRECT"
+            print "  - PROCESS-NAME,tailscaled,DIRECT"
+            print "  - MATCH,REJECT"
+        }' /etc/mihomo/config.yaml > "$tmp"
     chmod 600 "$tmp"
     mv -f "$tmp" /etc/mihomo/config.yaml
 }
