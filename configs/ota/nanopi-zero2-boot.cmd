@@ -26,7 +26,7 @@ fi;
 # Both letters live in the single root filesystem: the letter only selects
 # which kernel payload to load, so a bad kernel never needs a second
 # partition and never costs the factory image another root filesystem.
-setenv hive_boot_slot 'if part uuid mmc ${hive_mmc}:1 hive_rootuuid && load mmc ${hive_mmc}:1 ${kernel_addr_r} /boot/Image.${hive_slot} && load mmc ${hive_mmc}:1 ${ramdisk_addr_r} /boot/uInitrd.${hive_slot} && load mmc ${hive_mmc}:1 ${fdt_addr_r} /boot/dtb.${hive_slot}/rockchip/rk3528-nanopi-zero2.dtb; then setenv bootargs console=ttyS0,1500000 root=PARTUUID=${hive_rootuuid} rootfstype=ext4 rootwait=60 rw panic=10 oops=panic softlockup_panic=1 hardlockup_panic=1 irqchip.gicv3_pseudo_nmi=1 hive.slot=${hive_slot}; booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}; fi';
+setenv hive_boot_slot 'if part uuid mmc ${hive_mmc}:1 hive_rootuuid && load mmc ${hive_mmc}:1 ${kernel_addr_r} /boot/Image.${hive_slot} && load mmc ${hive_mmc}:1 ${ramdisk_addr_r} /boot/uInitrd.${hive_slot} && load mmc ${hive_mmc}:1 ${fdt_addr_r} /boot/dtb.${hive_slot}/rockchip/rk3528-nanopi-zero2.dtb; then setenv bootargs console=ttyS0,1500000 root=PARTUUID=${hive_rootuuid} rootfstype=ext4 rootwait=60 rw panic=10 oops=panic softlockup_panic=1 irqchip.gicv3_pseudo_nmi=1 hive.slot=${hive_slot}; booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}; fi';
 if test "${hive_pending}" = A || test "${hive_pending}" = B; then
     # Hush's `test -gt` cannot tell a digit from a corrupted value: "x" or an
     # empty counter made the comparison fail, so the armed trial was dropped and

@@ -454,6 +454,38 @@ if ! python3 "${SCRIPT_DIR}/verify-uboot.py" "${UBOOT_DEB}"; then
 fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 出厂门禁：校验最终内核 config 里的锁死检测开关
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# boot.cmd 传 softlockup_panic=1 oops=panic 与 irqchip.gicv3_pseudo_nmi=1；
+# hard lockup 的 panic 默认值来自 CONFIG_BOOTPARAM_HARDLOCKUP_PANIC（sysctl
+# /proc/sys/kernel/hardlockup_panic，主线没有 hardlockup_panic= 这个 cmdline 参数）。
+# Kconfig 对依赖不满足的符号是静默回退：实测 6.18.63 出厂 deb 里
+# HARDLOCKUP_DETECTOR=y，但 PERF_EVENTS=n 使 HARDLOCKUP_DETECTOR_PERF=n —— 后端
+# 不存在，检测器空转。所以只复核最终内核 config，不相信优化脚本写了什么。
+if [ -f "${KERNEL_OPTIMIZE_SCRIPT}" ]; then
+  echo ""
+  echo "🔒 出厂门禁：校验内核 config 的锁死检测开关..."
+  KERNEL_FAMILY="$(printf '%s' "$BASE_KERNEL_CONFIG" | sed -E 's/^linux-(.+)-[^-]+$/\1/')"
+  KERNEL_IMAGE_DEB="$(ls -t "${ARMBIAN_DIR}/output/debs/linux-image-"*"-${KERNEL_FAMILY}_"*.deb 2>/dev/null | head -1)" || KERNEL_IMAGE_DEB=""
+  if [ -z "${KERNEL_IMAGE_DEB}" ]; then
+    echo "❌ 门禁：未找到 linux-image-*-${KERNEL_FAMILY} deb，无法确认锁死检测开关"
+    exit 1
+  fi
+  if ! python3 "${SCRIPT_DIR}/verify-kernel-config.py" "${KERNEL_IMAGE_DEB}" \
+      DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR BOOTPARAM_SOFTLOCKUP_PANIC \
+      HARDLOCKUP_DETECTOR HARDLOCKUP_DETECTOR_PERF BOOTPARAM_HARDLOCKUP_PANIC \
+      ARM64_PSEUDO_NMI PERF_EVENTS; then
+    echo ""
+    echo "🛑 出厂门禁拦截：内核缺少锁死检测开关或它的后端。"
+    echo "   后果：内核死锁不会 panic，A/B 试启动计数不递减，节点只能人工断电。"
+    echo "   检查 configs/kernel/${PROFILE}.sh：HARDLOCKUP_DETECTOR 需要 perf 后端"
+    echo "   （PERF_EVENTS → HW_PERF_EVENTS → HARDLOCKUP_DETECTOR_PERF），"
+    echo "   关掉 PROFILING 会把这整条链静默撤掉。"
+    exit 1
+  fi
+fi
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 出厂门禁：校验内核 DTB 里的 RK3528 看门狗节点
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 该节点不在主线 6.18（v7.0 才合入 rk3528.dtsi），由

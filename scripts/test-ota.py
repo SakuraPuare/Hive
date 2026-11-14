@@ -1191,12 +1191,23 @@ reset() { echo RESET; exit 9; }
         self.assertIn('BOOTFLOW', result.stdout)
         self.assertLess(result.stdout.index('BOOTFLOW'), result.stdout.index('RESET'))
 
+    def test_boot_cmdline_only_passes_options_this_kernel_implements(self):
+        # 主线（6.1/6.12/6.16/6.17）没有 hardlockup_panic= 这个 cmdline 参数，
+        # 只有 sysctl /proc/sys/kernel/hardlockup_panic。传它只会得到一句
+        # "Unknown kernel command line parameters"，让日志噪声盖住真正的问题。
+        rendered = subprocess.check_output([str(base.REPO / 'scripts/render-ab-boot.sh'), self.board], text=True)
+        self.assertIn('softlockup_panic=1', rendered)
+        self.assertIn('oops=panic', rendered)
+        self.assertNotIn('hardlockup_panic=', rendered)
+
     def test_kernel_cmdline_panic_switches_are_configured_into_the_kernel(self):
-        # boot.cmd passes panic=10 oops=panic softlockup_panic=1 hardlockup_panic=1
-        # plus irqchip.gicv3_pseudo_nmi=1. Every one of those needs the matching
-        # CONFIG_* in the image, or the switch is silently inert -- which is what
-        # happened to softlockup_panic before: the Armbian baseline defconfig has
-        # no CONFIG_DEBUG_KERNEL, so the detector was never built.
+        # boot.cmd passes panic=10 oops=panic softlockup_panic=1 and
+        # irqchip.gicv3_pseudo_nmi=1. softlockup_panic is a real cmdline option
+        # (kernel/watchdog.c), while hard-lockup panic comes from the
+        # CONFIG_BOOTPARAM_HARDLOCKUP_PANIC sysctl default -- mainline has no
+        # hardlockup_panic= cmdline parameter. Either way the detector has to be
+        # built, or the switch is silently inert: the Armbian baseline defconfig
+        # has no CONFIG_DEBUG_KERNEL.
         kernel = (base.REPO / 'configs/kernel/nanopi-zero2.sh').read_text()
         temp = tempfile.TemporaryDirectory(prefix='hive-kernel-config-')
         self.addCleanup(temp.cleanup)
@@ -1209,13 +1220,19 @@ reset() { echo RESET; exit 9; }
                             '# CONFIG_SOFTLOCKUP_DETECTOR is not set\n'
                             '# CONFIG_HARDLOCKUP_DETECTOR is not set\n'
                             '# CONFIG_ARM64_PSEUDO_NMI is not set\n'
+                            'CONFIG_PROFILING=y\n'
                             'CONFIG_WATCHDOG=y\n')
         produced = root / 'produced.config'
         subprocess.run(['bash', str(script), str(baseline), str(produced)], check=True, capture_output=True)
         config = produced.read_text().splitlines()
+        # PERF_EVENTS/ARM_PMU are in the list because the script disables
+        # PROFILING: without them olddefconfig drops HARDLOCKUP_DETECTOR even
+        # though it was forced (arm64 selects HAVE_HARDLOCKUP_DETECTOR_PERF
+        # only if PERF_EVENTS && HW_PERF_EVENTS).
         for symbol in ['DEBUG_KERNEL', 'LOCKUP_DETECTOR', 'SOFTLOCKUP_DETECTOR',
                        'BOOTPARAM_SOFTLOCKUP_PANIC', 'HARDLOCKUP_DETECTOR',
-                       'BOOTPARAM_HARDLOCKUP_PANIC', 'ARM64_PSEUDO_NMI']:
+                       'BOOTPARAM_HARDLOCKUP_PANIC', 'ARM64_PSEUDO_NMI',
+                       'PERF_EVENTS', 'ARM_PMU']:
             with self.subTest(symbol=symbol):
                 self.assertIn(f'CONFIG_{symbol}=y', config)
 
@@ -1339,6 +1356,106 @@ CONFIG_CMD_FDT=y
                                 text=True, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('environment stamp', result.stderr)
+
+
+class KernelConfigGateTests(unittest.TestCase):
+    # 与 scripts/build.sh 调用处保持一致。
+    # 与 build.sh 里 nanopi-zero2 的 KCONFIG_REQUIRED 保持一致。r28s（vendor 6.1）
+    # 只要求 soft-lockup 那一组：主线 6.1 的 arm64 没有 perf hardlockup 后端。
+    REQUIRED = ['DEBUG_KERNEL', 'LOCKUP_DETECTOR', 'SOFTLOCKUP_DETECTOR',
+                'BOOTPARAM_SOFTLOCKUP_PANIC', 'HARDLOCKUP_DETECTOR',
+                'HARDLOCKUP_DETECTOR_PERF', 'BOOTPARAM_HARDLOCKUP_PANIC',
+                'ARM64_PSEUDO_NMI', 'PERF_EVENTS']
+
+    def setUp(self):
+        import tempfile
+        self.temp = tempfile.TemporaryDirectory(prefix='hive-kconfig-gate-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def config(self, text):
+        path = self.root / 'config-6.18.63-current-rockchip64'
+        path.write_text(text)
+        return path
+
+    def gate(self, path):
+        return subprocess.run([str(base.REPO / 'scripts/verify-kernel-config.py'), str(path)] + self.REQUIRED,
+                              text=True, capture_output=True)
+
+    def test_accepts_a_kernel_that_built_every_panic_switch(self):
+        result = self.gate(self.config(''.join(f'CONFIG_{s}=y\n' for s in self.REQUIRED)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('门禁通过', result.stdout)
+
+    def test_rejects_the_backend_regression_seen_in_the_61863_deb(self):
+        # 6.18.63 出厂内核的真实形态：HARDLOCKUP_DETECTOR=y，但 PERF_EVENTS=n 让
+        # HARDLOCKUP_DETECTOR_PERF=n —— 检测器没有后端，等于没开。门禁必须抓住
+        # 这个形态，而不是只数 detector 符号。
+        text = ''.join(f'CONFIG_{s}=y\n' for s in self.REQUIRED
+                       if s not in ('PERF_EVENTS', 'HARDLOCKUP_DETECTOR_PERF'))
+        result = self.gate(self.config(text + '# CONFIG_PERF_EVENTS is not set\n'
+                                            + '# CONFIG_HARDLOCKUP_DETECTOR_PERF is not set\n'))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('HARDLOCKUP_DETECTOR_PERF', result.stderr)
+
+    def test_accepts_a_kernel_with_the_perf_backend(self):
+        text = ''.join(f'CONFIG_{s}=y\n' for s in self.REQUIRED)
+        result = self.gate(self.config(text))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_a_symbol_with_the_wrong_value(self):
+        text = ''.join(f'CONFIG_{s}=y\n' for s in self.REQUIRED)
+        result = self.gate(self.config(text.replace('CONFIG_PERF_EVENTS=y', 'CONFIG_PERF_EVENTS=m')))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('PERF_EVENTS=y', result.stderr)
+
+    def test_reports_an_unreadable_source_as_a_usage_error(self):
+        result = self.gate(self.root / 'absent.config')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('读取', result.stderr)
+
+    @staticmethod
+    def _ar_member(name, payload):
+        header = (name.ljust(16) + '0'.ljust(12) + '0'.ljust(6) + '0'.ljust(6)
+                  + '100644'.ljust(8) + str(len(payload)).ljust(10) + '`\n').encode()
+        return header + payload + (b'\n' if len(payload) % 2 else b'')
+
+    def deb(self, config_text):
+        # 构建门禁读的是内核 deb，不是裸文件：用真 ar 布局造一个最小 deb，
+        # 别让"读裸 config 能过"掩盖掉 /boot/config-* 找不到的问题。
+        import io
+        import tarfile
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode='w') as archive:
+            data = config_text.encode()
+            info = tarfile.TarInfo('./boot/config-6.18.63-current-rockchip64')
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+        path = self.root / 'linux-image-current-rockchip64_1.0_arm64.deb'
+        path.write_bytes(b'!<arch>\n' + self._ar_member('debian-binary', b'2.0\n')
+                         + self._ar_member('data.tar', buffer.getvalue()))
+        return path
+
+    def test_reads_the_config_out_of_the_kernel_deb(self):
+        result = self.gate(self.deb(''.join(f'CONFIG_{s}=y\n' for s in self.REQUIRED)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('config-6.18.63-current-rockchip64', result.stdout)
+
+    def test_rejects_a_deb_without_a_kernel_config(self):
+        import io
+        import tarfile
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode='w') as archive:
+            data = b''
+            info = tarfile.TarInfo('./boot/Image')
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+        path = self.root / 'linux-image-current-rockchip64_1.0_arm64.deb'
+        path.write_bytes(b'!<arch>\n' + self._ar_member('debian-binary', b'2.0\n')
+                         + self._ar_member('data.tar', buffer.getvalue()))
+        result = self.gate(path)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('/boot/config-*', result.stderr)
 
 
 if __name__ == '__main__':

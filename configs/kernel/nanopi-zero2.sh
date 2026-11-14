@@ -194,20 +194,30 @@ disable CONFIG_HAMRADIO          # 业余无线电 AX.25/NetRom — 6.18 基线�
 disable CONFIG_VSI_IOMMU
 
 # ── 无人值守恢复：锁死检测 ───────────────────────────────────────────────
-# boot.cmd 一直传 softlockup_panic=1 oops=panic，但基线 defconfig 里
-# CONFIG_DEBUG_KERNEL 是缺席的（Kconfig 默认 n），SOFTLOCKUP_DETECTOR
-# depends on 它，于是 detector 从未编进内核：那两个 cmdline 参数至今是空转。
-# Zero2 无人值守部署，内核态死锁必须能自己复位，这条是 A/B 兜底的前置。
+# 基线 defconfig 里 CONFIG_DEBUG_KERNEL 缺席（Kconfig 默认 n），
+# SOFTLOCKUP/HARDLOCKUP 都 depends on 它，于是检测器从来没编进内核。
+# Zero2 无人值守部署，内核态死锁必须能自己复位，这是 A/B 兜底的前置。
 force CONFIG_DEBUG_KERNEL y                  # 锁死检测的前置开关
 force CONFIG_LOCKUP_DETECTOR y               # select-only 符号，显式钉死免得残留旧行
-force CONFIG_SOFTLOCKUP_DETECTOR y           # soft lockup → panic → panic=10 复位
+# soft lockup：softlockup_panic=1 是真实的 cmdline 参数（kernel/watchdog.c 的
+# __setup("softlockup_panic=")），所以两个 CONFIG 都要在。
+force CONFIG_SOFTLOCKUP_DETECTOR y
 force CONFIG_BOOTPARAM_SOFTLOCKUP_PANIC y    # cmdline softlockup_panic=1 生效
-# 关中断死锁只有 NMI 能发现。arm64 的 HAVE_HARDLOCKUP_DETECTOR_PERF 由
-# ARC64_PSEUDO_NMI 提供 NMI，而它需要 cmdline irqchip.gicv3_pseudo_nmi=1 才
-# 真正启用（见 boot.cmd）。RK3528 是 GICv3，满足 select 的 ARM_GIC_V3。
+# hard lockup：主线（6.1/6.12/6.16/6.17 实测）**没有** hardlockup_panic= 这个
+# cmdline 参数，只有 sysctl /proc/sys/kernel/hardlockup_panic，其默认值来自
+# CONFIG_BOOTPARAM_HARDLOCKUP_PANIC。所以 boot.cmd 里不要再传那个无效参数。
+force CONFIG_BOOTPARAM_HARDLOCKUP_PANIC y    # sysctl 默认值 = 1
+# 检测器还要有后端，否则编进去也是空转：
+#   arm64 只有 perf 后端，arch/arm64/Kconfig 用
+#   select HAVE_HARDLOCKUP_DETECTOR_PERF if PERF_EVENTS && HW_PERF_EVENTS && HAVE_PERF_EVENTS_NMI
+#   决定（HAVE_PERF_EVENTS_NMI 由 ARM64_PSEUDO_NMI 提供，需 cmdline
+#   irqchip.gicv3_pseudo_nmi=1 才真正启用）。实测 6.18.63 出厂 deb：
+#   HARDLOCKUP_DETECTOR=y 但 PERF_EVENTS=n → HARDLOCKUP_DETECTOR_PERF=n，
+#   后端不存在，检测器等于没开。故三个前置符号显式 force。
 force CONFIG_ARM64_PSEUDO_NMI y
 force CONFIG_HARDLOCKUP_DETECTOR y
-force CONFIG_BOOTPARAM_HARDLOCKUP_PANIC y    # cmdline hardlockup_panic=1 生效
+force CONFIG_PERF_EVENTS y
+force CONFIG_ARM_PMU y
 
 # ── Debug/Profiling（生产镜像不需要）─────────────────────────────────────
 

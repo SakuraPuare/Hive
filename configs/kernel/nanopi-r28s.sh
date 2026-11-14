@@ -11,7 +11,11 @@ force() {
 }
 # Same reasoning as nanopi-zero2.sh: the vendor 6.1 baseline ships
 # CONFIG_ARM64_PSEUDO_NMI=y but has no CONFIG_DEBUG_KERNEL, so the lockup
-# detectors were never built and boot.cmd's panic switches were inert.
+# detectors were never built and softlockup_panic=1 was inert.
+# Mainline 6.1 arm64 has no perf hard-lockup backend either (arch/arm64/Kconfig
+# selects neither HAVE_HARDLOCKUP_DETECTOR_PERF nor HAVE_PERF_EVENTS_NMI), so
+# HARDLOCKUP_* is dropped by Kconfig here; the build gate only requires the
+# soft-lockup switches for this board.
 for key in DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR \
            BOOTPARAM_SOFTLOCKUP_PANIC HARDLOCKUP_DETECTOR \
            BOOTPARAM_HARDLOCKUP_PANIC; do
