@@ -81,6 +81,8 @@ elif '-N' in args:
 case "$2" in *p2) cat "$HIVE_TEST_ROOT/size";; *) cat "$HIVE_TEST_ROOT/capacity";; esac
 ''')
         self.mock('findmnt', '#!/bin/sh\nexit 1\n')
+        # A 512 MiB filesystem, i.e. the factory size before the first grow.
+        self.mock('tune2fs', '#!/bin/sh\nprintf "Block count:             131072\\nBlock size:               4096\\n"\n')
         for tool in ['partx','sync','e2fsck','resize2fs']:
             self.mock(tool, '#!/bin/sh\necho "'+tool+' $*" >> "$HIVE_TEST_ROOT/calls"\n')
         return (BIN/'hive-data-grow').read_text()
@@ -94,8 +96,23 @@ case "$2" in *p2) cat "$HIVE_TEST_ROOT/size";; *) cat "$HIVE_TEST_ROOT/capacity"
             self.assertLessEqual((32768+3328*2048+new_size+34)*512, capacity)
             calls = (self.root/'calls').read_text()
             self.assertIn('-N 2 /dev/mmcblk0', calls)
+            self.assertIn('e2fsck -pf /dev/mmcblk0p2', calls)
             self.assertIn('resize2fs /dev/mmcblk0p2', calls)
             self.assertNotIn('-N 1', calls)
+
+    def test_second_boot_never_resizes_an_already_grown_filesystem(self):
+        # Every mount of /data moves the superblock's last-mount time while
+        # `e2fsck -p` on a clean filesystem leaves the last-check time alone, so a
+        # second resize2fs run aborts with "Please run 'e2fsck -f' first" and
+        # hive-data never mounts /data again. The grown filesystem must stay put.
+        source = self.fixture_growth(expanded=True)
+        self.mock('tune2fs', '#!/bin/sh\nsectors=$(cat "$HIVE_TEST_ROOT/size")\n'
+                             'printf "Block count:             %s\\n" "$((sectors/8))"\n'
+                             'printf "Block size:               4096\\n"\n')
+        self.run_script(source, 0, '/dev/mmcblk0')
+        calls = (self.root/'calls').read_text()
+        self.assertNotIn('resize2fs', calls)
+        self.assertNotIn('e2fsck', calls)
 
     def test_growth_resumes_filesystem_resize_after_gpt_write(self):
         source = self.fixture_growth(expanded=True)

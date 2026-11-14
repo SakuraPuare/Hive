@@ -27,6 +27,20 @@ if [ "$target" -gt "$size" ]; then
 fi
 # Refresh p2 even on a retry where the GPT was already written before a crash.
 partx --update --nr 2 "$disk"
-[ "$(blockdev --getsz "$data")" -eq "$target" ] || exit 1
-e2fsck -p "$data" || [ "$?" -eq 1 ]
+part=$(blockdev --getsz "$data") || exit 1
+[ "$part" -eq "$target" ] || exit 1
+# Grow the filesystem only while it is still smaller than the partition. Calling
+# resize2fs on an already grown filesystem is not the harmless no-op it looks
+# like: libext2fs refuses when the superblock's last-check time predates its
+# last-mount time, every mount of /data moves the mount time forward, and
+# `e2fsck -p` on an already clean filesystem does not move the check time. Boot
+# two would then fail here for good and hive-data would never mount /data.
+super=$(tune2fs -l "$data" 2>/dev/null) || exit 1
+blocks=$(printf '%s\n' "$super" | sed -n 's/^Block count:[[:space:]]*//p')
+bsize=$(printf '%s\n' "$super" | sed -n 's/^Block size:[[:space:]]*//p')
+[ -n "$blocks" ] && [ -n "$bsize" ] || exit 1
+[ $((blocks*bsize)) -lt $((part*512)) ] || exit 0
+# Force the check: preen mode alone can leave the check time stale, which is
+# exactly what resize2fs rejects.
+e2fsck -pf "$data" || [ "$?" -eq 1 ]
 resize2fs "$data"
