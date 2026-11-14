@@ -494,10 +494,17 @@ class SubscriptionScripts(unittest.TestCase):
         # 而 PROCESS-NAME 在本机匹配不到（docs/GATEWAY.md），节点于是既拉不到订阅也发不出
         # 心跳，面板一直离线。源地址规则必须在装上之前就补进配置里。
         self.run_agent('hive-clash-sync')
-        rules=[line.strip() for line in (self.root/'etc/mihomo/config.yaml').read_text().splitlines()
+        cfg=self.root/'etc/mihomo/config.yaml'
+        rules=[line.strip() for line in cfg.read_text().splitlines()
                if line.strip().startswith('- ')]
         self.assertEqual(rules[0],'- SRC-IP-CIDR,198.18.0.1/32,DIRECT')
         self.assertLess(rules.index('- SRC-IP-CIDR,198.18.0.1/32,DIRECT'),rules.index('- MATCH,DIRECT'))
+        self.assertIn('mixed-port: 7890',cfg.read_text())
+        # 重复同步（或 registry 模板已带该规则）不得叠加出第二条。
+        again=subprocess.run(['bash','-c',f'source {self.root}/bin/hive-subscription-state; hive_gateway_self_direct {cfg}'],
+                             env=self.env,capture_output=True,text=True)
+        self.assertEqual(again.returncode,0,again.stdout+again.stderr)
+        self.assertEqual(cfg.read_text().count('SRC-IP-CIDR,198.18.0.1/32,DIRECT'),1)
 
     def test_blocked_gateway_keeps_the_node_reachable(self):
         # 实测：本机 mihomo 匹配不到 PROCESS-NAME（连 find-process-mode=always 也不行），

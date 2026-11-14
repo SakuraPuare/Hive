@@ -115,15 +115,19 @@ hive_gateway_self_direct() {
     local file=${1:-} tun_src tmp
     [ -n "$file" ] && [ -s "$file" ] || return 1
     tun_src=$(hive_tun_ipv4 "$file") || return 1
+    # Idempotent: a config that already carries the rule (registry template or an
+    # earlier run) must not grow a duplicate line on every sync.
+    grep -qF "SRC-IP-CIDR,$tun_src,DIRECT" "$file" && return 0
     tmp=$(mktemp "$(dirname "$file")/.selfdirect.XXXXXX") || return 1
     if ! awk -v tun="$tun_src" '
         done {print; next}
-        /^rules:[[:space:]]*$/ {
+        !done && /^rules:[[:space:]]*$/ {
             print
             print "  - SRC-IP-CIDR," tun ",DIRECT"
             done = 1
             next
         }
+        {print}
     ' "$file" > "$tmp"; then
         rm -f "$tmp"
         return 1
