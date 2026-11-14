@@ -49,23 +49,48 @@
 
 ## 可视化面板（MetaCubeXD）
 
-Mihomo 内置 `external-controller`（Clash API）+ `external-ui` 托管 MetaCubeXD 面板。局域网内访问：
+Mihomo 内置 `external-controller`（Clash API）+ `external-ui` 托管 MetaCubeXD 面板：
 
 ```
-http://<节点 LAN IP>:9090/ui
+http://<节点 LAN IP>:9090/ui    # 10.42.2.1 有线 LAN / 10.42.1.1 5G 热点 / 10.42.0.1 2.4G
+http://<easytier_ip>:9090/ui    # 172.20.x（mesh 内）
+http://<tailscale_ip>:9090/ui   # 100.64.x（tailnet 内）
 ```
 
-（LAN IP 默认 `10.42.2.1`，MOTD 也会显示）。面板可看实时连接、流量曲线、切换节点和规则。
+面板可看实时连接、流量曲线、切换节点和规则。`setup-firewall.sh` 只对私网段
+（`192.168.0.0/16`、`10.0.0.0/8`、`172.16.0.0/12`）与 Tailscale CGNAT（`100.64.0.0/10`）
+放行 9090，不暴露公网。
 
-> ⚠️ **安全边界**：`external-controller` 监听 `0.0.0.0:9090`，**同网段任何设备都能访问面板**。API 用从节点 MAC 派生的 `secret` 鉴权（`sha256("hive-mihomo-secret:"+MAC)` 前 32 位）。这是"先拿开源面板做占位符"的临时方案；后续会做简化版自有面板。把网关放在可信局域网内使用。
+**客户门户**（`/portal/devices` 设备行的 "Mihomo 面板"）提供两条路：
+
+- **实时流量**：registry 用 `GET /portal/devices/{mac}/mihomo/connections` 代理到节点
+  9090（自动加 per-node secret），门户每 2 秒采样算瞬时速率——客户不在节点 LAN/mesh
+  里也能看；节点离线/断链返回 503，前端显示"不可达"。
+- **面板地址 + secret**：打开完整面板需要处在设备的 WiFi / EasyTier / Tailscale 网络内。
+  secret 由服务端派生，与节点配置一致：
+  `HMAC-SHA256(ADMIN_SESSION_SECRET, "hive-mihomo-secret:v2:"+MAC)`（64 hex）。
 
 ## 防回环（重要）
 
 出口节点上同时跑着 Xray 出口（freedom 直连出网）和 Mihomo 网关。为防止 Xray 的出站流量被本机 Mihomo 二次代理成死循环，做了三重隔离：
 
-1. **TUN auto-redirect 只接管"转发流量"**（下游设备经本机的包），本机自身 `OUTPUT` 不进 TUN。
-2. 规则顶部 `PROCESS-NAME,xray/cloudflared/warp-svc/easytier-core/frpc/tailscaled,直连` —— 本机守护进程一律直连。
+1. **不启用 auto-redirect**（避免 DNAT 到 loopback 在 RK vendor 内核上撞出 martian）；但 `auto-route: true` 会把**本机自身出站也送进 TUN**——`ip route get 1.1.1.1` 会返回 `via 198.18.0.2 dev Meta`。所以"本机流量不进 TUN"这个前提不成立。
+2. 规则顶部 `PROCESS-NAME,xray/cloudflared/warp-svc/easytier-core/frpc/tailscaled,DIRECT` —— 意图是本机守护进程一律直连。**实测该规则在节点上匹配不到进程**（`find-process-mode: always` 亦然），不能作为唯一防线。
 3. 上游 VLESS 出口节点地址 Mihomo 内置永远直连。
+
+## fail-closed（无有效订阅时）
+
+`hive-gateway-prepare` 与 `hive_stop_gateway` 会把配置的 `rules` 整体换掉，客户流量一概拒绝：
+
+```yaml
+rules:
+  - SRC-IP-CIDR,198.18.0.1/32,DIRECT      # 本机出站：源地址就是 TUN 地址（见上）
+  - PROCESS-NAME,curl,DIRECT              # 能匹配时的精确白名单
+  - …（xray / cloudflared / easytier-core / frpc / tailscaled）
+  - MATCH,REJECT
+```
+
+第一条不可省。删掉它就只剩进程名白名单，而进程名匹配在本机不可靠：节点自己到 registry 的 TLS 会落到 `MATCH,REJECT`（现象是 `SSL ... unexpected eof while reading`、`allocate-easytier` 六连败），拿不到配置又连不上 registry——fail-closed 变成自锁，节点永远无法恢复。`SRC-IP-CIDR` 从配置的 `tun.inet4-address` 推导，缺省用 mihomo 默认的 `198.18.0.1`（`hive-subscription-state` 的 `hive_tun_ipv4`）。
 
 ## 配置项（`/etc/hive/config.env`）
 
@@ -117,6 +142,10 @@ nft list ruleset | grep -i mihomo     # auto-redirect 的 nft 规则
 ```
 
 - **下游设备拿不到 IP**：检查 LAN 口 NM 连接 `nmcli connection show | grep hive-lan`，及 `method=shared` 是否激活。接口角色变化后旧 `hive-lan-*` 连接会被 `hive-gateway.sh` 删除；若手动改过接口用途，确认 WAN 口上没有任何 `method=shared` 的连接。
+- **`hive-clash-sync` 每 15s 失败 + mihomo 反复重启 + `allocate-easytier` 六连败**：先看 `journalctl -u provision-node`。
+  - `!!! FATAL: 设备 … 没有 device credential`：该 MAC 还没签发凭证，按 [Provision 文档](/PROVISION) 第六节写入 `/etc/hive/device-token`。
+  - `invalid device credential`（http=401）：token 被轮换/吊销，重新签发。
+  - 以上都不是的话，检查 `/etc/mihomo/config.yaml` 的 `rules` 第一条是否仍是 `SRC-IP-CIDR,<tun 地址>/32,DIRECT`；丢了它就会出现 `SSL ... unexpected eof` 这类"连 TLS 都握不完"的现象。
 - **流量没走代理**：看 `/etc/mihomo/config.yaml` 的 `rules` 和上游池是否非空；`gateway_direction` 是否配对（境内应 `domestic`）。
 - **面板打不开**：确认 `:9090` 可达、`/var/www/metacubexd` 非空（由 `download-binaries.sh` 预置）。
 - **配置不更新**：`systemctl start hive-clash-sync` 手动触发；检查 `NODE_REGISTRY_URL` 可达。

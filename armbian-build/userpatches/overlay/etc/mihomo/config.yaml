@@ -55,6 +55,10 @@ proxy-groups:
     proxies: [直连]
 
 # No customer traffic before a valid subscription is received.
+# 节点自身的控制面必须放行：auto-route 把本机出站也送进 TUN，源地址是 TUN 地址；
+# mihomo 在本机实测匹配不到进程名（find-process-mode=always 亦然），只靠
+# PROCESS-NAME 会让节点连注册/拉配置都做不到（fail-closed 自锁）。
 rules:
+  - SRC-IP-CIDR,198.18.0.1/32,DIRECT
   - PROCESS-NAME,curl,DIRECT
   - MATCH,REJECT

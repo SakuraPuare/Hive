@@ -489,6 +489,31 @@ class SubscriptionScripts(unittest.TestCase):
         self.run_agent('hive-clash-sync')
         self.assertGreater(int((self.root/'run/hive-subscriptions/gateway.lease').read_text()),0)
 
+    def test_blocked_gateway_keeps_the_node_reachable(self):
+        # 实测：本机 mihomo 匹配不到 PROCESS-NAME（连 find-process-mode=always 也不行），
+        # 只按进程名白名单时，节点自己到 registry 的 TLS 会落到 MATCH,REJECT 被掐掉 ——
+        # 于是永远拉不到真配置，fail-closed 变成自锁。必须按 TUN 源地址放行本机流量。
+        self.set_gateway_enabled('on')
+        self.seed_gateway_firewall()
+        access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
+        self.expire('gateway')
+        self.run_agent('hive-gateway-prepare')
+        rules=[line.strip() for line in (self.root/'etc/mihomo/config.yaml').read_text().splitlines()
+               if line.strip().startswith('- ')]
+        self.assertIn('- SRC-IP-CIDR,198.18.0.1/32,DIRECT',rules)
+        self.assertLess(rules.index('- SRC-IP-CIDR,198.18.0.1/32,DIRECT'),rules.index('- MATCH,REJECT'))
+
+    def test_blocked_gateway_follows_a_configured_tun_address(self):
+        self.set_gateway_enabled('on')
+        self.seed_gateway_firewall()
+        access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
+        self.expire('gateway')
+        config=self.root/'etc/mihomo/config.yaml'
+        config.write_text(config.read_text().replace('tun:\n  enable: true',
+                                                     'tun:\n  inet4-address: 172.19.0.1/30\n  enable: true'))
+        self.run_agent('hive-gateway-prepare')
+        self.assertIn('- SRC-IP-CIDR,172.19.0.1/32,DIRECT',config.read_text())
+
     def test_gateway_rejects_missing_lease_and_blocks_boot_fallback(self):
         (self.root/'headers').write_text('HTTP/1.1 200 OK\r\n\r\n')
         self.run_agent('hive-clash-sync',expected=1)

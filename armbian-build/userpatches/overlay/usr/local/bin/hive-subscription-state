@@ -78,12 +78,44 @@ hive_disable_gateway() {
     systemctl stop hive-mihomo || systemctl kill --kill-who=all --signal=KILL hive-mihomo || return 1
     hive_gateway_clear_access
 }
+hive_tun_ipv4() {
+    # 本机自身的出站流量也被 auto-route 送进 TUN（table 2022/52 + suppress_prefixlength），
+    # 源地址就是 TUN 地址。fail-closed 规则必须按源地址放行它。
+    # 不能用 PROCESS-NAME：实测本机 mihomo 匹配不到进程名（连 find-process-mode=always
+    # 也不行），于是 curl/openssl 等一律落到 MATCH,REJECT —— 节点连注册和配置拉取都
+    # 做不到，永远拿不到"真"配置，形成自锁。地址来源依次是配置里的 inet4-address、
+    # mihomo 默认值 198.18.0.1（fallback 与 registry 两份模板都用 RAW 默认）。
+    local addr
+    addr=$(awk '
+        /^tun:[[:space:]]*$/ { in_tun = 1; next }
+        in_tun && /^[^[:space:]#]/ { in_tun = 0 }
+        in_tun && /^[[:space:]]*inet4-address:/ {
+            value = $0
+            sub(/^[[:space:]]*inet4-address:[[:space:]]*/, "", value)
+            if (value !~ /^[0-9]/) { want_next = 1; next }
+            sub(/#.*/, "", value); gsub(/[",[:space:]]/, "", value); sub(/\/.*/, "", value)
+            if (value ~ /^[0-9.]+$/) { print value; exit }
+        }
+        want_next && /^[[:space:]]*-[[:space:]]*[0-9]/ {
+            value = $0
+            sub(/^[[:space:]]*-[[:space:]]*/, "", value)
+            sub(/#.*/, "", value); gsub(/[",[:space:]]/, "", value); sub(/\/.*/, "", value)
+            if (value ~ /^[0-9.]+$/) { print value; exit }
+        }
+    ' /etc/mihomo/config.yaml 2>/dev/null)
+    [ -n "$addr" ] || addr=198.18.0.1
+    printf '%s/32\n' "$addr"
+}
 hive_gateway_block_config() {
-    local tmp
+    local tmp tun_src
     [ -s /etc/mihomo/config.yaml ] || return 1
+    tun_src=$(hive_tun_ipv4) || return 1
     tmp=$(mktemp /etc/mihomo/.blocked.XXXXXX) || return 1
-    awk '/^rules:/ {exit} {print} END {
+    # 客户流量照旧拒绝；但节点自己的控制面（注册、订阅、CF API、FRP、tailscale、NTP/DNS）
+    # 必须永远通，否则 fail-closed 会把自己关死。PROCESS-NAME 保留，作为能匹配时的精确白名单。
+    awk -v tun="$tun_src" '/^rules:/ {exit} {print} END {
         print "rules:"
+        print "  - SRC-IP-CIDR," tun ",DIRECT"
         print "  - PROCESS-NAME,curl,DIRECT"
         print "  - PROCESS-NAME,xray,DIRECT"
         print "  - PROCESS-NAME,cloudflared,DIRECT"
