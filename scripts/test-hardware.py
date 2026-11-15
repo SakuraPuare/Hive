@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.dont_write_bytecode = True
@@ -382,6 +383,35 @@ exit 0
         args = (self.root / 'core-args').read_text().split()
         self.assertIn('172.20.1.5/16', args)
         self.assertIn('s3cret', args)
+
+    def test_easytier_waits_for_provisioning_to_assign_its_ip(self):
+        # 重新注册/重刷的设备开机时 node-info 里还没有 EASYTIER_IP，而 provision-node
+        # 正在跑（留下 /etc/hive/provisioning）。此时必须等它写完再启动，而不是当场
+        # exit 1 —— 那会被 Restart=always 放大成每 10s 一次的重启风暴。
+        marker = self.root / 'provisioning'
+        node_info = self.root / 'node-info'
+        marker.write_text('')
+        text = self.easytier_launcher(
+            'HOSTNAME=hive-abcdef\n',
+            'EASYTIER_NETWORK_NAME=hive\nEASYTIER_SECRET=s3cret\n')
+        text = text.replace('PROVISIONING_MARKER="/etc/hive/provisioning"',
+                            f'PROVISIONING_MARKER="{marker}"')
+        script = self.root / 'script'
+        script.write_text(text)
+        proc = subprocess.Popen(['bash', str(script)], env=self.env,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            time.sleep(2)
+            self.assertIsNone(proc.poll(), 'launcher exited instead of waiting for provisioning')
+            node_info.write_text('HOSTNAME=hive-abcdef\nEASYTIER_IP=172.20.1.5\n')
+            marker.unlink()
+            out, err = proc.communicate(timeout=30)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
+        self.assertEqual(proc.returncode, 0, out + err)
+        self.assertIn('172.20.1.5/16', (self.root / 'core-args').read_text().split())
 
     def test_node_info_preserves_gateway_topology_without_evaluation(self):
         info = self.root / 'node-info'

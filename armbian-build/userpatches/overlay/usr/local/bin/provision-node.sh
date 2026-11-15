@@ -14,6 +14,14 @@ LOG="/var/log/provision-node.log"
 exec > >(tee -a "$LOG") 2>&1
 echo "=== provision-node start: $(date) ==="
 
+# 依赖本脚本产出的服务（easytier 要 EASYTIER_IP、frpc 要 frpc.toml）用这个标记判断
+# "provision 还在跑"，从而等待而不是当场失败退出。成功、失败、超预算退出都会经过
+# trap 删掉它，所以标记残留只可能来自 SIGKILL。
+PROVISIONING_MARKER="/etc/hive/provisioning"
+mkdir -p /etc/hive
+: > "$PROVISIONING_MARKER"
+trap 'rm -f "$PROVISIONING_MARKER"' EXIT
+
 # systemd 的 TimeoutStartSec 会硬杀这里，进程被杀时 DONE_MARKER 不会落，日志也
 # 可能截断。超过预算就主动退出并留下可诊断的状态，让下次开机重试有据可查。
 # 每个外部 API 调用都有 --max-time，所以预算是可推算的。

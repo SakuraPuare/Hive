@@ -7,6 +7,8 @@ set -e
 
 NODE_INFO="/etc/hive/node-info"
 CONFIG_ENV="/etc/hive/config.env"
+# provision-node.sh 在运行期间留这个标记；它跑完（成功或失败）就删掉
+PROVISIONING_MARKER="/etc/hive/provisioning"
 
 # 等待 node-info 存在（provision-node.sh 尚未跑完时可能不存在）
 for i in $(seq 1 30); do
@@ -25,6 +27,18 @@ source /usr/local/bin/hive-node-info
 hive_load_node_info "$NODE_INFO"
 # shellcheck source=/dev/null
 source "$CONFIG_ENV"
+
+# EASYTIER_IP 由 registry 分配、provision-node 写回 node-info。重刷/重新注册的设备
+# 开机时 node-info 里往往还没有这个字段，老逻辑当场 exit 1，被 Restart=always 变成
+# 每 10s 一次的重启风暴（实测 5 次失败）。这里改成：provision-node 还在跑就等它，
+# provision 跑完仍没有才算真缺配置。
+for i in $(seq 1 300); do
+    [ -z "${EASYTIER_IP:-}" ] || break
+    [ -f "$PROVISIONING_MARKER" ] || break
+    [ $((i % 5)) -ne 1 ] || echo "start-easytier: waiting for provision-node to assign EASYTIER_IP... (${i}s/300s)"
+    sleep 1
+    hive_load_node_info "$NODE_INFO"
+done
 
 # 这三个值决定了整条 mesh 是否成立。空的 --ipv4 会变成 "/16"，空的
 # --network-secret 会让节点出现在错误的网络里；easytier-core 随后退出，而

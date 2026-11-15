@@ -386,6 +386,9 @@ else
 fi
 
 systemctl enable tailscaled.service   # daemon 预启动，tailscale up 由 provision 执行
+# network-online.target 必须真的等联网：否则 frpc/easytier/mihomo/provision-node 上的
+# After=network-online.target 全是摆设。连通性等待由 drop-in 里的 nm-online 实现。
+systemctl enable NetworkManager-wait-online.service
 systemctl enable warp-svc.service    # WARP daemon 预启动，warp-cli 注册由 provision 执行
 systemctl enable prometheus-node-exporter.service
 # nginx：禁用默认站点，启用 hive 站点

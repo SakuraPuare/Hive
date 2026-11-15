@@ -5,10 +5,16 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# frpc.toml 由 provision-node.sh 渲染（替换端口和主机名占位符）
+# frpc.toml 由 provision-node.sh 渲染（替换端口和主机名占位符）；重新注册的设备开机时
+# 文件可能还没生成，等它出现而不是直接失败退出。
+ExecStartPre=/bin/sh -c 'until [ -f /etc/frp/frpc.toml ]; do sleep 2; done'
 ExecStart=/usr/local/bin/frpc -c /etc/frp/frpc.toml
 Restart=always
 RestartSec=10
+# 服务端没开时 frpc 必然失败。无退避的话日志里是每 10s 一条的稳定刷屏（实测单次开机
+# 84 次重启 / 98 条 failure）。指数退避到 5 分钟，服务端恢复后仍能在 ≤5 分钟内接回。
+RestartSteps=5
+RestartMaxDelaySec=300
 
 [Install]
 WantedBy=multi-user.target
