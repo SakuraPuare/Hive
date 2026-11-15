@@ -46,7 +46,10 @@ dns:
   enable: true
   listen: 0.0.0.0:1053
   cache-algorithm: arc
-  respect-rules: true
+  # DNS 传输不能过规则：节点没有可用上游时终端规则是 REJECT，
+  # mihomo 自己的 DoH 会被自己掐死（实测 mihomo --> 223.5.5.5:443 REJECT），
+  # 节点随之解析不出 registry/tailscale 域名、面板永久离线。
+  respect-rules: false
   use-hosts: true
   use-system-hosts: true
   ipv6: true
@@ -152,6 +155,9 @@ rules:
   # 控制面域名都是普通 .cn 名，会命中 cn_domain 之类的 REJECT —— 漏掉这条，节点
   # 既拉不到订阅也发不出心跳，面板永久离线。
   - SRC-IP-CIDR,198.18.0.1/32,DIRECT
+  # IPv6 同样要放行：auto-route 也接管 ::/1，EasyTier 对端的 v6 直连包
+  # 会带着 TUN 的 v6 源地址进来，漏了它就被 MATCH/规则集 REJECT。
+  - SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT
   - AND,(AND,(DST-PORT,443),(NETWORK,UDP)),(NOT,((GEOSITE,cn))),REJECT
   - RULE-SET,private_ip,直连,no-resolve
   - RULE-SET,github_domain,Github

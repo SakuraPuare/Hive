@@ -251,3 +251,12 @@ awk '$1 > 50 {print "Alert: " $2 " blocked " $1 " times"}'
 ---
 
 **注意**：防火墙配置涉及网络安全，修改前请确保理解各项设置的含义，并做好备份和应急预案。
+
+## EasyTier 中继 UDP 白名单与 fake-IP
+
+`setup-firewall.sh` 会按 `EASYTIER_PEERS` 里的主机名解析出真实 IP 并放行其入站 UDP
+（中继的 STUN 回包源端口不固定，conntrack 认不出来）。**解析必须绕开 mihomo 的
+fake-IP**：节点 DNS 被 TUN 劫持后 `getent` 返回 `198.18.x`，实测这些假地址被写进
+ufw（`ALLOW 198.18.0.9/udp`），真实中继的 UDP 回包反而被 `BLOCK`，EasyTier 握手
+`connect timeout after 1.99s`，节点在 mesh 里"假在线"。脚本现在走 DoH
+（`https://223.5.5.5/resolve`）拿真实 A/AAAA 并再次过滤 `198.18.0.0/16`。

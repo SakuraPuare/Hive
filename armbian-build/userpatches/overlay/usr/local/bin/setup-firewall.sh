@@ -101,17 +101,45 @@ ufw allow proto udp to any port 11010:11011 comment 'EasyTier P2P - UDP'
 #       conntrack 无法识别为 ESTABLISHED，UFW 直接 BLOCK。
 # 解法：允许来自中继服务器 IP 的全部 UDP 入站（不限端口）。
 echo "配置 EasyTier 中继服务器 UDP 放行..."
+# 解析必须绕开 mihomo 的 fake-IP。本机 DNS 被 TUN 劫持，getent 拿到的是
+# 198.18.0.0/16 的假地址——实测这些假地址被写进 ufw（ALLOW 198.18.0.9/udp），
+# 真实中继（81.71.155.152 等）的 UDP 回包反而被 UFW BLOCK，EasyTier 握手
+# "connect timeout after 1.99s"，节点在 mesh 里假在线、registry 连不上它。
+# 用 DoH（223.5.5.5）拿真实记录，并再次过滤 fake-IP 兜底。
+resolve_relay_ips() {
+    local host="$1" type="$2" ips
+    ips=$(curl -4 -sS --max-time 8 -H 'accept: application/dns-json' \
+            "https://223.5.5.5/resolve?name=${host}&type=${type}" 2>/dev/null \
+        | python3 -c 'import json,sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for answer in data.get("Answer", []):
+    if answer.get("type") in (1, 28):
+        print(answer.get("data", ""))' 2>/dev/null)
+    if [ -z "$ips" ]; then
+        ips=$(getent ahosts "$host" 2>/dev/null | awk '{print $1}')
+    fi
+    printf '%s\n' "$ips" | grep -vE '^198\.18\.' | sed '/^[[:space:]]*$/d' | sort -u
+}
 if [ -n "${EASYTIER_PEERS}" ]; then
     # 提取所有唯一主机名（去协议前缀和端口）
     RELAY_HOSTS=$(echo "${EASYTIER_PEERS}" | tr ',' '\n' \
         | sed 's|.*://||;s|:.*||' | sed '/^[[:space:]]*$/d' | sort -u)
     for HOST in $RELAY_HOSTS; do
         [ -z "$HOST" ] && continue
-        # 解析主机名为 IP（失败则直接用原值）
-        IP=$(getent hosts "$HOST" 2>/dev/null | awk '{print $1; exit}')
-        IP=${IP:-$HOST}
-        ufw allow in proto udp from "$IP" comment "EasyTier relay: $HOST"
-        echo "  允许 UDP 入站来自 $HOST ($IP)"
+        IPS=$(resolve_relay_ips "$HOST" A)
+        for IP in $IPS; do
+            ufw allow in proto udp from "$IP" comment "EasyTier relay: $HOST"
+            echo "  允许 UDP 入站来自 $HOST ($IP)"
+        done
+        [ -n "$IPS" ] || echo "  ⚠ 无法解析 ${HOST} 的真实 IPv4，跳过 UDP 中继放行"
+        IPS6=$(resolve_relay_ips "$HOST" AAAA)
+        for IP6 in $IPS6; do
+            ufw allow in proto udp from "$IP6" comment "EasyTier relay: $HOST (v6)"
+            echo "  允许 UDP(v6) 入站来自 $HOST ($IP6)"
+        done
     done
 else
     echo "  EASYTIER_PEERS 未配置，跳过"

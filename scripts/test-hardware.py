@@ -229,6 +229,19 @@ exit 0
         self.assertFalse((device/'etc/hive/ota-pubkey.pem').exists())
         self.assertEqual((device/'etc/hive/device-token').read_text(),'preserve-device-secret')
 
+    def test_relay_whitelist_never_uses_mihomo_fake_ips(self):
+        # 实测事故：本机 DNS 被 mihomo TUN 劫持后 getent 返回 198.18.0.9/12，
+        # setup-firewall.sh 把这两个假地址写进了 ufw（ALLOW 198.18.0.9/udp），
+        # 真实中继 IP 的 UDP 回包反而被 BLOCK，EasyTier 握手超时、节点在 mesh
+        # 里假在线。所以解析必须走 DoH 并显式过滤 fake-IP 段。
+        source = (BIN / 'setup-firewall.sh').read_text()
+        self.assertIn('223.5.5.5/resolve', source)
+        self.assertIn("grep -vE '^198\\.18\\.'", source)
+        # 直接把 getent 的结果喂给 ufw 就是原始 bug 的形态。
+        for line in source.splitlines():
+            if 'ufw allow in proto udp from' in line and 'IP' in line:
+                self.assertNotIn('getent', line)
+
     def test_every_external_call_in_provisioning_is_bounded(self):
         # provisioning talks to Cloudflare, Tailscale and the registry on the
         # node's first boot. An unbounded curl hangs until systemd kills the

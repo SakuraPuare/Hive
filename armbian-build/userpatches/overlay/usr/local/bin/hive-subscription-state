@@ -106,24 +106,68 @@ hive_tun_ipv4() {
     [ -n "$addr" ] || addr=198.18.0.1
     printf '%s/32\n' "$addr"
 }
+hive_tun_ipv6() {
+    # IPv4 版同样的理由，只是 v6 那边连 PROCESS-NAME 都不用试：auto-route 会把
+    # fdfe:dcba:9876::/126 的 ::1 当成本机源地址，EasyTier 对端的 IPv6 直连包
+    # （[fdfe:dcba:9876::1]:11010 --> 公网 v6）实测全部落到 MATCH using REJECT，
+    # 于是 P2P 打洞和依赖 v6 的控制面一起挂掉。地址取自 inet6-address，
+    # 缺省用 mihomo 的默认值 fdfe:dcba:9876::1。
+    local addr file=${1:-/etc/mihomo/config.yaml}
+    addr=$(awk '
+        /^tun:[[:space:]]*$/ { in_tun = 1; next }
+        in_tun && /^[^[:space:]#]/ { in_tun = 0 }
+        in_tun && /^[[:space:]]*inet6-address:/ {
+            value = $0
+            sub(/^[[:space:]]*inet6-address:[[:space:]]*/, "", value)
+            if (value !~ /^[0-9a-fA-F:]/) { want_next = 1; next }
+            sub(/#.*/, "", value); gsub(/[",[:space:]]/, "", value); sub(/\/.*/, "", value)
+            if (value ~ /^[0-9a-fA-F:]+$/) { print value; exit }
+        }
+        want_next && /^[[:space:]]*-[[:space:]]*[0-9a-fA-F:]/ {
+            value = $0
+            sub(/^[[:space:]]*-[[:space:]]*/, "", value)
+            sub(/#.*/, "", value); gsub(/[",[:space:]]/, "", value); sub(/\/.*/, "", value)
+            if (value ~ /^[0-9a-fA-F:]+$/) { print value; exit }
+        }
+    ' "$file" 2>/dev/null)
+    [ -n "$addr" ] || addr=fdfe:dcba:9876::1
+    printf '%s/128\n' "$addr"
+}
 # Delivered configs are written for customer traffic; the node's own control plane
-# has to be carved out of them. registry/frp/easytier hosts are ordinary .cn names
+# has to be carved out of them. Two things get normalized here:
+#   - 本机源地址直连（v4/v6）；
+#   - dns.respect-rules=false：交付配置里它是 true，于是 mihomo 自己的 DoH
+#     （223.5.5.5:443 等）也要过规则；当节点没有可用上游时终端规则是
+#     RULE-SET,cn_domain,REJECT / MATCH,REJECT，实测日志
+#     "[TCP] mihomo --> 223.5.5.5:443 match Match using REJECT" —— 解析全灭，
+#     tailscaled 注册 new node 时 "context deadline exceeded"，节点在面板上失联。 registry/frp/easytier hosts are ordinary .cn names
 # and land in rule sets such as cn_domain -> REJECT, and PROCESS-NAME does not match
 # on this board (measured, see docs/GATEWAY.md). The TUN source address is the only
 # stable handle, so prepend it to whatever config is about to be installed.
 hive_gateway_self_direct() {
-    local file=${1:-} tun_src tmp
+    local file=${1:-} r4 r6 need4=0 need6=0 tmp
     [ -n "$file" ] && [ -s "$file" ] || return 1
-    tun_src=$(hive_tun_ipv4 "$file") || return 1
-    # Idempotent: a config that already carries the rule (registry template or an
-    # earlier run) must not grow a duplicate line on every sync.
-    grep -qF "SRC-IP-CIDR,$tun_src,DIRECT" "$file" && return 0
+    r4="SRC-IP-CIDR,$(hive_tun_ipv4 "$file"),DIRECT"
+    r6="SRC-IP-CIDR,$(hive_tun_ipv6 "$file"),DIRECT"
+    # Idempotent per family: a config that already carries one of them (registry
+    # template or an earlier run) must gain only the missing line.
+    grep -qF "$r4" "$file" || need4=1
+    grep -qF "$r6" "$file" || need6=1
+    [ "$need4" -eq 0 ] && [ "$need6" -eq 0 ] && ! grep -qE '^[[:space:]]*respect-rules:[[:space:]]*true' "$file" && return 0
+    need_dns=0
+    grep -qE '^[[:space:]]*respect-rules:[[:space:]]*true' "$file" && need_dns=1
     tmp=$(mktemp "$(dirname "$file")/.selfdirect.XXXXXX") || return 1
-    if ! awk -v tun="$tun_src" '
+    if ! awk -v r4="$r4" -v r6="$r6" -v n4="$need4" -v n6="$need6" -v ndns="$need_dns" '
+        ndns && /^[[:space:]]*respect-rules:[[:space:]]*true/ {
+            print "  respect-rules: false"
+            ndns = 0
+            next
+        }
         done {print; next}
         !done && /^rules:[[:space:]]*$/ {
             print
-            print "  - SRC-IP-CIDR," tun ",DIRECT"
+            if (n4) print "  - " r4
+            if (n6) print "  - " r6
             done = 1
             next
         }
@@ -136,9 +180,10 @@ hive_gateway_self_direct() {
     mv -f "$tmp" "$file"
 }
 hive_gateway_block_config() {
-    local tmp tun_src
+    local tmp tun_src tun6_src
     [ -s /etc/mihomo/config.yaml ] || return 1
     tun_src=$(hive_tun_ipv4) || return 1
+    tun6_src=$(hive_tun_ipv6) || return 1
     tmp=$(mktemp /etc/mihomo/.blocked.XXXXXX) || return 1
     # 客户流量照旧拒绝；但节点自己的控制面（注册、订阅、CF API、FRP、tailscale、NTP/DNS）
     # 必须永远通，否则 fail-closed 会把自己关死。PROCESS-NAME 保留，作为能匹配时的精确白名单。
@@ -147,13 +192,14 @@ hive_gateway_block_config() {
     # MATCH,REJECT 会把它们全部拒掉（实测日志 "[TCP] mihomo --> 223.5.5.5:443 match
     # Match using REJECT"）。解析一死，节点连 registry 的域名都解不出来，订阅租约永远
     # 拿不到，fail-closed 就变成永久自锁。关掉后 DNS 走默认直连出口，不改客户侧策略。
-    awk -v tun="$tun_src" '
+    awk -v tun="$tun_src" -v tun6="$tun6_src" '
         /^rules:/ {exit}
         /^[[:space:]]*respect-rules:/ {print "  respect-rules: false"; next}
         {print}
         END {
             print "rules:"
             print "  - SRC-IP-CIDR," tun ",DIRECT"
+            print "  - SRC-IP-CIDR," tun6 ",DIRECT"
             print "  - PROCESS-NAME,curl,DIRECT"
             print "  - PROCESS-NAME,xray,DIRECT"
             print "  - PROCESS-NAME,cloudflared,DIRECT"

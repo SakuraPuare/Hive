@@ -60,5 +60,6 @@ proxy-groups:
 # PROCESS-NAME 会让节点连注册/拉配置都做不到（fail-closed 自锁）。
 rules:
   - SRC-IP-CIDR,198.18.0.1/32,DIRECT
+  - SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT
   - PROCESS-NAME,curl,DIRECT
   - MATCH,REJECT

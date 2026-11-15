@@ -498,6 +498,9 @@ class SubscriptionScripts(unittest.TestCase):
         rules=[line.strip() for line in cfg.read_text().splitlines()
                if line.strip().startswith('- ')]
         self.assertEqual(rules[0],'- SRC-IP-CIDR,198.18.0.1/32,DIRECT')
+        # IPv6 那条同样关键：auto-route 也接管 ::/1，EasyTier 对端的 v6 直连包
+        # 会带着 TUN 的 v6 源地址进来（实测 [fdfe:dcba:9876::1]:11010 -> ... REJECT）。
+        self.assertIn('- SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT',rules)
         self.assertLess(rules.index('- SRC-IP-CIDR,198.18.0.1/32,DIRECT'),rules.index('- MATCH,DIRECT'))
         self.assertIn('mixed-port: 7890',cfg.read_text())
         # 重复同步（或 registry 模板已带该规则）不得叠加出第二条。
@@ -505,6 +508,20 @@ class SubscriptionScripts(unittest.TestCase):
                              env=self.env,capture_output=True,text=True)
         self.assertEqual(again.returncode,0,again.stdout+again.stderr)
         self.assertEqual(cfg.read_text().count('SRC-IP-CIDR,198.18.0.1/32,DIRECT'),1)
+        self.assertEqual(cfg.read_text().count('SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT'),1)
+
+    def test_installed_config_keeps_its_own_dns_out_of_the_rules(self):
+        # 交付配置带 dns.respect-rules: true。节点没有可用上游时终端规则就是
+        # RULE-SET,cn_domain,REJECT / MATCH,REJECT，mihomo 自己的 DoH 也被拒：
+        # 实测 "[TCP] mihomo --> 223.5.5.5:443 match Match using REJECT"，随后
+        # tailscaled 注册 "context deadline exceeded"、节点在面板上永久离线。
+        (self.root/'gateway.yaml').write_text(
+            'mixed-port: 7890\ndns:\n  enable: true\n  respect-rules: true\n'
+            'proxies: []\nrules:\n  - MATCH,REJECT\n')
+        self.run_agent('hive-clash-sync')
+        text = (self.root/'etc/mihomo/config.yaml').read_text()
+        self.assertIn('respect-rules: false', text)
+        self.assertNotIn('respect-rules: true', text)
 
     def test_blocked_gateway_keeps_the_node_reachable(self):
         # 实测：本机 mihomo 匹配不到 PROCESS-NAME（连 find-process-mode=always 也不行），
@@ -522,6 +539,7 @@ class SubscriptionScripts(unittest.TestCase):
         text=config.read_text()
         rules=[line.strip() for line in text.splitlines() if line.strip().startswith('- ')]
         self.assertIn('- SRC-IP-CIDR,198.18.0.1/32,DIRECT',rules)
+        self.assertIn('- SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT',rules)
         self.assertLess(rules.index('- SRC-IP-CIDR,198.18.0.1/32,DIRECT'),rules.index('- MATCH,REJECT'))
         # 实测日志 "[TCP] mihomo --> 223.5.5.5:443 match Match using REJECT"：fail-closed
         # 下 DNS 若仍受规则约束，解析全灭、租约永远拉不到，节点永久离线。

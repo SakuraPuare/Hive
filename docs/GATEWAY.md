@@ -84,13 +84,16 @@ http://<tailscale_ip>:9090/ui   # 100.64.x（tailnet 内）
 
 ```yaml
 rules:
-  - SRC-IP-CIDR,198.18.0.1/32,DIRECT      # 本机出站：源地址就是 TUN 地址（见上）
-  - PROCESS-NAME,curl,DIRECT              # 能匹配时的精确白名单
+  - SRC-IP-CIDR,198.18.0.1/32,DIRECT            # 本机出站 v4：源地址就是 TUN 地址
+  - SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT    # 本机出站 v6（auto-route 也接管 ::/1）
+  - PROCESS-NAME,curl,DIRECT                    # 能匹配时的精确白名单
   - …（xray / cloudflared / easytier-core / frpc / tailscaled）
   - MATCH,REJECT
 ```
 
-第一条不可省。删掉它就只剩进程名白名单，而进程名匹配在本机不可靠：节点自己到 registry 的 TLS 会落到 `MATCH,REJECT`（现象是 `SSL ... unexpected eof while reading`、`allocate-easytier` 六连败），拿不到配置又连不上 registry——fail-closed 变成自锁，节点永远无法恢复。`SRC-IP-CIDR` 从配置的 `tun.inet4-address` 推导，缺省用 mihomo 默认的 `198.18.0.1`（`hive-subscription-state` 的 `hive_tun_ipv4`）。
+前两条不可省。删掉它们就只剩进程名白名单，而进程名匹配在本机不可靠：节点自己到 registry 的 TLS 会落到 `MATCH,REJECT`（现象是 `SSL ... unexpected eof while reading`、`allocate-easytier` 六连败），拿不到配置又连不上 registry——fail-closed 变成自锁，节点永远无法恢复。v4 地址从 `tun.inet4-address` 推导、缺省 `198.18.0.1`，v6 从 `tun.inet6-address` 推导、缺省 `fdfe:dcba:9876::1`（`hive-subscription-state` 的 `hive_tun_ipv4`/`hive_tun_ipv6`）。
+
+另外 `dns.respect-rules` 会被强制改成 `false`：交付配置里它是 `true`，于是 mihomo 自己的 DoH 也要过规则，而节点没有可用上游时终端规则是 `RULE-SET,cn_domain,REJECT`/`MATCH,REJECT`——实测 `[TCP] mihomo --> 223.5.5.5:443 match Match using REJECT`，解析全灭，tailscaled 注册 `context deadline exceeded`，节点在面板上永久离线。
 
 ## 配置项（`/etc/hive/config.env`）
 
