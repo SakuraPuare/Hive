@@ -345,28 +345,46 @@ envsubst < "${ROOT_DIR}/configs/frp/frpc.toml.tpl" \
 # 镜像源配置（本地构建自动用大陆镜像）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# REGIONAL_MIRROR 可在 .env 中覆盖；CI 环境默认不切换（runner 在境外）
+# REGIONAL_MIRROR 可在 .env 中覆盖。默认值按 runner 实际位置判断，不能只看 GITHUB_ACTIONS：
+# 本仓库的镜像构建跑在自托管 develop runner 上（.github/workflows/build-image.yml 的
+# runs-on: develop），它也在境内，act_runner 同样导出 GITHUB_ACTIONS=true —— 只看这个变量
+# 会把境内 runner 判成"境外"，CI 构建于是从 deb.debian.org 拉整套 rootfs 包（实测约 150 KB/s）。
+# GITHUB_SERVER_URL 由托管方注入：只有 GitHub 官方 runner 是 https://github.com。
 if [ -z "${REGIONAL_MIRROR:-}" ]; then
-  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-    REGIONAL_MIRROR=""   # CI：用官方源，runner 在美国
+  if [ "${GITHUB_SERVER_URL:-}" = "https://github.com" ]; then
+    REGIONAL_MIRROR=""       # GitHub 官方 runner 在境外，用官方源
   else
-    REGIONAL_MIRROR="china"  # 本地：自动切换大陆镜像
+    REGIONAL_MIRROR="china"  # 本地 / 自托管 develop runner：大陆镜像
   fi
 fi
 
-# REGIONAL_MIRROR=china 会同时切换 apt、git、GHCR 源
-# git 源（gitee/ghproxy）需要登录或不稳定，GHCR 镜像（nju）经常 404
-# 只保留 apt/download 加速，其余强制走官方
-UBOOT_MIRROR="${UBOOT_MIRROR:-github}"
+# REGIONAL_MIRROR=china 只对 apt 和 mainline 内核/firmware 的 git 源有效：
+#   apt        → mirrors.tuna.tsinghua.edu.cn（configdump 已验证）
+#   KERNELSOURCE → mirrors.tuna.tsinghua.edu.cn/git/linux-stable.git
+# 它同时会打开三个大陆 git/OCI 源，实测都不该用：
+#   UBOOT_MIRROR（china 预设会换成第三方 u-boot 镜像）→ 该镜像匿名克隆返回 401，Hive 不用它。
+#                          而且这个值必须硬钉：orangepi4-lts 的 BOOTSOURCE 直接取自
+#                          MAINLINE_UBOOT_SOURCE，会跟着 UBOOT_MIRROR 变（configdump 实测预设
+#                          生效时它指向该站点），留成可被 .env 覆盖的默认值就有把构建源切过去的风险。
+#   GITHUB_MIRROR=ghproxy → ghfast.top 对 release 资产只发 302 回 GitHub，实测 473 KB/s 对直连
+#                          418 KB/s，没有加速，还会让 git 拉取多一跳
+#   GHCR_MIRROR=nju      → ghcr.nju.edu.cn 本身 51 MB/s（见下），但 oras 要先向 <mirror>/token
+#                          换 token，nju 没这个端点（404），oras 判 not_found 就回落到 ghcr.io 慢速
+#                          直连，等于白设。GHCR 上的大包改由 scripts/fetch-gitballs.sh 预取。
+if [ -n "${UBOOT_MIRROR:-}" ] && [ "${UBOOT_MIRROR}" != github ]; then
+  echo "注意: 忽略 UBOOT_MIRROR=${UBOOT_MIRROR}，Hive 固定从 github 拉 u-boot（原因见 scripts/build.sh 注释）"
+fi
+UBOOT_MIRROR="github"
 GITHUB_MIRROR="${GITHUB_MIRROR:-github}"
 GHCR_MIRROR="${GHCR_MIRROR:-none}"
 
 MIRROR_ARGS=""
 if [ -n "$REGIONAL_MIRROR" ]; then
   MIRROR_ARGS="REGIONAL_MIRROR=${REGIONAL_MIRROR}"
-  echo "镜像源: apt=${REGIONAL_MIRROR}  git/ghcr=官方（强制）"
+  echo "镜像源: apt/内核 git=${REGIONAL_MIRROR}  u-boot/github/ghcr=官方"
+  echo "        （ghcr 大包由 fetch-gitballs.sh 预取，见下方预取步骤）"
 else
-  echo "镜像源: 官方（CI 环境）"
+  echo "镜像源: 官方（GitHub 官方 runner 在境外）"
 fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
