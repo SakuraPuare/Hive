@@ -306,6 +306,18 @@ if [ "$HIVE_AB" = yes ]; then
     "${SCRIPT_DIR}/render-ab-boot.sh" "$PROFILE" > "${ARMBIAN_DIR}/userpatches/hive-ab-boot.cmd"
     mkdir -p "${ARMBIAN_DIR}/userpatches/overlay/usr/lib/hive"
     printf '%s\n' "$HIVE_LAYOUT" > "${ARMBIAN_DIR}/userpatches/overlay/usr/lib/hive/ab-layout"
+
+    # 上面那次 rsync --delete 会把 u-boot 编译 hook 写进 overlay 的 env stamp 一起清掉，
+    # 而 u-boot 一旦命中 artifact 缓存就不会重新编译（缓存键里没有 HIVE_AB，见
+    # lib/functions/artifacts/artifact-uboot.sh 的 artifact_input_variables），stamp 于是
+    # 永远不会回来。等到出厂镜像阶段才发现已经晚了：内核和 rootfs 全白做（实测 2 小时）。
+    # 所以这里提前把该板子的 u-boot deb 删掉，强制重编；check-uboot-env.sh 仍会在建厂时
+    # 拿 stamp 对照二进制，防止缓存里混进没有 A/B 环境的 bootloader。
+    UBOOT_STAMP="${ARMBIAN_DIR}/userpatches/overlay/usr/lib/hive/uboot-env"
+    if [ ! -s "$UBOOT_STAMP" ]; then
+        echo "u-boot env stamp 缺失（overlay 被清空且 u-boot 命中了缓存），强制重编 u-boot"
+        rm -f "${ARMBIAN_DIR}/output/debs/linux-u-boot-${BOARD}-"*.deb
+    fi
 fi
 
 # 生成优化内核配置（基线 config + 优化脚本 → 定制 config）

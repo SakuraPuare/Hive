@@ -182,6 +182,15 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 
 首次构建约需 30-90 分钟（视机器性能）。后续构建因 ccache 缓存通常只需 10-20 分钟。
 
+> **A/B 构建（`HIVE_AB=yes`）的两条缓存陷阱**，改构建流程前先看：
+> 1. `u-boot` 的 artifact 缓存键里没有 `HIVE_AB`（`lib/functions/artifacts/artifact-uboot.sh` 的
+>    `artifact_input_variables` 只含 BOOT* 与 BOARD/BRANCH/ARCH），所以同一工作区里先跑过普通构建，
+>    A/B 构建就会复用一个**没有 A/B 环境**的 bootloader。`build.sh` 在建厂阶段前会检查
+>    `userpatches/overlay/usr/lib/hive/uboot-env`（u-boot 编译 hook 的产物）是否还在：不在就删掉该板子的
+>    u-boot deb 强制重编。少了这条，问题要到出厂镜像阶段才由 `check-uboot-env.sh` 暴露，前面两小时白做。
+> 2. 上面那次 `rsync --delete` 每次构建都会清掉框架 `userpatches/`（包括上面的 stamp），所以 stamp 的
+>    生命周期只有一次构建；命中缓存的 u-boot 不会重新生成它。
+
 **自定义构建参数**：
 
 ```bash
