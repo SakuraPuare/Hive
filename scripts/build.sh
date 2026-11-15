@@ -517,10 +517,15 @@ if [ -f "${KERNEL_OPTIMIZE_SCRIPT}" ]; then
     echo "❌ 门禁：未找到 linux-image-*-${KERNEL_FAMILY} deb，无法确认锁死检测开关"
     exit 1
   fi
-  if ! python3 "${SCRIPT_DIR}/verify-kernel-config.py" "${KERNEL_IMAGE_DEB}" \
-      DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR BOOTPARAM_SOFTLOCKUP_PANIC \
-      HARDLOCKUP_DETECTOR HARDLOCKUP_DETECTOR_PERF BOOTPARAM_HARDLOCKUP_PANIC \
-      ARM64_PSEUDO_NMI PERF_EVENTS; then
+  # r28s 是 Rockchip vendor 6.1：主线 6.1 的 arm64 没有 perf hardlockup 后端
+  # （arch/arm64/Kconfig 既不 select HAVE_HARDLOCKUP_DETECTOR_PERF 也不提供
+  # HAVE_PERF_EVENTS_NMI），所以那边只要求 softlockup；硬锁死开关留给 Zero2 的
+  # 6.18 基线复核，免得门禁把一棵本来就没有该能力的厂商树判死。
+  KCONFIG_REQUIRED=(DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR BOOTPARAM_SOFTLOCKUP_PANIC ARM64_PSEUDO_NMI)
+  if [ "$PROFILE" = nanopi-zero2 ]; then
+    KCONFIG_REQUIRED+=(HARDLOCKUP_DETECTOR HARDLOCKUP_DETECTOR_PERF BOOTPARAM_HARDLOCKUP_PANIC PERF_EVENTS)
+  fi
+  if ! python3 "${SCRIPT_DIR}/verify-kernel-config.py" "${KERNEL_IMAGE_DEB}" "${KCONFIG_REQUIRED[@]}"; then
     echo ""
     echo "🛑 出厂门禁拦截：内核缺少锁死检测开关或它的后端。"
     echo "   后果：内核死锁不会 panic，A/B 试启动计数不递减，节点只能人工断电。"
