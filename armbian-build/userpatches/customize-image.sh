@@ -82,9 +82,18 @@ EOF
 # ─────────────────────────────────────────────
 
 # Tailscale 官方 apt 源
+# 不能接 `| tee`：管道退出码取 tee 的成功，curl 被 RST（实测 "curl: (35) Recv
+# failure: Connection reset by peer"）会留下空 keyring，apt 只在后面报
+# "Missing key <id>"，10 分钟后才在 install tailscale 处失败。直接落盘 + 校验。
 echo ">>> Adding Tailscale apt repo..."
-curl -fsSL "https://pkgs.tailscale.com/stable/debian/${RELEASE}.noarmor.gpg" \
-    | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null
+tailscale_keyring=/usr/share/keyrings/tailscale-archive-keyring.gpg
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --max-time 120 \
+    "https://pkgs.tailscale.com/stable/debian/${RELEASE}.noarmor.gpg" \
+    -o "${tailscale_keyring}"
+if ! gpg --show-keys "${tailscale_keyring}" > /dev/null 2>&1; then
+    echo ">>> ERROR: Tailscale 仓库密钥下载无效（${tailscale_keyring}）" >&2
+    exit 1
+fi
 echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] \
 https://pkgs.tailscale.com/stable/debian ${RELEASE} main" \
     | tee /etc/apt/sources.list.d/tailscale.list
