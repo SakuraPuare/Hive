@@ -161,7 +161,7 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 - 主拷贝留在 `~/.cache/hive-gitballs`（`HIVE_GITBALL_CACHE` 可改）。框架提取完会删掉 `cache/git-bundles` 下那份，下次从主拷贝直接装回。
 - 内核版本不硬编码：脚本用 `compile.sh configdump` 读 `KERNEL_MAJOR_MINOR`，与框架实际判定一致。
 - 镜像默认 `ghcr.nju.edu.cn`；换镜像或强制直连用 `HIVE_GHCR_MIRROR=<host>|direct`。
-- rootfs 缓存包也是 ghcr.io 上的 OCI 工件，走 oras，失败会直接让构建以 `ERROR 43` 中止（`ARTIFACT_IGNORE_CACHE=yes` 能绕过，但会把内核一起重编）。框架的本地缓存判定只看 `cache/rootfs/rootfs-<arch>-<release>-<type>_<tag>.tar.zst` 是否存在，所以脚本按同样方式预取；tag 由框架的 `rootfs_cache_id` + `yyyymm` 决定，框架升级会变（26.08→26.11 时 `…-Bc08fea` 变成 `…-B5416c2`），默认从框架自己打印的日志里取，取不到才跳过。
+- rootfs 缓存包也是 ghcr.io 上的 OCI 工件，走 oras，失败会直接让构建以 `ERROR 43` 中止（`ARTIFACT_IGNORE_CACHE=yes` 能绕过，但会把内核一起重编）。框架的本地缓存判定只看 `cache/rootfs/rootfs-<arch>-<release>-<type>_<tag>.tar.zst` 是否存在，所以脚本按同样方式预取；tag 由框架的 `rootfs_cache_id` + `yyyymm` 决定，框架升级会变（26.08→26.11 时 `…-Bc08fea` 变成 `…-B5416c2`），默认从框架自己打印的日志里取（顶层日志没有就扫最近的归档），全新机器没有历史日志时用 `--rootfs-ref` 显式给 tag（`./compile.sh rootfs` 或 registry 的 tags 列表都能看到）。
 - 预取失败不会让构建失败，只是回落到 ghcr.io 慢速直连。
 - 境内/境外的判断看 `GITHUB_SERVER_URL`（只有 GitHub 官方 runner 是 `https://github.com`），不看 `GITHUB_ACTIONS`：自托管 `develop` runner 同样会导出 `GITHUB_ACTIONS=true`，按它判断会让境内 CI 走官方源。
 
