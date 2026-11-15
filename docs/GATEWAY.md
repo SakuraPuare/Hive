@@ -93,6 +93,8 @@ rules:
 
 前两条不可省。删掉它们就只剩进程名白名单，而进程名匹配在本机不可靠：节点自己到 registry 的 TLS 会落到 `MATCH,REJECT`（现象是 `SSL ... unexpected eof while reading`、`allocate-easytier` 六连败），拿不到配置又连不上 registry——fail-closed 变成自锁，节点永远无法恢复。v4 地址从 `tun.inet4-address` 推导、缺省 `198.18.0.1`，v6 从 `tun.inet6-address` 推导、缺省 `fdfe:dcba:9876::1`（`hive-subscription-state` 的 `hive_tun_ipv4`/`hive_tun_ipv6`）。
 
+**Tailscale 域名必须排除出 fake-IP**：`tailscaled` 的控制面连接绑定在物理网卡地址上（`--accept-dns=false` 也一样），实测 `SYN-SENT 192.168.5.222:36686 -> 198.18.0.20:443`——fake-IP 只有"源地址 198.18.0.1、走 TUN"的流量才有反向映射，绑定端0 的 SYN 直接出公网，于是注册 10s 超时、节点永远进不了 tailnet。安装配置时会向 `dns.fake-ip-filter` 补 `'+.tailscale.com'`/`'+.tailscale.io'`（真实地址仍按域名走规则分流）。
+
 另外 `dns.respect-rules` 会被强制改成 `false`：交付配置里它是 `true`，于是 mihomo 自己的 DoH 也要过规则，而节点没有可用上游时终端规则是 `RULE-SET,cn_domain,REJECT`/`MATCH,REJECT`——实测 `[TCP] mihomo --> 223.5.5.5:443 match Match using REJECT`，解析全灭，tailscaled 注册 `context deadline exceeded`，节点在面板上永久离线。
 
 ## 配置项（`/etc/hive/config.env`）

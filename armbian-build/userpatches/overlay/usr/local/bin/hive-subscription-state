@@ -144,6 +144,39 @@ hive_tun_ipv6() {
 # and land in rule sets such as cn_domain -> REJECT, and PROCESS-NAME does not match
 # on this board (measured, see docs/GATEWAY.md). The TUN source address is the only
 # stable handle, so prepend it to whatever config is about to be installed.
+hive_gateway_fakeip_filter() {
+    # tailscaled 的控制面连接**绑定在物理网卡地址**上：实测
+    #   SYN-SENT 192.168.5.222:36686 -> 198.18.0.20:443 users:(("tailscaled",pid=2791))
+    # 198.18.0.20 是 fake-IP，只有"源地址 198.18.0.1、走 TUN"的流量才有 mihomo 反向映射；
+    # 绑定端0 的 SYN 直接出公网 → 永远 SYN-SENT，注册 10s 超时，节点进不了 tailnet。
+    # 把 Tailscale 域名排除出 fake-IP（拿到真实 A/AAAA），它们仍按域名走规则分流。
+    local file=${1:-}
+    [ -n "$file" ] && [ -s "$file" ] || return 1
+    python3 - "$file" <<'PYEOF'
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+if re.search(r"^\s*-\s*['\"]?\+\.tailscale\.com['\"]?\s*$", text, re.M):
+    sys.exit(0)
+lines = text.splitlines()
+wanted = ("+.tailscale.com", "+.tailscale.io")
+start = next((i for i, l in enumerate(lines) if re.match(r"^\s*fake-ip-filter:\s*$", l)), None)
+if start is not None:
+    indent = re.match(r"^(\s*)", lines[start]).group(1) + "  "
+    end = start + 1
+    while end < len(lines) and lines[end].startswith(indent) and lines[end].strip():
+        end += 1
+    lines[end:end] = [f"{indent}- '{domain}'" for domain in wanted]
+else:
+    mode = next((i for i, l in enumerate(lines) if re.match(r"^\s*enhanced-mode:\s*fake-ip", l)), None)
+    if mode is None:
+        sys.exit(0)
+    indent = re.match(r"^(\s*)", lines[mode]).group(1)
+    block = [f"{indent}fake-ip-filter:"] + [f"{indent}  - '{domain}'" for domain in wanted]
+    lines[mode + 1:mode + 1] = block
+path.write_text("\n".join(lines) + "\n")
+PYEOF
+}
 hive_gateway_self_direct() {
     local file=${1:-} r4 r6 need4=0 need6=0 tmp
     [ -n "$file" ] && [ -s "$file" ] || return 1
@@ -153,9 +186,14 @@ hive_gateway_self_direct() {
     # template or an earlier run) must gain only the missing line.
     grep -qF "$r4" "$file" || need4=1
     grep -qF "$r6" "$file" || need6=1
-    [ "$need4" -eq 0 ] && [ "$need6" -eq 0 ] && ! grep -qE '^[[:space:]]*respect-rules:[[:space:]]*true' "$file" && return 0
+    # 早退条件必须把三件事都算上：v4/v6 源地址规则、respect-rules、tailscale 的
+    # fake-IP 例外。只看前两条会在"registry 模板已经带规则"时跳过 fake-IP 过滤，
+    # tailscaled 照样 SYN 黑洞（实测 filter 没落地、注册仍超时）。
     need_dns=0
     grep -qE '^[[:space:]]*respect-rules:[[:space:]]*true' "$file" && need_dns=1
+    need_ts=0
+    grep -qF "+.tailscale.com" "$file" || need_ts=1
+    [ "$need4" -eq 0 ] && [ "$need6" -eq 0 ] && [ "$need_dns" -eq 0 ] && [ "$need_ts" -eq 0 ] && return 0
     tmp=$(mktemp "$(dirname "$file")/.selfdirect.XXXXXX") || return 1
     if ! awk -v r4="$r4" -v r6="$r6" -v n4="$need4" -v n6="$need6" -v ndns="$need_dns" '
         ndns && /^[[:space:]]*respect-rules:[[:space:]]*true/ {
@@ -178,6 +216,7 @@ hive_gateway_self_direct() {
     fi
     chmod 600 "$tmp"
     mv -f "$tmp" "$file"
+    hive_gateway_fakeip_filter "$file"
 }
 hive_gateway_block_config() {
     local tmp tun_src tun6_src
@@ -210,6 +249,7 @@ hive_gateway_block_config() {
         }' /etc/mihomo/config.yaml > "$tmp"
     chmod 600 "$tmp"
     mv -f "$tmp" /etc/mihomo/config.yaml
+    hive_gateway_fakeip_filter /etc/mihomo/config.yaml
 }
 hive_stop_gateway() {
     hive_gateway_block_forward || return 1

@@ -517,11 +517,35 @@ class SubscriptionScripts(unittest.TestCase):
         # tailscaled 注册 "context deadline exceeded"、节点在面板上永久离线。
         (self.root/'gateway.yaml').write_text(
             'mixed-port: 7890\ndns:\n  enable: true\n  respect-rules: true\n'
+            "  fake-ip-filter:\n    - 'rule-set:private_domain'\n"
             'proxies: []\nrules:\n  - MATCH,REJECT\n')
         self.run_agent('hive-clash-sync')
         text = (self.root/'etc/mihomo/config.yaml').read_text()
         self.assertIn('respect-rules: false', text)
         self.assertNotIn('respect-rules: true', text)
+        # tailscaled 绑定物理网卡地址直连控制面，fake-IP 会让它 SYN 黑洞
+        # （实测 SYN-SENT 192.168.5.222 -> 198.18.0.20:443，注册 10s 超时）。
+        # Tailscale 域名必须拿到真实地址。
+        self.assertEqual(text.count("'+.tailscale.com'"), 1)
+        self.assertEqual(text.count("'+.tailscale.io'"), 1)
+        # 再同步一次不得叠加。
+        self.run_agent('hive-clash-sync')
+        again = (self.root/'etc/mihomo/config.yaml').read_text()
+        self.assertEqual(again.count("'+.tailscale.com'"), 1)
+
+    def test_tailscale_fakeip_exception_is_added_even_when_rules_are_complete(self):
+        # 实机回归：registry 模板已经带了 v4/v6 自直连规则和 respect-rules:false，
+        # 旧早退条件于是跳过了 fake-IP 过滤，tailscaled 依旧 SYN-SENT 到
+        # 198.18.0.20:443（注册 10s 超时）。过滤必须独立于规则补齐。
+        (self.root/'gateway.yaml').write_text(
+            "mixed-port: 7890\ndns:\n  enable: true\n  respect-rules: false\n"
+            "  enhanced-mode: fake-ip\n  fake-ip-filter:\n    - 'rule-set:private_domain'\n"
+            "proxies: []\nrules:\n  - SRC-IP-CIDR,198.18.0.1/32,DIRECT\n"
+            "  - SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT\n  - MATCH,REJECT\n")
+        self.run_agent('hive-clash-sync')
+        text = (self.root/'etc/mihomo/config.yaml').read_text()
+        self.assertEqual(text.count("'+.tailscale.com'"), 1)
+        self.assertEqual(text.count("'+.tailscale.io'"), 1)
 
     def test_blocked_gateway_keeps_the_node_reachable(self):
         # 实测：本机 mihomo 匹配不到 PROCESS-NAME（连 find-process-mode=always 也不行），
