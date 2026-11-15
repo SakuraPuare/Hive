@@ -1199,6 +1199,9 @@ reset() { echo RESET; exit 9; }
         self.assertIn('softlockup_panic=1', rendered)
         self.assertIn('oops=panic', rendered)
         self.assertNotIn('hardlockup_panic=', rendered)
+        # RK3528 是 arm,gic-400（GICv2），伪 NMI 在架构上不存在；这个参数在
+        # ARM64_PSEUDO_NMI=n 的内核里反而是"unknown parameter"噪声来源。
+        self.assertNotIn('irqchip.gicv3_pseudo_nmi=', rendered)
 
     def test_kernel_cmdline_panic_switches_are_configured_into_the_kernel(self):
         # boot.cmd passes panic=10 oops=panic softlockup_panic=1 and
@@ -1225,22 +1228,34 @@ reset() { echo RESET; exit 9; }
         produced = root / 'produced.config'
         subprocess.run(['bash', str(script), str(baseline), str(produced)], check=True, capture_output=True)
         config = produced.read_text().splitlines()
-        # PERF_EVENTS/ARM_PMU are in the list because the script disables
-        # PROFILING: without them olddefconfig drops HARDLOCKUP_DETECTOR even
-        # though it was forced (arm64 selects HAVE_HARDLOCKUP_DETECTOR_PERF
-        # only if PERF_EVENTS && HW_PERF_EVENTS).
+        # RK3528 是 GICv2：脚本不能再打开 ARM64_PSEUDO_NMI/PERF_EVENTS，否则
+        # Kconfig 会选 perf 后端（GICv2 上 probe 必失败）。硬锁死走 buddy。
         for symbol in ['DEBUG_KERNEL', 'LOCKUP_DETECTOR', 'SOFTLOCKUP_DETECTOR',
                        'BOOTPARAM_SOFTLOCKUP_PANIC', 'HARDLOCKUP_DETECTOR',
-                       'BOOTPARAM_HARDLOCKUP_PANIC', 'ARM64_PSEUDO_NMI',
-                       'PERF_EVENTS', 'ARM_PMU']:
+                       'BOOTPARAM_HARDLOCKUP_PANIC']:
             with self.subTest(symbol=symbol):
                 self.assertIn(f'CONFIG_{symbol}=y', config)
+        self.assertNotIn('CONFIG_ARM64_PSEUDO_NMI=y', config)
+        self.assertNotIn('CONFIG_PERF_EVENTS=y', config)
 
-    def test_every_mainline_profile_builds_the_hardlockup_chain(self):
-        # 6.18 主线（rockchip64-current）的三个板型都关 PROFILING，必须显式钉死
-        # PERF_EVENTS/ARM_PMU，否则 arm64 选不到 HARDLOCKUP_DETECTOR_PERF，门禁
-        # 会在构建末尾把它们判死（6.18.63 出厂 deb 就是这个形态）。
-        for profile in ['nanopi-zero2', 'nanopi-r3s', 'orangepi4-lts']:
+    def test_every_mainline_profile_builds_a_hardlockup_backend(self):
+        # 后端由 SoC 决定：
+        #   nanopi-zero2 (RK3528, arm,gic-400) → 无伪 NMI → 只能 buddy：脚本必须
+        #     不打开 ARM64_PSEUDO_NMI/PERF_EVENTS，否则 Kconfig 会去选 perf 后端，
+        #     而它在 GICv2 上 probe 失败、检测器永久停用（6.18.63 实机实测）。
+        #   nanopi-r3s / orangepi4-lts (GICv3) → perf 链，且关 PROFILING 后必须
+        #     显式钉死 PERF_EVENTS/ARM_PMU，否则 olddefconfig 会把链撤掉。
+        expect = {
+            'nanopi-zero2': ['DEBUG_KERNEL', 'SOFTLOCKUP_DETECTOR',
+                             'HARDLOCKUP_DETECTOR', 'BOOTPARAM_HARDLOCKUP_PANIC'],
+            'nanopi-r3s': ['DEBUG_KERNEL', 'SOFTLOCKUP_DETECTOR', 'HARDLOCKUP_DETECTOR',
+                           'BOOTPARAM_HARDLOCKUP_PANIC', 'ARM64_PSEUDO_NMI',
+                           'PERF_EVENTS', 'ARM_PMU'],
+            'orangepi4-lts': ['DEBUG_KERNEL', 'SOFTLOCKUP_DETECTOR', 'HARDLOCKUP_DETECTOR',
+                              'BOOTPARAM_HARDLOCKUP_PANIC', 'ARM64_PSEUDO_NMI',
+                              'PERF_EVENTS', 'ARM_PMU'],
+        }
+        for profile, symbols in expect.items():
             with self.subTest(profile=profile):
                 temp = tempfile.TemporaryDirectory(prefix=f'hive-kernel-{profile}-')
                 self.addCleanup(temp.cleanup)
@@ -1257,10 +1272,12 @@ reset() { echo RESET; exit 9; }
                 subprocess.run(['bash', str(script), str(baseline), str(produced)],
                                check=True, capture_output=True)
                 config = produced.read_text().splitlines()
-                for symbol in ['DEBUG_KERNEL', 'SOFTLOCKUP_DETECTOR', 'HARDLOCKUP_DETECTOR',
-                               'BOOTPARAM_HARDLOCKUP_PANIC', 'ARM64_PSEUDO_NMI',
-                               'PERF_EVENTS', 'ARM_PMU']:
+                for symbol in symbols:
                     self.assertIn(f'CONFIG_{symbol}=y', config, f'{profile} lacks {symbol}')
+                if profile == 'nanopi-zero2':
+                    for symbol in ('ARM64_PSEUDO_NMI', 'PERF_EVENTS', 'ARM_PMU'):
+                        self.assertNotIn(f'CONFIG_{symbol}=y', config,
+                                         f'n {symbol} would select the unusable perf backend on GICv2')
 
     def test_r28s_vendor_kernel_also_builds_the_lockup_detectors(self):
         # R28S uses the vendor 6.1 baseline, which has ARM64_PSEUDO_NMI=y but no
@@ -1385,13 +1402,14 @@ CONFIG_CMD_FDT=y
 
 
 class KernelConfigGateTests(unittest.TestCase):
-    # 与 scripts/build.sh 调用处保持一致。
-    # 与 build.sh 里 nanopi-zero2 的 KCONFIG_REQUIRED 保持一致。r28s（vendor 6.1）
-    # 只要求 soft-lockup 那一组：主线 6.1 的 arm64 没有 perf hardlockup 后端。
+    # 与 build.sh 里 6.18 主线（rockchip64-current）的 KCONFIG_REQUIRED 一致。
+    # 后端写成 A|B：RK3528（GICv2）用 buddy，GICv3 板型用 perf，任一个在即可。
     REQUIRED = ['DEBUG_KERNEL', 'LOCKUP_DETECTOR', 'SOFTLOCKUP_DETECTOR',
                 'BOOTPARAM_SOFTLOCKUP_PANIC', 'HARDLOCKUP_DETECTOR',
-                'HARDLOCKUP_DETECTOR_PERF', 'BOOTPARAM_HARDLOCKUP_PANIC',
-                'ARM64_PSEUDO_NMI', 'PERF_EVENTS']
+                'BOOTPARAM_HARDLOCKUP_PANIC',
+                'HARDLOCKUP_DETECTOR_PERF|HARDLOCKUP_DETECTOR_BUDDY']
+    # 一颗真实合格内核里出现的具体符号（RK3528 选 buddy 这条）。
+    GOOD = [s for s in REQUIRED if '|' not in s] + ['HARDLOCKUP_DETECTOR_BUDDY']
 
     def setUp(self):
         import tempfile
@@ -1408,32 +1426,77 @@ class KernelConfigGateTests(unittest.TestCase):
         return subprocess.run([str(base.REPO / 'scripts/verify-kernel-config.py'), str(path)] + self.REQUIRED,
                               text=True, capture_output=True)
 
+    @staticmethod
+    def build_sh_requirements(profile, base_config='linux-rockchip64-current'):
+        """执行 build.sh 里那段 KCONFIG_REQUIRED，拿到该 profile 的真实要求。"""
+        text = (base.REPO / 'scripts/build.sh').read_text()
+        start = text.index('KCONFIG_REQUIRED=(DEBUG_KERNEL')
+        end = text.index('\n  fi\n', start) + len('\n  fi\n')
+        block = text[start:end]
+        script = (f'set -e\nPROFILE={profile}\nBASE_KERNEL_CONFIG={base_config}\n'
+                  + block + '\nprintf "%s\\n" "${KCONFIG_REQUIRED[@]}"\n')
+        out = subprocess.run(['bash', '-c', script], capture_output=True, text=True, check=True)
+        return out.stdout.split()
+
+    def test_gate_requires_the_buddy_backend_on_the_gicv2_board(self):
+        # RK3528 是 GICv2：要求 perf/NMI 后端的产物必须被拦下（6.18.63 实机就是这样
+        # 编进去又在运行时被永久停用的）。门禁因此对 zero2 明确要求 buddy。
+        required = self.build_sh_requirements('nanopi-zero2')
+        self.assertIn('HARDLOCKUP_DETECTOR_BUDDY', required)
+        text = ''.join(f'CONFIG_{s}=y\n' for s in self.GOOD
+                       if 'HARDLOCKUP_DETECTOR' not in s or s == 'HARDLOCKUP_DETECTOR')
+        broken = text + 'CONFIG_HARDLOCKUP_DETECTOR_PERF=y\n'
+        result = subprocess.run([str(base.REPO / 'scripts/verify-kernel-config.py'),
+                                 str(self.config(broken))] + required,
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('HARDLOCKUP_DETECTOR_BUDDY', result.stderr)
+
+    def test_gate_accepts_either_backend_on_gicv3_boards(self):
+        required = self.build_sh_requirements('nanopi-r3s')
+        self.assertIn('HARDLOCKUP_DETECTOR_PERF|HARDLOCKUP_DETECTOR_BUDDY', required)
+        for backend in ('HARDLOCKUP_DETECTOR_PERF', 'HARDLOCKUP_DETECTOR_BUDDY'):
+            with self.subTest(backend=backend):
+                symbols = [s for s in self.GOOD if not s.startswith('HARDLOCKUP_DETECTOR_')]
+                symbols.append(backend)
+                result = subprocess.run([str(base.REPO / 'scripts/verify-kernel-config.py'),
+                                         str(self.config(''.join(f'CONFIG_{s}=y\n' for s in symbols)))]
+                                        + required, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_accepts_a_kernel_that_built_every_panic_switch(self):
-        result = self.gate(self.config(''.join(f'CONFIG_{s}=y\n' for s in self.REQUIRED)))
+        result = self.gate(self.config(''.join(f'CONFIG_{s}=y\n' for s in self.GOOD)))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('门禁通过', result.stdout)
 
-    def test_rejects_the_backend_regression_seen_in_the_61863_deb(self):
-        # 6.18.63 出厂内核的真实形态：HARDLOCKUP_DETECTOR=y，但 PERF_EVENTS=n 让
-        # HARDLOCKUP_DETECTOR_PERF=n —— 检测器没有后端，等于没开。门禁必须抓住
-        # 这个形态，而不是只数 detector 符号。
-        text = ''.join(f'CONFIG_{s}=y\n' for s in self.REQUIRED
-                       if s not in ('PERF_EVENTS', 'HARDLOCKUP_DETECTOR_PERF'))
-        result = self.gate(self.config(text + '# CONFIG_PERF_EVENTS is not set\n'
-                                            + '# CONFIG_HARDLOCKUP_DETECTOR_PERF is not set\n'))
-        self.assertEqual(result.returncode, 1)
-        self.assertIn('HARDLOCKUP_DETECTOR_PERF', result.stderr)
+    def test_accepts_either_hardlockup_backend(self):
+        # GICv3 板型走 perf 后端也必须过：门禁断言的是"至少一个后端在"。
+        for backend in ('HARDLOCKUP_DETECTOR_PERF', 'HARDLOCKUP_DETECTOR_BUDDY'):
+            with self.subTest(backend=backend):
+                symbols = [s for s in self.GOOD if 'HARDLOCKUP_DETECTOR' not in s
+                           or s == 'HARDLOCKUP_DETECTOR']
+                symbols.append(backend)
+                result = self.gate(self.config(''.join(f'CONFIG_{s}=y\n' for s in symbols)))
+                self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_accepts_a_kernel_with_the_perf_backend(self):
-        text = ''.join(f'CONFIG_{s}=y\n' for s in self.REQUIRED)
-        result = self.gate(self.config(text))
-        self.assertEqual(result.returncode, 0, result.stderr)
+    def test_rejects_a_detector_without_any_backend(self):
+        # 真实故障形态：HARDLOCKUP_DETECTOR=y 但两个后端都没编（老 deb 是
+        # PERF_EVENTS=n，实机则是 perf probe 失败）—— 检测器等于没开。门禁必须
+        # 抓住"有检测器、没后端"，而不是只数 detector 符号。
+        symbols = [s for s in self.GOOD if not s.startswith('HARDLOCKUP_DETECTOR_')]
+        result = self.gate(self.config(''.join(f'CONFIG_{s}=y\n' for s in symbols)
+                                       + '# CONFIG_HARDLOCKUP_DETECTOR_PERF is not set\n'
+                                       + '# CONFIG_HARDLOCKUP_DETECTOR_BUDDY is not set\n'))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('HARDLOCKUP_DETECTOR_BUDDY', result.stderr)
+
 
     def test_rejects_a_symbol_with_the_wrong_value(self):
-        text = ''.join(f'CONFIG_{s}=y\n' for s in self.REQUIRED)
-        result = self.gate(self.config(text.replace('CONFIG_PERF_EVENTS=y', 'CONFIG_PERF_EVENTS=m')))
+        text = ''.join(f'CONFIG_{s}=y\n' for s in self.GOOD)
+        result = self.gate(self.config(text.replace('CONFIG_HARDLOCKUP_DETECTOR=y',
+                                                    'CONFIG_HARDLOCKUP_DETECTOR=m')))
         self.assertEqual(result.returncode, 1)
-        self.assertIn('PERF_EVENTS=y', result.stderr)
+        self.assertIn('HARDLOCKUP_DETECTOR=y', result.stderr)
 
     def test_reports_an_unreadable_source_as_a_usage_error(self):
         result = self.gate(self.root / 'absent.config')
@@ -1463,7 +1526,7 @@ class KernelConfigGateTests(unittest.TestCase):
         return path
 
     def test_reads_the_config_out_of_the_kernel_deb(self):
-        result = self.gate(self.deb(''.join(f'CONFIG_{s}=y\n' for s in self.REQUIRED)))
+        result = self.gate(self.deb(''.join(f'CONFIG_{s}=y\n' for s in self.GOOD)))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('config-6.18.63-current-rockchip64', result.stdout)
 

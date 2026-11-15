@@ -207,17 +207,19 @@ force CONFIG_BOOTPARAM_SOFTLOCKUP_PANIC y    # cmdline softlockup_panic=1 生效
 # cmdline 参数，只有 sysctl /proc/sys/kernel/hardlockup_panic，其默认值来自
 # CONFIG_BOOTPARAM_HARDLOCKUP_PANIC。所以 boot.cmd 里不要再传那个无效参数。
 force CONFIG_BOOTPARAM_HARDLOCKUP_PANIC y    # sysctl 默认值 = 1
-# 检测器还要有后端，否则编进去也是空转：
-#   arm64 只有 perf 后端，arch/arm64/Kconfig 用
-#   select HAVE_HARDLOCKUP_DETECTOR_PERF if PERF_EVENTS && HW_PERF_EVENTS && HAVE_PERF_EVENTS_NMI
-#   决定（HAVE_PERF_EVENTS_NMI 由 ARM64_PSEUDO_NMI 提供，需 cmdline
-#   irqchip.gicv3_pseudo_nmi=1 才真正启用）。实测 6.18.63 出厂 deb：
-#   HARDLOCKUP_DETECTOR=y 但 PERF_EVENTS=n → HARDLOCKUP_DETECTOR_PERF=n，
-#   后端不存在，检测器等于没开。故三个前置符号显式 force。
-force CONFIG_ARM64_PSEUDO_NMI y
 force CONFIG_HARDLOCKUP_DETECTOR y
-force CONFIG_PERF_EVENTS y
-force CONFIG_ARM_PMU y
+# 检测器需要后端，而 RK3528 只有 buddy 这一条路：
+#   mainline arch/arm64/boot/dts/rockchip/rk3528.dtsi: gic 节点 compatible =
+#   "arm,gic-400" —— 这颗 SoC 是 GICv2，没有 ICC_* 系统寄存器，伪 NMI 在架构上
+#   就不存在。实测 6.18.63 实机（PERF_EVENTS/ARM_PMU/ARM64_PSEUDO_NMI 全 =y）：
+#   watchdog: NMI not fully supported → Hard watchdog permanently disabled，
+#   perf 后端 probe 返回 -ENODEV，检测器永久停用。
+# 所以不要再 force ARM64_PSEUDO_NMI/PERF_EVENTS/ARM_PMU：关掉 PSEUDO_NMI 后
+# HAVE_HARDLOCKUP_DETECTOR_PERF 不成立，Kconfig 自动选 HARDLOCKUP_DETECTOR_BUDDY
+# （lib/Kconfig.debug：HAVE_HARDLOCKUP_DETECTOR_BUDDY default y if SMP）。
+# buddy 用每 CPU 的 softlockup hrtimer 计数互相监工，不需要 NMI；代价是需要至少
+# 一颗还在跑的核来当"监工"，且判据是采样周期（watchdog_thresh，默认 10s）。
+# 构建期由 scripts/verify-kernel-config.py 断言 HARDLOCKUP_DETECTOR_BUDDY=y。
 
 # ── Debug/Profiling（生产镜像不需要）─────────────────────────────────────
 

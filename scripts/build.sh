@@ -502,12 +502,12 @@ fi
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 出厂门禁：校验最终内核 config 里的锁死检测开关
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# boot.cmd 传 softlockup_panic=1 oops=panic 与 irqchip.gicv3_pseudo_nmi=1；
-# hard lockup 的 panic 默认值来自 CONFIG_BOOTPARAM_HARDLOCKUP_PANIC（sysctl
-# /proc/sys/kernel/hardlockup_panic，主线没有 hardlockup_panic= 这个 cmdline 参数）。
-# Kconfig 对依赖不满足的符号是静默回退：实测 6.18.63 出厂 deb 里
-# HARDLOCKUP_DETECTOR=y，但 PERF_EVENTS=n 使 HARDLOCKUP_DETECTOR_PERF=n —— 后端
-# 不存在，检测器空转。所以只复核最终内核 config，不相信优化脚本写了什么。
+# boot.cmd 传 softlockup_panic=1 oops=panic；hard lockup 的 panic 默认值来自
+# CONFIG_BOOTPARAM_HARDLOCKUP_PANIC（sysctl /proc/sys/kernel/hardlockup_panic，
+# 主线没有 hardlockup_panic= 这个 cmdline 参数）。检测器还必须有可用的后端：
+# RK3528 是 GIC-400（GICv2），perf/NMI 后端 probe 必失败（实测 NMI not fully
+# supported），只能用 buddy；GICv3 的板型继续用 perf。Kconfig 对依赖不满足的
+# 符号是静默回退，所以只复核最终内核 config，不相信优化脚本写了什么。
 if [ -f "${KERNEL_OPTIMIZE_SCRIPT}" ]; then
   echo ""
   echo "🔒 出厂门禁：校验内核 config 的锁死检测开关..."
@@ -517,21 +517,28 @@ if [ -f "${KERNEL_OPTIMIZE_SCRIPT}" ]; then
     echo "❌ 门禁：未找到 linux-image-*-${KERNEL_FAMILY} deb，无法确认锁死检测开关"
     exit 1
   fi
-  # 按内核基线分流，而不是按板型名：6.18 主线（rockchip64-current）的 arm64 有 perf
-  # hardlockup 后端，全部要求；Rockchip vendor 6.1 没有（arch/arm64/Kconfig 既不
-  # select HAVE_HARDLOCKUP_DETECTOR_PERF 也不提供 HAVE_PERF_EVENTS_NMI），只要求
-  # softlockup，免得门禁把一棵本来就没有该能力的厂商树判死。
-  KCONFIG_REQUIRED=(DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR BOOTPARAM_SOFTLOCKUP_PANIC ARM64_PSEUDO_NMI)
+  # 后端由 SoC 决定，所以按 profile 断言，不能按内核基线一刀切：
+  #   nanopi-zero2 (RK3528) 的 GIC 是 arm,gic-400（GICv2），伪 NMI 不存在，
+  #     perf 后端 probe 必失败（实测 NMI not fully supported）→ 只能 buddy；
+  #     这里必须要求 buddy，否则"PERF_EVENTS=y 但 GICv2"的坏件又能蒙混过关。
+  #   GICv3 板型（r3s/orangepi4-lts）→ perf 链，任一个后端在即可。
+  #   Rockchip vendor 6.1（r28s）两者都没有，只要求 softlockup。
+  KCONFIG_REQUIRED=(DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR BOOTPARAM_SOFTLOCKUP_PANIC)
   if [ "$BASE_KERNEL_CONFIG" = "linux-rockchip64-current" ]; then
-    KCONFIG_REQUIRED+=(HARDLOCKUP_DETECTOR HARDLOCKUP_DETECTOR_PERF BOOTPARAM_HARDLOCKUP_PANIC PERF_EVENTS)
+    KCONFIG_REQUIRED+=(HARDLOCKUP_DETECTOR BOOTPARAM_HARDLOCKUP_PANIC)
+    if [ "$PROFILE" = nanopi-zero2 ]; then
+      KCONFIG_REQUIRED+=(HARDLOCKUP_DETECTOR_BUDDY)
+    else
+      KCONFIG_REQUIRED+=('HARDLOCKUP_DETECTOR_PERF|HARDLOCKUP_DETECTOR_BUDDY')
+    fi
   fi
   if ! python3 "${SCRIPT_DIR}/verify-kernel-config.py" "${KERNEL_IMAGE_DEB}" "${KCONFIG_REQUIRED[@]}"; then
     echo ""
     echo "🛑 出厂门禁拦截：内核缺少锁死检测开关或它的后端。"
     echo "   后果：内核死锁不会 panic，A/B 试启动计数不递减，节点只能人工断电。"
-    echo "   检查 configs/kernel/${PROFILE}.sh：6.18 主线还需要 perf 后端"
-    echo "   （PERF_EVENTS → HW_PERF_EVENTS → HARDLOCKUP_DETECTOR_PERF），"
-    echo "   关掉 PROFILING 会把这整条链静默撤掉。"
+    echo "   检查 configs/kernel/${PROFILE}.sh：硬锁死需要一个后端（GICv2 → buddy，"
+    echo "   GICv3 → perf）；关掉 PROFILING 会静默撤掉 perf 链，打开 ARM64_PSEUDO_NMI"
+    echo "   在 GICv2 上则会让检测器 probe 失败、永久停用。"
     exit 1
   fi
 fi

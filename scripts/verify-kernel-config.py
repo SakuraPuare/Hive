@@ -13,7 +13,8 @@ Kconfig 对依赖不满足的符号是**静默**回退（"# CONFIG_X is not set"
 所以只认最终内核 config，不相信优化脚本写了什么。
 
 用法:
-  verify-kernel-config.py <linux-image deb 或裸 config 文件> SYMBOL[=VALUE]...
+  verify-kernel-config.py <linux-image deb 或裸 config 文件> 需求...
+  需求写法：SYMBOL[=VALUE]；`A|B` 表示两者只需一个等于 y（例如硬锁死后端）。
 示例:
   verify-kernel-config.py linux-image-current-rockchip64_*.deb \
       HARDLOCKUP_DETECTOR BOOTPARAM_HARDLOCKUP_PANIC ARM64_PSEUDO_NMI
@@ -89,11 +90,21 @@ def main():
     config = parse_config(text)
     missing = []
     for item in requirements:
-        symbol, sep, wanted = item.partition('=')
-        wanted = wanted if sep else 'y'
-        actual = config.get(symbol)
-        if actual != wanted:
-            missing.append(f'{symbol}={wanted}（实际 {actual if actual else "未设置"}）')
+        alternatives = [alt for alt in item.split('|') if alt]
+        if not alternatives:
+            continue
+        found, wanted_desc = False, []
+        for alternative in alternatives:
+            symbol, sep, wanted = alternative.partition('=')
+            wanted = wanted if sep else 'y'
+            wanted_desc.append(f'{symbol}={wanted}')
+            if config.get(symbol) == wanted:
+                found = True
+                break
+        if not found:
+            actual = ' / '.join(f'{alt.split("=")[0]}={config.get(alt.split("=")[0], "未设置")}'
+                                for alt in alternatives)
+            missing.append(' 或 '.join(wanted_desc) + f'（实际 {actual}）')
     if missing:
         print(f'❌ 内核 config 门禁：{os.path.basename(name)} 缺少 {len(missing)} 个必需符号：',
               file=sys.stderr)
