@@ -265,10 +265,18 @@ prefetch_kernel() {
 # （26.08 → 26.11 时 B 哈希从 Bc08fea 变成 B5416c2）。默认从框架自己打印的日志里取，
 # 也可以用 --rootfs-ref 显式指定。
 rootfs_ref_from_log() {
-    local f ref
-    for f in $(ls -t "${ROOT_DIR}"/output/logs/log-build-*.log "${ROOT_DIR}"/output/*.log 2>/dev/null | head -20); do
+    local f ref tag
+    # Armbian 把日志写在框架机的 output/logs 下（仓库根 output/ 里没有构建日志）。
+    # 两种行都能给出 tag：oras 的 "ORAS manifest from ghcr.io/armbian/os/rootfs-…:<tag>"，
+    # 以及 re-versioning 行的 "rootfs-arm64-trixie-cli(tar.zst)::<tag>"（缓存命中时只有后者）。
+    for f in $(ls -t \
+            "${ARMBIAN_DIR}"/output/logs/log-*.log \
+            "${ARMBIAN_DIR}"/output/logs/log-*.log.ans \
+            "${ROOT_DIR}"/output/logs/log-*.log 2>/dev/null | head -30); do
         ref="$(grep -ho "armbian/os/rootfs-[A-Za-z0-9._-]*:[A-Za-z0-9._-]*" "$f" 2>/dev/null | tail -n 1)"
         [ -n "$ref" ] && { printf '%s' "$ref"; return 0; }
+        tag="$(grep -ho "rootfs-[A-Za-z0-9._-]*(tar\.zst)::[A-Za-z0-9._-]*" "$f" 2>/dev/null | tail -n 1)"
+        [ -n "$tag" ] && { printf 'armbian/os/%s:%s' "${tag%%(*}" "${tag##*::}"; return 0; }
     done
     return 1
 }
