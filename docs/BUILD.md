@@ -126,6 +126,47 @@ NODE_REGISTRY_URL=https://registry.example.com
 XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 ```
 
+### 构建下载加速（大陆网络）
+
+构建期的下载分四类，前三类已自动走镜像：
+
+| 内容 | 来源 | 处理 |
+|------|------|------|
+| apt / debootstrap 包 | `mirrors.tuna.tsinghua.edu.cn` | `REGIONAL_MIRROR=china`，本地构建默认开启 |
+| mainline 内核 git 源 | `mirrors.tuna.tsinghua.edu.cn/git/linux-stable.git` | 同上（等价于 `MAINLINE_MIRROR=tuna`） |
+| u-boot / kernel 裸树包 | `ghcr.io`（411 MiB / 331 MiB，full 3.7 GiB） | `scripts/fetch-gitballs.sh` 预取，走 `ghcr.nju.edu.cn` |
+| rootfs 缓存包 | `ghcr.io/armbian/os/rootfs-arm64-trixie-cli`（约 252 MiB） | 同上，按框架打印的 tag 预取 |
+| GitHub Releases 二进制、厂商内核分支、rkbin | `github.com` | 直连；`download-binaries.sh` 用 `~/.cache/hive-binaries` 持久缓存 |
+
+实测（构建机 192.168.100.162）：`ghcr.io` 约 150 KB/s，u-boot 包要 45 min；`ghcr.nju.edu.cn` 同一个 blob 50 MB/s，约 8 s；TUNA apt 20 MB/s；GitHub Releases 约 0.4 MB/s。
+
+框架自带的镜像开关这三个都用不了，所以 `build.sh` 把它们钉在官方值，改用下面的预取：
+
+- `GHCR_MIRROR=nju`：oras 要先向 `<mirror>/token` 换 token，nju 没有这个端点（404），oras 判 not_found 后仍回落到 `ghcr.io` 慢速直连。
+- `UBOOT_MIRROR` 的 china 预设：把 u-boot 源换成第三方镜像，该镜像匿名克隆返回 401；`orangepi4-lts` 的 `BOOTSOURCE` 直接取自它，所以 `build.sh` 把这个值硬钉成 `github`（不可被 `.env` 覆盖）。
+- `GITHUB_MIRROR=ghproxy`：ghfast.top 对 release 资产只回 302 指回 GitHub，实测 473 KB/s，直连 418 KB/s，等于没有加速。
+
+`build.sh` 每次构建前都会预取（幂等，已就绪时只读标记文件）。也可以单独跑：
+
+```bash
+./scripts/fetch-gitballs.sh --board nanopi-zero2 --branch current    # u-boot + kernel 6.18 shallow
+./scripts/fetch-gitballs.sh --board nanopi-r28s  --branch vendor     # kernel 6.1
+./scripts/fetch-gitballs.sh --board nanopi-zero2 --branch current --kernel-git full
+./scripts/fetch-gitballs.sh --board nanopi-zero2 --branch current --dry-run
+./scripts/fetch-gitballs.sh --board nanopi-zero2 --branch current \
+    --rootfs-ref armbian/os/rootfs-arm64-trixie-cli:202611-93ad2762aa82-H6eccde-B5416c2   # rootfs 包显式 tag
+```
+
+- 包按 manifest 的 sha256 校验后放进 `cache/git-bundles/{u-boot,kernel}/`；框架在 `lib/functions/general/git-oras-tree.sh` 里见到该文件存在就完全不联网。
+- 主拷贝留在 `~/.cache/hive-gitballs`（`HIVE_GITBALL_CACHE` 可改）。框架提取完会删掉 `cache/git-bundles` 下那份，下次从主拷贝直接装回。
+- 内核版本不硬编码：脚本用 `compile.sh configdump` 读 `KERNEL_MAJOR_MINOR`，与框架实际判定一致。
+- 镜像默认 `ghcr.nju.edu.cn`；换镜像或强制直连用 `HIVE_GHCR_MIRROR=<host>|direct`。
+- rootfs 缓存包也是 ghcr.io 上的 OCI 工件，走 oras，失败会直接让构建以 `ERROR 43` 中止（`ARTIFACT_IGNORE_CACHE=yes` 能绕过，但会把内核一起重编）。框架的本地缓存判定只看 `cache/rootfs/rootfs-<arch>-<release>-<type>_<tag>.tar.zst` 是否存在，所以脚本按同样方式预取；tag 由框架的 `rootfs_cache_id` + `yyyymm` 决定，框架升级会变（26.08→26.11 时 `…-Bc08fea` 变成 `…-B5416c2`），默认从框架自己打印的日志里取，取不到才跳过。
+- 预取失败不会让构建失败，只是回落到 ghcr.io 慢速直连。
+- 境内/境外的判断看 `GITHUB_SERVER_URL`（只有 GitHub 官方 runner 是 `https://github.com`），不看 `GITHUB_ACTIONS`：自托管 `develop` runner 同样会导出 `GITHUB_ACTIONS=true`，按它判断会让境内 CI 走官方源。
+
+仍直连的部分：Docker 基础镜像 `ghcr.io/armbian/docker-armbian-build:*`（仅首次）、GitHub Releases 上的 xray/mihomo/frp 等（有持久缓存）、`rockchip-linux/rkbin`、R28S 的厂商内核分支 `github.com/armbian/linux-rockchip`。确实慢时给 `git`/`curl` 设 `https_proxy`（框架用 `env -i` 跑 oras 时也会透传 `http_proxy`/`https_proxy`/`HTTP_PROXY`/`HTTPS_PROXY`）；Docker 守护进程拉镜像要另外在 `/etc/docker/daemon.json` 或 systemd drop-in 里配代理。
+
 ### 步骤 5：构建镜像
 
 ```bash
@@ -136,7 +177,8 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 1. 根据 CPU 核数自动设置并行编译线程
 2. 渲染配置模板（`config.env`, `frpc.toml`）
 3. 同步 userpatches 到 Armbian build 目录
-4. 调用 `compile.sh` 完成完整构建
+4. 预取 GHCR 上的 u-boot / kernel 裸树包与 rootfs 缓存包（见上节，幂等）
+5. 调用 `compile.sh` 完成完整构建
 
 首次构建约需 30-90 分钟（视机器性能）。后续构建因 ccache 缓存通常只需 10-20 分钟。
 

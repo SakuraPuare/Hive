@@ -423,6 +423,22 @@ COMPRESS_THREADS="${COMPRESS_THREADS:-$(nproc)}"
 # 换内核分支/版本时框架按需重拉，需要 bisect 或跨 legacy/current/edge 共享历史时
 # 用 KERNEL_GIT=full 覆盖。
 KERNEL_GIT="${KERNEL_GIT:-shallow}"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# GHCR 大包预取（u-boot / kernel 裸树包）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Armbian 的裸树包（u-boot 411MiB、kernel shallow 331MiB、full 3.7GiB）只放在 ghcr.io。
+# 实测构建机到 ghcr.io 约 150 KB/s（411MiB ≈ 45min，full ≈ 7h），而 ghcr.nju.edu.cn
+# 同一个 blob 51 MB/s；但 oras 的 token 端点没法镜像，框架自带的 GHCR_MIRROR 用不上。
+# 这里绕开 oras：用 ghcr.io 签发的匿名 token 从镜像取 manifest+blob，校验 sha256 后
+# 把 tar 放进 cache/git-bundles/；框架见到文件存在就完全跳过联网。失败不致命，
+# 只是回落到原来的慢速直连。
+echo ""
+echo ">>> 预取 git 裸树包（GHCR 镜像）..."
+if ! "${SCRIPT_DIR}/fetch-gitballs.sh" --board "${BOARD}" --branch "${BRANCH}" --kernel-git "${KERNEL_GIT}"; then
+  echo "⚠ 预取未全部成功，Armbian 会自己从 ghcr.io 拉剩余的包（慢）"
+fi
+
 AB_ARGS=()
 if [ "$HIVE_AB" = yes ]; then AB_ARGS=(HIVE_AB=yes COMPRESS_OUTPUTIMAGE=sha); fi
 BUILD_STARTED=$(mktemp)
