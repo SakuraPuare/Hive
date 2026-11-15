@@ -174,6 +174,24 @@ disable CONFIG_HAMRADIO          # 业余无线电 AX.25/NetRom — 不需要
 # 在本机型上不会被 probe，关掉即可，不影响 DMA 隔离能力。
 disable CONFIG_VSI_IOMMU
 
+# ── 无人值守恢复：锁死检测 ───────────────────────────────────────────────
+# 与 nanopi-zero2.sh 同一套理由：基线 defconfig 没有 CONFIG_DEBUG_KERNEL，
+# NanoPi R3S 也是无人值守节点，内核态死锁必须能自己 panic 复位。
+force CONFIG_DEBUG_KERNEL y                  # 锁死检测的前置开关
+force CONFIG_LOCKUP_DETECTOR y               # select-only 符号，显式钉死免得残留旧行
+force CONFIG_SOFTLOCKUP_DETECTOR y
+force CONFIG_BOOTPARAM_SOFTLOCKUP_PANIC y    # cmdline softlockup_panic=1 生效
+# hard lockup 的 panic 默认值来自 CONFIG_BOOTPARAM_HARDLOCKUP_PANIC（主线没有
+# hardlockup_panic= 这个 cmdline 参数），且检测器需要 perf 后端：6.18 主线 arm64
+# 用 PERF_EVENTS && HW_PERF_EVENTS && HAVE_PERF_EVENTS_NMI 选
+# HARDLOCKUP_DETECTOR_PERF。本文件下面会 disable PROFILING，不显式 force
+# PERF_EVENTS 的话 olddefconfig 会把它置 n，后端随之消失（6.18.63 出厂 deb 实况）。
+force CONFIG_ARM64_PSEUDO_NMI y
+force CONFIG_HARDLOCKUP_DETECTOR y
+force CONFIG_BOOTPARAM_HARDLOCKUP_PANIC y
+force CONFIG_PERF_EVENTS y
+force CONFIG_ARM_PMU y
+
 # ── Debug/Profiling（生产镜像不需要）─────────────────────────────────────
 
 disable CONFIG_PROFILING         # perf 基础设施

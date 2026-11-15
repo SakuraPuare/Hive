@@ -1236,6 +1236,32 @@ reset() { echo RESET; exit 9; }
             with self.subTest(symbol=symbol):
                 self.assertIn(f'CONFIG_{symbol}=y', config)
 
+    def test_every_mainline_profile_builds_the_hardlockup_chain(self):
+        # 6.18 主线（rockchip64-current）的三个板型都关 PROFILING，必须显式钉死
+        # PERF_EVENTS/ARM_PMU，否则 arm64 选不到 HARDLOCKUP_DETECTOR_PERF，门禁
+        # 会在构建末尾把它们判死（6.18.63 出厂 deb 就是这个形态）。
+        for profile in ['nanopi-zero2', 'nanopi-r3s', 'orangepi4-lts']:
+            with self.subTest(profile=profile):
+                temp = tempfile.TemporaryDirectory(prefix=f'hive-kernel-{profile}-')
+                self.addCleanup(temp.cleanup)
+                root = Path(temp.name)
+                script = root / 'kernel-config'
+                script.write_text((base.REPO / 'configs/kernel' / f'{profile}.sh').read_text())
+                baseline = root / 'baseline.config'
+                baseline.write_text('# CONFIG_DEBUG_KERNEL is not set\n'
+                                    '# CONFIG_SOFTLOCKUP_DETECTOR is not set\n'
+                                    '# CONFIG_HARDLOCKUP_DETECTOR is not set\n'
+                                    '# CONFIG_ARM64_PSEUDO_NMI is not set\n'
+                                    'CONFIG_PROFILING=y\n')
+                produced = root / 'produced.config'
+                subprocess.run(['bash', str(script), str(baseline), str(produced)],
+                               check=True, capture_output=True)
+                config = produced.read_text().splitlines()
+                for symbol in ['DEBUG_KERNEL', 'SOFTLOCKUP_DETECTOR', 'HARDLOCKUP_DETECTOR',
+                               'BOOTPARAM_HARDLOCKUP_PANIC', 'ARM64_PSEUDO_NMI',
+                               'PERF_EVENTS', 'ARM_PMU']:
+                    self.assertIn(f'CONFIG_{symbol}=y', config, f'{profile} lacks {symbol}')
+
     def test_r28s_vendor_kernel_also_builds_the_lockup_detectors(self):
         # R28S uses the vendor 6.1 baseline, which has ARM64_PSEUDO_NMI=y but no
         # CONFIG_DEBUG_KERNEL either; without the detectors the same boot.cmd
