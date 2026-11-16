@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Operator exit servers report cumulative counters and renew a <=45s lease.
-# Customer gateways never use their device token for accounting.
-# A revocation restarts Xray to terminate existing connections as well as logins.
+# Every node runs Xray again. Trusted exit servers use /etc/hive/server-token;
+# ordinary devices fall back to their device token so a freshly flashed board
+# starts serving as soon as it is online. A revocation restarts Xray to
+# terminate existing connections as well as logins.
 set -euo pipefail
 umask 077
 [ ! -f /etc/hive/config.env ] || source /etc/hive/config.env
@@ -10,20 +11,31 @@ hive_load_node_info /etc/hive/node-info
 source /usr/local/bin/hive-subscription-state
 exec 9>"$HIVE_ACCESS_DIR/xray.sync.lock"
 flock -n 9 || exit 0
-# Absence of a separately provisioned server token means customer-device mode.
-# Stop historical exit access even if its previous lease has not yet expired.
-if [ ! -s /etc/hive/server-token ]; then
-    hive_stop_xray
-    exit 0
-fi
-SERVER_TOKEN=$(cat /etc/hive/server-token)
 fail() {
     echo "[hive-xray-sync] $*"
     # A transport failure may use the remaining short lease; never extend it.
     if ! hive_lease_valid xray; then hive_stop_xray || true; fi
     exit 1
 }
-[ -n "${NODE_REGISTRY_URL:-}" ] && [ -n "${MAC:-}" ] && [ -n "$SERVER_TOKEN" ] || fail 'server credentials missing'
+[ -n "${NODE_REGISTRY_URL:-}" ] && [ -n "${MAC:-}" ] || fail 'registry URL or MAC missing'
+# Prefer the operator exit credential; fall back to the device credential so
+# unclaimed/customer nodes keep the pre-2026-10-27 plug-and-play behaviour.
+if [ -s /etc/hive/server-token ]; then
+    AUTH_TOKEN=$(cat /etc/hive/server-token)
+    ACCOUNTING_URL="${NODE_REGISTRY_URL%/}/servers/${MAC}/accounting"
+    ACCOUNTING_MODE=server
+elif [ -s /etc/hive/device-token ]; then
+    AUTH_TOKEN=$(cat /etc/hive/device-token)
+    ACCOUNTING_URL="${NODE_REGISTRY_URL%/}/nodes/${MAC}/xray-users"
+    ACCOUNTING_MODE=device
+elif [ -n "${NODE_REGISTRY_API_SECRET:-}" ]; then
+    AUTH_TOKEN="$NODE_REGISTRY_API_SECRET"
+    ACCOUNTING_URL="${NODE_REGISTRY_URL%/}/nodes/${MAC}/xray-users"
+    ACCOUNTING_MODE=device
+else
+    fail 'device or server credentials missing'
+fi
+[ -n "$AUTH_TOKEN" ] || fail 'empty device or server credential'
 systemctl is-active --quiet hive-subscription-guard.timer || fail 'subscription watchdog is not running'
 # One-time cutover: old runtime counters were billed by Prometheus. Start a
 # fresh epoch instead of charging the entire pre-upgrade lifetime again.
@@ -38,9 +50,9 @@ fi
 post_report() {
     local body status
     body=$(mktemp "$HIVE_ACCESS_DIR/accounting-response.XXXXXX") || return 1
-    if ! status=$(curl -4 -sS --max-time 5 -o "$body" -w '%{http_code}' -H "Authorization: Bearer $SERVER_TOKEN" \
+    if ! status=$(curl -4 -sS --max-time 5 -o "$body" -w '%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" \
       -H 'Content-Type: application/json' --data-binary "@$1" \
-      "${NODE_REGISTRY_URL%/}/servers/${MAC}/accounting"); then
+      "$ACCOUNTING_URL"); then
         rm -f "$body"; return 1
     fi
     case "$status" in
@@ -74,7 +86,17 @@ prepare_generation() {
     local state generation tmp
     # Only called for a fresh, empty Xray runtime; never relabel existing traffic.
     replay_reports || return 1
-    state=$(curl -4 -fsS --max-time 5 -H "Authorization: Bearer $SERVER_TOKEN" \
+    # Device-token agents have no server generation cursor; keep the legacy
+    # generation 0 so their counters never collide with a trusted-server fence.
+    if [ "$ACCOUNTING_MODE" = "device" ]; then
+        tmp=$(mktemp "${HIVE_TRAFFIC_GENERATION}.XXXXXX") || return 1
+        if ! jq -n --arg epoch "$epoch" '{epoch:$epoch,generation:"0"}' > "$tmp" ||
+           ! sync -f "$tmp" || ! mv -f "$tmp" "$HIVE_TRAFFIC_GENERATION" || ! sync -f "${HIVE_TRAFFIC_GENERATION%/*}"; then
+            rm -f "$tmp"; return 1
+        fi
+        return 0
+    fi
+    state=$(curl -4 -fsS --max-time 5 -H "Authorization: Bearer $AUTH_TOKEN" \
       "${NODE_REGISTRY_URL%/}/servers/${MAC}/accounting/state") || return 1
     generation=$(printf '%s' "$state" | jq -er '.generation | select(type == "string" and test("^(0|[1-9][0-9]{0,18})$"))') || return 1
     # Keep shell arithmetic exact, including values beyond JSON's 53-bit range.

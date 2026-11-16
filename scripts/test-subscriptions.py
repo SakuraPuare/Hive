@@ -56,6 +56,20 @@ elif name=='curl':
     if args[-1].endswith('/accounting/state'):
         if (root/'fail-state').exists():sys.exit(22)
         print(json.dumps({'generation':str(state.get('generation',0)), 'epoch':state.get('accounting_epoch','')}))
+    elif args[-1].endswith('/xray-users'):
+        report=json.loads(Path(args[args.index('--data-binary')+1][1:]).read_text())
+        with (root/'reports').open('a') as f:f.write(json.dumps(report)+'\n')
+        counters=state.setdefault('counters',{})
+        for c in report['counters']:
+            key=report['epoch']+'/'+c['name']
+            old=counters.get(key,0);value=int(c['value'])
+            state['billed']=state.get('billed',0)+max(0,value-old)
+            counters[key]=max(old,value)
+        save()
+        if (root/'lose-response').exists():
+            (root/'lose-response').unlink();sys.exit(28)
+        Path(args[args.index('-o')+1]).write_text((root/'desired.json').read_text())
+        print(200,end='')
     elif args[-1].endswith('/accounting'):
         report=json.loads(Path(args[args.index('--data-binary')+1][1:]).read_text())
         with (root/'reports').open('a') as f:f.write(json.dumps(report)+'\n')
@@ -159,15 +173,18 @@ class SubscriptionScripts(unittest.TestCase):
         self.state_update(firewall={name:([owned,owned] if blocked else [])+unrelated for name in ['iptables','ip6tables']})
         return {name:unrelated for name in ['iptables','ip6tables']}
 
-    def test_customer_device_never_reports_even_with_device_or_legacy_key(self):
+    def test_device_token_runs_xray_and_uses_legacy_endpoint(self):
         (self.root/'etc/hive/server-token').unlink()
         (self.root/'etc/hive/device-token').write_text('customer-device-token')
+        self.run_agent('hive-xray-sync')
         self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'123'}])
         self.run_agent('hive-xray-sync')
-        self.assertFalse(self.state()['xray'])
-        self.assertFalse(self.state()['connections'])
-        self.assertFalse((self.root/'reports').exists())
-        self.assertNotIn('curl ', (self.root/'calls').read_text())
+        self.assertTrue(self.state()['xray'])
+        calls=(self.root/'calls').read_text()
+        self.assertIn('Authorization: Bearer customer-device-token',calls)
+        self.assertIn('/nodes/aabbccddeeff/xray-users',calls)
+        self.assertNotIn('/servers/aabbccddeeff/accounting',calls)
+        self.assertIn('123',(self.root/'reports').read_text())
 
     def test_exit_uses_only_its_separate_server_credential(self):
         (self.root/'etc/hive/device-token').write_text('customer-device-token')
@@ -178,15 +195,16 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertNotIn('customer-device-token',calls)
         self.assertNotIn('Bearer test-token',calls)
 
-    def test_removing_server_key_stops_existing_exit_without_renewal(self):
+    def test_removing_server_key_falls_back_to_device_endpoint(self):
         self.run_agent('hive-xray-sync')
         old=(self.root/'reports').read_text()
         (self.root/'etc/hive/server-token').unlink()
+        (self.root/'etc/hive/device-token').write_text('customer-device-token')
         self.state_update(connections=True)
         self.run_agent('hive-xray-sync')
-        self.assertEqual((self.root/'reports').read_text(),old)
-        self.assertFalse(self.state()['xray'])
-        self.assertFalse(self.state()['connections'])
+        self.assertNotEqual((self.root/'reports').read_text(),old)
+        self.assertTrue(self.state()['xray'])
+        self.assertIn('/nodes/aabbccddeeff/xray-users',(self.root/'calls').read_text())
 
     def test_upgrade_does_not_rebill_prometheus_history(self):
         self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'999999'}])

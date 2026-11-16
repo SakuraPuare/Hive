@@ -30,9 +30,10 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// EasyTier IP 早期分配（provision 首步调用，仅需 MAC，幂等）
 	mux.HandleFunc("POST /nodes/allocate-easytier", h.HandleAllocateEasytier)
 	mux.HandleFunc("POST /nodes/heartbeat", h.HandleHeartbeat)
-	// 旧设备计费接口停止服务；用户授权与计费仅接受独立出口凭据。
+	// 旧设备计费接口：GET 保留 426 提示升级；POST 恢复设备凭据计费，
+	// 让普通节点（没有 server-token）也能开机即跑 Xray。
 	mux.HandleFunc("GET /nodes/{mac}/xray-users", h.HandleLegacyNodeXrayUsers)
-	mux.HandleFunc("POST /nodes/{mac}/xray-users", h.HandleLegacyNodeXrayUsers)
+	mux.HandleFunc("POST /nodes/{mac}/xray-users", h.HandleLegacyNodeAccounting)
 	mux.HandleFunc("POST /servers/{mac}/accounting", h.HandleNodeAccounting)
 	mux.HandleFunc("GET /servers/{mac}/accounting/state", h.HandleNodeAccountingState)
 	mux.HandleFunc("POST /admin/nodes/{mac}/server-credential", perm("node:write")(h.HandleIssueServerCredential))

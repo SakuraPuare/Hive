@@ -53,7 +53,35 @@ var counterEpoch = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 // @Failure 500 {object} ErrorResponse
 // @Router /servers/{mac}/accounting [post]
 func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
-	if !h.Auth.RequireServerAuth(w, r) {
+	h.handleAccounting(w, r, true)
+}
+
+// HandleLegacyNodeAccounting is the device-token path used by ordinary nodes.
+// It preserves the pre-trusted-exit behaviour: any node that has a device
+// credential may renew access and report the subscriptions assigned to it.
+// @Summary Report device traffic and renew subscription authorization (legacy device mode)
+// @ID NodeAccountingLegacy
+// @Tags nodes
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param mac path string true "Node MAC"
+// @Param body body NodeAccountingRequest true "Cumulative traffic counters"
+// @Success 200 {object} NodeXrayUsersResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /nodes/{mac}/xray-users [post]
+func (h *Handler) HandleLegacyNodeAccounting(w http.ResponseWriter, r *http.Request) {
+	h.handleAccounting(w, r, false)
+}
+
+func (h *Handler) handleAccounting(w http.ResponseWriter, r *http.Request, requireServer bool) {
+	if requireServer {
+		if !h.Auth.RequireServerAuth(w, r) {
+			return
+		}
+	} else if !h.Auth.RequireDeviceAuth(w, r) {
 		return
 	}
 	var report NodeAccountingRequest
@@ -85,15 +113,17 @@ func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
 		if node.MAC == "" {
 			return gorm.ErrRecordNotFound
 		}
-		ok, err := middleware.ValidServerCredential(tx, r)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return errUnauthorized
-		}
-		if err := advanceAccountingGeneration(tx, mac, report); err != nil {
-			return err
+		if requireServer {
+			ok, err := middleware.ValidServerCredential(tx, r)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return errUnauthorized
+			}
+			if err := advanceAccountingGeneration(tx, mac, report); err != nil {
+				return err
+			}
 		}
 		for _, c := range report.Counters {
 			id, err := strconv.ParseUint(counterName.FindStringSubmatch(c.Name)[1], 10, 32)
@@ -101,7 +131,7 @@ func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 			var sub struct{ ID uint }
-			// Never let a server charge a subscription outside its assigned lines.
+			// Never let a reporter charge a subscription outside its assigned lines.
 			if err := tx.Raw("SELECT cs.id FROM customer_subscriptions cs WHERE cs.id = ? AND EXISTS (SELECT 1 FROM plan_lines pl JOIN line_nodes ln ON ln.line_id = pl.line_id WHERE pl.plan_id = cs.plan_id AND ln.node_mac = ?) FOR UPDATE", id, mac).Scan(&sub).Error; err != nil {
 				return err
 			}
@@ -144,7 +174,7 @@ func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, 500, fmt.Sprintf("accounting: %v", err))
 		return
 	}
-	h.HandleNodeXrayUsers(w, r)
+	h.respondXrayUsers(w, r, requireServer)
 }
 
 // Legacy agents cannot renew authorization without metering.
@@ -152,5 +182,5 @@ func (h *Handler) HandleLegacyNodeXrayUsers(w http.ResponseWriter, r *http.Reque
 	if !h.Auth.RequireDeviceAuth(w, r) {
 		return
 	}
-	h.jsonErr(w, http.StatusUpgradeRequired, "device accounting removed: provision a trusted exit server and use /servers/{mac}/accounting")
+	h.jsonErr(w, http.StatusUpgradeRequired, "upgrade node agent: POST cumulative counters to this endpoint")
 }

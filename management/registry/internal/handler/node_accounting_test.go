@@ -26,7 +26,7 @@ func TestNodeAccountingCommitsBeforeGrantAndRetries(t *testing.T) {
 	_, id, credential := accountingFixture(t)
 	mustExec(t, "UPDATE customer_subscriptions SET traffic_limit = 100 WHERE id = ?", id)
 	report := NodeAccountingRequest{Epoch: "first", Counters: []NodeTrafficCounter{{Name: fmt.Sprintf("user>>>sub-%d>>>traffic>>>uplink", id), Value: 60}}}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		resp := doBearer("POST", "/servers/aabbccddeeff/accounting", report, credential)
 		assertStatus(t, resp, 200)
 		var out NodeXrayUsersResponse
@@ -57,6 +57,29 @@ func TestNodeAccountingCommitsBeforeGrantAndRetries(t *testing.T) {
 	testDB.Raw("SELECT traffic_used FROM customer_subscriptions WHERE id = ?", id).Scan(&used)
 	if used != 0 {
 		t.Fatalf("out-of-order report billed %d", used)
+	}
+}
+
+func TestLegacyDeviceAccountingServesAndBills(t *testing.T) {
+	_, id, _ := accountingFixture(t)
+	mustExec(t, "UPDATE nodes SET server_enabled = 0, owner_customer_id = NULL")
+	report := NodeAccountingRequest{Epoch: "device-runtime", Counters: []NodeTrafficCounter{{
+		Name:  fmt.Sprintf("user>>>sub-%d>>>traffic>>>uplink", id),
+		Value: 40,
+	}}}
+	for range 2 {
+		resp := doBearer("POST", "/nodes/aabbccddeeff/xray-users", report, deviceToken(t, "aabbccddeeff"))
+		assertStatus(t, resp, 200)
+		var out NodeXrayUsersResponse
+		decodeBody(t, resp, &out)
+		if len(out.Users) != 1 || out.LeaseSeconds != 45 {
+			t.Fatalf("device grant: %+v", out)
+		}
+	}
+	var used int64
+	testDB.Raw("SELECT traffic_used FROM customer_subscriptions WHERE id = ?", id).Scan(&used)
+	if used != 40 {
+		t.Fatalf("device accounting used=%d, want 40", used)
 	}
 }
 

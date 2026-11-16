@@ -2,7 +2,7 @@
 
 Hive 支持两类签名更新包，均通过后台「OTA 更新」上传并分配设备。
 
-客户网关与可信出口使用同一板型镜像，但出口权限必须单独配置：只有运营方出口安装 `/etc/hive/server-token`。客户镜像默认不运行出口 Xray；固件健康确认只在服务器密钥非空时检查 Xray 服务。设备心跳和 OTA 仍使用 `/etc/hive/device-token`。升级到服务器计费版本的迁移步骤见 [订阅授权说明](subscription-enforcement.md)。
+客户网关与可信出口使用同一板型镜像。自 2026-11-16 起恢复“开机即运行 Xray”的兼容行为：所有节点默认启动 Xray；安装 `/etc/hive/server-token` 的运营方出口走可信出口计费（`/servers/{mac}/accounting`），没有该文件的普通设备回退到设备凭据（`POST /nodes/{mac}/xray-users`）。设备心跳和 OTA 仍使用 `/etc/hive/device-token`。可信出口的独立密钥与迁移步骤见 [订阅授权说明](subscription-enforcement.md)。
 
 | 类型 | 更新范围 | 生效与回滚 |
 |---|---|---|

@@ -347,7 +347,18 @@ type NodeXrayUsersResponse struct {
 
 // HandleNodeXrayUsers responds after durable accounting has committed.
 func (h *Handler) HandleNodeXrayUsers(w http.ResponseWriter, r *http.Request) {
-	if !h.Auth.RequireServerAuth(w, r) {
+	h.respondXrayUsers(w, r, true)
+}
+
+// respondXrayUsers returns the subscriptions this node may serve. Trusted exit
+// servers only see subscriptions assigned to them via lines; legacy device mode
+// keeps the pre-2026-10-27 behaviour where every enabled node can serve a line.
+func (h *Handler) respondXrayUsers(w http.ResponseWriter, r *http.Request, requireServer bool) {
+	if requireServer {
+		if !h.Auth.RequireServerAuth(w, r) {
+			return
+		}
+	} else if !h.Auth.RequireDeviceAuth(w, r) {
 		return
 	}
 
@@ -368,20 +379,23 @@ func (h *Handler) HandleNodeXrayUsers(w http.ResponseWriter, r *http.Request) {
 	// -> active subscriptions of those plans whose customer is active, not expired,
 	// and not over traffic quota. DISTINCT because a sub's plan may map to several
 	// lines that all include this node.
-	if err := h.DB.Raw(
-		"SELECT DISTINCT cs.id, cs.xray_uuid, cs.expires_at "+
-			"FROM customer_subscriptions cs "+
-			"JOIN customers c ON c.id = cs.customer_id AND c.status = 'active' "+
-			"JOIN plan_lines pl ON pl.plan_id = cs.plan_id "+
-			"JOIN `lines` l ON l.id = pl.line_id AND l.enabled = 1 "+
-			"JOIN line_nodes ln ON ln.line_id = pl.line_id AND ln.node_mac = ? "+
-			"JOIN nodes n ON n.mac = ln.node_mac AND n.enabled = 1 AND n.status = 'active' AND n.server_enabled = 1 AND n.owner_customer_id IS NULL "+
-			"WHERE cs.status = 'active' "+
-			"AND cs.xray_uuid <> '' "+
-			"AND cs.expires_at > ? "+
-			"AND (cs.traffic_limit = 0 OR cs.traffic_used < cs.traffic_limit)",
-		mac, now,
-	).Scan(&rows).Error; err != nil {
+	serverFilter := ""
+	if requireServer {
+		serverFilter = "AND n.server_enabled = 1 AND n.owner_customer_id IS NULL "
+	}
+	query := "SELECT DISTINCT cs.id, cs.xray_uuid, cs.expires_at " +
+		"FROM customer_subscriptions cs " +
+		"JOIN customers c ON c.id = cs.customer_id AND c.status = 'active' " +
+		"JOIN plan_lines pl ON pl.plan_id = cs.plan_id " +
+		"JOIN `lines` l ON l.id = pl.line_id AND l.enabled = 1 " +
+		"JOIN line_nodes ln ON ln.line_id = pl.line_id AND ln.node_mac = ? " +
+		"JOIN nodes n ON n.mac = ln.node_mac AND n.enabled = 1 AND n.status = 'active' " +
+		serverFilter +
+		"WHERE cs.status = 'active' " +
+		"AND cs.xray_uuid <> '' " +
+		"AND cs.expires_at > ? " +
+		"AND (cs.traffic_limit = 0 OR cs.traffic_used < cs.traffic_limit)"
+	if err := h.DB.Raw(query, mac, now).Scan(&rows).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}

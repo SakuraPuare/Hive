@@ -2,6 +2,8 @@
 
 本清单验证「注册 → 可信出口授权 → 客户订阅连接 → 出口计费 → 超量断开」，使用当前服务器计费协议。隔离回归不能代替真机验证；本次代码修改没有操作线上设备。
 
+> 兼容模式（2026-11-16 起）：没有 `/etc/hive/server-token` 的普通设备也会启动 Xray，并用设备凭据调用 `POST /nodes/{mac}/xray-users` 上报/续租。以下“客户网关不运行 Xray”的检查只用于验证可信出口隔离模式；默认部署以兼容模式为准。
+
 ## 准备
 
 - 部署配套 Registry、前端、设备脚本和 systemd 单元。Registry 自动执行 migration 28；旧节点默认没有出口权限。
@@ -12,9 +14,9 @@
 ## 1. 注册与身份隔离
 
 - [ ] 两台设备都能心跳、接收 OTA；出口节点详情显示「可信出口服务器」，客户网关显示「普通设备 / 客户网关」。
-- [ ] 客户网关没有服务器密钥，`systemctl is-active xray` 返回非运行状态。
+- [ ] 客户网关没有服务器密钥时，`systemctl is-active xray` 仍为 active，同步走 `POST /nodes/<mac>/xray-users` 设备凭据回退（可信出口隔离模式下才应停止 Xray）。
 - [ ] 普通设备 Token 请求 `POST /servers/<mac>/accounting` 返回 401，客户订阅流量没有变化。
-- [ ] 旧 `GET/POST /nodes/<mac>/xray-users` 在正确设备认证后返回 426。
+- [ ] 旧 `GET /nodes/<mac>/xray-users` 返回 426；`POST` 作为设备凭据回退接口返回 200（兼容模式）。
 - [ ] 客户不能认领可信出口；管理员不能直接把可信出口分配给客户。
 
 ## 2. 出口授权与连接

@@ -224,8 +224,9 @@ hive_tries 0' || log 'warning: hive_pending could not be cleared; the bootloader
         fi
         systemctl is-active --quiet "$svc" || return 1
     done
-    # Xray serves only operator-controlled exits. Customer images intentionally
-    # keep it stopped, which must not make a healthy boot-payload trial roll back.
+    # Xray runs on every node in compatibility mode, but its lease may stop it
+    # on a device with no active authorization. Only a trusted exit is required
+    # to be running before blessing a boot payload.
     if [ -s /etc/hive/server-token ]; then
         systemctl is-active --quiet xray.service || return 1
     fi
