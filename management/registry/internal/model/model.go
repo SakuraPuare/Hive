@@ -127,7 +127,7 @@ type Line struct {
 	Enabled      bool   `json:"enabled"`
 	DisplayOrder int    `json:"display_order"`
 	Note         string `json:"note"`
-	NodeCount    int    `json:"node_count" gorm:"-"`
+	NodeCount    int    `json:"node_count" gorm:"->;-:migration"`
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
 }

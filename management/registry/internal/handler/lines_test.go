@@ -104,6 +104,17 @@ func TestLineNodes(t *testing.T) {
 	// 获取节点
 	resp = doJSON("GET", fmt.Sprintf("/admin/lines/%v/nodes", lineID), nil, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
+
+	// 列表页的 node_count 必须反映关联节点数（曾因 gorm:"-" 被 Scan 忽略而恒为 0）
+	resp = doJSON("GET", "/admin/lines", nil, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	lines := parseJSONArray(resp)
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(lines))
+	}
+	if got, ok := lines[0]["node_count"].(float64); !ok || got != 2 {
+		t.Fatalf("node_count = %v, want 2", lines[0]["node_count"])
+	}
 }
 
 func TestResetLineToken(t *testing.T) {
