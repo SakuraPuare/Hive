@@ -49,7 +49,8 @@ fi
 if svc_active cloudflared; then
     if [ -n "${CF_URL}" ]; then
         HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "${CF_URL}" 2>/dev/null)
-        if [[ "$HTTP_CODE" =~ ^(101|200|400|404)$ ]]; then
+        # 根路径 302 到伪装站是预期行为；2xx/3xx 都说明 tunnel 链路可达。
+        if [[ "$HTTP_CODE" =~ ^(101|2[0-9][0-9]|3[0-9][0-9]|400|404)$ ]]; then
             pass "cloudflared" "${CF_URL} → HTTP ${HTTP_CODE}"
         else
             warn "cloudflared" "running but ${CF_URL} returned HTTP ${HTTP_CODE:-timeout}"
@@ -64,9 +65,12 @@ fi
 # ── 4. FRP Client ─────────────────────────────────────────────────────────────
 if svc_active frpc; then
     if [ -n "${FRP_SERVER_ADDR}" ] && [ -n "${FRP_PORT}" ]; then
-        # 检查是否有到 FRP 服务器的 TCP 连接
-        if ss -tn | grep -q "${FRP_SERVER_ADDR}"; then
+        # frpc 可能走 IPv6 连 frps，不能按 FRP_SERVER_ADDR 字面量 grep；
+        # 直接看有没有属于 frpc 进程的已建立 TCP 连接。
+        if ss -tnp 2>/dev/null | grep -q 'frpc'; then
             pass "frpc" "connected to ${FRP_SERVER_ADDR}, SSH port ${FRP_PORT}"
+        elif journalctl -u frpc --since "10 min ago" --no-pager 2>/dev/null | grep -q "login to server success"; then
+            pass "frpc" "connected to ${FRP_SERVER_ADDR} (log), SSH port ${FRP_PORT}"
         else
             warn "frpc" "running but no active connection to ${FRP_SERVER_ADDR}"
         fi
@@ -79,7 +83,15 @@ fi
 
 # ── 5. EasyTier ───────────────────────────────────────────────────────────────
 if svc_active easytier; then
-    ET_IFACE=$(ip link show 2>/dev/null | grep -o 'easytier[^ :]*' | head -1)
+    # EasyTier 的接口名不固定是 easytier*（常见 tun0）：优先按 registry
+    # 分配的 EASYTIER_IP 找承载接口，找不到再退回接口名启发式。
+    ET_IFACE=""
+    if [ -n "${EASYTIER_IP}" ]; then
+        ET_IFACE=$(ip -4 -o addr show 2>/dev/null | awk -v ip="${EASYTIER_IP}" '$4 ~ ("^" ip "/") {print $2; exit}')
+    fi
+    if [ -z "${ET_IFACE}" ]; then
+        ET_IFACE=$(ip link show 2>/dev/null | grep -oE 'easytier[^ :]*|tun[0-9]+' | head -1)
+    fi
     if [ -n "${ET_IFACE}" ]; then
         ACTUAL_IP=$(ip -4 addr show "${ET_IFACE}" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1)
         if [ -n "${EASYTIER_IP}" ] && [ "${ACTUAL_IP}" = "${EASYTIER_IP}" ]; then
@@ -90,7 +102,7 @@ if svc_active easytier; then
             warn "easytier" "${ET_IFACE} exists but no IP assigned yet"
         fi
     else
-        warn "easytier" "running but no easytier interface found"
+        warn "easytier" "running but no easytier/tun interface found"
     fi
 else
     fail "easytier" "service not active"
@@ -110,7 +122,9 @@ else
 fi
 
 # ── 7. Cloudflare Mesh (WARP Connector) ──────────────────────────────────
-if command -v warp-cli &>/dev/null; then
+if [ -z "${MESH_TUNNEL_ID:-}" ] || [ "${MESH_TUNNEL_ID}" = "none" ] || [ -z "${MESH_IP:-}" ] || [ "${MESH_IP}" = "pending" ]; then
+    pass "cf-mesh" "not configured (optional)"
+elif command -v warp-cli &>/dev/null; then
     WARP_STATUS=$(warp-cli status 2>/dev/null)
     if echo "$WARP_STATUS" | grep -qi "connected"; then
         WARP_IP=$(echo "$WARP_STATUS" | grep -oP '(?<=IP: )\S+' || echo "unknown")
@@ -221,7 +235,7 @@ else
     if [ -n "${GATEWAY_LAN_IFACES:-}" ]; then
         pass "gateway-topo" "WAN=${GATEWAY_WAN_IFACE:-?} LAN=${GATEWAY_LAN_IFACES}"
     else
-        warn "gateway-topo" "no WAN/LAN split (单网口设备正常；Mihomo 仍接管转发流量)"
+        pass "gateway-topo" "single-NIC device (no WAN/LAN split, expected)"
     fi
 fi
 
@@ -235,8 +249,6 @@ fi
 
 # ── 汇总 ──────────────────────────────────────────────────────────────────────
 TOTAL=$((PASS + FAIL + WARN))
-echo ""
-echo "=== ${TOTAL} tests: \e[0;92m${PASS} passed\e[0m, \e[0;91m${FAIL} failed\e[0m, \e[0;93m${WARN} warnings\e[0m ==="
-echo ""
+printf "\n=== %s tests: \e[0;92m%s passed\e[0m, \e[0;91m%s failed\e[0m, \e[0;93m%s warnings\e[0m ===\n\n" "$TOTAL" "$PASS" "$FAIL" "$WARN"
 
 [ "${FAIL}" -eq 0 ]
