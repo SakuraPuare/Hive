@@ -2,6 +2,10 @@
 Description=Cloudflare Tunnel
 After=network-online.target
 Wants=network-online.target
+# config.yml 由 provision-node.sh 生成；工厂镜像预启用它，首启时文件还不存在。
+# 用 Condition 干净跳过，避免 ExecStartPre 空等 90s 后被判超时失败
+# （实测首启日志里 cloudflared 就是一条 FAILED，随后 provision 写完才起来）。
+ConditionPathExists=/etc/cloudflared/config.yml
 
 [Service]
 Type=simple
@@ -9,8 +13,6 @@ ExecStart=/usr/local/bin/cloudflared tunnel --config /etc/cloudflared/config.yml
 Restart=on-failure
 RestartSec=10
 KillMode=process
-# config.yml 由 provision-node.sh 生成，启动前等待
-ExecStartPre=/bin/sh -c 'until [ -f /etc/cloudflared/config.yml ]; do sleep 2; done'
 
 [Install]
 WantedBy=multi-user.target

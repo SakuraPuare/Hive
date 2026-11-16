@@ -21,6 +21,11 @@ if [ -d "/tmp/overlay" ]; then
         /etc/NetworkManager /etc/udev/rules.d /etc/mihomo \
         /usr/local/bin /var/www 2>/dev/null || true
     chmod +x /etc/update-motd.d/* 2>/dev/null || true
+    # cp -a 保留构建机的 umask 结果：构建用户若是 umask 002，overlay 文件会带着 0664
+    # 落盘。logrotate 直接拒绝 group/other 可写的配置，并且整个 logrotate.service 会
+    # 以 exit 1 失败（实测 error: Ignoring fail2ban because it is writable by group or
+    # others）。这里把轮转配置统一回 0644。
+    chmod 0644 /etc/logrotate.d/* 2>/dev/null || true
     echo ">>> Overlay files copied to root directory"
 else
     echo ">>> WARNING: /tmp/overlay not found"

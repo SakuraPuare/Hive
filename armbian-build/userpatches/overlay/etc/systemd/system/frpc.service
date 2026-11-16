@@ -2,12 +2,14 @@
 Description=FRP Client (last-resort tunnel)
 After=network-online.target
 Wants=network-online.target
+# frpc.toml 由 provision-node.sh 渲染。工厂镜像里 frpc 是预启用的（provision 可能被跳过），
+# 首启时配置还没生成：用 ConditionPathExists 干净地跳过，而不是让 ExecStartPre 空等 90s
+# 后被 systemd 判超时失败（实测首启日志里就是一条 FAILED）。provision 写完配置后
+# `systemctl enable --now frpc` 会正常启动。
+ConditionPathExists=/etc/frp/frpc.toml
 
 [Service]
 Type=simple
-# frpc.toml 由 provision-node.sh 渲染（替换端口和主机名占位符）；重新注册的设备开机时
-# 文件可能还没生成，等它出现而不是直接失败退出。
-ExecStartPre=/bin/sh -c 'until [ -f /etc/frp/frpc.toml ]; do sleep 2; done'
 ExecStart=/usr/local/bin/frpc -c /etc/frp/frpc.toml
 Restart=always
 RestartSec=10

@@ -186,6 +186,8 @@ if [ ! -f /etc/logrotate.d/fail2ban ]; then
 }
 EOF
 fi
+# logrotate 拒绝 group/other 可写的配置（本脚本的 umask 可能是 002，生成 0664）。
+chmod 0644 /etc/logrotate.d/fail2ban 2>/dev/null || true
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 启用服务

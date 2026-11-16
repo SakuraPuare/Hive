@@ -510,6 +510,34 @@ exit 0
                          '不能再写独立 stanza，否则和发行版配置撞车')
         self.assertIn('rm -f /etc/logrotate.d/fail2ban-hive', script,
                       '旧固件留下的重复配置必须被清掉')
+        # 构建用户 umask 002 时 overlay 文件会带 0664 落盘，logrotate 直接拒绝并让整个
+        # logrotate.service 失败（实测 error: Ignoring fail2ban because it is writable
+        # by group or others）。镜像构建必须把轮转配置的权限统一回 0644。
+        image = (REPO / 'armbian-build/userpatches/customize-image.sh').read_text()
+        self.assertIn('chmod 0644 /etc/logrotate.d/*', image)
+        self.assertIn('chmod 0644 /etc/logrotate.d/fail2ban', script)
+
+    def test_provisioning_budget_ignores_inherited_seconds(self):
+        # SECONDS 会从环境继承：实测首启时带着 ~9112 进来，预算检查在开机 74s 就判
+        # "已用 9112s / 超出 600s"，第一次 provisioning 直接中止（靠新加的
+        # Restart=on-failure 才在 60s 后补上）。脚本必须在任何 budget_exceeded 之前
+        # 重置计时器。
+        script = (BIN / 'provision-node.sh').read_text()
+        self.assertIn('\nSECONDS=0\n', script)
+        self.assertLess(script.index('SECONDS=0'), script.index('budget_exceeded "$SECONDS"'))
+
+    def test_units_with_provisioned_configs_skip_instead_of_timing_out(self):
+        # 工厂镜像预启用 cloudflared/frpc，但它们的配置由 provisioning 生成；以前是
+        # ExecStartPre 里死等 → 90s 后被 systemd 判超时（首启日志里的 FAILED）。改用
+        # ConditionPathExists 干净跳过，provision 写完配置后 enable --now 即可启动。
+        for unit, config in [('cloudflared.service', '/etc/cloudflared/config.yml'),
+                             ('frpc.service', '/etc/frp/frpc.toml')]:
+            with self.subTest(unit=unit):
+                text = (self.UNITS / unit).read_text()
+                directives = self.unit_directives(text)
+                self.assertEqual(directives.get('ConditionPathExists'), [config])
+                self.assertNotIn('until [ -f', text, '不能再用阻塞等待，系统会判超时失败')
+
 
     def test_offline_capable_units_never_wait_for_the_network(self):
         for unit in self.OFFLINE_UNITS:

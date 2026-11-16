@@ -5,6 +5,11 @@
 
 set -e
 
+# SECONDS 会从环境继承：镜像里若有上游脚本 export 了 SECONDS（实测首启带着 ~9112
+# 进来），预算检查会在开机 74s 时就判"已用 9112s / 超出 600s 预算"并中止首启置备。
+# 从脚本启动重新计时，预算才代表本脚本真正花掉的时间。
+SECONDS=0
+
 DONE_MARKER="/etc/hive/provisioned"
 LOG="/var/log/provision-node.log"
 
