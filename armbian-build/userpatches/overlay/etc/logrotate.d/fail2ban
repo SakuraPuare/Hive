@@ -1,0 +1,17 @@
+# Hive: fail2ban 日志轮转。
+# 覆盖发行版同路径的配置（fail2ban 包自带一份 weekly/rotate 4）。同时存在两份对同一个
+# 文件的 stanza 时，logrotate 会报 "duplicate log entry" 并整体 exit 1，
+# logrotate.service 每次运行都是 failed —— 所以只允许有一份，就是这份。
+# 注意路径：Armbian 的 ramlog 把 /var/log 链到 /var/log.hdd，logrotate 会归一化路径，
+# 因此无论写 /var/log/fail2ban.log 还是 /var/log.hdd/fail2ban.log 都算同一个条目。
+/var/log/fail2ban.log {
+    daily
+    missingok
+    rotate 30
+    compress
+    notifempty
+    create 0640 root adm
+    postrotate
+        /usr/bin/fail2ban-client flushlogs 1>/dev/null || true
+    endscript
+}

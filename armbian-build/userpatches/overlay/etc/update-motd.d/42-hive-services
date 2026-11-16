@@ -135,6 +135,10 @@ if [[ -n "$MAC_ADDR" ]]; then
         printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m  (客户门户 → 我的设备 → 认领设备)\n" \
             "Claim Code" "$(cat /etc/hive/claim-code)"
     fi
+    # provision-node 写入：409 = 已被认领/已发过凭证，重试无用，必须管理员轮换。
+    if [[ -s /etc/hive/provision-blocked ]]; then
+        printf " \e[1;31m%-18s\e[0m: \e[0;91m%s\e[0m\n" "Provisioning" "$(cat /etc/hive/provision-blocked)"
+    fi
 fi
 
 # Connection Info

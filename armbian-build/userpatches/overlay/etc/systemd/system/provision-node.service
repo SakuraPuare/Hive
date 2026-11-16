@@ -9,11 +9,19 @@ After=network-online.target systemd-remount-fs.service armbian-resize-filesystem
 Wants=network-online.target
 # 已跑过则标记文件存在，ConditionPathExists 取反确保不重复执行
 ConditionPathExists=!/etc/hive/provisioned
+# 设备开机时没有网（客户先把设备插上电、网线后接）时脚本会失败退出。没有重试的话
+# 它就一直未注册，直到有人手动重启——实测这正是一次开机离线后的现象。这里让它
+# 每 60s 重试直到成功；StartLimitIntervalSec=0 关掉启动频率限制，避免默认
+# 5 次/10s 的策略把重试掐死。永久性失败（409 已被认领/已发证）由脚本自己写
+# /etc/hive/provision-blocked 并 exit 0，不会进入这个循环。
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/provision-node.sh
 RemainAfterExit=no
+Restart=on-failure
+RestartSec=60
 StandardOutput=journal+console
 StandardError=journal+console
 # 每个外部 API 调用都有 --max-time，脚本自身在 PROVISION_BUDGET（默认 600s）

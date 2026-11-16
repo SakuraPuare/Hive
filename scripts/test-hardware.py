@@ -482,6 +482,35 @@ exit 0
         self.assertNotIn('-s', execs[0].split(), 'nm-online 不能带 -s，否则不等连通性')
         self.assertIn('-t', execs[0].split(), 'nm-online 必须有超时，离线时不能让 target 永久挂住')
 
+    def test_provisioning_retries_until_the_network_appears(self):
+        # 客户先通电、后插网线：provision-node 第一次必然失败。没有重试它就一直是
+        # 未注册状态直到有人手动重启（实测就是这样）。所以单元必须自愈地重试。
+        d = self.unit_directives((self.UNITS / 'provision-node.service').read_text())
+        self.assertEqual(d.get('Restart'), ['on-failure'])
+        self.assertTrue(d.get('RestartSec'), '重试间隔必须显式给定')
+        # 默认启动频率限制（5 次/10s）会把 60s 一次的重试掐死
+        self.assertEqual(d.get('StartLimitIntervalSec'), ['0'],
+                         '必须关掉启动频率限制，否则重试会被掐死在第一分钟')
+        # 409（已被认领/已发证）是永久性失败：必须结束重试并留痕，不能空转刷日志。
+        # 这一段没法在测试里真跑（脚本写死 /etc，且依赖真 registry），退化为结构断言。
+        script = (REPO / 'armbian-build/userpatches/overlay/usr/local/bin/provision-node.sh').read_text()
+        branch = script.split('409)', 1)[1].split(';;', 1)[0]
+        self.assertIn('exit 0', branch, '409 必须 exit 0 终止 Restart=on-failure 循环')
+        self.assertIn('/etc/hive/provision-blocked', branch, '409 必须留下可展示的状态文件')
+
+    def test_fail2ban_logrotate_has_exactly_one_config(self):
+        # Armbian 的 fail2ban 包自带 /etc/logrotate.d/fail2ban（同一个日志文件）。
+        # 再放一份独立的 fail2ban-hive 会被 logrotate 判成 duplicate log entry 并整体
+        # exit 1 —— 真机实测 logrotate.service 每次开机都是 failed。
+        overlay = (REPO / 'armbian-build/userpatches/overlay/etc/logrotate.d/fail2ban').read_text()
+        self.assertIn('/var/log/fail2ban.log', overlay)
+        self.assertIn('rotate 30', overlay)
+        script = (BIN / 'setup-fail2ban.sh').read_text()
+        self.assertNotIn('cat > /etc/logrotate.d/fail2ban-hive', script,
+                         '不能再写独立 stanza，否则和发行版配置撞车')
+        self.assertIn('rm -f /etc/logrotate.d/fail2ban-hive', script,
+                      '旧固件留下的重复配置必须被清掉')
+
     def test_offline_capable_units_never_wait_for_the_network(self):
         for unit in self.OFFLINE_UNITS:
             with self.subTest(unit=unit):

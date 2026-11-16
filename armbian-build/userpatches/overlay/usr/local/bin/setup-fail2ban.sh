@@ -165,7 +165,14 @@ EOF
 # 日志轮转配置
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-cat > /etc/logrotate.d/fail2ban-hive << 'EOF'
+# fail2ban 的日志轮转只允许有一份配置：镜像里已用 overlay 的
+# /etc/logrotate.d/fail2ban（daily/rotate 30）覆盖了发行版那份。这里清掉旧固件
+# 留下的 fail2ban-hive —— 两份配置指向同一个文件时 logrotate 报 "duplicate log
+# entry" 并整体 exit 1，logrotate.service 每次都是 failed。
+rm -f /etc/logrotate.d/fail2ban-hive
+if [ ! -f /etc/logrotate.d/fail2ban ]; then
+    # 没有 overlay 的极端情况（手工装的系统）兜底，同样只写一份。
+    cat > /etc/logrotate.d/fail2ban << 'EOF'
 /var/log/fail2ban.log {
     daily
     missingok
@@ -178,6 +185,7 @@ cat > /etc/logrotate.d/fail2ban-hive << 'EOF'
     endscript
 }
 EOF
+fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 启用服务

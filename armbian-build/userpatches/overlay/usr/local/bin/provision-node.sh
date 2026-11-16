@@ -90,10 +90,16 @@ if [ -n "${NODE_REGISTRY_URL}" ] && [ -z "${NODE_REGISTRY_API_SECRET}" ]; then
         fi
         case "$enroll_code" in
             409)
+                # 永久性失败：重试没有意义（409 = 设备已被认领或已发过凭证），
+                # 只有管理员轮换能解开。写标记并 exit 0，让 provision-node.service
+                # 的 Restart=on-failure 不再空转；开机时 MOTD 会展示这个文件。
                 echo "!!! FATAL: 设备 ${MAC} 已被认领或已发过凭证（${ENROLL_ERR:-409}）。"
                 echo "!!!        凭证丢失请让管理员在面板轮换："
                 echo "!!!        POST ${NODE_REGISTRY_URL}/admin/nodes/${MAC}/credential（ADMIN_API_SECRET）"
-                exit 1
+                umask 077
+                printf '%s\n' "409 ${ENROLL_ERR:-already-claimed}: 需要管理员轮换凭证（POST ${NODE_REGISTRY_URL}/admin/nodes/${MAC}/credential）" \
+                    > /etc/hive/provision-blocked
+                exit 0
                 ;;
         esac
         echo ">>> enroll 第 ${enroll_try}/6 次失败（http=${enroll_code} ${ENROLL_ERR}），5s 后重试..."
