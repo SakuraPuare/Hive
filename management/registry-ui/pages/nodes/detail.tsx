@@ -10,7 +10,8 @@ import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
 import { ServerCredentialCard } from '@/components/nodes/ServerCredentialCard';
-import { ArrowLeft, RefreshCw, Pencil, Server } from 'lucide-react';
+import { SshCommandsDialog } from '@/components/nodes/SshCommandsDialog';
+import { ArrowLeft, RefreshCw, Pencil, Server, Terminal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useFormat } from '@/lib/format';
 
@@ -43,6 +44,7 @@ export default function NodeDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
+  const [sshOpen, setSshOpen] = useState(false);
 
   const noData = tCommon('noData');
 
@@ -114,10 +116,16 @@ export default function NodeDetail() {
           ) : undefined
         }
         actions={
-          <Button variant="outline" onClick={() => setEditOpen(true)}>
-            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>{t('editNode')}</span>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setSshOpen(true)}>
+              <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{t('sshCommands')}</span>
+            </Button>
+            <Button variant="outline" onClick={() => setEditOpen(true)}>
+              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{t('editNode')}</span>
+            </Button>
+          </div>
         }
       />
 
@@ -190,6 +198,12 @@ export default function NodeDetail() {
 
         <ProbeStatusCard mac={mac!} t={t} noData={noData} />
       </div>
+
+      <SshCommandsDialog
+        nodes={[node]}
+        open={sshOpen}
+        onOpenChange={setSshOpen}
+      />
 
       <NodeEditDialog
         key={`${node?.mac ?? 'none'}-${editOpen}`}

@@ -26,6 +26,7 @@ type Config struct {
 	// pointing at the node's own tunnel hostname, so Cloudflare still routes to
 	// the right tunnel. Empty → clients connect to the node hostname directly.
 	CFPreferredHost  string
+	FRPServerAddr    string // public FRP host for admin SSH commands; empty disables
 	PrometheusURL    string
 	OTAArtifactDir   string
 	OTARetentionDays int
@@ -70,6 +71,7 @@ func Load() *Config {
 		AdminCookieSameSite: parseSameSite(Getenv("ADMIN_COOKIE_SAMESITE", "lax")),
 		XrayPath:            Getenv("XRAY_PATH", "ray"),
 		CFPreferredHost:     Getenv("CF_PREFERRED_HOST", ""),
+		FRPServerAddr:       Getenv("FRP_SERVER_ADDR", ""),
 		PrometheusURL:       Getenv("PROMETHEUS_URL", "http://127.0.0.1:4230"),
 		OTAArtifactDir:      Getenv("OTA_ARTIFACT_DIR", "/var/lib/hive-registry/ota"),
 		OTARetentionDays:    otaRetentionDays(Getenv("OTA_RETENTION_DAYS", "30")),

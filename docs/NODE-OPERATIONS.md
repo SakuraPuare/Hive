@@ -38,6 +38,10 @@ curl https://registry.example.com/api/nodes | jq '.[] | {hostname, tailscale_ip,
 cat /etc/hive/node-info
 ```
 
+**方式四**：管理面板
+
+节点列表 → 行操作「SSH 命令」，或勾选多台后点「SSH 命令」，面板会给出该节点可用的 Tailscale / EasyTier / FRP 命令并支持一键复制。FRP 命令需要 registry 配置 `FRP_SERVER_ADDR`（与 `.env` 一致）。
+
 ### Tailscale SSH
 
 ```bash

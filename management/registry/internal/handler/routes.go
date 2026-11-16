@@ -60,6 +60,8 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// 设备远程命令（管理员下发/查历史）
 	mux.HandleFunc("POST /admin/nodes/{mac}/commands", perm("node:write")(h.HandleAdminEnqueueCommand))
 	mux.HandleFunc("GET /admin/nodes/{mac}/commands", perm("node:read")(h.HandleAdminListCommands))
+	// SSH 命令生成所需的全局配置（FRP 服务器地址；不含 token）
+	mux.HandleFunc("GET /admin/ssh-config", perm("node:read")(h.HandleAdminSSHConfig))
 
 	// ── OTA 管理 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /admin/ota/storage", perm("ota:read")(h.HandleAdminOTAStorage))

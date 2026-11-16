@@ -16,9 +16,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/components/ui/toast';
 import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
+import { SshCommandsDialog } from '@/components/nodes/SshCommandsDialog';
 import {
   RefreshCw, Trash2, Download, MoreHorizontal, Power, PowerOff,
-  Server, Wifi, WifiOff, HelpCircle, AlertTriangle, X,
+  Server, Wifi, WifiOff, HelpCircle, AlertTriangle, X, Terminal,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -146,6 +147,8 @@ export default function NodesPage() {
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   // In-place edit target (null = closed) — replaces the old whole-page nav.
   const [editTarget, setEditTarget] = useState<model_Node | null>(null);
+  // SSH command dialog: one row or the current selection; null = closed.
+  const [sshNodes, setSshNodes] = useState<model_Node[] | null>(null);
 
   const loadNodes = useCallback(async () => {
     setLoading(true);
@@ -346,6 +349,11 @@ export default function NodesPage() {
               onClick={() => router.push('/nodes/detail?mac=' + encodeURIComponent(row.original.mac!))}>
               {tCommon('viewDetails')}
             </DropdownMenuItem>
+            <DropdownMenuItem
+              className="rounded-lg hover-state cursor-pointer"
+              onSelect={() => setSshNodes([row.original])}>
+              {t('sshRowAction')}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="rounded-lg text-destructive focus:text-destructive hover-state cursor-pointer"
@@ -542,6 +550,15 @@ export default function NodesPage() {
             <Button
               size="sm"
               variant="outline"
+              onClick={() => setSshNodes(selectedRows)}
+              disabled={batchBusy}
+              className="state-layer rounded-lg gap-1.5 focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1">
+              <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
+              {t('sshRowAction')}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => batchToggle('enable')}
               loading={batchBusy}
               disabled={batchBusy}
@@ -579,6 +596,13 @@ export default function NodesPage() {
         open={editTarget !== null}
         onOpenChange={(o) => { if (!o) setEditTarget(null); }}
         onSaved={() => { setEditTarget(null); loadNodes(); }}
+      />
+
+      {/* ── SSH commands (single row or current selection) ─────────────────── */}
+      <SshCommandsDialog
+        nodes={sshNodes ?? []}
+        open={sshNodes !== null}
+        onOpenChange={(o) => { if (!o) setSshNodes(null); }}
       />
 
       {/* ── Single-row delete confirmation ─────────────────────────────────── */}

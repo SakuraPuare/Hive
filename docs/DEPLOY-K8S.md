@@ -33,6 +33,7 @@ docker build -t <registry>/hive-registry-ui:<tag> management/registry-ui
 | `ADMIN_USER` / `ADMIN_PASS` | 超管引导账号 |
 | `ADMIN_SESSION_SECRET` | 管理端 session 签名密钥；非 dev 必填 |
 | `CORS_ALLOW_ORIGINS` | 跨域调试用，同域 ingress 部署可留空 |
+| `FRP_SERVER_ADDR` | FRP 服务器地址，用于管理面板生成 `ssh -p <frp_port>` 应急命令；留空则不显示 FRP 命令 |
 
 > 非 `HIVE_ENV=dev` 时若缺 `API_SECRET` / `ADMIN_SESSION_SECRET`，进程会 fail-fast 退出。
 
