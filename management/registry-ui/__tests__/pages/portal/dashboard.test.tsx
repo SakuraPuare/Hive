@@ -125,7 +125,7 @@ describe('PortalDashboardPage', () => {
     await renderAndSettle(<PortalDashboardPage />);
 
     fireEvent.click(screen.getByText('portal.copyClash'));
-    expect(writeText).toHaveBeenCalledWith('http://localhost/c/abc123');
+    expect(writeText).toHaveBeenCalledWith('http://localhost/api/c/abc123');
     // Copy now resolves asynchronously before the button flips to the "copied"
     // state; "copied" appears both in the button and the sr-only live region.
     await waitFor(() => {
@@ -141,7 +141,7 @@ describe('PortalDashboardPage', () => {
     await renderAndSettle(<PortalDashboardPage />);
 
     fireEvent.click(screen.getByText('portal.copyVless'));
-    expect(writeText).toHaveBeenCalledWith('http://localhost/c/abc123/vless');
+    expect(writeText).toHaveBeenCalledWith('http://localhost/api/c/abc123/vless');
   });
 
   it('renders quick action buttons with correct links', async () => {

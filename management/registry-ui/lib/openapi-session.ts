@@ -34,6 +34,17 @@ export function apiUrl(path: string) {
   return `${window.location.origin}${rel}`;
 }
 
+/**
+ * Absolute URL for a customer subscription.
+ *
+ * `/c/{token}` is a registry endpoint (not a Next.js page): the static export
+ * has no `/c/` route and nginx only forwards `/api/` to the backend. Clients
+ * therefore fetch `<panel>/api/c/{token}` (or `/c/{token}/vless`).
+ */
+export function customerSubscriptionUrl(token: string, vless = false) {
+  return apiUrl(`/c/${token}${vless ? '/vless' : ''}`);
+}
+
 function isBrowser() {
   return typeof window !== 'undefined';
 }

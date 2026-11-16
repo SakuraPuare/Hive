@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { apiPath, sessionApi, getHealth } from '@/lib/openapi-session';
+import { apiPath, customerSubscriptionUrl, sessionApi, getHealth } from '@/lib/openapi-session';
 import { ApiError } from '@/src/generated/client/core/ApiError';
 
 describe('apiPath', () => {
@@ -9,6 +9,20 @@ describe('apiPath', () => {
 
   it('normalizes path without leading slash', () => {
     expect(apiPath('nodes')).toBe('/api/nodes');
+  });
+});
+
+describe('customerSubscriptionUrl', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'location', { writable: true, value: { href: '', origin: 'https://panel.example' } });
+  });
+
+  it('points at the registry endpoint behind /api, not a frontend page', () => {
+    expect(customerSubscriptionUrl('a'.repeat(64))).toBe(`https://panel.example/api/c/${'a'.repeat(64)}`);
+  });
+
+  it('appends /vless for the VLESS export', () => {
+    expect(customerSubscriptionUrl('a'.repeat(64), true)).toBe(`https://panel.example/api/c/${'a'.repeat(64)}/vless`);
   });
 });
 

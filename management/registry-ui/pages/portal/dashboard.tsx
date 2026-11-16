@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { useClipboard } from '@/lib/use-clipboard';
+import { customerSubscriptionUrl } from '@/lib/openapi-session';
 import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import {
@@ -41,11 +42,11 @@ function SubscriptionCard({ sub, index, onCopied }: { sub: SubWithPlan; index: n
   const daysLeft = Math.max(0, diffDays);
   const expiredDays = Math.max(0, -diffDays);
 
-  // Subscription links are Next.js routes (/c/...), not backend API paths,
-  // so we use window.location.origin directly — apiUrl() would prepend /api.
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const clashLink = `${origin}/c/${sub.token}`;
-  const vlessLink = `${origin}/c/${sub.token}/vless`;
+  // /c/{token} is a registry endpoint, not a Next.js page: the static export
+  // has no /c/ route and nginx only proxies /api/ to the backend. Client
+  // apps must therefore fetch <panel>/api/c/{token}.
+  const clashLink = customerSubscriptionUrl(sub.token ?? '');
+  const vlessLink = customerSubscriptionUrl(sub.token ?? '', true);
 
   const handleCopyClash = useCallback(async () => {
     const ok = await copyClash(clashLink);

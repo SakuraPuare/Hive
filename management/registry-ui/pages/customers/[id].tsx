@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AdminService } from '@/src/generated/client';
 import type { model_Customer, model_CustomerSubscription, model_Plan } from '@/src/generated/client';
-import { sessionApi, apiUrl } from '@/lib/openapi-session';
+import { sessionApi, customerSubscriptionUrl } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { useCurrentUser } from '@/lib/auth';
 import { useFormat } from '@/lib/format';
@@ -284,7 +284,7 @@ export default function CustomerDetail() {
   }
 
   async function copySubLink(sub: Subscription) {
-    const url = apiUrl(`/s/${sub.token ?? ''}`);
+    const url = customerSubscriptionUrl(sub.token ?? '');
     const ok = await copyToClipboard(url);
     if (ok) {
       setLastCopiedSubId(sub.id ?? null);
