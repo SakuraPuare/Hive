@@ -35,12 +35,27 @@ mihomo_dns_up() {
     ss -lunH 'sport = :1053' 2>/dev/null | grep -q .
 }
 
+# 订阅门禁生效时热点走直连（hive-hotspot-firewall.sh 把热点网段从 TUN 里摘到 main 表），
+# 此时 fake-IP 在 main 表不可路由，必须用公共 DNS。判据与那个脚本一致：门禁 DROP 在不在、
+# mihomo 有没有配置；另外这里还要求 1053 真的在听（ExecStartPost 时进程已 fork，端口可能未 bind）。
+MIHOMO_CONF="/etc/mihomo/config.yaml"
+gate_present() {
+    command -v iptables >/dev/null 2>&1 &&
+        iptables -w 3 -C FORWARD -m comment --comment hive-subscription -j DROP 2>/dev/null
+}
+
+hotspot_proxied() {
+    gate_present && return 1
+    [ -s "$MIHOMO_CONF" ] || return 1
+    mihomo_dns_up
+}
+
 for _ in $(seq 1 "$WAIT"); do
-    mihomo_dns_up && break
+    hotspot_proxied && break
     sleep 1
 done
 
-if mihomo_dns_up; then
+if hotspot_proxied; then
     upstream="server=127.0.0.1#1053"
     why="mihomo DNS（fake-IP 分流）"
 else

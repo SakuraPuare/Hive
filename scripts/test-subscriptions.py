@@ -519,6 +519,8 @@ class SubscriptionScripts(unittest.TestCase):
             source=source.replace(old,new)
         p=self.root/'bin'/'hive-hotspot-firewall.sh';p.write_text(source);p.chmod(0o755)
         logger=self.root/'mock'/'logger';logger.write_text('#!/bin/sh\nexit 0\n');logger.chmod(0o755)
+        ipmock=self.root/'mock'/'ip'
+        ipmock.write_text('#!/bin/sh\necho "$*" >> "$HIVE_TEST_ROOT/ip-calls"\nexit 0\n');ipmock.chmod(0o755)
         self.seed_gateway_firewall()
         (self.root/'run/hive-subscriptions').mkdir(parents=True,exist_ok=True)
         self.expire('gateway')
@@ -531,6 +533,11 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertIn(accept,rules)
         self.assertIn(nat,rules)
         self.assertLess(rules.index(accept),rules.index(drop),'热点放行必须在门禁 DROP 之上')
+        ret=['filter','FORWARD','-o','wlan0','-m','conntrack','--ctorigsrc','10.42.1.0/24','-m','comment','--comment','hive-hotspot-ret','-j','ACCEPT']
+        self.assertIn(ret,rules,'回程回包也必须在门禁之上放行')
+        self.assertLess(rules.index(ret),rules.index(drop))
+        # 门禁在时热点网段要从 TUN 摘到 main 表（否则交付配置的 MATCH,REJECT 掐掉客户端）。
+        self.assertIn('rule add from 10.42.1.0/24 lookup main pref 8000',(self.root/'ip-calls').read_text())
 
     def test_gateway_reenable_requires_fresh_authorization(self):
         self.set_gateway_enabled('off')

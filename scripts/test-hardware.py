@@ -596,16 +596,17 @@ exit 0
             [{'id': 42, 'action': 'hotspot-config', 'params': json.dumps(params)}]))
         for name in ['logger', 'chown', 'sysctl', 'sleep', 'ufw', 'journalctl']:
             self.mock(name, '#!/bin/sh\nexit 0\n')
-        # Hotspot firewall: -C 一律未命中（走插入路径），其余动作记账后成功。
+        # mihomo 的 DNS 端口是否在听由 dns1053 文件模拟；订阅门禁是否存在由 gate 文件模拟。
         self.mock('iptables', r'''#!/usr/bin/env python3
 import os, sys
 from pathlib import Path
 r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
 with (r/'iptables-calls').open('a') as out:
     out.write(' '.join(args)+'\n')
+if '-C' in args and 'hive-subscription' in args:
+    sys.exit(0 if (r/'gate').exists() else 1)
 sys.exit(1 if '-C' in args else 0)
 ''')
-        # mihomo 的 DNS 端口是否在听由 dns1053 文件模拟。
         self.mock('ss', r'''#!/usr/bin/env python3
 import os
 from pathlib import Path
@@ -664,8 +665,26 @@ elif args[-2:] == ['device', 'status']: print('wlan0')
         self.mock('ip', r'''#!/usr/bin/env python3
 import os, sys
 from pathlib import Path
-with (Path(os.environ['HIVE_TEST_ROOT'])/'ip-calls').open('a') as out:
-    out.write(' '.join(sys.argv[1:])+'\n')
+r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
+with (r/'ip-calls').open('a') as out:
+    out.write(' '.join(args)+'\n')
+state = r/'ip-rules'
+lines = state.read_text().splitlines() if state.exists() else []
+def save(): state.write_text('\n'.join(lines)+('\n' if lines else ''))
+if args[:2] == ['rule', 'show']:
+    print('\n'.join(lines))
+elif args[:2] == ['rule', 'add']:
+    kind, target, pref = args[2], args[3], args[-1]
+    line = f'{pref}:\t{kind} {target} lookup main'
+    if line not in lines: lines.append(line)
+    save()
+elif args[:2] == ['rule', 'del']:
+    kind, target = args[2], args[3]
+    pref = args[args.index('pref')+1] if 'pref' in args else None
+    lines[:] = [l for l in lines
+                if not (f'{kind} {target} lookup main' in l
+                        and (pref is None or l.startswith(pref+':')))]
+    save()
 ''')
         for name in ['hive-command-agent', 'hive-hotspot.sh', 'hive-node-info',
                      'hive-hotspot-dns.sh', 'hive-hotspot-firewall.sh']:
@@ -750,12 +769,66 @@ with (Path(os.environ['HIVE_TEST_ROOT'])/'ip-calls').open('a') as out:
 
     def test_hotspot_with_mihomo_keeps_fake_ip_dns(self):
         agent = self.hotspot_fixture(bands='5g')
+        (self.root / 'etc/mihomo').mkdir(parents=True, exist_ok=True)
+        (self.root / 'etc/mihomo/config.yaml').write_text('mixed-port: 7890\n')
         (self.root / 'services.json').write_text(json.dumps({'hive-mihomo': True}))
         (self.root / 'dns1053').touch()
         self.run_script(agent)
         conf = (self.root / 'etc/hive/dnsmasq-5g.conf').read_text()
         self.assertIn('server=127.0.0.1#1053\n', conf)
         self.assertNotIn('223.5.5.5', conf)
+        # 门禁不在（正常代理分流）：热点包该走 TUN，不能插直连策略路由。
+        self.assertNotIn('rule add from 10.42.1.0/24 lookup main', (self.root / 'ip-calls').read_text())
+
+    def test_hotspot_with_blocked_gate_bypasses_mihomo(self):
+        # 实测：门禁在、交付配置末端是 MATCH,REJECT 时，热点客户端 DHCP/DNS 都正常但
+        # HTTPS 全超时。热点网段必须从 TUN 摘到 main 表直连，DNS 同步用公共 DNS
+        # （fake-IP 在 main 表不可路由）。
+        agent = self.hotspot_fixture(bands='5g')
+        (self.root / 'services.json').write_text(json.dumps({'hive-mihomo': True}))
+        (self.root / 'dns1053').touch()
+        (self.root / 'gate').touch()
+        self.run_script(agent)
+        conf = (self.root / 'etc/hive/dnsmasq-5g.conf').read_text()
+        self.assertIn('server=223.5.5.5\n', conf)
+        self.assertNotIn('127.0.0.1#1053', conf)
+        calls = (self.root / 'ip-calls').read_text()
+        self.assertIn('rule add from 10.42.1.0/24 lookup main pref 8000', calls)
+        self.assertIn('rule add from 10.42.0.0/24 lookup main pref 8000', calls)
+        # 本机到公共解析器的查询也要绕开 dns-hijack，否则客户端仍拿 fake-IP。
+        self.assertIn('rule add to 223.5.5.5 lookup main pref 7000', calls)
+        self.assertIn('rule add to 119.29.29.29 lookup main pref 7000', calls)
+        # 回程（对端回包）也必须放行，否则 TCP SYN 出得去、连不上。
+        self.assertIn('-I FORWARD 1 -o wlan0 -m conntrack --ctorigsrc 10.42.1.0/24 '
+                      '-m comment --comment hive-hotspot-ret -j ACCEPT',
+                      (self.root / 'iptables-calls').read_text())
+
+    def test_hotspot_gate_release_removes_the_bypass(self):
+        agent = self.hotspot_fixture(bands='5g')
+        (self.root / 'etc/mihomo').mkdir(parents=True, exist_ok=True)
+        (self.root / 'etc/mihomo/config.yaml').write_text('mixed-port: 7890\n')
+        (self.root / 'services.json').write_text(json.dumps({'hive-mihomo': True}))
+        (self.root / 'dns1053').touch()
+        (self.root / 'ip-rules').write_text('8000:\tfrom 10.42.1.0/24 lookup main\n'
+                                           '8000:\tfrom 10.42.0.0/24 lookup main\n')
+        self.run_script(agent)
+        rules = (self.root / 'ip-rules').read_text()
+        self.assertNotIn('10.42.1.0/24 lookup main', rules)
+        self.assertNotIn('10.42.0.0/24 lookup main', rules)
+        self.assertIn('server=127.0.0.1#1053\n', (self.root / 'etc/hive/dnsmasq-5g.conf').read_text())
+
+    def test_hotspot_without_config_falls_back_to_direct(self):
+        # 用户场景：mihomo 进程还在（内存里还有旧配置）、config.yaml 却没了 ——
+        # 这种"没有 mihomo 配置"的状态下热点必须直连，不能等 mihomo 吐 fake-IP。
+        agent = self.hotspot_fixture(bands='5g')
+        (self.root / 'services.json').write_text(json.dumps({'hive-mihomo': True}))
+        (self.root / 'dns1053').touch()
+        self.run_script(agent)
+        conf = (self.root / 'etc/hive/dnsmasq-5g.conf').read_text()
+        self.assertIn('server=223.5.5.5\n', conf)
+        self.assertNotIn('127.0.0.1#1053', conf)
+        self.assertIn('rule add from 10.42.1.0/24 lookup main pref 8000',
+                      (self.root / 'ip-calls').read_text())
 
     def test_2g_hotspot_is_exempt_from_the_subscription_block(self):
         self.run_script(self.hotspot_fixture(prefer='2.4'))

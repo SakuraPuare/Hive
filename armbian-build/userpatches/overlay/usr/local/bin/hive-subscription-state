@@ -54,6 +54,15 @@ hive_gateway_enabled() (
     enabled=${GATEWAY_ENABLED:-on}
     case "${enabled,,}" in off|0|false|no) exit 1;; esac
 )
+hive_refresh_hotspot() {
+    # 热点侧的两份状态都跟着门禁走：转发放行 + 直连策略路由（firewall），
+    # DNS 上游（dns：门禁在时不能用 fake-IP）。两个脚本都幂等、失败不影响门禁本身。
+    local script
+    for script in hive-hotspot-firewall.sh hive-hotspot-dns.sh; do
+        [ -x "/usr/local/bin/$script" ] && "/usr/local/bin/$script" >/dev/null 2>&1
+    done
+    return 0
+}
 hive_gateway_block_forward() {
     local tool
     for tool in iptables ip6tables; do
@@ -61,10 +70,9 @@ hive_gateway_block_forward() {
           "$tool" -w 3 -I FORWARD 1 -m comment --comment hive-subscription -j DROP || return 1
     done
     # 热点是独立功能，不能被订阅门禁连坐（没有 mihomo 配置时连上 Wi-Fi 也要能上网）。
-    # 按 AP 接口+热点网段放行的规则由 hive-hotspot-firewall.sh 维护：每次落 DROP 都让它
-    # 重插到门禁之上（规则顺序有意义，DROP 必须在后）。它自己幂等，缺失时静默跳过。
-    [ -x /usr/local/bin/hive-hotspot-firewall.sh ] &&
-        /usr/local/bin/hive-hotspot-firewall.sh >/dev/null 2>&1
+    # 规则顺序有意义：DROP 落完再让热点脚本把 ACCEPT 重插到它之上，并把热点网段
+    # 从 TUN 摘到 main 表（配公共 DNS），否则交付配置末端的 MATCH,REJECT 会掐掉客户端。
+    hive_refresh_hotspot
     return 0
 }
 hive_gateway_unblock_forward() {
@@ -75,6 +83,9 @@ hive_gateway_unblock_forward() {
         done
     done
     rm -f "$HIVE_ACCESS_DIR/gateway.blocked"
+    # 门禁撤销：热点恢复走代理分流（删直连策略路由 + DNS 回 fake-IP）。
+    hive_refresh_hotspot
+    return 0
 }
 hive_gateway_clear_access() {
     rm -f "$HIVE_ACCESS_DIR/gateway.lease" || return 1
