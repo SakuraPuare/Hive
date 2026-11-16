@@ -399,6 +399,18 @@ else
   echo "镜像源: 官方（GitHub 官方 runner 在境外）"
 fi
 
+# REGIONAL_MIRROR=aliyun：Armbian 只内置 china(TUNA)/bfsu 两个 Debian 镜像预设，
+# aliyun 由仓库自带脚本补进框架。用在 TUNA 封锁构建机 IP 的场景（2026-11-16 实测：
+# develop 对 TUNA 的 apt 与 git 全站 403，aliyun 10 MB/s）。框架是未跟踪的构建状态，
+# `make setup-armbian` 或框架升级会把它换回上游，所以每次构建前幂等补一次。
+if [ "$REGIONAL_MIRROR" = "aliyun" ]; then
+  echo ">>> 应用 aliyun 镜像预设（Armbian 只内置 china/bfsu）..."
+  python3 "${SCRIPT_DIR}/armbian-mirror-preset.py" "${ARMBIAN_DIR}" || {
+    echo "❌ 无法写入 aliyun 镜像预设，构建中止（见上面错误）"
+    exit 1
+  }
+fi
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 开始构建
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

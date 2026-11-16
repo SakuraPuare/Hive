@@ -140,6 +140,8 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 
 实测（构建机 192.168.100.162）：`ghcr.io` 约 150 KB/s，u-boot 包要 45 min；`ghcr.nju.edu.cn` 同一个 blob 50 MB/s，约 8 s；TUNA apt 20 MB/s；GitHub Releases 约 0.4 MB/s。
 
+如果构建机 IP 被 TUNA 封禁（表现为 apt 与 git 来源全部 `403 Forbidden`，本机正常），在 `.env` 里设 `REGIONAL_MIRROR=aliyun`：`build.sh` 会用 `scripts/armbian-mirror-preset.py` 幂等补一份 aliyun 预设进框架（Armbian 只内置 china/bfsu，框架重装后会自动补回），apt 走 `mirrors.aliyun.com`（实测 10 MB/s），mainline 内核 git 回落 `kernel.org`。
+
 框架自带的镜像开关这三个都用不了，所以 `build.sh` 把它们钉在官方值，改用下面的预取：
 
 - `GHCR_MIRROR=nju`：oras 要先向 `<mirror>/token` 换 token，nju 没有这个端点（404），oras 判 not_found 后仍回落到 `ghcr.io` 慢速直连。
