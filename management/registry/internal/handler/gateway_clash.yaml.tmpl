@@ -128,8 +128,11 @@ proxy-groups:
     proxies: [{{ range $i, $n := .ManualProxyNames }}{{ if $i }}, {{ end }}{{ $n | printf "%q" }}{{ end }}{{ if not .ManualProxyNames }}直连{{ end }}]
 {{ end }}
 rule-anchor:
-  ip: &ip {type: http, interval: 86400, behavior: ipcidr, format: mrs}
-  domain: &domain {type: http, interval: 86400, behavior: domain, format: mrs}
+  # 规则集下载必须直连：mihomo 拉 rule-provider 也走规则引擎，而本配置末尾是
+  # MATCH,代理。若先走代理，上游不可用时下载会 EOF，规则集全空 → 所有流量继续
+  # MATCH,代理 → 热点客户端“连上就断网”。proxy: DIRECT 打破这个死锁。
+  ip: &ip {type: http, interval: 86400, behavior: ipcidr, format: mrs, proxy: DIRECT}
+  domain: &domain {type: http, interval: 86400, behavior: domain, format: mrs, proxy: DIRECT}
 
 rule-providers:
 {{ range .DomainProviders }}
