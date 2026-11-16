@@ -50,6 +50,7 @@ export type { handler_otaStorageReport } from './models/handler_otaStorageReport
 export type { handler_otaUploadRequest } from './models/handler_otaUploadRequest';
 export type { handler_otaUploadSession } from './models/handler_otaUploadSession';
 export type { handler_PermissionItem } from './models/handler_PermissionItem';
+export type { handler_PortalBindSubscriptionRequest } from './models/handler_PortalBindSubscriptionRequest';
 export type { handler_PortalClaimRequest } from './models/handler_PortalClaimRequest';
 export type { handler_PortalCreateOrderRequest } from './models/handler_PortalCreateOrderRequest';
 export type { handler_PortalCreateOrderResponse } from './models/handler_PortalCreateOrderResponse';

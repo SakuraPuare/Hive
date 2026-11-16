@@ -125,6 +125,116 @@ func (h *Handler) HandlePortalClaimDevice(w http.ResponseWriter, r *http.Request
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// PortalBindSubscriptionRequest is the body for PUT /portal/devices/{mac}/subscription.
+type PortalBindSubscriptionRequest struct {
+	SubscriptionID uint `json:"subscription_id" example:"42"`
+}
+
+// HandlePortalBindDeviceSubscription godoc
+// @Summary      给网关设备下发订阅配置
+// @ID           PortalBindDeviceSubscription
+// @Description  客户把自己名下有效的订阅绑定到自己的网关设备。设备在下一次 hive-clash-sync 周期拉取该订阅的 Mihomo 配置。
+// @Tags         portal
+// @Security     CustomerSessionCookie
+// @Accept       json
+// @Produce      json
+// @Param        mac path string true "设备 MAC"
+// @Param        body body PortalBindSubscriptionRequest true "订阅 ID"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      409 {object} ErrorResponse
+// @Router       /portal/devices/{mac}/subscription [put]
+func (h *Handler) HandlePortalBindDeviceSubscription(w http.ResponseWriter, r *http.Request) {
+	cid := customerID(r)
+	mac := r.PathValue("mac")
+	n, ok := h.ownedNode(w, mac, cid)
+	if !ok {
+		return
+	}
+	if !n.GatewayEnabled {
+		h.jsonErr(w, http.StatusBadRequest, "device is not a gateway")
+		return
+	}
+
+	var req PortalBindSubscriptionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.jsonErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if req.SubscriptionID == 0 {
+		h.jsonErr(w, http.StatusBadRequest, "subscription_id required")
+		return
+	}
+
+	var sub struct {
+		ID           uint
+		Status       string
+		TrafficUsed  int64
+		TrafficLimit int64
+		ExpiresAt    time.Time
+	}
+	if err := h.DB.Raw(
+		"SELECT id, status, traffic_used, traffic_limit, expires_at FROM customer_subscriptions WHERE id = ? AND customer_id = ?",
+		req.SubscriptionID, cid,
+	).Scan(&sub).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	if sub.ID == 0 {
+		// 不区分"订阅不存在"和"属于别人"，避免客户探测订阅 ID。
+		h.jsonErr(w, http.StatusNotFound, "subscription not found")
+		return
+	}
+	expiresAt := sub.ExpiresAt.UTC().Format(model.TimeLayout)
+	if valid, reason := checkSubscriptionValid(sub.Status, sub.TrafficUsed, sub.TrafficLimit, expiresAt); !valid {
+		h.jsonErr(w, http.StatusConflict, reason)
+		return
+	}
+
+	res := h.DB.Exec(
+		"UPDATE nodes SET bound_subscription_id = ? "+
+			"WHERE mac = ? AND owner_customer_id = ? AND server_enabled = 0 AND gateway_enabled = 1",
+		req.SubscriptionID, mac, cid,
+	)
+	if res.Error != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())
+		return
+	}
+
+	store.WriteAuditLog(h.DB, customerActor(cid), "device_bind_subscription",
+		"mac="+mac+" subscription="+strconv.FormatUint(uint64(req.SubscriptionID), 10), getClientIP(r))
+	h.jsonOK(w, map[string]string{"status": "ok"})
+}
+
+// HandlePortalUnbindDeviceSubscription godoc
+// @Summary      解绑网关设备的订阅配置
+// @ID           PortalUnbindDeviceSubscription
+// @Description  客户解除网关设备与订阅的绑定；设备下一次同步后进入未绑定（fail-closed）配置。
+// @Tags         portal
+// @Security     CustomerSessionCookie
+// @Produce      json
+// @Param        mac path string true "设备 MAC"
+// @Success      200 {object} StatusResponse
+// @Failure      404 {object} ErrorResponse
+// @Router       /portal/devices/{mac}/subscription [delete]
+func (h *Handler) HandlePortalUnbindDeviceSubscription(w http.ResponseWriter, r *http.Request) {
+	cid := customerID(r)
+	mac := r.PathValue("mac")
+	if _, ok := h.ownedNode(w, mac, cid); !ok {
+		return
+	}
+	if err := h.DB.Exec(
+		"UPDATE nodes SET bound_subscription_id = NULL WHERE mac = ? AND owner_customer_id = ? AND server_enabled = 0",
+		mac, cid,
+	).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	store.WriteAuditLog(h.DB, customerActor(cid), "device_unbind_subscription", "mac="+mac, getClientIP(r))
+	h.jsonOK(w, map[string]string{"status": "ok"})
+}
+
 // HandlePortalUnbindDevice godoc
 // @Summary      解绑我的设备
 // @ID           PortalUnbindDevice

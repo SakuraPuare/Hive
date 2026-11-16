@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { handler_enqueueCommandRequest } from '../models/handler_enqueueCommandRequest';
+import type { handler_PortalBindSubscriptionRequest } from '../models/handler_PortalBindSubscriptionRequest';
 import type { handler_PortalClaimRequest } from '../models/handler_PortalClaimRequest';
 import type { handler_PortalCreateOrderRequest } from '../models/handler_PortalCreateOrderRequest';
 import type { handler_PortalCreateOrderResponse } from '../models/handler_PortalCreateOrderResponse';
@@ -137,6 +138,65 @@ export class PortalService {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/portal/devices/{mac}/unbind',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 给网关设备下发订阅配置
+     * 客户把自己名下有效的订阅绑定到自己的网关设备。设备在下一次 hive-clash-sync 周期拉取该订阅的 Mihomo 配置。
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static portalBindDeviceSubscription({
+        mac,
+        requestBody,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+        /**
+         * 订阅 ID
+         */
+        requestBody: handler_PortalBindSubscriptionRequest,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/portal/devices/{mac}/subscription',
+            path: {
+                'mac': mac,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                404: `Not Found`,
+                409: `Conflict`,
+            },
+        });
+    }
+    /**
+     * 解绑网关设备的订阅配置
+     * 客户解除网关设备与订阅的绑定；设备下一次同步后进入未绑定（fail-closed）配置。
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static portalUnbindDeviceSubscription({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/portal/devices/{mac}/subscription',
             path: {
                 'mac': mac,
             },

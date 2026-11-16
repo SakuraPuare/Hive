@@ -13,6 +13,8 @@ vi.mock('@/lib/portal-auth', () => ({
 const mockListDevices = vi.fn();
 const mockEnqueue = vi.fn();
 const mockCommands = vi.fn();
+const mockBindSubscription = vi.fn();
+const mockUnbindSubscription = vi.fn();
 
 vi.mock('@/src/generated/client', () => ({
   PortalService: {
@@ -21,6 +23,8 @@ vi.mock('@/src/generated/client', () => ({
     portalUnbindDevice: vi.fn(),
     portalListDeviceCommands: (...args: unknown[]) => mockCommands(...args),
     portalEnqueueDeviceCommand: (...args: unknown[]) => mockEnqueue(...args),
+    portalBindDeviceSubscription: (...args: unknown[]) => mockBindSubscription(...args),
+    portalUnbindDeviceSubscription: (...args: unknown[]) => mockUnbindSubscription(...args),
   },
 }));
 
@@ -54,6 +58,8 @@ describe('PortalDevicesPage', () => {
     mockRouter.replace.mockClear();
     mockListDevices.mockReset();
     mockCommands.mockReset();
+    mockBindSubscription.mockReset();
+    mockUnbindSubscription.mockReset();
     mockFetch.mockReset();
     mockFetch.mockImplementation(async (url: string) => ({
       ok: true,
@@ -107,5 +113,59 @@ describe('PortalDevicesPage', () => {
 
     expect(screen.queryByText('portal.mihomoPanel')).not.toBeInTheDocument();
     expect(screen.getByText('portal.statusOffline')).toBeInTheDocument();
+  });
+
+  it('delivers an active subscription to a gateway device', async () => {
+    mockUseCustomer.mockReturnValue({
+      customer: mockCustomer,
+      subscriptions: [{
+        id: 7,
+        plan_id: 2,
+        status: 'active',
+        expires_at: '2099-01-01T00:00:00Z',
+        traffic_used: 0,
+        traffic_limit: 100,
+      }],
+      loading: false,
+    });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    mockBindSubscription.mockResolvedValue({ status: 'ok' });
+
+    render(<PortalDevicesPage />);
+    await waitFor(() => screen.getByText('portal.subscriptionConfig'));
+    fireEvent.click(screen.getByText('portal.subscriptionConfig'));
+
+    await waitFor(() => screen.getByLabelText('portal.subscriptionSelect'));
+    fireEvent.change(screen.getByLabelText('portal.subscriptionSelect'), { target: { value: '7' } });
+    fireEvent.click(screen.getByText('portal.subscriptionBind'));
+
+    await waitFor(() => {
+      expect(mockBindSubscription).toHaveBeenCalledWith({
+        mac: 'aabbccddeeff',
+        requestBody: { subscription_id: 7 },
+      });
+    });
+  });
+
+  it('unbinds the subscription from a gateway device', async () => {
+    const boundNode = { ...gatewayNode, bound_subscription_id: 7 };
+    mockUseCustomer.mockReturnValue({
+      customer: mockCustomer,
+      subscriptions: [{ id: 7, plan_id: 2, status: 'active', expires_at: '2099-01-01T00:00:00Z' }],
+      loading: false,
+    });
+    mockListDevices.mockResolvedValue([boundNode]);
+    mockUnbindSubscription.mockResolvedValue({ status: 'ok' });
+
+    render(<PortalDevicesPage />);
+    await waitFor(() => screen.getByText('portal.subscriptionConfig'));
+    fireEvent.click(screen.getByText('portal.subscriptionConfig'));
+
+    await waitFor(() => screen.getByText('portal.subscriptionUnbind'));
+    fireEvent.click(screen.getByText('portal.subscriptionUnbind'));
+
+    await waitFor(() => {
+      expect(mockUnbindSubscription).toHaveBeenCalledWith({ mac: 'aabbccddeeff' });
+    });
   });
 });

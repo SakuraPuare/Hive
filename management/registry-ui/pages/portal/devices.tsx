@@ -91,7 +91,7 @@ export default function PortalDevicesPage() {
   const t = useTranslations('portal');
   const tCommon = useTranslations('common');
   const router = useRouter();
-  const { customer, loading: authLoading } = useCustomer();
+  const { customer, subscriptions, loading: authLoading } = useCustomer();
   const fmt = useFormat();
   const toast = useToast();
 
@@ -116,6 +116,12 @@ export default function PortalDevicesPage() {
   // 解绑确认
   const [unbindDevice, setUnbindDevice] = useState<model_Node | null>(null);
   const [unbinding, setUnbinding] = useState(false);
+
+  // 网关设备订阅配置
+  const [subDevice, setSubDevice] = useState<model_Node | null>(null);
+  const [selectedSubID, setSelectedSubID] = useState('');
+  const [bindingSub, setBindingSub] = useState(false);
+  const [unbindingSub, setUnbindingSub] = useState(false);
 
   // 网关 Mihomo 面板：地址/密钥 + 门户内实时流量（registry 代理节点 9090）
   const [dashDevice, setDashDevice] = useState<model_Node | null>(null);
@@ -246,6 +252,46 @@ export default function PortalDevicesPage() {
     }
   }, [unbindDevice, t, toast, loadDevices]);
 
+  const openSubscription = useCallback((device: model_Node) => {
+    setSubDevice(device);
+    setSelectedSubID('');
+  }, []);
+
+  const submitSubscription = useCallback(async () => {
+    if (!subDevice) return;
+    const subscriptionID = Number(selectedSubID);
+    if (!Number.isInteger(subscriptionID) || subscriptionID <= 0) return;
+    setBindingSub(true);
+    try {
+      await portalSessionApi(PortalService.portalBindDeviceSubscription({
+        mac: subDevice.mac!,
+        requestBody: { subscription_id: subscriptionID },
+      }));
+      toast.success(t('subscriptionBindSuccess'));
+      setSubDevice(null);
+      loadDevices();
+    } catch (e) {
+      toast.error(getErrorMessage(e, t('subscriptionBindFailed')));
+    } finally {
+      setBindingSub(false);
+    }
+  }, [subDevice, selectedSubID, t, toast, loadDevices]);
+
+  const unbindSubscription = useCallback(async () => {
+    if (!subDevice) return;
+    setUnbindingSub(true);
+    try {
+      await portalSessionApi(PortalService.portalUnbindDeviceSubscription({ mac: subDevice.mac! }));
+      toast.success(t('subscriptionUnbindSuccess'));
+      setSubDevice(null);
+      loadDevices();
+    } catch (e) {
+      toast.error(getErrorMessage(e, t('subscriptionUnbindFailed')));
+    } finally {
+      setUnbindingSub(false);
+    }
+  }, [subDevice, t, toast, loadDevices]);
+
   const openDashboard = useCallback(async (device: model_Node) => {
     setDashDevice(device);
     setDashInfo(null);
@@ -297,6 +343,13 @@ export default function PortalDevicesPage() {
     const timer = window.setInterval(tick, 2000);
     return () => { stopped = true; window.clearInterval(timer); };
   }, [dashDevice?.mac]);
+
+  // 只展示当前有效且未超量的订阅；后端仍会再校验一次，防止前端状态过期。
+  const activeSubscriptions = subscriptions.filter((s) => {
+    const notExpired = new Date(s.expires_at ?? '') > new Date();
+    const underLimit = (s.traffic_limit ?? 0) === 0 || (s.traffic_used ?? 0) < (s.traffic_limit ?? 0);
+    return s.status === 'active' && notExpired && underLimit;
+  });
 
   if (authLoading) return (
     <div className="flex items-center justify-center py-24" role="status" aria-live="polite" aria-busy="true">
@@ -353,6 +406,7 @@ export default function PortalDevicesPage() {
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colHostname')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colMac')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colStatus')}</TableHead>
+                  <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colSubscription')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colAddress')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colLastSeen')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colClaimedAt')}</TableHead>
@@ -373,11 +427,19 @@ export default function PortalDevicesPage() {
                           : d.probe_status === 'offline' ? t('statusOffline') : t('statusUnknown')}
                       </span>
                     </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {d.gateway_enabled
+                        ? (d.bound_subscription_id ? `#${d.bound_subscription_id}` : t('subscriptionUnbound'))
+                        : '—'}
+                    </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{d.easytier_ip || d.tailscale_ip || '—'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{d.last_seen ? fmt.dateTime(d.last_seen) : '—'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{d.claimed_at ? fmt.dateTime(d.claimed_at) : '—'}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                        {d.gateway_enabled && (
+                          <Button variant="ghost" size="sm" onClick={() => openSubscription(d)}>{t('subscriptionConfig')}</Button>
+                        )}
                         {d.gateway_enabled && (
                           <Button variant="ghost" size="sm" onClick={() => openDashboard(d)}>{t('mihomoPanel')}</Button>
                         )}
@@ -630,6 +692,57 @@ export default function PortalDevicesPage() {
               </>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 网关设备订阅配置 */}
+      <Dialog open={!!subDevice} onOpenChange={(o) => { if (!o) setSubDevice(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('subscriptionDialogTitle', { name: subDevice?.hostname || subDevice?.mac || '' })}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{t('subscriptionDialogHint')}</p>
+            {subDevice?.bound_subscription_id ? (
+              <div className="rounded-lg border border-md-outline-variant bg-md-surface-container-low p-3">
+                <p className="text-sm font-500">{t('subscriptionCurrent', { id: subDevice.bound_subscription_id })}</p>
+                <Button variant="ghost" size="sm" className="mt-2 text-md-error hover:bg-md-error/10"
+                  onClick={unbindSubscription} loading={unbindingSub}>
+                  {t('subscriptionUnbind')}
+                </Button>
+              </div>
+            ) : null}
+            <div className="space-y-1.5">
+              <Label htmlFor="subscription-select">{t('subscriptionSelect')}</Label>
+              <select
+                id="subscription-select"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={selectedSubID}
+                onChange={(e) => setSelectedSubID(e.target.value)}
+              >
+                <option value="">{t('subscriptionSelectPlaceholder')}</option>
+                {activeSubscriptions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {t('subscriptionOption', {
+                      id: s.id ?? 0,
+                      plan: s.plan_id ?? 0,
+                      expires: s.expires_at ? fmt.dateTime(s.expires_at) : '—',
+                    })}
+                  </option>
+                ))}
+              </select>
+              {activeSubscriptions.length === 0 && (
+                <p className="text-xs text-md-error">{t('subscriptionNoActive')}</p>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">{t('subscriptionSyncHint')}</p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSubDevice(null)}>{tCommon('cancel')}</Button>
+            <Button onClick={submitSubscription} loading={bindingSub} disabled={!selectedSubID || activeSubscriptions.length === 0}>
+              {t('subscriptionBind')}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

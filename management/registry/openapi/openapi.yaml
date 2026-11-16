@@ -421,6 +421,14 @@ definitions:
         example: node:read
         type: string
     type: object
+  handler.PortalBindSubscriptionRequest:
+    properties:
+      subscription_id:
+        example: 42
+        type: integer
+    required:
+    - subscription_id
+    type: object
   handler.PortalClaimRequest:
     properties:
       code:
@@ -4991,6 +4999,73 @@ paths:
       security:
       - CustomerSessionCookie: []
       summary: 代理节点 Mihomo API（只读）
+      tags:
+      - portal
+  /portal/devices/{mac}/subscription:
+    delete:
+      description: 客户解除网关设备与订阅的绑定；设备下一次同步后进入未绑定（fail-closed）配置。
+      operationId: PortalUnbindDeviceSubscription
+      parameters:
+      - description: 设备 MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 解绑网关设备的订阅配置
+      tags:
+      - portal
+    put:
+      consumes:
+      - application/json
+      description: 客户把自己名下有效的订阅绑定到自己的网关设备。设备在下一次 hive-clash-sync 周期拉取该订阅的 Mihomo 配置。
+      operationId: PortalBindDeviceSubscription
+      parameters:
+      - description: 设备 MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      - description: 订阅 ID
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.PortalBindSubscriptionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 给网关设备下发订阅配置
       tags:
       - portal
   /portal/devices/{mac}/unbind:
