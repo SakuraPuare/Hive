@@ -12,6 +12,8 @@ flock -n 9 || exit 0
 if ! hive_gateway_enabled; then hive_disable_gateway; exit 0; fi
 fail() {
     echo "[hive-clash-sync] $*"
+    # 授权失效就 fail-closed。hive_stop_gateway 自身是幂等的：已经 blocked 且 mihomo
+    # 还在跑时只补规则，不重写配置、不重启 mihomo（否则断网期间每 15s 重启一次）。
     if ! hive_lease_valid gateway; then hive_stop_gateway || true; fi
     exit 1
 }

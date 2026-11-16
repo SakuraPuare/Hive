@@ -342,6 +342,49 @@ class SubscriptionScripts(unittest.TestCase):
         self.run_agent('hive-xray-prepare')
         self.assertEqual(json.loads(p.read_text())['inbounds'][0]['settings']['clients'],[])
 
+    def test_outage_retries_do_not_restart_mihomo_once_fail_closed(self):
+        # 断网且已经 fail-closed 之后，clash-sync 每 15s 还会失败一次；此时不能重写
+        # blocked 配置、重启 mihomo（真机日志里是每 15s 一对 Stopping/Starting）。
+        # 但转发必须保持阻断（fail-closed 不能因为重试而放松）。
+        (self.root / 'fail-network').write_text('')
+        access = self.root / 'run/hive-subscriptions'
+        access.mkdir(parents=True, exist_ok=True)
+        (access / 'gateway.blocked').write_text('')
+        (access / 'gateway.lease').unlink(missing_ok=True)
+        self.state_update(mihomo=True)
+        (self.root / 'calls').write_text('')
+        for _ in range(2):
+            self.run_agent('hive-clash-sync', expected=1)
+        calls = (self.root / 'calls').read_text()
+        self.assertNotIn('systemctl restart hive-mihomo', calls)
+        self.assertNotIn('systemctl stop hive-mihomo', calls)
+        self.assertTrue(self.state()['iptables'], '重试期间转发必须保持阻断')
+
+    def test_expired_lease_still_fails_closed_exactly_once(self):
+        # 授权过期（文件还在）时第一次失败必须 fail-closed：写 blocked 配置、重启
+        # mihomo、留下 blocked 标记；之后的重试不再重启。
+        (self.root / 'fail-network').write_text('')
+        access = self.root / 'run/hive-subscriptions'
+        access.mkdir(parents=True, exist_ok=True)
+        self.expire('gateway')
+        (self.root / 'calls').write_text('')
+        self.run_agent('hive-clash-sync', expected=1)
+        first = (self.root / 'calls').read_text()
+        self.assertIn('systemctl restart hive-mihomo', first)
+        self.assertFalse((access / 'gateway.lease').exists())
+        self.assertTrue((access / 'gateway.blocked').exists())
+        (self.root / 'calls').write_text('')
+        self.run_agent('hive-clash-sync', expected=1)
+        second = (self.root / 'calls').read_text()
+        self.assertNotIn('systemctl restart hive-mihomo', second)
+        self.assertNotIn('systemctl stop hive-mihomo', second)
+        # 网恢复、授权重新有效后必须解除 fail-closed（清 blocked 标记 + 放行转发），
+        # 否则下一次断网前的正常服务会被上一轮的标记挡住。
+        (self.root / 'fail-network').unlink()
+        self.run_agent('hive-clash-sync')
+        self.assertFalse((access / 'gateway.blocked').exists(), '恢复后必须清掉 blocked 标记')
+        self.assertFalse(self.state()['iptables'], '恢复后必须放行转发')
+
     def test_gateway_off_entrypoints_preserve_unrelated_forwarding(self):
         self.set_gateway_enabled('off')
         access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)

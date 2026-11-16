@@ -15,6 +15,11 @@ Environment="SAFE_PATHS=/var/www/metacubexd"
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5
+# 断网时 mihomo 会把每一次失败的外部 dial 都写一行：实测 5 分钟 37k 行 / 8.5MB
+# journal（正常运行时只有 ~0.1 行/秒）。限流只在故障风暴时生效，超出部分由 journald
+# 记为 "Suppressed N messages"，不会把 4GB 根分区写满。
+LogRateLimitIntervalSec=30
+LogRateLimitBurst=500
 TimeoutStopSec=3
 TimeoutStartSec=10
 # TUN + nft auto-redirect 需要网络管理能力（以 root 运行，限定能力边界）
