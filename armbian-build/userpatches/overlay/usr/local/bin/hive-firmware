@@ -156,6 +156,31 @@ hive_tries 3" || return 1
     ota_save_ack installing "boot payload $FW_OTHER ready; waiting for reboot validation" "$assignment" "$version"
 }
 
+firmware_prune_stale_modules() {
+    # A boot payload only ever writes new paths, so every kernel-version bump
+    # leaves the previous module tree behind: ~166 MiB per upgrade on a fixed
+    # 4 GiB root, which no other code removes. Once the trial is confirmed the
+    # bootloader can no longer return to the old letter, so any tree other than
+    # the running kernel's is unreachable. Called only from the confirmed path;
+    # a rollback still needs the modules of the letter it returns to.
+    local dir="$FW_ROOT/usr/lib/modules" running entry name
+    [ -d "$dir" ] || return 0
+    running=$(uname -r) || return 1
+    [ -n "$running" ] || return 1
+    # Only prune when the running kernel's own tree exists: a name mismatch must
+    # never be read as "everything here is stale".
+    [ -d "$dir/$running" ] || return 0
+    for entry in "$dir"/*; do
+        [ -d "$entry" ] && [ ! -L "$entry" ] || continue
+        name=${entry##*/}
+        # Only kernel version trees; anything else under modules/ is not ours.
+        case "$name" in [0-9]*) ;; *) continue;; esac
+        [ "$name" = "$running" ] && continue
+        rm -rf -- "$entry" || return 1
+        log "已清理旧内核模块树: $name"
+    done
+}
+
 firmware_confirm() {
     [ -f "$FW_PENDING" ] || return 0
     # 2 = cannot even name the running letter. A reboot cannot fix that, and the
@@ -238,6 +263,10 @@ hive_tries 0" || return 1
     fi
     ota_save_ack done "firmware boot and management checks passed on letter $FW_SLOT" "$assignment" "$version" \
         || log 'warning: firmware confirmation receipt not delivered'
+    # Free the superseded module tree now that the old letter can no longer be
+    # booted. Best-effort: the boot is already confirmed and this unit reboots
+    # on failure, so a stale directory must never fail it.
+    firmware_prune_stale_modules || log 'warning: 旧内核模块树清理失败；根分区会多占用一份模块树'
     rm -f "$FW_PENDING" "$FW_STATE/firmware-previous-receipt.json" "$FW_STATE/firmware-previous-version"
     sync -f "$FW_STATE" || log "warning: sync $FW_STATE failed"
     return 0

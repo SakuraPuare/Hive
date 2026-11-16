@@ -897,6 +897,43 @@ fi
         self.assertEqual(json.loads((self.root / 'var/lib/hive/ota-pending-ack.json').read_text())['status'], 'done')
         self.assertEqual((self.root / 'uboot-active').read_text(), 'B\n')
 
+    def test_confirmation_prunes_the_superseded_module_tree(self):
+        # The boot payload only writes new paths, so every kernel-version bump
+        # used to leave the previous module tree behind: ~166 MiB per upgrade on
+        # a fixed 4 GiB root, with nothing else removing it. Once confirmed the
+        # bootloader cannot return to the old letter, so that tree is dead weight.
+        runner = self.firmware_fixture()
+        self.run_script(runner, 'stage')
+        stale = self.root / 'usr/lib/modules/6.18.50'
+        (stale / 'kernel').mkdir(parents=True)
+        (stale / 'kernel/old.ko').write_bytes(b'old module\n')
+        self.mock('uname', '#!/bin/sh\n[ "$1" = -r ] && echo 6.18.59\n')
+        self.set_running_slot('B')
+        path = self.root / 'var/lib/hive/firmware-pending.json'
+        pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
+        path.write_text(json.dumps(pending))
+        result = self.run_script(runner, 'confirm')
+        self.assertFalse(stale.exists())
+        self.assertTrue((self.root / 'usr/lib/modules/6.18.59/hive.ko').exists())
+        self.assertIn('已清理旧内核模块树: 6.18.50', result.stdout)
+
+    def test_rollback_keeps_the_module_tree_of_the_letter_it_returns_to(self):
+        # A trial that fails boots the confirmed letter again, which needs its
+        # own kernel modules. Pruning before that decision would brick the
+        # rollback it is supposed to survive.
+        runner = self.firmware_fixture()
+        self.run_script(runner, 'stage')
+        confirmed_modules = self.root / 'usr/lib/modules/6.18.50'
+        confirmed_modules.mkdir(parents=True)
+        self.mock('uname', '#!/bin/sh\n[ "$1" = -r ] && echo 6.18.59\n')
+        path = self.root / 'var/lib/hive/firmware-pending.json'
+        pending = json.loads(path.read_text()); pending['boot_id'] = 'previous-boot'
+        path.write_text(json.dumps(pending))
+        self.set_running_slot('A')  # bootloader returned to the confirmed letter
+        self.run_script(runner, 'confirm')
+        self.assertTrue(confirmed_modules.exists())
+        self.assertTrue((self.root / 'usr/lib/modules/6.18.59/hive.ko').exists())
+
     def test_receipt_failure_after_confirmation_does_not_fail_the_unit(self):
         # hive_active has already flipped and hive_tries is 0, so no reboot can
         # roll back. hive-firmware-confirm has FailureAction=reboot and its
