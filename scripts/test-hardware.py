@@ -413,6 +413,84 @@ exit 0
         self.assertEqual(proc.returncode, 0, out + err)
         self.assertIn('172.20.1.5/16', (self.root / 'core-args').read_text().split())
 
+    # ── 启动排序不变量 ────────────────────────────────────────────────────────
+    UNITS = REPO / 'armbian-build/userpatches/overlay/etc/systemd/system'
+
+    # 出网才能工作的单元：必须 Wants= 且 After= network-online.target。
+    NETWORK_UNITS = (
+        'provision-node.service',    # 注册/enroll 走 registry
+        'hive-mihomo.service',        # 拉订阅 + 上游代理
+        'hive-clash-sync.service',    # 从 registry 拉网关配置
+        'hive-xray-sync.service',     # 从 registry 拉订阅
+        'hive-command-agent.service', # 心跳/命令轮询
+        'hive-updater.service',       # OTA 轮询 + 管理面探测
+        'hive-firmware-confirm.service',  # 试启动确认要访问 registry
+        'cloudflared.service',        # CF Tunnel 控制面
+        'easytier.service',           # 中继/peer
+        'frpc.service',               # FRPS
+    )
+
+    # 断网也必须能起来/必须立即生效的单元：绝不能等网络，否则设备离线时
+    # 防火墙不生效、热点不开、/data 不挂、回滚不跑。
+    OFFLINE_UNITS = (
+        'hive-firewall.service', 'hive-fail2ban.service',
+        'hive-gateway.service', 'hive-hotspot.service',
+        'hive-hotspot-5g.service', 'hive-hotspot-5g-dnsmasq.service',
+        'hive-data.service', 'hive-ota-recover.service', 'hive-regen-hostkeys.service',
+        'hive-subscription-guard.service', 'xray.service', 'xray-exporter.service',
+    )
+
+    # 上游软件包单元（我们只启用+配置），用 drop-in 加排序。
+    PACKAGE_ONLINE_DROPINS = (
+        'tailscaled.service.d/10-hive-online.conf',
+        'warp-svc.service.d/10-hive-online.conf',
+    )
+
+    @staticmethod
+    def unit_directives(text):
+        directives = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith(('#', '[', ';')) or '=' not in line:
+                continue
+            key, _, value = line.partition('=')
+            directives.setdefault(key.strip(), []).extend(value.split())
+        return directives
+
+    def test_network_units_wait_for_real_connectivity(self):
+        for unit in self.NETWORK_UNITS:
+            with self.subTest(unit=unit):
+                d = self.unit_directives((self.UNITS / unit).read_text())
+                self.assertIn('network-online.target', d.get('After', []),
+                              f'{unit} 必须在 network-online.target 之后启动')
+                self.assertIn('network-online.target', d.get('Wants', []),
+                              f'{unit} 必须 Wants=network-online.target，否则这个 target 不会被拉进事务')
+        for dropin in self.PACKAGE_ONLINE_DROPINS:
+            with self.subTest(dropin=dropin):
+                d = self.unit_directives((self.UNITS / dropin).read_text())
+                self.assertIn('network-online.target', d.get('After', []))
+                self.assertIn('network-online.target', d.get('Wants', []))
+        # 目标本身必须真的等连通性，否则上面所有声明都是摆设：镜像启用
+        # NetworkManager-wait-online，并把 nm-online 的 -s（只等 NM 启动完成）
+        # 换成等实际连接。
+        image = (REPO / 'armbian-build/userpatches/customize-image.sh').read_text()
+        self.assertIn('systemctl enable NetworkManager-wait-online.service', image)
+        wait_online = (self.UNITS / 'NetworkManager-wait-online.service.d/10-hive-connectivity.conf').read_text()
+        self.assertIn('ExecStart=', wait_online.splitlines())  # 先清空发行版默认值
+        execs = [value for value in wait_online.splitlines() if value.startswith('ExecStart=/usr/bin/nm-online')]
+        self.assertTrue(execs, 'drop-in 必须显式设置 nm-online')
+        self.assertNotIn('-s', execs[0].split(), 'nm-online 不能带 -s，否则不等连通性')
+        self.assertIn('-t', execs[0].split(), 'nm-online 必须有超时，离线时不能让 target 永久挂住')
+
+    def test_offline_capable_units_never_wait_for_the_network(self):
+        for unit in self.OFFLINE_UNITS:
+            with self.subTest(unit=unit):
+                d = self.unit_directives((self.UNITS / unit).read_text())
+                self.assertNotIn('network-online.target', d.get('After', []),
+                                 f'{unit} 断网时也必须启动/生效，不能排在 network-online.target 之后')
+                self.assertNotIn('network-online.target', d.get('Wants', []),
+                                 f'{unit} 断网时也必须启动/生效，不能 Wants=network-online.target')
+
     def test_node_info_preserves_gateway_topology_without_evaluation(self):
         info = self.root / 'node-info'
         marker = self.root / 'evaluated'
