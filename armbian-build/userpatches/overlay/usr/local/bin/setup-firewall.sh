@@ -212,21 +212,16 @@ ufw route allow in on "$GATEWAY_TUN_IFACE" comment 'Mihomo TUN - forward in'
 ufw route allow out on "$GATEWAY_TUN_IFACE" comment 'Mihomo TUN - forward out'
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 5GHz 热点（hostapd）转发/DHCP/DNS 放行
+# 5GHz 热点（hostapd）转发/DHCP/DNS 放行 + 热点网段 SNAT
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 5G 热点由 hostapd 独立托管（非 NM 连接），不触发 90-hive-hotspot NM dispatcher，
-# 且本脚本开头 `ufw --force reset` 会清掉 hive-hotspot.sh 先前打的洞。故必须在此按
-# AP 接口名自补放行（与 hive-hotspot.sh 的 apply_ufw_5g 同规则、同 comment，幂等叠加，
-# 覆盖“防火墙先起 / 热点先起”两种启动顺序）。接口名从 hive-hotspot.sh 写的 env 读取。
-# 2.4G 仍走 NM shared，由 90-hive-hotspot dispatcher 动态放行，不在此处理。
-if [ -f /etc/hive/hotspot-5g.env ]; then
-    . /etc/hive/hotspot-5g.env
-    if [ -n "${AP_IFACE:-}" ]; then
-        echo "配置 5G 热点（hostapd）放行：$AP_IFACE ..."
-        ufw route allow in on "$AP_IFACE" comment 'hive-hotspot-5g forward'
-        ufw allow in on "$AP_IFACE" to any port 67 proto udp comment 'hive-hotspot-5g DHCP'
-        ufw allow in on "$AP_IFACE" to any port 53 comment 'hive-hotspot-5g DNS'
-    fi
+# 且本脚本开头的 `ufw --force reset` 会清掉先前打的洞与 NAT 规则。故在这里按
+# /etc/hive/hotspot-5g.env 里的 AP 接口重打一遍（与 hive-hotspot.sh 同一脚本、幂等）。
+# 同时给它加 SNAT 并豁免订阅门禁：mihomo 没有配置/授权时，热点客户端仍能直连出网。
+# 2.4G 走 NM shared，由 90-hive-hotspot dispatcher 动态放行，不在此处理。
+if [ -x /usr/local/bin/hive-hotspot-firewall.sh ]; then
+    echo "配置 5G 热点（hostapd）放行与 SNAT..."
+    /usr/local/bin/hive-hotspot-firewall.sh || echo "  ⚠ 热点防火墙规则未完整应用（无 5G 热点属正常）"
 fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

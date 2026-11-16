@@ -500,6 +500,38 @@ class SubscriptionScripts(unittest.TestCase):
         config.write_text('')
         self.run_agent('hive-gateway-prepare',expected=1)
 
+    def test_gateway_prepare_without_config_never_blocks_forwarding(self):
+        # 没有 mihomo 配置 = 没有网关可封。此时落 FORWARD DROP 会让热点客户端完全没网，
+        # 而本单元随后被跳过，规则再没人撤销（实测：删掉 config.yaml 后 AP 断网）。
+        (self.root/'etc/mihomo/config.yaml').write_text('')
+        expected=self.seed_gateway_firewall(blocked=True)
+        self.run_agent('hive-gateway-prepare',expected=1)
+        self.assertEqual(self.state()['firewall'],expected)
+        self.assertFalse(self.state()['iptables'])
+        self.assertFalse(self.state()['ip6tables'])
+
+    def test_hotspot_clients_stay_above_the_forwarding_block(self):
+        # 门禁每轮同步都会重插 DROP；热点放行必须被重新插到它上面，否则没有授权的
+        # 节点"连上 Wi-Fi 完全没网"（规则顺序有语义）。
+        (self.root/'etc/hive/hotspot-5g.env').write_text('AP_IFACE=wlan0\nAP_IP4=10.42.1.1/24\n')
+        source=(OVERLAY/'usr/local/bin/hive-hotspot-firewall.sh').read_text()
+        for old,new in [('/usr/local/bin',str(self.root/'bin')),('/etc/hive',str(self.root/'etc/hive')),('/run/',str(self.root/'run/'))]:
+            source=source.replace(old,new)
+        p=self.root/'bin'/'hive-hotspot-firewall.sh';p.write_text(source);p.chmod(0o755)
+        logger=self.root/'mock'/'logger';logger.write_text('#!/bin/sh\nexit 0\n');logger.chmod(0o755)
+        self.seed_gateway_firewall()
+        (self.root/'run/hive-subscriptions').mkdir(parents=True,exist_ok=True)
+        self.expire('gateway')
+        self.run_agent('hive-gateway-prepare')
+        rules=self.state()['firewall']['iptables']
+        drop=['filter','FORWARD','-m','comment','--comment','hive-subscription','-j','DROP']
+        accept=['filter','FORWARD','-i','wlan0','-s','10.42.1.0/24','-m','comment','--comment','hive-hotspot','-j','ACCEPT']
+        nat=['nat','POSTROUTING','-s','10.42.1.0/24','!','-o','Meta','-m','comment','--comment','hive-hotspot-nat','-j','MASQUERADE']
+        self.assertIn(drop,rules)
+        self.assertIn(accept,rules)
+        self.assertIn(nat,rules)
+        self.assertLess(rules.index(accept),rules.index(drop),'热点放行必须在门禁 DROP 之上')
+
     def test_gateway_reenable_requires_fresh_authorization(self):
         self.set_gateway_enabled('off')
         expected=self.seed_gateway_firewall(blocked=True)

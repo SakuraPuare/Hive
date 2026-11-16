@@ -306,7 +306,7 @@ release_iface_from_nm() {
 }
 
 # write_5g_env <iface>：供两个 systemd unit（EnvironmentFile）与 setup-firewall.sh 读取。
-# 先把上轮 env 备份为 .prev，供 apply_ufw_5g 在接口改名时清理旧规则。
+# 先把上轮 env 备份为 .prev，供 hive-hotspot-firewall.sh 在接口改名时清理旧规则。
 write_5g_env() {
     local iface="$1"
     mkdir -p /etc/hive
@@ -319,38 +319,12 @@ write_5g_env() {
     chmod 644 "$HOTSPOT_5G_ENV"
 }
 
-# write_dnsmasq_conf <iface>：只绑 AP 口的独立 dnsmasq 实例（DHCP + DNS→Mihomo）。
-# bind-interfaces + listen-address 三重隔离，不抢系统 53/67、2.4G NM dnsmasq、Mihomo。
-write_dnsmasq_conf() {
-    local iface="$1"
-    mkdir -p /etc/hive
-    {
-        echo "interface=$iface"
-        echo "bind-interfaces"
-        echo "listen-address=10.42.1.1"
-        echo "dhcp-range=10.42.1.50,10.42.1.200,255.255.255.0,12h"
-        echo "dhcp-option=3,10.42.1.1"      # 网关
-        echo "dhcp-option=6,10.42.1.1"      # DNS 指向本机
-        echo "no-resolv"
-        echo "server=127.0.0.1#1053"        # 转发给 Mihomo DNS（fake-ip 分流→走代理）
-    } > "$DNSMASQ_CONF"
-    chmod 644 "$DNSMASQ_CONF"
-}
-
-# apply_ufw_5g <new_iface>：按接口名静态放行 forward/DHCP/DNS；接口改名时清旧规则。
-apply_ufw_5g() {
-    command -v ufw >/dev/null 2>&1 || return 0
-    local new="$1" old
-    old=$(grep -E '^AP_IFACE=' "${HOTSPOT_5G_ENV}.prev" 2>/dev/null | cut -d= -f2)
-    if [ -n "$old" ] && [ "$old" != "$new" ]; then
-        ufw route delete allow in on "$old" 2>/dev/null || true
-        ufw delete allow in on "$old" to any port 67 proto udp 2>/dev/null || true
-        ufw delete allow in on "$old" to any port 53 2>/dev/null || true
-    fi
-    ufw route allow in on "$new" comment 'hive-hotspot-5g forward' 2>/dev/null || true
-    ufw allow in on "$new" to any port 67 proto udp comment 'hive-hotspot-5g DHCP' 2>/dev/null || true
-    ufw allow in on "$new" to any port 53 comment 'hive-hotspot-5g DNS' 2>/dev/null || true
-}
+# 5G 的 DHCP/DNS 配置由 hive-hotspot-dns.sh 生成：上游 DNS 跟着 mihomo 状态走
+# （在跑→mihomo 1053 fake-IP 分流；没跑→公共 DNS，热点直连也能上网）。
+HOTSPOT_DNS="/usr/local/bin/hive-hotspot-dns.sh"
+# 5G 的 UFW 放行 / 热点网段 SNAT / 订阅门禁之上的转发放行由 hive-hotspot-firewall.sh
+# 统一维护（防火墙重置、mihomo 起停都会重调，幂等）。
+HOTSPOT_FIREWALL="/usr/local/bin/hive-hotspot-firewall.sh"
 
 # 2.4G 仍走 NM shared（WPA2-PSK）。5G 改走独立 hostapd（WPA3-SAE 在 hostapd 配置里）。
 SEC_WPA2=$'[wifi-security]\nkey-mgmt=wpa-psk\nproto=rsn\npairwise=ccmp\ngroup=ccmp\npsk='"$PSK"
@@ -368,8 +342,8 @@ if [ "$i5" -ge 0 ]; then
     release_iface_from_nm "$IF5" "$MAC5"
     generate_hostapd_conf "$IF5" "$SSID_5G" "$PSK" "$CH5G" "$WIDTH_5G"
     write_5g_env "$IF5"
-    write_dnsmasq_conf "$IF5"
-    apply_ufw_5g "$IF5"
+    "$HOTSPOT_DNS" || log "ERROR: 5G DHCP/DNS 配置生成失败"
+    "$HOTSPOT_FIREWALL" || log "ERROR: 5G 防火墙/SNAT 未完整应用"
     systemctl daemon-reload 2>/dev/null || true
     if systemctl restart hive-hotspot-5g.service 2>/dev/null &&
         sleep 2 && systemctl is-active --quiet hive-hotspot-5g.service &&
@@ -415,6 +389,8 @@ if ! bring_up "$CONN_2G" "$DONE_2G"; then
     DONE_2G=""
     APPLY_FAILED=1
 fi
+# 2.4G 的接口名到这一步才确定：补它的转发放行（5G 的那份重插是幂等的）。
+"$HOTSPOT_FIREWALL" "$DONE_2G" >/dev/null 2>&1 || log "ERROR: 热点转发放行未完整应用"
 
 # ── 8. 把凭证记入 node-info（运维查阅 + MOTD + 测试）──────────────────
 mkdir -p /etc/hive

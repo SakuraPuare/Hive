@@ -88,10 +88,14 @@ rules:
   - SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT    # 本机出站 v6（auto-route 也接管 ::/1）
   - PROCESS-NAME,curl,DIRECT                    # 能匹配时的精确白名单
   - …（xray / cloudflared / easytier-core / frpc / tailscaled）
+  - SRC-IP-CIDR,10.42.0.0/24,DIRECT             # WiFi 热点客户端（2.4G）
+  - SRC-IP-CIDR,10.42.1.0/24,DIRECT             # WiFi 热点客户端（5G）
   - MATCH,REJECT
 ```
 
 前两条不可省。删掉它们就只剩进程名白名单，而进程名匹配在本机不可靠：节点自己到 registry 的 TLS 会落到 `MATCH,REJECT`（现象是 `SSL ... unexpected eof while reading`、`allocate-easytier` 六连败），拿不到配置又连不上 registry——fail-closed 变成自锁，节点永远无法恢复。v4 地址从 `tun.inet4-address` 推导、缺省 `198.18.0.1`，v6 从 `tun.inet6-address` 推导、缺省 `fdfe:dcba:9876::1`（`hive-subscription-state` 的 `hive_tun_ipv4`/`hive_tun_ipv6`）。
+
+**WiFi 热点不受这套门禁约束**：AP 是与代理网关独立的共享上网功能，没有订阅配置时连上热点也要有网。所以（1）上面两条热点网段是 `DIRECT`，客户端流量进 TUN 后直连出网；（2）`FORWARD` 链上的门禁 DROP 之上插了「AP 接口 + 热点网段」的 ACCEPT（`hive-hotspot-firewall.sh`，每轮重落 DROP 都会重插），eth 侧伪造热点源地址的包在接口匹配处就被挡掉；（3）mihomo 不在跑时热点直接用公共 DNS + SNAT 直连。细节见 [HOTSPOT.md](HOTSPOT.md)。
 
 **Tailscale 域名必须排除出 fake-IP**：`tailscaled` 的控制面连接绑定在物理网卡地址上（`--accept-dns=false` 也一样），实测 `SYN-SENT 192.168.5.222:36686 -> 198.18.0.20:443`——fake-IP 只有"源地址 198.18.0.1、走 TUN"的流量才有反向映射，绑定端0 的 SYN 直接出公网，于是注册 10s 超时、节点永远进不了 tailnet。安装配置时会向 `dns.fake-ip-filter` 补 `'+.tailscale.com'`/`'+.tailscale.io'`（真实地址仍按域名走规则分流）。
 

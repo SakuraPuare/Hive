@@ -596,6 +596,22 @@ exit 0
             [{'id': 42, 'action': 'hotspot-config', 'params': json.dumps(params)}]))
         for name in ['logger', 'chown', 'sysctl', 'sleep', 'ufw', 'journalctl']:
             self.mock(name, '#!/bin/sh\nexit 0\n')
+        # Hotspot firewall: -C 一律未命中（走插入路径），其余动作记账后成功。
+        self.mock('iptables', r'''#!/usr/bin/env python3
+import os, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
+with (r/'iptables-calls').open('a') as out:
+    out.write(' '.join(args)+'\n')
+sys.exit(1 if '-C' in args else 0)
+''')
+        # mihomo 的 DNS 端口是否在听由 dns1053 文件模拟。
+        self.mock('ss', r'''#!/usr/bin/env python3
+import os
+from pathlib import Path
+if (Path(os.environ['HIVE_TEST_ROOT'])/'dns1053').exists():
+    print('UNCONN 0 0 0.0.0.0:1053 0.0.0.0:*')
+''')
         self.mock('curl', r'''#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
@@ -651,7 +667,8 @@ from pathlib import Path
 with (Path(os.environ['HIVE_TEST_ROOT'])/'ip-calls').open('a') as out:
     out.write(' '.join(sys.argv[1:])+'\n')
 ''')
-        for name in ['hive-command-agent', 'hive-hotspot.sh', 'hive-node-info']:
+        for name in ['hive-command-agent', 'hive-hotspot.sh', 'hive-node-info',
+                     'hive-hotspot-dns.sh', 'hive-hotspot-firewall.sh']:
             source = (BIN / name).read_text()
             for path in ['/tmp/', '/etc/', '/run/', '/sys/class/net', '/usr/local/bin/']:
                 source = source.replace(path, str(self.root) + path)
@@ -716,6 +733,35 @@ with (Path(os.environ['HIVE_TEST_ROOT'])/'ip-calls').open('a') as out:
         self.assertEqual(json.loads((self.root / 'acks').read_text())['status'], 'done')
         self.assertFalse(any(json.loads((self.root / 'services.json').read_text()).values()))
         self.assertEqual(json.loads((self.root / 'nm-active.json').read_text()), [])
+
+    def test_hotspot_without_mihomo_gets_public_dns_and_direct_egress(self):
+        # 没有 mihomo（未配置 / 已停用）时热点也必须能上网：dnsmasq 不能把上游
+        # 指向没人监听的 127.0.0.1#1053，热点网段还需要直连 SNAT 与转发放行。
+        self.run_script(self.hotspot_fixture(bands='5g'))
+        conf = (self.root / 'etc/hive/dnsmasq-5g.conf').read_text()
+        self.assertIn('server=223.5.5.5\n', conf)
+        self.assertIn('server=119.29.29.29\n', conf)
+        self.assertNotIn('127.0.0.1#1053', conf)
+        calls = (self.root / 'iptables-calls').read_text()
+        self.assertIn('-t nat -A POSTROUTING -s 10.42.1.0/24 ! -o Meta '
+                      '-m comment --comment hive-hotspot-nat -j MASQUERADE', calls)
+        self.assertIn('-I FORWARD 1 -i wlan0 -s 10.42.1.0/24 '
+                      '-m comment --comment hive-hotspot -j ACCEPT', calls)
+
+    def test_hotspot_with_mihomo_keeps_fake_ip_dns(self):
+        agent = self.hotspot_fixture(bands='5g')
+        (self.root / 'services.json').write_text(json.dumps({'hive-mihomo': True}))
+        (self.root / 'dns1053').touch()
+        self.run_script(agent)
+        conf = (self.root / 'etc/hive/dnsmasq-5g.conf').read_text()
+        self.assertIn('server=127.0.0.1#1053\n', conf)
+        self.assertNotIn('223.5.5.5', conf)
+
+    def test_2g_hotspot_is_exempt_from_the_subscription_block(self):
+        self.run_script(self.hotspot_fixture(prefer='2.4'))
+        calls = (self.root / 'iptables-calls').read_text()
+        self.assertIn('-I FORWARD 1 -i wlan0 -s 10.42.0.0/24 '
+                      '-m comment --comment hive-hotspot -j ACCEPT', calls)
 
     def gateway_fixture(self, default_route=''):
         # Relocate paths only; run the production WAN/LAN selection and keyfile

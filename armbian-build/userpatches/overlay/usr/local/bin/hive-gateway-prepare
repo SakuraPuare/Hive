@@ -11,9 +11,13 @@ if ! hive_gateway_enabled; then
     hive_gateway_clear_access || fail 'cannot clear gateway access while disabled'
     exit 1
 fi
+# 没有配置就没有"网关"可封：此时落 FORWARD DROP 只会把热点客户端的直连一起掐死
+# （本单元随后被跳过，规则再无人撤销，而 WiFi 热点是独立于代理网关的功能）。
+if [ ! -s /etc/mihomo/config.yaml ]; then
+    hive_gateway_clear_access || fail 'cannot clear the forwarding block without a configuration'
+    exit 1
+fi
 hive_gateway_block_forward || fail 'cannot install the forwarding block'
 if ! hive_lease_valid gateway; then
-    # Nothing to start before hive-clash-sync writes the first configuration.
-    [ -s /etc/mihomo/config.yaml ] || exit 1
     hive_gateway_block_config || fail 'cannot replace the gateway rules with the blocked policy'
 fi
