@@ -71,12 +71,51 @@ check_service() {
     printf " \e[1;36m%-18s\e[0m: %b%s\e[0m%s\n" "$display_name" "$color" "$status" "$config_status"
 }
 
+# Provisioning is a one-shot service: after success it is intentionally
+# disabled and /etc/hive/provisioned exists. Showing "Disabled" there is
+# misleading; report the lifecycle state instead.
+check_provision() {
+    local status color
+    if [[ -f /etc/hive/provisioned ]]; then
+        status="🟢 Provisioned"; color="\e[0;92m"
+    elif [[ -s /etc/hive/provision-blocked ]]; then
+        status="⭕ Blocked"; color="\e[0;91m"
+    elif [[ "${_SVC_ACTIVE[provision-node.service]:-inactive}" == "active" ||
+            "${_SVC_ACTIVE[provision-node.service]:-inactive}" == "activating" ]]; then
+        status="🟡 Running"; color="\e[0;93m"
+    else
+        status="⭕ Not provisioned"; color="\e[0;91m"
+    fi
+    printf " \e[1;36m%-18s\e[0m: %b%s\e[0m\n" "Node Provision" "$color" "$status"
+}
+
+# A 5G hotspot runs under hive-hotspot-5g (hostapd), not hive-hotspot. Check
+# the actual AP interface first, then fall back to unit states.
+check_hotspot() {
+    local status color ap_iface ap_ip
+    ap_iface=$(iw dev 2>/dev/null | awk '/Interface/{iface=$2} /type AP/{print iface; exit}')
+    if [[ -n "$ap_iface" ]]; then
+        ap_ip=$(ip -4 -o addr show "$ap_iface" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
+        status="🟢 Running (${ap_iface}${ap_ip:+ @ $ap_ip})"; color="\e[0;92m"
+    elif [[ "${_SVC_ACTIVE[hive-hotspot-5g.service]:-inactive}" == "active" ||
+            "${_SVC_ACTIVE[hive-hotspot.service]:-inactive}" == "active" ]]; then
+        status="🟢 Running"; color="\e[0;92m"
+    elif [[ "${_SVC_ENABLED[hive-hotspot.service]:-disabled}" == "enabled" ||
+            "${_SVC_ENABLED[hive-hotspot-5g.service]:-disabled}" == "enabled" ||
+            -n "${WIFI_SSID_2G:-}${WIFI_SSID_5G:-}" ]]; then
+        status="🟡 Stopped"; color="\e[0;93m"
+    else
+        status="⭕ Not configured"; color="\e[0;91m"
+    fi
+    printf " \e[1;36m%-18s\e[0m: %b%s\e[0m\n" "WiFi Hotspot" "$color" "$status"
+}
+
 echo ""
 printf "\e[0;90m Hive Services: \x1B[0m\n"
 echo ""
 
 check_service "tailscaled"                "Tailscale VPN"        '[[ -n "${TAILSCALE_OAUTH_SECRET}" ]]'
-check_service "provision-node"            "Node Provision"       "true"
+check_provision
 check_service "prometheus-node-exporter"  "Metrics Export"       "true"
 check_service "ufw"                       "Firewall"             '[[ "${_SVC_ACTIVE[ufw.service]}" == "active" ]]'
 check_service "fail2ban"                  "Intrusion Prevention" '[[ "${_SVC_ACTIVE[fail2ban.service]}" == "active" ]]'
@@ -91,8 +130,7 @@ check_service "fail2ban"                  "Intrusion Prevention" '[[ "${_SVC_ACT
     check_service "easytier"    "EasyTier P2P"      '[[ -n "${EASYTIER_NETWORK_NAME}" ]]'
 [[ -n "${_SVC_ENABLED[hive-mihomo.service]:-}" ]] && \
     check_service "hive-mihomo" "Mihomo Gateway"    '[[ "${GATEWAY_ENABLED:-on}" != "off" ]]'
-[[ -n "${_SVC_ENABLED[hive-hotspot.service]:-}" ]] && \
-    check_service "hive-hotspot" "WiFi Hotspot"     'ls /sys/class/net/wl* >/dev/null 2>&1'
+check_hotspot
 
 # ── 等后台网络检测完成 ────────────────────────────────────
 echo ""
