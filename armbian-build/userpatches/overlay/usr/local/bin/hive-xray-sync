@@ -154,7 +154,7 @@ if [ -n "$removed" ]; then
 fi
 added=$(comm -23 <(printf '%s\n' "$desired") <(printf '%s\n' "$current") | sed '/^$/d')
 if [ -n "$added" ]; then
-    tmp=$(mktemp "$HIVE_ACCESS_DIR/xray-add.XXXXXX")
+    tmp=$(mktemp --suffix=.json "$HIVE_ACCESS_DIR/xray-add.XXXXXX")
     trap 'rm -f "$tmp"' EXIT
     printf '%s\n' "$added" | jq -Rn '[inputs | split("\t") | {email:.[0], id:.[1], level:0}] | {inbounds:[{tag:"vless-ws", protocol:"vless", settings:{clients:., decryption:"none"}}]}' > "$tmp"
     xray api adu --server=127.0.0.1:10085 -timeout 3 "$tmp" >/dev/null 2>&1 || { hive_stop_xray; exit 1; }

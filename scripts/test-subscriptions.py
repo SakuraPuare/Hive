@@ -44,11 +44,15 @@ if name=='systemctl':
                     sys.exit(0 if key=='ExecCondition' and 1<=result.returncode<=254 else 1)
             state=json.loads(p.read_text());state['mihomo']=True;save()
 elif name=='xray':
+    if '-config' in args:
+        cfg=args[args.index('-config')+1]
+        if not cfg.endswith('.json'):sys.exit(23)
     if args[0]=='run':sys.exit(0)
     action=args[1]
     if (root/('fail-'+action)).exists():sys.exit(1)
     if action=='statsquery':print(json.dumps({'stat':state['stats']}))
     elif action=='adu':
+        if not args[-1].endswith('.json'):sys.exit(23)
         clients=json.loads(Path(args[-1]).read_text())['inbounds'][0]['settings']['clients']
         state['clients']+=clients;save()
 elif name=='curl':

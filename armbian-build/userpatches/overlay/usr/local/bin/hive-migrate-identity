@@ -16,7 +16,7 @@ if [ ! -s /etc/hive/xray-uuid ]; then
     mv -f /etc/hive/xray-uuid.new /etc/hive/xray-uuid
 fi
 uuid=$(cat /etc/hive/xray-uuid)
-tmp=$(mktemp /etc/xray/.identity.XXXXXX)
+tmp=$(mktemp --suffix=.json /etc/xray/.identity.XXXXXX)
 trap 'rm -f "$tmp"' EXIT
 jq --arg uuid "$uuid" --arg mac "$MAC" --arg old "${XRAY_UUID:-}" '
     (.inbounds[] | select(.protocol == "vless") | .settings.clients[] |

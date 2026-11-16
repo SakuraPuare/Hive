@@ -383,7 +383,9 @@ echo ">>> node-info written to /etc/hive/node-info"
 # ─────────────────────────────────────────────
 echo ">>> Starting services..."
 systemctl enable --now hive-subscription-guard.timer
-systemctl enable --now xray
+# Xray 配置故障不能拖垮整机 provision：Tailscale/cloudflared/frpc 仍必须起来，
+# hive-xray-sync.timer 会在下一轮重试并重新拉起 Xray。
+systemctl enable --now xray || echo ">>> xray failed (non-fatal; sync timer will retry)"
 # 没有 tunnel 就没有 config.yml；enable 它只会让 ExecStartPre 永久等待，
 # 并在固件试启动确认时把整次升级判失败。
 if [ -f /etc/cloudflared/config.yml ]; then
