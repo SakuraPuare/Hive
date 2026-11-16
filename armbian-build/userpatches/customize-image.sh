@@ -115,7 +115,13 @@ https://pkg.cloudflareclient.com/ ${RELEASE} main" \
 apt-get update -q || true
 # 核心运行时依赖 + tailscale（主管理通道，必需）。python3 供 hive-regen-hostkeys.sh
 # 生成随机 SSH host key 用；缺它会导致离线首启无 host key。这批任一失败即中止构建。
+# conffile 冲突必须非交互解决：overlay 会先于这里落盘（如 /etc/logrotate.d/fail2ban），
+# 随后 apt 安装同路径的包时 dpkg 会弹 Y/I/N/O/D/Z 提示，无 tty 时读 stdin EOF 直接
+# --configure 失败（2026-11-16 实测：fail2ban 1.1.0-8 因此让整个 factory 构建挂掉）。
+# --force-confold 保留 overlay 版本，与本仓库"overlay 覆盖发行版配置"的意图一致。
 apt-get install -y --no-install-recommends \
+    -o Dpkg::Options::=--force-confdef \
+    -o Dpkg::Options::=--force-confold \
     curl \
     jq u-boot-tools e2fsprogs fdisk util-linux \
     ca-certificates \
