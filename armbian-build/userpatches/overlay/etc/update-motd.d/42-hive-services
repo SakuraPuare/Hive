@@ -17,6 +17,13 @@ done
 # Load hive node configuration
 safe_source /etc/hive/config.env
 
+# No wireless NIC is a valid configuration (wired-only board). Detect it once
+# so the service and connection sections don't show a stale hotspot as stopped.
+WLAN_PRESENT=0
+for _wl in /sys/class/net/*/phy80211; do
+    [[ -e "$_wl" ]] && WLAN_PRESENT=1 && break
+done
+
 # ── 并行：后台网络检测 + 一次性批量读取所有服务状态 ─────────
 _TMP=$(mktemp -d)
 
@@ -93,6 +100,11 @@ check_provision() {
 # the actual AP interface first, then fall back to unit states.
 check_hotspot() {
     local status color ap_iface ap_ip
+    if [[ "$WLAN_PRESENT" -eq 0 ]]; then
+        status="⭕ No WiFi (no wireless NIC)"; color="\e[0;90m"
+        printf " \e[1;36m%-18s\e[0m: %b%s\e[0m\n" "WiFi Hotspot" "$color" "$status"
+        return
+    fi
     ap_iface=$(iw dev 2>/dev/null | awk '/Interface/{iface=$2} /type AP/{print iface; exit}')
     if [[ -n "$ap_iface" ]]; then
         ap_ip=$(ip -4 -o addr show "$ap_iface" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
@@ -203,15 +215,17 @@ if [[ -f /etc/hive/node-info ]]; then
 
     printf " Xray (VLESS): 请从客户门户获取有效订阅链接。\n"
 
-    # WiFi 热点（双频，仅展示已开启的频段）
-    if [[ -n "${WIFI_SSID_2G:-}" ]]; then
-        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "WiFi 2.4G (WPA2)" "${WIFI_SSID_2G}"
-    fi
-    if [[ -n "${WIFI_SSID_5G:-}" ]]; then
-        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "WiFi 5G (WPA3)" "${WIFI_SSID_5G}"
-    fi
-    if [[ -n "${WIFI_PSK:-}" && ( -n "${WIFI_SSID_2G:-}" || -n "${WIFI_SSID_5G:-}" ) ]]; then
-        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "WiFi Password" "${WIFI_PSK}"
+    # WiFi 热点（双频，仅展示已开启的频段；无无线网卡时不展示旧配置）
+    if [[ "$WLAN_PRESENT" -eq 1 ]]; then
+        if [[ -n "${WIFI_SSID_2G:-}" ]]; then
+            printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "WiFi 2.4G (WPA2)" "${WIFI_SSID_2G}"
+        fi
+        if [[ -n "${WIFI_SSID_5G:-}" ]]; then
+            printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "WiFi 5G (WPA3)" "${WIFI_SSID_5G}"
+        fi
+        if [[ -n "${WIFI_PSK:-}" && ( -n "${WIFI_SSID_2G:-}" || -n "${WIFI_SSID_5G:-}" ) ]]; then
+            printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "WiFi Password" "${WIFI_PSK}"
+        fi
     fi
 
     # 透明代理网关（仅在配置了 WAN/LAN 拓扑时展示）
