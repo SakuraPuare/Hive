@@ -235,6 +235,12 @@ if [[ -f /etc/hive/node-info ]]; then
             printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "Proxy Dashboard" "http://${GATEWAY_LAN_IP}:9090/ui"
         fi
     fi
+    # 单臂网关：无 DHCP，客户端手动把默认网关指向本机
+    if [[ -n "${GATEWAY_ONE_ARM_IFACE:-}" ]]; then
+        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s @ %s\e[0m\n" "Gateway One-arm" "${GATEWAY_ONE_ARM_IFACE}" "${GATEWAY_ONE_ARM_IP:-?}"
+        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "Client Gateway" "set default gateway to ${GATEWAY_ONE_ARM_IP:-<node-ip>}"
+        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m\n" "Proxy Dashboard" "http://${GATEWAY_ONE_ARM_IP:-<node-ip>}:9090/ui"
+    fi
 fi
 
 echo ""

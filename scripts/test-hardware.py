@@ -839,7 +839,7 @@ elif args[:2] == ['rule', 'del']:
     def gateway_fixture(self, default_route=''):
         # Relocate paths only; run the production WAN/LAN selection and keyfile
         # writer against a mocked NetworkManager.
-        for path in ['etc/hive', 'etc/NetworkManager/system-connections', 'run', 'sys/class/net']:
+        for path in ['etc/hive', 'etc/NetworkManager/system-connections', 'etc/sysctl.d', 'run', 'sys/class/net']:
             (self.root / path).mkdir(parents=True, exist_ok=True)
         for iface, mac in [('eth0', '02:00:00:00:00:10'), ('eth1', '02:00:00:00:00:11')]:
             net = self.root / 'sys/class/net' / iface
@@ -861,7 +861,17 @@ dev = (r/'default-route').read_text().strip()
 args = sys.argv[1:]
 if args[:3] == ['route', 'show', 'default'] and dev:
     print('default via 192.0.2.1 dev ' + dev)
+elif '-4' in args and 'addr' in args and 'eth0' in args:
+    print('2: eth0    inet 192.168.5.226/24 brd 192.168.5.255 scope global eth0')
+elif '-4' in args and 'route' in args and 'show' in args and 'eth0' in args:
+    print('192.168.5.0/24 proto kernel scope link src 192.168.5.226')
 ''')
+        self.mock('iptables', r'''#!/bin/sh
+echo "$@" >> "$HIVE_TEST_ROOT/iptables-calls"
+case " $* " in *" -C "*) exit 1;; esac
+exit 0
+''')
+        self.mock('sysctl', '#!/bin/sh\nexit 0\n')
         self.mock('nmcli', r'''#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
@@ -902,7 +912,7 @@ if args == ['device', 'status']:
 sys.exit(1)
 ''')
         source = (BIN / 'hive-gateway.sh').read_text()
-        for path in ['/etc/NetworkManager/system-connections', '/etc/hive', '/run/', '/sys/class/net']:
+        for path in ['/etc/NetworkManager/system-connections', '/etc/hive', '/etc/sysctl.d', '/run/', '/sys/class/net']:
             source = source.replace(path, str(self.root) + path)
         return source
 
@@ -942,6 +952,27 @@ sys.exit(1)
 
         connections = json.loads((self.root / 'nm-state.json').read_text())['connections']
         self.assertEqual(connections['Wired connection 1']['method'], 'auto')
+
+    def test_single_wired_without_wifi_becomes_one_arm_gateway(self):
+        # No wireless and one wired NIC: clients on the same L2 set this node as
+        # their default gateway. No DHCP server or LAN keyfile is created.
+        source = self.gateway_fixture()
+        shutil.rmtree(self.root / 'sys/class/net/eth1')
+        (self.root / 'nm-state.json').write_text(json.dumps({
+            'connections': {}, 'active': [], 'interfaces': ['eth0']}))
+
+        self.run_script(source)
+
+        info = (self.root / 'etc/hive/node-info').read_text()
+        self.assertIn('GATEWAY_ONE_ARM_IFACE=eth0', info)
+        self.assertIn('GATEWAY_ONE_ARM_IP=192.168.5.226', info)
+        self.assertIn('GATEWAY_ONE_ARM_NET=192.168.5.0/24', info)
+        self.assertNotIn('GATEWAY_LAN_IFACES=', info)
+        calls = (self.root / 'iptables-calls').read_text()
+        self.assertIn('-I FORWARD 2 -i eth0 -m comment --comment hive-one-arm-in -j ACCEPT', calls)
+        self.assertIn('-I FORWARD 2 -o eth0 -m comment --comment hive-one-arm-out -j ACCEPT', calls)
+        self.assertIn('-A POSTROUTING -s 192.168.5.0/24 -o eth0 -m comment --comment hive-one-arm-nat -j MASQUERADE', calls)
+        self.assertIn('net.ipv4.ip_forward=1', (self.root / 'etc/sysctl.d/99-hive-one-arm.conf').read_text())
 
     def test_gateway_prunes_lan_profiles_after_a_port_disappears(self):
         # A removed USB NIC or a switch back to a single port leaves keyfiles
