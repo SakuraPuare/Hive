@@ -81,6 +81,15 @@ func TestCustomerSubscriptionIncludesDefaultExitAndHonorsSwitches(t *testing.T) 
 		t.Fatalf("ordinary node missing from subscription: %s", body)
 	}
 
+	// Customer-owned devices are exits by default too.
+	var cid uint
+	testDB.Raw("SELECT customer_id FROM customer_subscriptions WHERE token = ?", token).Scan(&cid)
+	mustExec(t, "UPDATE nodes SET owner_customer_id = ? WHERE mac = 'aabbccddeeff'", cid)
+	body = readBody(doJSON("GET", "/c/"+token, nil, nil))
+	if !strings.Contains(body, "test.example.com") {
+		t.Fatalf("customer-owned exit missing from subscription: %s", body)
+	}
+
 	// Admin switch off.
 	mustExec(t, "UPDATE nodes SET exit_enabled = 0 WHERE mac = 'aabbccddeeff'")
 	body = readBody(doJSON("GET", "/c/"+token, nil, nil))
