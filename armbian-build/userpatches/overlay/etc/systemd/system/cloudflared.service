@@ -9,7 +9,7 @@ ConditionPathExists=/etc/cloudflared/config.yml
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/cloudflared tunnel --config /etc/cloudflared/config.yml run
+ExecStart=/usr/bin/cloudflared tunnel --config /etc/cloudflared/config.yml run
 Restart=on-failure
 RestartSec=10
 KillMode=process

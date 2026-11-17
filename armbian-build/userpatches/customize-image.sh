@@ -132,6 +132,23 @@ echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] \
 https://pkg.cloudflareclient.com/ ${RELEASE} main" \
     | tee /etc/apt/sources.list.d/cloudflare-client.list
 
+# Cloudflare cloudflared 官方 apt 源（cloudflared 二进制不再由 download-binaries.sh 下 raw
+# 二进制，改由 apt 管：一半的下载量 —— deb 18.3 MB vs raw 37.7 MB，且版本/校验和进 apt 索引）。
+# 该仓库只有 any/bookworm/jammy/noble/focal 套件，没有 trixie；二进制是静态 Go，直接用 any。
+# 包内 postinst 会 `ln -sf /usr/bin/cloudflared /usr/local/bin/cloudflared`，所以老路径继续可用。
+# pkg.cloudflare.com 没有国内镜像（TUNA/USTC/NJU/BFSU/aliyun 全 404），实测 18.3 MB @ 516 KB/s。
+echo ">>> Adding cloudflared apt repo..."
+cloudflared_keyring=/usr/share/keyrings/cloudflare-main.gpg
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --max-time 120 \
+    "https://pkg.cloudflare.com/cloudflare-main.gpg" \
+    | gpg --yes --dearmor -o "${cloudflared_keyring}"
+if ! gpg --show-keys "${cloudflared_keyring}" > /dev/null 2>&1; then
+    echo ">>> ERROR: cloudflared 仓库密钥无效（${cloudflared_keyring}）" >&2
+    exit 1
+fi
+echo "deb [signed-by=${cloudflared_keyring}] https://pkg.cloudflare.com/cloudflared any main" \
+    | tee /etc/apt/sources.list.d/cloudflared.list
+
 # ─────────────────────────────────────────────
 # 3. 安装运行时依赖（单次 update + install）
 # ─────────────────────────────────────────────
@@ -167,7 +184,8 @@ apt-get install -y --no-install-recommends \
     dnsmasq-base \
     iw \
     nftables \
-    tailscale
+    tailscale \
+    cloudflared
 
 # cloudflare-warp 没有任何国内镜像：实测 TUNA / USTC / NJU / ZJU / CERNET / PKU / SJTU /
 # SUSTech / aliyun / tencent / huawei 全 404，77 MB 只能从 pkg.cloudflareclient.com 拉
@@ -256,7 +274,9 @@ rm -rf /var/lib/apt/lists/*
 # 4. 设置二进制权限（由 download-binaries.sh 预置到 overlay）
 # ─────────────────────────────────────────────
 MISSING_BINARIES=""
-for bin in xray cloudflared frpc easytier-core xray-exporter; do
+# cloudflared 由 apt 装（pkg.cloudflare.com/cloudflared），不在 overlay 里；它的 postinst
+# 会自己建 /usr/local/bin/cloudflared 软链，所以这里只查 apt 那份 /usr/bin/cloudflared。
+for bin in xray frpc easytier-core xray-exporter; do
     if [ -f "/usr/local/bin/${bin}" ]; then
         chmod +x "/usr/local/bin/${bin}"
         echo ">>> ${bin}: OK"
@@ -265,6 +285,12 @@ for bin in xray cloudflared frpc easytier-core xray-exporter; do
         MISSING_BINARIES="${MISSING_BINARIES} ${bin}"
     fi
 done
+if [ -x /usr/bin/cloudflared ]; then
+    echo ">>> cloudflared: OK ($(/usr/bin/cloudflared --version 2>/dev/null | head -1))"
+else
+    echo ">>> WARNING: /usr/bin/cloudflared not found (cloudflared apt 源没装上)"
+    MISSING_BINARIES="${MISSING_BINARIES} cloudflared"
+fi
 
 # Hive subscription enforcement and startup hooks
 for helper in hive-subscription-state hive-subscription-guard hive-xray-prepare hive-gateway-prepare; do

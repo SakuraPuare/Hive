@@ -70,18 +70,6 @@ unzip -jo "$f" "xray" -d "${DEST}"
 chmod +x "${DEST}/xray"
 echo "    xray: OK (${XRAY_VER})"
 
-# ── cloudflared ────────────────────────────────────────────────────────
-# 缓存键必须带版本。原来用固定的 "cloudflared-latest" 当键，fetch_raw 命中缓存就再也不联网：
-# 实测 2026-11 的构建机上一直是 7 月 4 日下到的 2026.6.1（36.9 MB），而上游当时已 2026.11.0。
-# 和 xray 那次是同一类问题（"version the cached Xray binary"），xray/mihomo/frp/easytier 都已
-# 按 tag 命名缓存键，这里补上。tag 形如 2026.11.0（无 v 前缀）。
-CLOUDFLARED_VER=$(resolve_latest_tag "cloudflare/cloudflared" "cloudflared")
-echo ">>> cloudflared ${CLOUDFLARED_VER}..."
-f=$(fetch_raw "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VER}/cloudflared-linux-arm64" "cloudflared-${CLOUDFLARED_VER}")
-cp -f "$f" "${DEST}/cloudflared"
-chmod +x "${DEST}/cloudflared"
-echo "    cloudflared: OK (${CLOUDFLARED_VER})"
-
 # ── frpc ───────────────────────────────────────────────────────────────
 # https://github.com/fatedier/frp/
 # 文件名内嵌版本号（frp_0.70.0_linux_arm64），故先解析 latest 得到 tag
