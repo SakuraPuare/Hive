@@ -3468,6 +3468,40 @@ paths:
       summary: Update a node
       tags:
         - admin
+  "/nodes/{mac}/accounting/state":
+    get:
+      operationId: DeviceAccountingState
+      parameters:
+        - description: Node MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.NodeAccountingState"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Read the device accounting generation
+      tags:
+        - nodes
   "/nodes/{mac}/clash-config":
     get:
       description: >-
@@ -3728,6 +3762,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/handler.ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "410":
+          description: Gone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
         "500":
           description: Internal Server Error
           content:
@@ -3783,18 +3829,21 @@ paths:
         - nodes
   /nodes/enroll:
     post:
-      description: |-
-        Issues this device's MAC-scoped credential so a newly flashed node
-        can authenticate. Creates the node row immediately (admin panel shows
-        the device as soon as it boots) and mints the customer claim code once.
-        Refuses claimed or already-enrolled devices: re-issuing needs an admin.
+      description: >-
+        Requires a random 64-hex token durably saved by the device before its
+
+        first request. Stores only its hash and creates the node immediately.
+
+        Retrying the same token succeeds without changing credentials or node state.
+
+        A different or admin-revoked token is rejected; MAC alone cannot recover secrets.
       operationId: NodeEnroll
       requestBody:
         content:
           application/json:
             schema:
-              type: object
-        description: mac, mac6, hostname
+              $ref: "#/components/schemas/handler.EnrollRequest"
+        description: Device identity and durable enrollment token
         required: true
       responses:
         "200":
@@ -5365,6 +5414,22 @@ components:
             type: string
           type: array
       type: object
+    handler.EnrollRequest:
+      properties:
+        hostname:
+          type: string
+        mac:
+          type: string
+        mac6:
+          type: string
+        token:
+          maxLength: 64
+          minLength: 64
+          type: string
+      required:
+        - mac
+        - token
+      type: object
     handler.EnrollResponse:
       properties:
         claim_code:
@@ -5412,7 +5477,7 @@ components:
           description: Xray systemd InvocationID
           type: string
         generation:
-          description: Monotonic per-server runtime, zero for legacy agents
+          description: Monotonic per-node runtime, zero for legacy agents
           example: "1"
           type: string
       type: object

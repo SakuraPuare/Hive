@@ -235,6 +235,22 @@ definitions:
           type: string
         type: array
     type: object
+  handler.EnrollRequest:
+    properties:
+      hostname:
+        type: string
+      mac:
+        type: string
+      mac6:
+        type: string
+      token:
+        maxLength: 64
+        minLength: 64
+        type: string
+    required:
+    - mac
+    - token
+    type: object
   handler.EnrollResponse:
     properties:
       claim_code:
@@ -282,7 +298,7 @@ definitions:
         description: Xray systemd InvocationID
         type: string
       generation:
-        description: Monotonic per-server runtime, zero for legacy agents
+        description: Monotonic per-node runtime, zero for legacy agents
         example: "1"
         type: string
     type: object
@@ -4532,6 +4548,35 @@ paths:
       summary: Update a node
       tags:
       - admin
+  /nodes/{mac}/accounting/state:
+    get:
+      operationId: DeviceAccountingState
+      parameters:
+      - description: Node MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.NodeAccountingState'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read the device accounting generation
+      tags:
+      - nodes
   /nodes/{mac}/clash-config:
     get:
       description: |-
@@ -4759,6 +4804,14 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "410":
+          description: Gone
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
@@ -4811,18 +4864,18 @@ paths:
       consumes:
       - application/json
       description: |-
-        Issues this device's MAC-scoped credential so a newly flashed node
-        can authenticate. Creates the node row immediately (admin panel shows
-        the device as soon as it boots) and mints the customer claim code once.
-        Refuses claimed or already-enrolled devices: re-issuing needs an admin.
+        Requires a random 64-hex token durably saved by the device before its
+        first request. Stores only its hash and creates the node immediately.
+        Retrying the same token succeeds without changing credentials or node state.
+        A different or admin-revoked token is rejected; MAC alone cannot recover secrets.
       operationId: NodeEnroll
       parameters:
-      - description: mac, mac6, hostname
+      - description: Device identity and durable enrollment token
         in: body
         name: body
         required: true
         schema:
-          type: object
+          $ref: '#/definitions/handler.EnrollRequest'
       produces:
       - application/json
       responses:

@@ -10,7 +10,7 @@ export type handler_NodeAccountingRequest = {
      */
     epoch?: string;
     /**
-     * Monotonic per-server runtime, zero for legacy agents
+     * Monotonic per-node runtime, zero for legacy agents
      */
     generation?: string;
 };

@@ -3,8 +3,10 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { handler_ackCommandRequest } from '../models/handler_ackCommandRequest';
+import type { handler_EnrollRequest } from '../models/handler_EnrollRequest';
 import type { handler_EnrollResponse } from '../models/handler_EnrollResponse';
 import type { handler_NodeAccountingRequest } from '../models/handler_NodeAccountingRequest';
+import type { handler_NodeAccountingState } from '../models/handler_NodeAccountingState';
 import type { handler_NodeRegisterRequest } from '../models/handler_NodeRegisterRequest';
 import type { handler_NodeRegisterResponse } from '../models/handler_NodeRegisterResponse';
 import type { handler_NodeXrayUsersResponse } from '../models/handler_NodeXrayUsersResponse';
@@ -16,6 +18,31 @@ import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class NodesService {
+    /**
+     * Read the device accounting generation
+     * @returns handler_NodeAccountingState OK
+     * @throws ApiError
+     */
+    public static deviceAccountingState({
+        mac,
+    }: {
+        /**
+         * Node MAC
+         */
+        mac: string,
+    }): CancelablePromise<handler_NodeAccountingState> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/nodes/{mac}/accounting/state',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
     /**
      * Gateway Mihomo config for a node
      * Returns the full Mihomo (Clash.Meta) YAML config for this node's
@@ -224,6 +251,8 @@ export class NodesService {
             errors: {
                 400: `Bad Request`,
                 401: `Unauthorized`,
+                409: `Conflict`,
+                410: `Gone`,
                 500: `Internal Server Error`,
             },
         });
@@ -257,10 +286,10 @@ export class NodesService {
     }
     /**
      * Device self-enrollment (first boot)
-     * Issues this device's MAC-scoped credential so a newly flashed node
-     * can authenticate. Creates the node row immediately (admin panel shows
-     * the device as soon as it boots) and mints the customer claim code once.
-     * Refuses claimed or already-enrolled devices: re-issuing needs an admin.
+     * Requires a random 64-hex token durably saved by the device before its
+     * first request. Stores only its hash and creates the node immediately.
+     * Retrying the same token succeeds without changing credentials or node state.
+     * A different or admin-revoked token is rejected; MAC alone cannot recover secrets.
      * @returns handler_EnrollResponse OK
      * @throws ApiError
      */
@@ -268,9 +297,9 @@ export class NodesService {
         requestBody,
     }: {
         /**
-         * mac, mac6, hostname
+         * Device identity and durable enrollment token
          */
-        requestBody: Record<string, any>,
+        requestBody: handler_EnrollRequest,
     }): CancelablePromise<handler_EnrollResponse> {
         return __request(OpenAPI, {
             method: 'POST',

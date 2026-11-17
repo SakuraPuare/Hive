@@ -34,6 +34,7 @@ export type { handler_CustomerListResponse } from './models/handler_CustomerList
 export type { handler_CustomerTrafficResponse } from './models/handler_CustomerTrafficResponse';
 export type { handler_DashboardResponse } from './models/handler_DashboardResponse';
 export type { handler_enqueueCommandRequest } from './models/handler_enqueueCommandRequest';
+export type { handler_EnrollRequest } from './models/handler_EnrollRequest';
 export type { handler_EnrollResponse } from './models/handler_EnrollResponse';
 export type { handler_ErrorResponse } from './models/handler_ErrorResponse';
 export type { handler_ForgotPasswordRequest } from './models/handler_ForgotPasswordRequest';
