@@ -47,18 +47,27 @@ function SubscriptionCard({ sub, index, onCopied }: { sub: SubWithPlan; index: n
   // apps must therefore fetch <panel>/api/c/{token}.
   const clashLink = customerSubscriptionUrl(sub.token ?? '');
   const vlessLink = customerSubscriptionUrl(sub.token ?? '', true);
+  const planLabel = sub.plan_name || `${t('planName')} #${sub.plan_id}`;
 
   const handleCopyClash = useCallback(async () => {
     const ok = await copyClash(clashLink);
-    if (ok) onCopied?.();
-    else toast.error(t('copyFailed'));
-  }, [copyClash, clashLink, toast, t, onCopied]);
+    if (ok) {
+      onCopied?.();
+      toast.success(t('copiedPlan', { name: planLabel, type: 'Clash' }));
+    } else {
+      toast.error(t('copyFailed'));
+    }
+  }, [copyClash, clashLink, toast, t, onCopied, planLabel]);
 
   const handleCopyVless = useCallback(async () => {
     const ok = await copyVless(vlessLink);
-    if (ok) onCopied?.();
-    else toast.error(t('copyFailed'));
-  }, [copyVless, vlessLink, toast, t, onCopied]);
+    if (ok) {
+      onCopied?.();
+      toast.success(t('copiedPlan', { name: planLabel, type: 'VLESS' }));
+    } else {
+      toast.error(t('copyFailed'));
+    }
+  }, [copyVless, vlessLink, toast, t, onCopied, planLabel]);
 
   // Traffic bar color: use M3 semantic roles
   const barColor = pct > 80
@@ -161,13 +170,16 @@ function SubscriptionCard({ sub, index, onCopied }: { sub: SubWithPlan; index: n
         )}
 
         {/* Copy link buttons */}
+        <p className="truncate text-xs text-muted-foreground" title={clashLink}>
+          {t('subscriptionLink')}: <code className="font-mono">{clashLink.replace(/^https?:\/\//, '')}</code>
+        </p>
         <div className="flex gap-2">
           <Button
             type="button"
             variant="outline"
             className="flex-1 h-12 gap-1.5 text-sm font-500"
             onClick={handleCopyClash}
-            aria-label={t('copyClashAria')}
+            aria-label={t('copyClashAriaNamed', { name: planLabel })}
           >
             {copiedClash
               ? <Check className="h-4 w-4 text-md-tertiary" aria-hidden="true" />
@@ -180,7 +192,7 @@ function SubscriptionCard({ sub, index, onCopied }: { sub: SubWithPlan; index: n
             variant="outline"
             className="flex-1 h-12 gap-1.5 text-sm font-500"
             onClick={handleCopyVless}
-            aria-label={t('copyVlessAria')}
+            aria-label={t('copyVlessAriaNamed', { name: planLabel })}
           >
             {copiedVless
               ? <Check className="h-4 w-4 text-md-tertiary" aria-hidden="true" />
