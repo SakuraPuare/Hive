@@ -74,7 +74,10 @@ test_node() {
         else
             warn "tailscale-ssh" "port 22 not reachable on ${tailscale_ip}"
         fi
-        METRIC_LINES=$(curl -sf --max-time 5 "http://${tailscale_ip}:9100/metrics" 2>/dev/null | wc -l || echo 0)
+        # pipefail makes the pipeline fail on curl's error, so `|| echo 0` used to
+        # append a second value ("0\n0") that `[ -gt ]` rejects.
+        METRIC_LINES=$(curl -sf --max-time 5 "http://${tailscale_ip}:9100/metrics" 2>/dev/null | wc -l || true)
+        METRIC_LINES=${METRIC_LINES//[[:space:]]/}
         if [ "${METRIC_LINES}" -gt 10 ]; then
             pass "node-exporter" "http://${tailscale_ip}:9100/metrics OK (${METRIC_LINES} lines)"
         else
