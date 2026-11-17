@@ -48,17 +48,24 @@ fi
 # Replay unacknowledged snapshots before starting a new runtime. No bytes are
 # counted twice even if a previous response was lost after its DB commit.
 post_report() {
-    local body status
+    local body status source="$1" online="${2:-}" request="$1" merged=''
     body=$(mktemp "$HIVE_ACCESS_DIR/accounting-response.XXXXXX") || return 1
+    if [ -n "$online" ]; then
+        merged=$(mktemp "$HIVE_ACCESS_DIR/accounting-request.XXXXXX") || { rm -f "$body"; return 1; }
+        if ! jq --argjson online "$online" '. + {online: $online}' "$source" > "$merged"; then
+            rm -f "$body" "$merged"; return 1
+        fi
+        request="$merged"
+    fi
     if ! status=$(curl -4 -sS --max-time 5 -o "$body" -w '%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" \
-      -H 'Content-Type: application/json' --data-binary "@$1" \
+      -H 'Content-Type: application/json' --data-binary "@$request" \
       "$ACCOUNTING_URL"); then
-        rm -f "$body"; return 1
+        rm -f "$body"; [ -z "$merged" ] || rm -f "$merged"; return 1
     fi
     case "$status" in
-        200) cat "$body"; rm -f "$body" ;;
-        410) rm -f "$body"; return 10 ;; # Permanently fenced, never bill again.
-        *) rm -f "$body"; return 1 ;;
+        200) cat "$body"; rm -f "$body"; [ -z "$merged" ] || rm -f "$merged" ;;
+        410) rm -f "$body"; [ -z "$merged" ] || rm -f "$merged"; return 10 ;; # Permanently fenced, never bill again.
+        *) rm -f "$body"; [ -z "$merged" ] || rm -f "$merged"; return 1 ;;
     esac
 }
 replay_reports() {
@@ -98,6 +105,57 @@ prepare_generation() {
         rm -f "$tmp"; return 1
     fi
 }
+# Device limits are enforced by Xray itself: one routing rule per subscription
+# blocks that user from source IPs outside the registry's allowed set. The rule
+# only affects new connections; existing sessions keep running until they close.
+apply_device_limits() {
+    local response="$1" online="$2" rules listed tmp
+    if [ "${online_ok:-0}" -ne 1 ]; then
+        echo "[hive-xray-sync] skipping device limit reconcile (online stats unavailable)" >&2
+        return 0
+    fi
+    if ! rules=$(printf '%s' "$response" | jq -c --argjson online "$online" '
+        ($online | map({key: (.subscription_id|tostring), value: .ips}) | from_entries) as $local
+        | [ .device_limits[]?
+            | select(.device_limit > 0)
+            | . as $d
+            | (($local[($d.subscription_id|tostring)] // []) - ($d.allowed_ips // [])) as $blocked
+            | select(($blocked | length) > 0)
+            # Never block every device because the registry returned an empty
+            # allowlist; that means the report was not accepted yet.
+            | select((($d.allowed_ips // []) | length) > 0)
+            | {ruleTag: "hive-devlimit-\($d.subscription_id)",
+               user: ["sub-\($d.subscription_id)"],
+               source: [$blocked[] | if test(":") then . + "/128" else . + "/32" end],
+               outboundTag: "block"}
+          ]
+    '); then
+        echo "[hive-xray-sync] cannot build device limit rules" >&2
+        return 0
+    fi
+    # Rule tags are unique per subscription, so list them from Xray instead of
+    # keeping local state across reboots.
+    if ! listed=$(xray api lsrules --server=127.0.0.1:10085 2>/dev/null); then
+        echo "[hive-xray-sync] cannot list routing rules" >&2
+        return 0
+    fi
+    local -a tags=()
+    mapfile -t tags < <(printf '%s' "$listed" | jq -r '.rules[]? | select(.ruleTag | startswith("hive-devlimit-")) | .ruleTag')
+    if [ "${#tags[@]}" -gt 0 ]; then
+        if ! xray api rmrules --server=127.0.0.1:10085 "${tags[@]}" >/dev/null 2>&1; then
+            echo "[hive-xray-sync] cannot remove old device limit rules" >&2
+            return 0
+        fi
+    fi
+    if [ "$(printf '%s' "$rules" | jq 'length')" -gt 0 ]; then
+        tmp=$(mktemp --suffix=.json "$HIVE_ACCESS_DIR/devlimit.XXXXXX") || return 0
+        if ! jq -n --argjson rules "$rules" '{routing:{rules:$rules}}' > "$tmp" ||
+           ! xray api adrules --server=127.0.0.1:10085 -append "$tmp" >/dev/null 2>&1; then
+            echo "[hive-xray-sync] cannot apply device limit rules" >&2
+        fi
+        rm -f "$tmp"
+    fi
+}
 replay_reports || fail 'traffic replay failed'
 systemctl start xray || fail 'cannot start Xray'
 epoch=$(hive_xray_epoch)
@@ -114,8 +172,27 @@ if [ "$epoch" != "$(cat "$HIVE_ACCESS_DIR/xray.applied" 2>/dev/null || true)" ] 
     printf '%s\n' "$epoch" > "$HIVE_ACCESS_DIR/xray.applied"
 fi
 hive_snapshot_traffic || { hive_stop_xray; exit 1; }
+online_ok=0
+online='[]'
+if online_raw=$(xray api statsonlineiplist --server=127.0.0.1:10085 -all 2>/dev/null); then
+    if online=$(printf '%s' "$online_raw" | jq -c '
+        [ .users[]?
+          | select(.email | test("^sub-[1-9][0-9]*$"))
+          | {subscription_id: (.email | sub("^sub-"; "") | tonumber),
+             ips: ([.ips[]?.ip | select(type == "string")] | unique | .[0:64])}
+          | select(.ips | length > 0)
+        ] | .[0:200]
+    ' 2>/dev/null); then
+        online_ok=1
+    else
+        online='[]'
+        echo "[hive-xray-sync] cannot parse online device stats" >&2
+    fi
+else
+    echo "[hive-xray-sync] online device stats unavailable" >&2
+fi
 request_started=$(hive_now)
-if response=$(post_report "$HIVE_TRAFFIC_DIR/$epoch.json"); then
+if response=$(post_report "$HIVE_TRAFFIC_DIR/$epoch.json" "$online"); then
     :
 else
     report_status=$?
@@ -129,7 +206,14 @@ if ! printf '%s' "$response" | jq -e '
   (.lease_seconds | type == "number" and . >= 1 and . <= 45 and floor == .) and
   (.users | type == "array") and
   all(.users[]; (.email | test("^sub-[1-9][0-9]*$")) and (.uuid | test("^[0-9a-fA-F-]{36}$"))) and
-  (([.users[].email] | unique | length) == (.users | length))
+  (([.users[].email] | unique | length) == (.users | length)) and
+  ((.device_limits // []) | type == "array") and
+  all(.device_limits[]?;
+    (.subscription_id | type == "number" and . > 0 and floor == .) and
+    (.device_limit | type == "number" and . >= 0 and floor == .) and
+    ((.allowed_ips // []) | type == "array") and
+    all((.allowed_ips // [])[]; type == "string")
+  )
 ' >/dev/null; then fail 'invalid authorization response'; fi
 rm -f "$HIVE_TRAFFIC_DIR/$epoch.json"
 desired=$(printf '%s' "$response" | jq -r '.users[] | "\(.email)\t\(.uuid)"' | sort -u)
@@ -170,5 +254,6 @@ if [ -n "$added" ]; then
     fi
 fi
 hive_lease_valid xray || { hive_stop_xray; exit 1; }
+apply_device_limits "$response" "$online"
 printf '%s\n' "$desired" | sed '/^$/d' > "$HIVE_ACCESS_DIR/xray.users"
 printf '%s\n' "$epoch" > "$HIVE_ACCESS_DIR/xray.applied"

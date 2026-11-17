@@ -52,6 +52,16 @@ elif name=='xray':
     action=args[1]
     if (root/('fail-'+action)).exists():sys.exit(1)
     if action=='statsquery':print(json.dumps({'stat':state['stats']}))
+    elif action=='statsonlineiplist':print(json.dumps({'users':state.get('online',[])}))
+    elif action=='lsrules':print(json.dumps({'rules':state.get('routing_rules',[])}))
+    elif action=='rmrules':
+        tags=[a for a in args[2:] if not a.startswith('-')]
+        state['routing_rules']=[r for r in state.get('routing_rules',[]) if r.get('ruleTag') not in tags]
+        save()
+    elif action=='adrules':
+        cfg=json.loads(Path(args[-1]).read_text())
+        state['routing_rules']=state.get('routing_rules',[])+cfg['routing']['rules']
+        save()
     elif action=='adu':
         if not args[-1].endswith('.json'):sys.exit(23)
         inbound=json.loads(Path(args[-1]).read_text())['inbounds'][0]
@@ -143,7 +153,7 @@ class SubscriptionScripts(unittest.TestCase):
         (self.root/'etc/hive/server-token').write_text('server-only-token')
         (self.root/'etc/hive/node-info').write_text('MAC=aabbccddeeff\n')
         for rel in ['etc/xray/config.json','etc/mihomo/config.yaml']:shutil.copy(OVERLAY/rel,self.root/rel)
-        self.state_write(dict(xray=True,mihomo=True,guard=True,epoch=1,clients=[],stats=[],connections=True,gateway_connections=True))
+        self.state_write(dict(xray=True,mihomo=True,guard=True,epoch=1,clients=[],stats=[],connections=True,gateway_connections=True,online=[],routing_rules=[]))
         self.desired([{'email':'sub-1','uuid':UUID}])
         (self.root/'headers').write_text('HTTP/1.1 200 OK\r\nX-Hive-Lease-Seconds: 45\r\nX-Hive-Access: active\r\n\r\n')
         (self.root/'gateway.yaml').write_text('mixed-port: 7890\nproxies: []\nrules:\n  - MATCH,DIRECT\n')
@@ -151,7 +161,10 @@ class SubscriptionScripts(unittest.TestCase):
     def state(self):return json.loads((self.root/'runtime.json').read_text())
     def state_write(self,value): (self.root/'runtime.json').write_text(json.dumps(value))
     def state_update(self,**values):s=self.state();s.update(values);self.state_write(s)
-    def desired(self,users): (self.root/'desired.json').write_text(json.dumps({'lease_seconds':45,'users':users}))
+    def desired(self,users,device_limits=None):
+        body={'lease_seconds':45,'users':users}
+        if device_limits is not None:body['device_limits']=device_limits
+        (self.root/'desired.json').write_text(json.dumps(body))
     def run_agent(self,name,expected=0):
         p=subprocess.run([str(self.root/'bin'/name)],env=self.env,capture_output=True,text=True,timeout=15)
         self.assertEqual(p.returncode,expected,p.stdout+p.stderr)
@@ -482,6 +495,48 @@ class SubscriptionScripts(unittest.TestCase):
         p.write_text(json.dumps(config))
         self.run_agent('hive-xray-prepare')
         self.assertEqual(json.loads(p.read_text())['inbounds'][0]['settings']['clients'],[])
+
+    def test_device_limit_blocks_new_ip_and_reports_online(self):
+        self.state_update(online=[{'email':'sub-1','ips':[{'ip':'203.0.113.7','lastSeen':1},{'ip':'203.0.113.8','lastSeen':1}]}])
+        self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'used':2,'allowed_ips':['203.0.113.7']}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['routing_rules'],[{'ruleTag':'hive-devlimit-1','user':['sub-1'],'source':['203.0.113.8/32'],'outboundTag':'block'}])
+        report=json.loads((self.root/'reports').read_text().splitlines()[-1])
+        self.assertEqual(report['online'],[{'subscription_id':1,'ips':['203.0.113.7','203.0.113.8']}])
+
+    def test_device_limit_reconciles_rules(self):
+        self.state_update(online=[{'email':'sub-1','ips':[{'ip':'203.0.113.7','lastSeen':1},{'ip':'203.0.113.8','lastSeen':1}]}])
+        self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'used':2,'allowed_ips':['203.0.113.7']}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(len(self.state()['routing_rules']),1)
+        self.state_update(online=[{'email':'sub-1','ips':[{'ip':'203.0.113.7','lastSeen':1}]}])
+        self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'used':1,'allowed_ips':['203.0.113.7']}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['routing_rules'],[])
+
+    def test_device_limit_zero_removes_rules(self):
+        self.state_update(online=[{'email':'sub-1','ips':[{'ip':'203.0.113.7','lastSeen':1},{'ip':'203.0.113.8','lastSeen':1}]}])
+        self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'used':2,'allowed_ips':['203.0.113.7']}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(len(self.state()['routing_rules']),1)
+        self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':0,'used':2,'allowed_ips':[]}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['routing_rules'],[])
+
+    def test_device_limit_query_failure_keeps_existing_rules(self):
+        self.state_update(online=[{'email':'sub-1','ips':[{'ip':'203.0.113.7','lastSeen':1},{'ip':'203.0.113.8','lastSeen':1}]}])
+        self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'used':2,'allowed_ips':['203.0.113.7']}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(len(self.state()['routing_rules']),1)
+        (self.root/'fail-statsonlineiplist').touch()
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(len(self.state()['routing_rules']),1)
+
+    def test_device_limit_ipv6_rule(self):
+        self.state_update(online=[{'email':'sub-1','ips':[{'ip':'2001:db8::1','lastSeen':1},{'ip':'2001:db8::2','lastSeen':1}]}])
+        self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'used':2,'allowed_ips':['2001:db8::1']}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['routing_rules'],[{'ruleTag':'hive-devlimit-1','user':['sub-1'],'source':['2001:db8::2/128'],'outboundTag':'block'}])
 
     def test_outage_retries_do_not_restart_mihomo_once_fail_closed(self):
         # 断网且已经 fail-closed 之后，clash-sync 每 15s 还会失败一次；此时不能重写

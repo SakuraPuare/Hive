@@ -7,7 +7,8 @@
         "levels": {
             "0": {
                 "statsUserUplink": true,
-                "statsUserDownlink": true
+                "statsUserDownlink": true,
+                "statsUserOnline": true
             }
         },
         "system": {
@@ -45,6 +46,11 @@
                 "security": "none",
                 "wsSettings": {
                     "path": "/ray"
+                },
+                "sockopt": {
+                    "trustedXForwardedFor": [
+                        "CF-Connecting-IP"
+                    ]
                 }
             }
         }

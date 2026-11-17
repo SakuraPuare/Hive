@@ -338,11 +338,75 @@ type XrayUser struct {
 	Email string `json:"email"`
 }
 
+// NodeDeviceLimit tells an exit node which source IPs may still use a
+// subscription. The agent blocks local online IPs outside AllowedIPs with a
+// dynamic routing rule (user + source -> block). DeviceLimit 0 means unlimited.
+type NodeDeviceLimit struct {
+	SubscriptionID uint     `json:"subscription_id"`
+	DeviceLimit    int      `json:"device_limit"`
+	Used           int      `json:"used"`
+	AllowedIPs     []string `json:"allowed_ips"`
+}
+
 // NodeXrayUsersResponse is the body returned by POST /servers/{mac}/accounting.
 type NodeXrayUsersResponse struct {
-	MAC          string     `json:"mac"`
-	LeaseSeconds int        `json:"lease_seconds"`
-	Users        []XrayUser `json:"users"`
+	MAC          string            `json:"mac"`
+	LeaseSeconds int               `json:"lease_seconds"`
+	Users        []XrayUser        `json:"users"`
+	DeviceLimits []NodeDeviceLimit `json:"device_limits,omitempty"`
+}
+
+// nodeDeviceLimits aggregates distinct online IPs across all exits. The
+// earliest first_seen IPs keep their slots; later IPs are reported as blocked.
+// Rows older than onlineDeviceTTL are ignored (and cleaned up by accounting).
+func (h *Handler) nodeDeviceLimits(subIDs []uint, now time.Time) ([]NodeDeviceLimit, error) {
+	limits := make([]NodeDeviceLimit, 0, len(subIDs))
+	if len(subIDs) == 0 {
+		return limits, nil
+	}
+	var subs []struct {
+		ID          uint
+		DeviceLimit int
+	}
+	if err := h.DB.Raw(
+		"SELECT id, device_limit FROM customer_subscriptions WHERE id IN ?", subIDs,
+	).Scan(&subs).Error; err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		SubscriptionID uint
+		IP             string
+		FirstSeen      time.Time
+	}
+	if err := h.DB.Raw(
+		"SELECT subscription_id, ip, MIN(first_seen) AS first_seen FROM subscription_online_devices "+
+			"WHERE subscription_id IN ? AND last_seen >= ? "+
+			"GROUP BY subscription_id, ip ORDER BY subscription_id, first_seen, ip",
+		subIDs, now.Add(-onlineDeviceTTL),
+	).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	bySub := make(map[uint][]string, len(subs))
+	for _, row := range rows {
+		bySub[row.SubscriptionID] = append(bySub[row.SubscriptionID], row.IP)
+	}
+	for _, sub := range subs {
+		ips := bySub[sub.ID]
+		allowed := ips
+		if sub.DeviceLimit > 0 && len(ips) > sub.DeviceLimit {
+			allowed = ips[:sub.DeviceLimit]
+		}
+		if sub.DeviceLimit <= 0 {
+			allowed = []string{}
+		}
+		limits = append(limits, NodeDeviceLimit{
+			SubscriptionID: sub.ID,
+			DeviceLimit:    sub.DeviceLimit,
+			Used:           len(ips),
+			AllowedIPs:     allowed,
+		})
+	}
+	return limits, nil
 }
 
 // HandleNodeXrayUsers responds after durable accounting has committed.
@@ -402,6 +466,7 @@ func (h *Handler) respondXrayUsers(w http.ResponseWriter, r *http.Request, requi
 
 	lease := subscriptionLeaseSeconds
 	users := make([]XrayUser, 0, len(rows))
+	subIDs := make([]uint, 0, len(rows))
 	for _, row := range rows {
 		remaining := int(time.Until(row.ExpiresAt).Seconds())
 		if remaining < 1 {
@@ -414,8 +479,14 @@ func (h *Handler) respondXrayUsers(w http.ResponseWriter, r *http.Request, requi
 			UUID:  row.XrayUUID,
 			Email: fmt.Sprintf("sub-%d", row.ID),
 		})
+		subIDs = append(subIDs, row.ID)
+	}
+	deviceLimits, err := h.nodeDeviceLimits(subIDs, time.Now().UTC())
+	if err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
 	}
 
 	w.Header().Set("Cache-Control", "no-store")
-	h.jsonOK(w, NodeXrayUsersResponse{MAC: mac, Users: users, LeaseSeconds: lease})
+	h.jsonOK(w, NodeXrayUsersResponse{MAC: mac, Users: users, LeaseSeconds: lease, DeviceLimits: deviceLimits})
 }

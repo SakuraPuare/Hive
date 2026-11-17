@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"sort"
@@ -19,15 +20,33 @@ import (
 // Short leases bound access when the registry or the accounting agent fails.
 const subscriptionLeaseSeconds = 45
 
+// Online device reports are bounded so one node cannot turn a sync into an
+// unbounded transaction. Device limits are small; 64 IPs per subscription is
+// already far beyond any sane plan.
+const (
+	onlineDeviceTTL             = 2 * time.Minute
+	maxOnlineSubscriptions      = 200
+	maxOnlineIPsPerSubscription = 64
+)
+
 type NodeTrafficCounter struct {
 	Name  string `json:"name"`
 	Value int64  `json:"value,string" swaggertype:"string" example:"0"`
+}
+
+// NodeOnlineDevice is one subscription's currently online client IPs as seen
+// by this exit node. Xray's online map is keyed by source IP, so one device
+// with several connections appears once.
+type NodeOnlineDevice struct {
+	SubscriptionID uint     `json:"subscription_id"`
+	IPs            []string `json:"ips"`
 }
 
 type NodeAccountingRequest struct {
 	Generation int64                `json:"generation,omitempty,string" swaggertype:"string" example:"1"` // Monotonic per-node runtime, zero for legacy agents
 	Epoch      string               `json:"epoch"`                                                        // Xray systemd InvocationID
 	Counters   []NodeTrafficCounter `json:"counters"`
+	Online     []NodeOnlineDevice   `json:"online,omitempty"`
 }
 
 var counterName = regexp.MustCompile(`^user>>>sub-([1-9][0-9]*)>>>traffic>>>(uplink|downlink)$`)
@@ -104,6 +123,26 @@ func (h *Handler) handleAccounting(w http.ResponseWriter, r *http.Request, requi
 		}
 		seen[c.Name] = true
 	}
+	if len(report.Online) > maxOnlineSubscriptions {
+		h.jsonErr(w, 400, "too many online device reports")
+		return
+	}
+	seenSubscriptions := make(map[uint]bool, len(report.Online))
+	for _, dev := range report.Online {
+		if dev.SubscriptionID == 0 || seenSubscriptions[dev.SubscriptionID] || len(dev.IPs) > maxOnlineIPsPerSubscription {
+			h.jsonErr(w, 400, "invalid or duplicate online device report")
+			return
+		}
+		seenSubscriptions[dev.SubscriptionID] = true
+		seenIPs := make(map[string]bool, len(dev.IPs))
+		for _, ip := range dev.IPs {
+			if net.ParseIP(ip) == nil || seenIPs[ip] {
+				h.jsonErr(w, 400, "invalid or duplicate online device IP")
+				return
+			}
+			seenIPs[ip] = true
+		}
+	}
 	sort.Slice(report.Counters, func(i, j int) bool { return report.Counters[i].Name < report.Counters[j].Name })
 	mac := r.PathValue("mac")
 	errUnauthorized := errors.New("server credential revoked")
@@ -153,6 +192,40 @@ func (h *Handler) handleAccounting(w http.ResponseWriter, r *http.Request, requi
 			if err := tx.Exec("INSERT INTO node_traffic_counters (node_mac, generation, epoch, counter_name, bytes) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE bytes = VALUES(bytes)", mac, report.Generation, report.Epoch, c.Name, c.Value).Error; err != nil {
 				return err
 			}
+		}
+		now := time.Now().UTC()
+		for _, dev := range report.Online {
+			var sub struct{ ID uint }
+			// A stale report for a subscription this node no longer serves must
+			// not consume another subscription's device slots.
+			if err := tx.Raw(
+				"SELECT cs.id FROM customer_subscriptions cs WHERE cs.id = ? AND EXISTS ("+
+					"SELECT 1 FROM plan_lines pl JOIN line_nodes ln ON ln.line_id = pl.line_id "+
+					"WHERE pl.plan_id = cs.plan_id AND ln.node_mac = ?)",
+				dev.SubscriptionID, mac,
+			).Scan(&sub).Error; err != nil {
+				return err
+			}
+			if sub.ID == 0 {
+				continue
+			}
+			for _, ip := range dev.IPs {
+				if err := tx.Exec(
+					"INSERT INTO subscription_online_devices (subscription_id, node_mac, ip, first_seen, last_seen) "+
+						"VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE last_seen = VALUES(last_seen)",
+					dev.SubscriptionID, mac, ip, now, now,
+				).Error; err != nil {
+					return err
+				}
+			}
+		}
+		// Age out devices that stopped reporting. This also runs for nodes with
+		// no online devices, so a dead node's rows cannot hold slots forever.
+		if err := tx.Exec(
+			"DELETE FROM subscription_online_devices WHERE last_seen < ? LIMIT 1000",
+			now.Add(-onlineDeviceTTL),
+		).Error; err != nil {
+			return err
 		}
 		return nil
 	})

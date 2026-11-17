@@ -4,6 +4,18 @@ set -euo pipefail
 umask 077
 tmp=$(mktemp --suffix=.json /etc/xray/.clients.XXXXXX)
 trap 'rm -f "$tmp"' EXIT
-jq '(.inbounds[] | select(.protocol == "vless") | .settings.clients) = []' /etc/xray/config.json > "$tmp"
+jq '
+  (.inbounds[] | select(.protocol == "vless") | .settings.clients) = [] |
+  .policy = (.policy // {}) |
+  .policy.levels = (.policy.levels // {}) |
+  .policy.levels["0"] = ((.policy.levels["0"] // {}) + {statsUserOnline: true}) |
+  .inbounds |= map(
+    if .protocol == "vless" then
+      .streamSettings = (.streamSettings // {}) |
+      .streamSettings.sockopt = ((.streamSettings.sockopt // {}) |
+        .trustedXForwardedFor = (((.trustedXForwardedFor // []) + ["CF-Connecting-IP"]) | unique))
+    else . end
+  )
+' /etc/xray/config.json > "$tmp"
 xray run -test -config "$tmp" >/dev/null 2>&1
 mv -f "$tmp" /etc/xray/config.json

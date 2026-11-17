@@ -640,6 +640,24 @@ ALTER TABLE nodes ADD COLUMN exit_enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT 
 ALTER TABLE nodes ADD COLUMN owner_exit_enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT '设备所有者出口开关';
 `,
 	},
+	{
+		version: 32,
+		desc:    "exit-side online device IPs for subscription device limits",
+		up: `
+CREATE TABLE IF NOT EXISTS subscription_online_devices (
+    subscription_id INT UNSIGNED NOT NULL,
+    node_mac        VARCHAR(12)  NOT NULL,
+    ip              VARCHAR(45)  NOT NULL,
+    first_seen      DATETIME     NOT NULL,
+    last_seen       DATETIME     NOT NULL,
+    PRIMARY KEY (subscription_id, node_mac, ip),
+    INDEX idx_sod_sub_last_seen (subscription_id, last_seen),
+    INDEX idx_sod_last_seen (last_seen),
+    FOREIGN KEY (subscription_id) REFERENCES customer_subscriptions(id) ON DELETE CASCADE,
+    FOREIGN KEY (node_mac)        REFERENCES nodes(mac)                   ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订阅在线设备 IP（出口侧设备数限制）';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.
