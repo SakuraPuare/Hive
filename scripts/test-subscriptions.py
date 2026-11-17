@@ -57,24 +57,13 @@ elif name=='xray':
         state['clients']+=clients;save()
 elif name=='curl':
     if (root/'fail-network').exists():sys.exit(22)
+    if args[-1].endswith(('/accounting/state','/accounting','/xray-users')):
+        token='server-only-token' if '/servers/' in args[-1] else 'customer-device-token'
+        if 'Authorization: Bearer '+token not in args:sys.exit(22)
     if args[-1].endswith('/accounting/state'):
         if (root/'fail-state').exists():sys.exit(22)
         print(json.dumps({'generation':str(state.get('generation',0)), 'epoch':state.get('accounting_epoch','')}))
-    elif args[-1].endswith('/xray-users'):
-        report=json.loads(Path(args[args.index('--data-binary')+1][1:]).read_text())
-        with (root/'reports').open('a') as f:f.write(json.dumps(report)+'\n')
-        counters=state.setdefault('counters',{})
-        for c in report['counters']:
-            key=report['epoch']+'/'+c['name']
-            old=counters.get(key,0);value=int(c['value'])
-            state['billed']=state.get('billed',0)+max(0,value-old)
-            counters[key]=max(old,value)
-        save()
-        if (root/'lose-response').exists():
-            (root/'lose-response').unlink();sys.exit(28)
-        Path(args[args.index('-o')+1]).write_text((root/'desired.json').read_text())
-        print(200,end='')
-    elif args[-1].endswith('/accounting'):
+    elif args[-1].endswith(('/accounting','/xray-users')):
         report=json.loads(Path(args[args.index('--data-binary')+1][1:]).read_text())
         with (root/'reports').open('a') as f:f.write(json.dumps(report)+'\n')
         generation=int(report.get('generation','0')); current=state.get('generation',0)
@@ -82,7 +71,7 @@ elif name=='curl':
         if generation<current:status=410
         elif generation==current and generation and report['epoch']!=state['accounting_epoch']:status=409
         elif generation>current:
-            if generation!=current+1:status=409
+            if generation!=current+1 or report['epoch']==state.get('accounting_epoch'):status=409
             else:state.update(generation=generation,accounting_epoch=report['epoch'])
         if status==200:
             counters=state.setdefault('counters',{})
@@ -187,8 +176,11 @@ class SubscriptionScripts(unittest.TestCase):
         calls=(self.root/'calls').read_text()
         self.assertIn('Authorization: Bearer customer-device-token',calls)
         self.assertIn('/nodes/aabbccddeeff/xray-users',calls)
+        self.assertIn('/nodes/aabbccddeeff/accounting/state',calls)
         self.assertNotIn('/servers/aabbccddeeff/accounting',calls)
         self.assertIn('123',(self.root/'reports').read_text())
+        self.assertEqual(self.state()['generation'],1)
+        self.assertEqual(self.state()['billed'],123)
 
     def test_exit_uses_only_its_separate_server_credential(self):
         (self.root/'etc/hive/device-token').write_text('customer-device-token')
@@ -199,16 +191,48 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertNotIn('customer-device-token',calls)
         self.assertNotIn('Bearer test-token',calls)
 
-    def test_removing_server_key_falls_back_to_device_endpoint(self):
-        self.run_agent('hive-xray-sync')
-        old=(self.root/'reports').read_text()
-        (self.root/'etc/hive/server-token').unlink()
+    def assert_mode_switch_preserves_counters(self,source):
         (self.root/'etc/hive/device-token').write_text('customer-device-token')
-        self.state_update(connections=True)
+        server_key=self.root/'etc/hive/server-token'
+        if source=='device':server_key.unlink()
         self.run_agent('hive-xray-sync')
-        self.assertNotEqual((self.root/'reports').read_text(),old)
-        self.assertTrue(self.state()['xray'])
-        self.assertIn('/nodes/aabbccddeeff/xray-users',(self.root/'calls').read_text())
+        epoch=self.state()['epoch']
+        self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'50'}])
+        self.run_agent('hive-xray-sync')
+        if source=='server':server_key.unlink()
+        else:server_key.write_text('server-only-token')
+        self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'80'}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['epoch'],epoch)
+        self.assertEqual(self.state()['generation'],1)
+        self.assertEqual(self.state()['billed'],80)
+        self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'100'}])
+        (self.root/'lose-response').touch()
+        self.run_agent('hive-xray-sync',expected=1)
+        self.assertEqual(self.state()['billed'],100)
+        if source=='server':server_key.write_text('server-only-token')
+        else:server_key.unlink()
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['billed'],100)
+        self.assertEqual(self.state()['generation'],2)
+        self.assertGreater(self.state()['epoch'],epoch)
+        self.assertEqual(self.state()['clients'][0]['id'],UUID)
+        reports=[json.loads(line) for line in (self.root/'reports').read_text().splitlines()]
+        final=[report for report in reports if any(c['value']=='100' for c in report['counters'])]
+        self.assertGreaterEqual(len(final),2)
+        self.assertTrue(all(report['generation']=='1' and report['epoch']==f'epoch-{epoch}' for report in final))
+        self.assertFalse(list((self.root/'var/lib/hive/traffic-pending').glob('*.json')))
+        calls=(self.root/'calls').read_text()
+        self.assertIn('/nodes/aabbccddeeff/xray-users',calls)
+        self.assertIn('/servers/aabbccddeeff/accounting',calls)
+        state_path='/servers/' if source=='server' else '/nodes/'
+        self.assertIn(state_path+'aabbccddeeff/accounting/state',calls)
+
+    def test_server_to_device_hot_switch_preserves_counters_and_pending_snapshots(self):
+        self.assert_mode_switch_preserves_counters('server')
+
+    def test_device_to_server_hot_switch_preserves_counters_and_pending_snapshots(self):
+        self.assert_mode_switch_preserves_counters('device')
 
     def test_upgrade_does_not_rebill_prometheus_history(self):
         self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'999999'}])
@@ -273,6 +297,49 @@ class SubscriptionScripts(unittest.TestCase):
         self.run_agent('hive-xray-sync')
         self.assertEqual(self.state()['billed'],157)
 
+    def test_device_generation_zero_upgrade_flushes_before_restarting(self):
+        (self.root/'etc/hive/server-token').unlink()
+        (self.root/'etc/hive/device-token').write_text('customer-device-token')
+        (self.root/'var/lib/hive/subscription-accounting-v1').touch()
+        access=self.root/'run/hive-subscriptions';access.mkdir()
+        (access/'xray.applied').write_text('epoch-1\n')
+        (self.root/'var/lib/hive/traffic-generation.json').write_text(json.dumps({'epoch':'epoch-1','generation':'0'}))
+        pending=self.root/'var/lib/hive/traffic-pending';pending.mkdir()
+        (pending/'old.json').write_text(json.dumps({'epoch':'old','generation':'0','counters':[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'50'}]}))
+        self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'100'}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['billed'],150)
+        self.assertEqual(self.state()['generation'],1)
+        self.assertGreater(self.state()['epoch'],1)
+        reports=[json.loads(line) for line in (self.root/'reports').read_text().splitlines()]
+        self.assertEqual([report['generation'] for report in reports],['0','0','1'])
+        self.assertEqual([report['epoch'] for report in reports[:2]],['old','epoch-1'])
+        self.assertEqual(reports[-1]['counters'],[])
+        calls=(self.root/'calls').read_text().splitlines()
+        lookup=next(i for i,call in enumerate(calls) if '/nodes/aabbccddeeff/accounting/state' in call)
+        reports_before_lookup=[call for call in calls[:lookup] if '/nodes/aabbccddeeff/xray-users' in call]
+        self.assertEqual(len(reports_before_lookup),2)
+
+    def test_device_generation_zero_cannot_bypass_existing_server_fence(self):
+        (self.root/'etc/hive/server-token').unlink()
+        (self.root/'etc/hive/device-token').write_text('customer-device-token')
+        (self.root/'var/lib/hive/subscription-accounting-v1').touch()
+        access=self.root/'run/hive-subscriptions';access.mkdir()
+        (access/'xray.applied').write_text('epoch-1\n')
+        (self.root/'var/lib/hive/traffic-generation.json').write_text(json.dumps({'epoch':'epoch-1','generation':'0'}))
+        pending=self.root/'var/lib/hive/traffic-pending';pending.mkdir()
+        (pending/'old.json').write_text(json.dumps({'epoch':'old','generation':'0','counters':[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'50'}]}))
+        self.state_update(generation=4,accounting_epoch='former-server',stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'100'}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state().get('billed',0),0)
+        self.assertEqual(self.state()['generation'],5)
+        self.assertGreater(self.state()['epoch'],1)
+        self.assertEqual(self.state()['clients'][0]['id'],UUID)
+        reports=[json.loads(line) for line in (self.root/'reports').read_text().splitlines()]
+        self.assertEqual([report['generation'] for report in reports],['0','0','5'])
+        self.assertEqual(reports[-1]['counters'],[])
+        self.assertFalse(list(pending.glob('*.json')))
+
     def test_pending_snapshots_replay_in_generation_order(self):
         self.run_agent('hive-xray-sync')
         pending=self.root/'var/lib/hive/traffic-pending'
@@ -293,6 +360,26 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertFalse(pending.exists())
         self.assertEqual(self.state().get('billed',0),0)
         self.assertEqual(self.state()['clients'][0]['id'],UUID)
+
+    def test_device_retired_live_runtime_stops_before_next_generation(self):
+        (self.root/'etc/hive/server-token').unlink()
+        (self.root/'etc/hive/device-token').write_text('customer-device-token')
+        self.run_agent('hive-xray-sync')
+        old_epoch=self.state()['epoch']
+        self.state_update(generation=2,accounting_epoch='other-runtime',stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'999'}])
+        self.run_agent('hive-xray-sync',expected=1)
+        self.assertFalse(self.state()['xray'])
+        self.assertFalse((self.root/'run/hive-subscriptions/xray.lease').exists())
+        self.assertEqual(self.state()['generation'],2)
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['generation'],3)
+        self.assertGreater(self.state()['epoch'],old_epoch)
+        self.assertEqual(self.state().get('billed',0),0)
+        self.assertEqual(self.state()['clients'][0]['id'],UUID)
+        reports=[json.loads(line) for line in (self.root/'reports').read_text().splitlines()]
+        retired=[report for report in reports if any(c['value']=='999' for c in report['counters'])]
+        self.assertTrue(retired)
+        self.assertTrue(all(report['generation']=='1' for report in retired))
 
     def test_failed_replay_sort_keeps_snapshots_and_does_not_advance_generation(self):
         self.run_agent('hive-xray-sync')
@@ -324,6 +411,16 @@ class SubscriptionScripts(unittest.TestCase):
         self.run_agent('hive-xray-sync',expected=1)
         self.assertFalse(self.state()['xray'])
         self.assertEqual(self.state()['clients'],[])
+
+    def test_device_generation_lookup_failure_never_grants_fresh_runtime(self):
+        (self.root/'etc/hive/server-token').unlink()
+        (self.root/'etc/hive/device-token').write_text('customer-device-token')
+        (self.root/'fail-state').touch()
+        self.run_agent('hive-xray-sync',expected=1)
+        self.assertFalse(self.state()['xray'])
+        self.assertEqual(self.state()['clients'],[])
+        self.assertEqual(self.state().get('generation',0),0)
+        self.assertFalse((self.root/'run/hive-subscriptions/xray.lease').exists())
 
     def test_large_generation_remains_exact_and_overflow_stops(self):
         self.state_update(generation=9007199254740992,accounting_epoch='old')

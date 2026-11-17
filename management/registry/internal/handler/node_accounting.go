@@ -25,7 +25,7 @@ type NodeTrafficCounter struct {
 }
 
 type NodeAccountingRequest struct {
-	Generation int64                `json:"generation,omitempty,string" swaggertype:"string" example:"1"` // Monotonic per-server runtime, zero for legacy agents
+	Generation int64                `json:"generation,omitempty,string" swaggertype:"string" example:"1"` // Monotonic per-node runtime, zero for legacy agents
 	Epoch      string               `json:"epoch"`                                                        // Xray systemd InvocationID
 	Counters   []NodeTrafficCounter `json:"counters"`
 }
@@ -70,6 +70,8 @@ func (h *Handler) HandleNodeAccounting(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} NodeXrayUsersResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 410 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /nodes/{mac}/xray-users [post]
 func (h *Handler) HandleLegacyNodeAccounting(w http.ResponseWriter, r *http.Request) {
@@ -121,9 +123,9 @@ func (h *Handler) handleAccounting(w http.ResponseWriter, r *http.Request, requi
 			if !ok {
 				return errUnauthorized
 			}
-			if err := advanceAccountingGeneration(tx, mac, report); err != nil {
-				return err
-			}
+		}
+		if err := advanceAccountingGeneration(tx, mac, report); err != nil {
+			return err
 		}
 		for _, c := range report.Counters {
 			id, err := strconv.ParseUint(counterName.FindStringSubmatch(c.Name)[1], 10, 32)

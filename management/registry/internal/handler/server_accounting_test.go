@@ -100,6 +100,62 @@ func TestServerAccountingRejectsCustomerDeviceAndAdminCredentials(t *testing.T) 
 	}
 }
 
+func TestAccountingStateSharesCursorAndEnforcesCredentialScope(t *testing.T) {
+	_, id, server := accountingFixture(t)
+	mac, other := "aabbccddeeff", "112233445566"
+	device := deviceToken(t, mac)
+	insertTestNode(t, other)
+	otherDevice, otherServer := deviceToken(t, other), serverToken(t, other)
+	for _, generation := range []int64{0, 1} {
+		if generation > 0 {
+			postGeneration(t, server, generationReport(id, generation, 10), 200)
+		}
+		for _, route := range []struct {
+			path  string
+			token string
+		}{
+			{"/servers/" + mac + "/accounting/state", server},
+			{"/nodes/" + mac + "/accounting/state", device},
+		} {
+			resp := doBearer("GET", route.path, nil, route.token)
+			assertStatus(t, resp, 200)
+			if resp.Header.Get("Cache-Control") != "no-store" {
+				t.Fatal("accounting cursor can be cached")
+			}
+			var state map[string]any
+			decodeBody(t, resp, &state)
+			epoch := ""
+			if generation > 0 {
+				epoch = "runtime-1"
+			}
+			if len(state) != 2 || state["generation"] != fmt.Sprint(generation) || state["epoch"] != epoch {
+				t.Fatalf("cursor leaked authorization or disagreed across modes: %+v", state)
+			}
+		}
+		if generation == 0 && scalar(t, "SELECT COUNT(*) FROM node_accounting_state") != 0 {
+			t.Fatal("reading an empty cursor advanced accounting")
+		}
+	}
+	for _, route := range []struct {
+		path    string
+		invalid []string
+	}{
+		{"/servers/" + mac + "/accounting/state", []string{device, otherServer, otherDevice, testCfg.APISecret, testCfg.AdminAPISecret, ""}},
+		{"/nodes/" + mac + "/accounting/state", []string{server, otherServer, otherDevice, testCfg.APISecret, testCfg.AdminAPISecret, ""}},
+	} {
+		for _, token := range route.invalid {
+			resp := doBearer("GET", route.path, nil, token)
+			assertStatus(t, resp, 401)
+			resp.Body.Close()
+		}
+		for _, cookie := range []*http.Cookie{adminCookie(), customerCookie(uint(scalar(t, "SELECT customer_id FROM customer_subscriptions WHERE id=?", id)))} {
+			resp := doJSON("GET", route.path, nil, cookie)
+			assertStatus(t, resp, 401)
+			resp.Body.Close()
+		}
+	}
+}
+
 func TestServerCredentialLifecycleAndScope(t *testing.T) {
 	resetDB(t)
 	mac, other := "aabbccddeeff", "112233445566"

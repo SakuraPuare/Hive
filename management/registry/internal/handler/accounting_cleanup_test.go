@@ -57,6 +57,74 @@ func TestAccountingCleanupFencesDeletedHistoryAndPreservesCurrent(t *testing.T) 
 	}
 }
 
+func TestAccountingModeSwitchPreservesFenceAfterCleanup(t *testing.T) {
+	for _, source := range []string{"server", "device"} {
+		t.Run(source, func(t *testing.T) {
+			_, id, server := accountingFixture(t)
+			device := deviceToken(t, "aabbccddeeff")
+			revokeServer := func() {
+				resp := doJSON("DELETE", "/admin/nodes/aabbccddeeff/server-credential", nil, adminCookie())
+				assertStatus(t, resp, 200)
+				resp.Body.Close()
+			}
+			post := func(mode string, report NodeAccountingRequest, want int) {
+				t.Helper()
+				path, token := "/servers/aabbccddeeff/accounting", server
+				if mode == "device" {
+					path, token = "/nodes/aabbccddeeff/xray-users", device
+				}
+				resp := doBearer("POST", path, report, token)
+				assertStatus(t, resp, want)
+				resp.Body.Close()
+			}
+			if source == "device" {
+				revokeServer()
+			}
+			legacy, old := generationReport(id, 0, 5), generationReport(id, 1, 70)
+			post(source, legacy, 200)
+			post(source, old, 200)
+			target := "device"
+			if source == "device" {
+				target = "server"
+				server = serverToken(t, "aabbccddeeff")
+			} else {
+				revokeServer()
+			}
+			// Switching credentials must preserve a live runtime's high-water mark.
+			post(target, old, 200)
+			old.Counters[0].Value = 75
+			post(target, old, 200)
+			current := generationReport(id, 2, 20)
+			post(target, current, 200)
+			if n, err := testH.cleanupAccountingCounters(context.Background()); err != nil || n != 2 {
+				t.Fatalf("mode-switch cleanup: %d %v", n, err)
+			}
+			post(target, current, 200)
+			current.Counters[0].Value = 25
+			post(target, current, 200)
+			if target == "device" {
+				server = serverToken(t, "aabbccddeeff")
+			}
+			for _, mode := range []string{"server", "device"} {
+				legacy.Counters[0].Value = 500
+				old.Counters[0].Value = 750
+				post(mode, legacy, 410)
+				post(mode, old, 410)
+				wrongEpoch := generationReport(id, 2, 100)
+				wrongEpoch.Epoch = "conflicting-runtime"
+				post(mode, wrongEpoch, 409)
+				post(mode, generationReport(id, 4, 100), 409)
+				post(mode, current, 200)
+			}
+			if scalar(t, "SELECT traffic_used FROM customer_subscriptions WHERE id=?", id) != 105 ||
+				scalar(t, "SELECT COUNT(*) FROM node_traffic_counters") != 1 ||
+				scalar(t, "SELECT generation FROM node_accounting_state") != 2 {
+				t.Fatal("credential switch or retired retry lost the shared billing fence")
+			}
+		})
+	}
+}
+
 func TestAccountingCleanupLegacyUpgradeAndBatchIsolation(t *testing.T) {
 	_, id, credential := accountingFixture(t)
 	legacy := generationReport(id, 0, 70)

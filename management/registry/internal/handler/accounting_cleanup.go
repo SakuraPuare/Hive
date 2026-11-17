@@ -58,7 +58,30 @@ func advanceAccountingGeneration(tx *gorm.DB, mac string, report NodeAccountingR
 // @Failure 500 {object} ErrorResponse
 // @Router /servers/{mac}/accounting/state [get]
 func (h *Handler) HandleNodeAccountingState(w http.ResponseWriter, r *http.Request) {
-	if !h.Auth.RequireServerAuth(w, r) {
+	h.handleAccountingState(w, r, true)
+}
+
+// HandleDeviceAccountingState returns the same per-node cursor without granting access.
+// @Summary Read the device accounting generation
+// @ID DeviceAccountingState
+// @Tags nodes
+// @Security BearerAuth
+// @Produce json
+// @Param mac path string true "Node MAC"
+// @Success 200 {object} NodeAccountingState
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /nodes/{mac}/accounting/state [get]
+func (h *Handler) HandleDeviceAccountingState(w http.ResponseWriter, r *http.Request) {
+	h.handleAccountingState(w, r, false)
+}
+
+func (h *Handler) handleAccountingState(w http.ResponseWriter, r *http.Request, requireServer bool) {
+	if requireServer {
+		if !h.Auth.RequireServerAuth(w, r) {
+			return
+		}
+	} else if !h.Auth.RequireDeviceAuth(w, r) {
 		return
 	}
 	var state NodeAccountingState

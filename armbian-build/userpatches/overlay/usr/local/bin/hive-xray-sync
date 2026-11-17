@@ -23,15 +23,15 @@ fail() {
 if [ -s /etc/hive/server-token ]; then
     AUTH_TOKEN=$(cat /etc/hive/server-token)
     ACCOUNTING_URL="${NODE_REGISTRY_URL%/}/servers/${MAC}/accounting"
-    ACCOUNTING_MODE=server
+    ACCOUNTING_STATE_URL="${ACCOUNTING_URL}/state"
 elif [ -s /etc/hive/device-token ]; then
     AUTH_TOKEN=$(cat /etc/hive/device-token)
     ACCOUNTING_URL="${NODE_REGISTRY_URL%/}/nodes/${MAC}/xray-users"
-    ACCOUNTING_MODE=device
+    ACCOUNTING_STATE_URL="${NODE_REGISTRY_URL%/}/nodes/${MAC}/accounting/state"
 elif [ -n "${NODE_REGISTRY_API_SECRET:-}" ]; then
     AUTH_TOKEN="$NODE_REGISTRY_API_SECRET"
     ACCOUNTING_URL="${NODE_REGISTRY_URL%/}/nodes/${MAC}/xray-users"
-    ACCOUNTING_MODE=device
+    ACCOUNTING_STATE_URL="${NODE_REGISTRY_URL%/}/nodes/${MAC}/accounting/state"
 else
     fail 'device or server credentials missing'
 fi
@@ -86,18 +86,8 @@ prepare_generation() {
     local state generation tmp
     # Only called for a fresh, empty Xray runtime; never relabel existing traffic.
     replay_reports || return 1
-    # Device-token agents have no server generation cursor; keep the legacy
-    # generation 0 so their counters never collide with a trusted-server fence.
-    if [ "$ACCOUNTING_MODE" = "device" ]; then
-        tmp=$(mktemp "${HIVE_TRAFFIC_GENERATION}.XXXXXX") || return 1
-        if ! jq -n --arg epoch "$epoch" '{epoch:$epoch,generation:"0"}' > "$tmp" ||
-           ! sync -f "$tmp" || ! mv -f "$tmp" "$HIVE_TRAFFIC_GENERATION" || ! sync -f "${HIVE_TRAFFIC_GENERATION%/*}"; then
-            rm -f "$tmp"; return 1
-        fi
-        return 0
-    fi
     state=$(curl -4 -fsS --max-time 5 -H "Authorization: Bearer $AUTH_TOKEN" \
-      "${NODE_REGISTRY_URL%/}/servers/${MAC}/accounting/state") || return 1
+      "$ACCOUNTING_STATE_URL") || return 1
     generation=$(printf '%s' "$state" | jq -er '.generation | select(type == "string" and test("^(0|[1-9][0-9]{0,18})$"))') || return 1
     # Keep shell arithmetic exact, including values beyond JSON's 53-bit range.
     if [ "${#generation}" -eq 19 ] && [[ "$generation" > 9223372036854775806 ]]; then return 1; fi
@@ -112,7 +102,9 @@ replay_reports || fail 'traffic replay failed'
 systemctl start xray || fail 'cannot start Xray'
 epoch=$(hive_xray_epoch)
 if [ "$epoch" != "$(cat "$HIVE_ACCESS_DIR/xray.applied" 2>/dev/null || true)" ] ||
-   [ "$epoch" != "$(jq -r '.epoch // empty' "$HIVE_TRAFFIC_GENERATION" 2>/dev/null || true)" ]; then
+   [ "$epoch" != "$(jq -r '.epoch // empty' "$HIVE_TRAFFIC_GENERATION" 2>/dev/null || true)" ] ||
+   jq -e '.generation == "0"' "$HIVE_TRAFFIC_GENERATION" >/dev/null 2>&1; then
+    # Flush legacy generation 0 before upgrading; never relabel its live counters.
     # Also kills a legacy public client or orphaned API users after upgrading.
     hive_snapshot_traffic || { hive_stop_xray; exit 1; }
     systemctl restart xray || fail 'cannot reset Xray runtime'

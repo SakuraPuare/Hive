@@ -35,6 +35,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// 让普通节点（没有 server-token）也能开机即跑 Xray。
 	mux.HandleFunc("GET /nodes/{mac}/xray-users", h.HandleLegacyNodeXrayUsers)
 	mux.HandleFunc("POST /nodes/{mac}/xray-users", h.HandleLegacyNodeAccounting)
+	mux.HandleFunc("GET /nodes/{mac}/accounting/state", h.HandleDeviceAccountingState)
 	mux.HandleFunc("POST /servers/{mac}/accounting", h.HandleNodeAccounting)
 	mux.HandleFunc("GET /servers/{mac}/accounting/state", h.HandleNodeAccountingState)
 	mux.HandleFunc("POST /admin/nodes/{mac}/server-credential", perm("node:write")(h.HandleIssueServerCredential))
