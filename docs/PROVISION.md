@@ -130,25 +130,33 @@ EASYTIER_IP=$(curl -sf -X POST "${NODE_REGISTRY_URL}/nodes/allocate-easytier" \
 - 旧版按 MAC6 自算 `10.x` 已废弃——那会与 K8S 的 Pod(10.244/16)/Service(10.96/12)段撞。
 - `172.20.0.0/24` 为 infra 保留段（relay/阿里云/集群 pod 手动指派），自动发号从 `172.20.1.0` 起。
 
-**设备凭证先自助领取，再谈发号**（`RequireDeviceAuth` 只认 `device_credentials` 表里该 MAC 的 token，共享密钥一律拒绝）。共享镜像不带任何 token，所以首启第一步是自助入网：
+**设备凭证先自助登记，再谈发号**（`RequireDeviceAuth` 只认 `device_credentials` 表里该 MAC 的 token，共享密钥一律拒绝）。共享镜像不带任何 token；首启先用 `openssl rand -hex 32` 生成 256 位随机 token，以 `umask 077` 写入同目录临时文件，依次完成 **sync 文件 → rename → sync 目录**，持久化为 `/etc/hive/enrollment-token` 后才允许发送入网请求：
 
 ```bash
-POST ${NODE_REGISTRY_URL}/nodes/enroll
-{"mac":"a646c233fce7","mac6":"33fce7","hostname":"hive-33fce7"}
-# → {"mac":"...","token":"...","claim_code":"K7QF-2M9X"}
+# enrollment-token 必须已经按上述顺序持久化；重试读取原文件，不能重新生成。
+curl -fsS -X POST "${NODE_REGISTRY_URL}/nodes/enroll" \
+  -H 'Content-Type: application/json' \
+  -d "$(jq -nc --arg mac "$MAC" --arg mac6 "$MAC6" --arg hostname "$HOSTNAME" \
+    --arg token "$(cat /etc/hive/enrollment-token)" \
+    '{mac:$mac, mac6:$mac6, hostname:$hostname, token:$token}')"
+# → {"mac":"...","token":"<原请求 token>","claim_code":"K7QF-2M9X"}
 ```
 
-`provision-node.sh` 会自动做这件事，并把结果落到持久化目录（`/etc/hive` 由 `hive-data` 绑到 `/data`，换槽/OTA/重刷系统盘都不丢）：
+`provision-node.sh` 自动完成以上步骤及响应落盘；不要用手工请求替代其持久化流程。`/etc/hive` 由 `hive-data` 绑到 `/data`，换槽/OTA/重刷系统盘都不丢（清除数据分区则会丢失）：
 
 | 文件 | 内容 | 用途 |
 |------|------|------|
-| `/etc/hive/device-token` | 本机凭证（每 MAC 一把） | 发号、注册、心跳、命令、OTA、订阅拉取 |
-| `/etc/hive/claim-code` | 认领码（一次性，registry 只存 sha256） | MOTD 展示，客户在门户"我的设备 → 认领"绑定 |
+| `/etc/hive/enrollment-token` | 入网前持久化的 64 位十六进制随机秘密 | 丢响应/掉电后证明同一次入网；它存在不代表入网已完成 |
+| `/etc/hive/device-token` | 服务端确认后的本机凭证（每 MAC 一把） | 发号、注册、心跳、命令、OTA、订阅拉取 |
+| `/etc/hive/claim-code` | 认领码（registry 只存 sha256） | MOTD 展示，客户在门户"我的设备 → 认领"绑定 |
 
-入网同时会**立刻建出节点行**（`registered_at`/`last_seen`）——管理面板在设备第一次上电就能看到它上线，不必等 Cloudflare/Tailscale 那些外部步骤成功；后续 `register` 只是补齐 `cf_url`/`tailscale_ip`/`easytier_ip` 等字段。
+成功响应须为 HTTP 200 且回显原 token；先按相同的原子持久化顺序写认领码，再写 `device-token`。因此无论响应丢失，还是在响应与落盘之间掉电，下次都用原 `enrollment-token` 重试，不会因未完成的凭证文件跳过入网。恢复成功或管理员补发本机凭证后，旧 `/etc/hive/provision-blocked` 标记会被清除。
 
-规则是刻意保守的：已被客户认领、或已经发过凭证的设备，`/nodes/enroll` 一律 409。
-凭证丢失（换卡/清盘）只能由管理员在面板轮换：
+首次入网会**立刻建出节点行**（`registered_at`/`last_seen`）——管理面板无需等待 Cloudflare/Tailscale 等外部步骤成功。后续 `register` 补齐 `cf_url`/`tailscale_ip`/`easytier_ip` 等字段。
+
+服务端只存 token 哈希。相同 token 的重试返回 200，**不轮换凭证、不重置归属或节点配置**，已认领设备也能安全重试。新设备认领码由带域分隔的 MAC + token 哈希确定性生成，保留 Crockford `XXXX-XXXX` 格式；重试仅当推导值仍匹配库内认领码哈希时回传明文。历史认领码不会被覆盖或恢复。
+
+缺失/格式错误的 token 返回 400；不同 token、管理员轮换前的旧 token、没有本机凭证的已认领/服务器节点返回 409。仅凭 MAC 不能取回秘密。可接纳的旧未认领且未发证节点仍保留原认领码和注册元数据。若持久化秘密已丢失（换卡/清盘），只能由管理员轮换：
 
 ```bash
 curl -fsS -X POST "${NODE_REGISTRY_URL}/admin/nodes/${MAC}/credential" \

@@ -62,13 +62,35 @@ HOSTNAME="hive-${MAC6}"
 
 echo ">>> Device: ${HOSTNAME}  MAC: ${MAC}  IFACE: ${IFACE}"
 
-# 共享镜像不带任何凭证：第一次上电凭 MAC 自助上线（POST /nodes/enroll），拿回
-# 本机凭证和认领码。凭证落 /etc/hive/device-token（/etc/hive 已被 hive-data 持久化，
-# A/B 换槽、OTA、重刷系统盘都不丢），认领码落 /etc/hive/claim-code（MOTD 展示，
-# 客户在门户认领）。registry 只在"未认领且未发过证"时签发，所以顶号/重复领证都
-# 会被 409 拒绝：凭证丢失必须由管理员轮换，不能靠再刷一次固件。
+# Keep the enrollment proof separate from the active credential: a lost response
+# must retry enrollment, not skip it. /etc/hive is bind-persisted by hive-data.
+# Flush the temporary secret before rename, then the directory before any request.
+persist_enrollment_secret() (
+    umask 077
+    target="$1"
+    secret="$2"
+    temp=$(mktemp "${target}.tmp.XXXXXX") || exit 1
+    trap 'rm -f "$temp"' EXIT
+    printf '%s\n' "$secret" > "$temp" && sync "$temp" &&
+        mv -f "$temp" "$target" && sync "${target%/*}"
+)
+
 if [ -n "${NODE_REGISTRY_URL}" ] && [ -z "${NODE_REGISTRY_API_SECRET}" ]; then
     echo ">>> No device credential; enrolling ${MAC} at ${NODE_REGISTRY_URL}/nodes/enroll ..."
+    umask 077
+    if [ ! -e /etc/hive/enrollment-token ]; then
+        enrollment_token=$(openssl rand -hex 32)
+        [[ "$enrollment_token" =~ ^[0-9a-fA-F]{64}$ ]] || exit 1
+        persist_enrollment_secret /etc/hive/enrollment-token "$enrollment_token"
+    fi
+    enrollment_token=$(cat /etc/hive/enrollment-token)
+    if [[ ! "$enrollment_token" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        echo '!!! FATAL: invalid /etc/hive/enrollment-token; preserve it for administrator recovery.'
+        exit 1
+    fi
+    # Also finish a previous boot's interrupted rename/directory-sync before use.
+    sync /etc/hive/enrollment-token
+    sync /etc/hive
     ENROLL_ERR=""
     for enroll_try in $(seq 1 6); do
         enroll_body=$(mktemp)
@@ -76,29 +98,29 @@ if [ -n "${NODE_REGISTRY_URL}" ] && [ -z "${NODE_REGISTRY_API_SECRET}" ]; then
         enroll_code=$(curl -4 -s -o "$enroll_body" -w '%{http_code}' --max-time 15 \
             -X POST "${NODE_REGISTRY_URL}/nodes/enroll" \
             -H 'Content-Type: application/json' \
-            -d "{\"mac\":\"${MAC}\",\"mac6\":\"${MAC6}\",\"hostname\":\"${HOSTNAME}\"}" \
+            -d "{\"mac\":\"${MAC}\",\"mac6\":\"${MAC6}\",\"hostname\":\"${HOSTNAME}\",\"token\":\"${enrollment_token}\"}" \
             2>/dev/null || echo 000)
         enroll_token=$(jq -r '.token // empty' "$enroll_body" 2>/dev/null || true)
         enroll_claim=$(jq -r '.claim_code // empty' "$enroll_body" 2>/dev/null || true)
         ENROLL_ERR=$(jq -r '.error // empty' "$enroll_body" 2>/dev/null || true)
         rm -f "$enroll_body"
-        if [ -n "$enroll_token" ]; then
-            umask 077
-            printf '%s\n' "$enroll_token" > /etc/hive/device-token
+        if [ "$enroll_code" = 200 ] && [ "$enroll_token" = "$enrollment_token" ]; then
+            # Publish device-token LAST: power loss before it must leave enrollment
+            # retryable, including recovery of the claim code from the same proof.
             if [ -n "$enroll_claim" ]; then
-                printf '%s\n' "$enroll_claim" > /etc/hive/claim-code.new
-                mv -f /etc/hive/claim-code.new /etc/hive/claim-code
+                persist_enrollment_secret /etc/hive/claim-code "$enroll_claim"
             fi
+            persist_enrollment_secret /etc/hive/device-token "$enroll_token"
             NODE_REGISTRY_API_SECRET="$enroll_token"
             echo ">>> Enrolled. Claim code: ${enroll_claim:-<already minted>}"
             break
         fi
         case "$enroll_code" in
             409)
-                # 永久性失败：重试没有意义（409 = 设备已被认领或已发过凭证），
-                # 只有管理员轮换能解开。写标记并 exit 0，让 provision-node.service
-                # 的 Restart=on-failure 不再空转；开机时 MOTD 会展示这个文件。
-                echo "!!! FATAL: 设备 ${MAC} 已被认领或已发过凭证（${ENROLL_ERR:-409}）。"
+                # A different/revoked proof or an ineligible legacy row needs admin
+                # recovery. Identical retries after a lost response return 200.
+                # Leave a visible marker and stop Restart=on-failure from spinning.
+                echo "!!! FATAL: 设备 ${MAC} 的入网凭证被拒绝（${ENROLL_ERR:-409}）。"
                 echo "!!!        凭证丢失请让管理员在面板轮换："
                 echo "!!!        POST ${NODE_REGISTRY_URL}/admin/nodes/${MAC}/credential（ADMIN_API_SECRET）"
                 umask 077
@@ -116,6 +138,10 @@ if [ -n "${NODE_REGISTRY_URL}" ] && [ -z "${NODE_REGISTRY_API_SECRET}" ]; then
     echo "!!!        可手工签发后写入 /etc/hive/device-token 再重跑："
     echo "!!!        POST ${NODE_REGISTRY_URL}/admin/nodes/${MAC}/credential（ADMIN_API_SECRET）"
     exit 1
+fi
+if [ -n "${NODE_REGISTRY_API_SECRET}" ] && [ -e /etc/hive/provision-blocked ]; then
+    rm -f /etc/hive/provision-blocked
+    sync /etc/hive
 fi
 
 # 设主机名：直接写文件最可靠。systemd-hostnamed 跑在 sandbox 里，在精简内核上

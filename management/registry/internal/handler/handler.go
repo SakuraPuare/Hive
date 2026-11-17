@@ -26,6 +26,7 @@ type Handler struct {
 	// their shared state between cases.
 	loginRL    *middleware.RateLimiter
 	forgotPwRL *middleware.RateLimiter
+	enrollRL   *middleware.RateLimiter
 }
 
 // ResetRateLimiters clears the request windows of all rate limiters. Intended
@@ -36,6 +37,9 @@ func (h *Handler) ResetRateLimiters() {
 	}
 	if h.forgotPwRL != nil {
 		h.forgotPwRL.Reset()
+	}
+	if h.enrollRL != nil {
+		h.enrollRL.Reset()
 	}
 }
 

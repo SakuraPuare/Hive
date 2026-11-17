@@ -30,7 +30,7 @@
 |------|------|------|------|
 | POST | /api/admin/login | 无 | 管理端登录（设置 `hive_admin_session` cookie） |
 | POST | /api/admin/logout | 无 | 退出登录（清除 cookie） |
-| POST | /api/nodes/enroll | 无（按 IP 限流 20/min） | 首启自助上线：凭 MAC 换取本机凭证 + 认领码 |
+| POST | /api/nodes/enroll | 无（按 IP 限流 20/min） | 首启入网：登记已持久化的随机 token；同 token 可重试 |
 | POST | /api/nodes/register | Cookie 或 Bearer | 节点注册（幂等） |
 | GET | /api/nodes | Cookie 或 Bearer | 列出所有节点 |
 | GET | /api/nodes/{mac} | Cookie 或 Bearer | 单节点详情 |
@@ -85,16 +85,39 @@
 `device_credentials` 表里该 MAC 的 token，所以没有这个入口时新设备连发号/注册都做不到，
 管理面板上也永远不会出现它。
 
+请求必须包含 `mac` 和客户端生成的 `token`（64 位十六进制随机秘密）；`mac6`、`hostname` 可选。生产设备直接运行 `provision-node.sh`，它负责完整的持久化与恢复。以下展示入网前持久化和请求顺序，**重试必须复用原文件**：
+
 ```bash
-POST /api/nodes/enroll
-{"mac":"a646c233fce7","mac6":"33fce7","hostname":"hive-33fce7"}
-# → {"mac":"a646c233fce7","token":"<64 hex>","claim_code":"K7QF-2M9X"}
+(
+  set -e
+  umask 077
+  mkdir -p /etc/hive
+  if [ ! -e /etc/hive/enrollment-token ]; then
+    pending=$(mktemp /etc/hive/enrollment-token.tmp.XXXXXX)
+    trap 'rm -f "$pending"' EXIT
+    openssl rand -hex 32 > "$pending"
+    sync "$pending"
+    mv -f "$pending" /etc/hive/enrollment-token
+    sync /etc/hive
+  fi
+  token=$(cat /etc/hive/enrollment-token)
+  [[ "$token" =~ ^[0-9a-fA-F]{64}$ ]]
+  sync /etc/hive/enrollment-token
+  sync /etc/hive
+  curl -fsS -X POST "${NODE_REGISTRY_URL}/nodes/enroll" \
+    -H 'Content-Type: application/json' \
+    -d "$(jq -nc --arg mac "$MAC" --arg token "$token" '{mac:$mac,token:$token}')"
+)
+# → {"mac":"<请求 MAC>","token":"<原请求 token>","claim_code":"K7QF-2M9X"}
 ```
 
-- 立刻写入节点行（`registered_at`/`last_seen`）→ 面板马上能看到"谁上线了"；
-- `token` 是此后所有设备接口的凭证；`claim_code` 明文只回一次，registry 只存 sha256；
-- 判定顺序：已认领 → 409；已发过凭证 → 409（凭证丢失走管理员轮换 `POST /api/admin/nodes/{mac}/credential`）；
-- 公开接口，按来源 IP 限流 20 次/分钟，只能在设备未认领且未发证时产生副作用。
+- 首次登记立刻写入节点行（`registered_at`/`last_seen`），面板无需等待其他置备步骤完成。
+- 服务端只存现有 `device_credentials.token_hash`，不会存明文秘密。相同 token 重试返回 200，即使原响应已丢失或设备随后被认领，也不修改凭证、归属或节点配置。
+- 新认领码由域分隔的 MAC + token 哈希确定性生成，格式为 Crockford `XXXX-XXXX`。重试仅当推导码的哈希仍匹配原 `claim_code_hash` 才返回明文；已有历史认领码不覆盖、不恢复。
+- `provision-node.sh` 校验 HTTP 200 和回显 token 后，先原子持久化 `claim-code`，最后原子持久化 `device-token`（每步都是 sync 文件 → rename → sync 目录）。`enrollment-token` 单独保存，不能提前当作已完成登记的 `device-token`；恢复后清除 `provision-blocked`。
+- token 缺失或格式错误返回 400；已有凭证但 token 不同/已被管理员轮换，或旧节点没有凭证且已认领/带认领历史/是服务器，返回 409。合格的旧未认领、未发证节点可登记，但保留原认领码及注册元数据。
+- MAC 本身不能恢复秘密。原 token 丢失须通过管理员轮换 `POST /api/admin/nodes/{mac}/credential`，旧 token 随即不能再入网。
+- 公开接口仍按来源 IP 限流 20 次/分钟。`/etc/hive` 由 hive-data 持久化并受到 OTA 路径保护；不要把每台设备的秘密打进共享镜像。
 
 > **已知取舍**：MAC 不是秘密（机壳/MOTD 上就有），所以理论上有人可以在真机首启前
 > 抢先入网并认领该 MAC。后果是**真机上线被 409 阻塞、且不会真的被对方控制**；
