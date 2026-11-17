@@ -301,6 +301,10 @@ definitions:
         description: Monotonic per-node runtime, zero for legacy agents
         example: "1"
         type: string
+      online:
+        items:
+          $ref: '#/definitions/handler.NodeOnlineDevice'
+        type: array
     type: object
   handler.NodeAccountingState:
     properties:
@@ -309,6 +313,28 @@ definitions:
       generation:
         example: "1"
         type: string
+    type: object
+  handler.NodeDeviceLimit:
+    properties:
+      allowed_ips:
+        items:
+          type: string
+        type: array
+      device_limit:
+        type: integer
+      subscription_id:
+        type: integer
+      used:
+        type: integer
+    type: object
+  handler.NodeOnlineDevice:
+    properties:
+      ips:
+        items:
+          type: string
+        type: array
+      subscription_id:
+        type: integer
     type: object
   handler.NodeRegisterRequest:
     properties:
@@ -372,6 +398,10 @@ definitions:
       enabled:
         example: true
         type: boolean
+      exit_direction:
+        description: 订阅方向：overseas（出海，节点在墙外，默认）/ domestic（回国，节点在墙内）
+        example: overseas
+        type: string
       exit_enabled:
         description: 管理员出口开关；默认 true。实际出口还需设备所有者的 owner_exit_enabled。
         example: true
@@ -419,6 +449,10 @@ definitions:
     type: object
   handler.NodeXrayUsersResponse:
     properties:
+      device_limits:
+        items:
+          $ref: '#/definitions/handler.NodeDeviceLimit'
+        type: array
       lease_seconds:
         type: integer
       mac:
@@ -618,6 +652,10 @@ definitions:
         type: integer
       expires_at:
         type: string
+      has_domestic:
+        type: boolean
+      has_overseas:
+        type: boolean
       id:
         type: integer
       plan_id:
@@ -821,6 +859,10 @@ definitions:
         type: integer
       expires_at:
         type: string
+      has_domestic:
+        type: boolean
+      has_overseas:
+        type: boolean
       id:
         type: integer
       plan_id:
@@ -1277,6 +1319,13 @@ definitions:
         type: string
       enabled:
         type: boolean
+      exit_direction:
+        description: |-
+          ExitDirection 决定节点服务哪一类订阅，不参与"是否出口"的判定：
+            overseas（默认）节点在墙外，进"出海"订阅（国内用户翻墙）；
+            domestic 节点在墙内，进"回国"订阅（海外用户访问国内服务）。
+          两类订阅使用不同的分流规则，因此不能混在同一份客户端配置里。
+        type: string
       exit_enabled:
         description: |-
           ── 出口开关（默认开启）──────────────────────────────────────────────
@@ -4271,7 +4320,9 @@ paths:
       - admin
   /c/{token}:
     get:
-      description: 根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)
+      description: |-
+        根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)。
+        只包含 exit_direction=overseas 的出海节点，CN 直连、其余走代理。
       operationId: CustomerSubscriptionClash
       parameters:
       - description: 订阅 token
@@ -4290,12 +4341,62 @@ paths:
           description: Not Found
           schema:
             type: string
-      summary: 获取客户 Clash 订阅
+      summary: 获取客户 Clash 订阅（出海）
+      tags:
+      - subscription
+  /c/{token}/domestic:
+    get:
+      description: |-
+        根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)。
+        只包含 exit_direction=domestic 的回国节点，CN 走代理、其余直连。
+      operationId: CustomerSubscriptionDomesticClash
+      parameters:
+      - description: 订阅 token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Clash subscription
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: 获取客户 Clash 订阅（回国）
+      tags:
+      - subscription
+  /c/{token}/domestic/vless:
+    get:
+      description: 根据订阅 token 返回 base64 编码的回国 VLESS 订阅链接 (text/plain)
+      operationId: CustomerSubscriptionDomesticVless
+      parameters:
+      - description: 订阅 token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: VLESS subscription
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: 获取客户 VLESS 订阅（回国）
       tags:
       - subscription
   /c/{token}/vless:
     get:
-      description: 根据订阅 token 返回 base64 编码的 VLESS 订阅链接 (text/plain)
+      description: 根据订阅 token 返回 base64 编码的出海 VLESS 订阅链接 (text/plain)
       operationId: CustomerSubscriptionVless
       parameters:
       - description: 订阅 token
@@ -4314,7 +4415,7 @@ paths:
           description: Not Found
           schema:
             type: string
-      summary: 获取客户 VLESS 订阅
+      summary: 获取客户 VLESS 订阅（出海）
       tags:
       - subscription
   /health:

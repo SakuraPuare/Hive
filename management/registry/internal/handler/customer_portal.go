@@ -350,6 +350,7 @@ func (h *Handler) HandlePortalMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.annotateSubscriptionDirections(subs)
 	h.jsonOK(w, PortalMeResponse{
 		ID:        c.ID,
 		Email:     c.Email,
@@ -358,6 +359,50 @@ func (h *Handler) HandlePortalMe(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: c.CreatedAt,
 		Subs:      subs,
 	})
+}
+
+// annotateSubscriptionDirections marks each subscription with whether its plan
+// currently exports any usable node on each side of the GFW. 出海 and 回国 are
+// separate configs; the portal uses these flags to avoid offering a link that
+// would render an empty config.
+func (h *Handler) annotateSubscriptionDirections(subs []SubscriptionWithPlan) {
+	if len(subs) == 0 {
+		return
+	}
+	ids := make([]uint, 0, len(subs))
+	for i := range subs {
+		ids = append(ids, subs[i].ID)
+	}
+	var rows []struct {
+		SubscriptionID uint
+		Direction      string
+		NodeCount      int64
+	}
+	if err := h.DB.Raw(
+		"SELECT cs.id AS subscription_id, n.exit_direction AS direction, COUNT(DISTINCT n.mac) AS node_count "+
+			"FROM customer_subscriptions cs "+
+			"JOIN plan_lines pl ON pl.plan_id = cs.plan_id "+
+			"JOIN line_nodes ln ON ln.line_id = pl.line_id "+
+			"JOIN `lines` l ON l.id = ln.line_id AND l.enabled = 1 "+
+			"JOIN nodes n ON n.mac = ln.node_mac "+
+			"WHERE cs.id IN ? AND n.exit_enabled = 1 AND n.owner_exit_enabled = 1 AND n.enabled = 1 AND n.status = 'active' AND n.cf_url <> '' AND n.xray_uuid <> '' "+
+			"GROUP BY cs.id, n.exit_direction", ids,
+	).Scan(&rows).Error; err != nil {
+		log.Printf("portal subscription directions: %v", err)
+		return
+	}
+	for i := range subs {
+		for _, row := range rows {
+			if row.SubscriptionID != subs[i].ID {
+				continue
+			}
+			if row.Direction == DirectionDomestic {
+				subs[i].HasDomestic = row.NodeCount > 0
+			} else {
+				subs[i].HasOverseas = row.NodeCount > 0
+			}
+		}
+	}
 }
 
 // HandlePortalUpdateMe godoc
@@ -458,6 +503,7 @@ func (h *Handler) HandlePortalSubscriptions(w http.ResponseWriter, r *http.Reque
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
+	h.annotateSubscriptionDirections(subs)
 	h.jsonOK(w, subs)
 }
 

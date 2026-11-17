@@ -36,6 +36,12 @@ type Node struct {
 	ExitEnabled      bool `json:"exit_enabled"`
 	OwnerExitEnabled bool `json:"owner_exit_enabled"`
 
+	// ExitDirection 决定节点服务哪一类订阅，不参与"是否出口"的判定：
+	//   overseas（默认）节点在墙外，进"出海"订阅（国内用户翻墙）；
+	//   domestic 节点在墙内，进"回国"订阅（海外用户访问国内服务）。
+	// 两类订阅使用不同的分流规则，因此不能混在同一份客户端配置里。
+	ExitDirection string `json:"exit_direction"`
+
 	// ── 透明代理网关角色（gateway）──────────────────────────────────────
 	// 节点作为"梯子入口"：LAN/WiFi 设备连上后流量经本机 Mihomo 透明代理。
 	GatewayEnabled       bool   `json:"gateway_enabled"`        // 是否启用网关角色（默认 true）
@@ -69,10 +75,10 @@ type DeviceCommand struct {
 }
 
 // NodeCols SELECT 列顺序，用于 LEFT JOIN 查询
-const NodeCols = "n.mac, n.mac6, n.hostname, n.cf_url, n.tunnel_id, n.tailscale_ip, n.easytier_ip, n.frp_port, n.xray_uuid, n.mesh_tunnel_id, n.mesh_ip, n.location, n.note, n.registered_at, n.last_seen, n.server_enabled, n.exit_enabled, n.owner_exit_enabled, n.enabled, n.status, n.weight, n.region, n.gateway_enabled, n.gateway_direction, n.gateway_upstream_mode, n.gateway_upstream_nodes, n.bound_subscription_id, n.owner_customer_id, n.claimed_at, COALESCE(nsc.status, 'unknown') AS probe_status"
+const NodeCols = "n.mac, n.mac6, n.hostname, n.cf_url, n.tunnel_id, n.tailscale_ip, n.easytier_ip, n.frp_port, n.xray_uuid, n.mesh_tunnel_id, n.mesh_ip, n.location, n.note, n.registered_at, n.last_seen, n.server_enabled, n.exit_enabled, n.owner_exit_enabled, n.exit_direction, n.enabled, n.status, n.weight, n.region, n.gateway_enabled, n.gateway_direction, n.gateway_upstream_mode, n.gateway_upstream_nodes, n.bound_subscription_id, n.owner_customer_id, n.claimed_at, COALESCE(nsc.status, 'unknown') AS probe_status"
 
 // NodeColsPlain 用于不需要 JOIN 的场景
-const NodeColsPlain = "mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, mesh_tunnel_id, mesh_ip, location, note, registered_at, last_seen, server_enabled, exit_enabled, owner_exit_enabled, enabled, status, weight, region, gateway_enabled, gateway_direction, gateway_upstream_mode, gateway_upstream_nodes, bound_subscription_id, owner_customer_id, claimed_at"
+const NodeColsPlain = "mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, mesh_tunnel_id, mesh_ip, location, note, registered_at, last_seen, server_enabled, exit_enabled, owner_exit_enabled, exit_direction, enabled, status, weight, region, gateway_enabled, gateway_direction, gateway_upstream_mode, gateway_upstream_nodes, bound_subscription_id, owner_customer_id, claimed_at"
 
 // ── User & Auth ──────────────────────────────────────────────────────────────
 

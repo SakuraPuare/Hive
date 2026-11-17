@@ -13,6 +13,13 @@ export type model_Node = {
     easytier_ip?: string;
     enabled?: boolean;
     /**
+     * ExitDirection 决定节点服务哪一类订阅，不参与"是否出口"的判定：
+     * overseas（默认）节点在墙外，进"出海"订阅（国内用户翻墙）；
+     * domestic 节点在墙内，进"回国"订阅（海外用户访问国内服务）。
+     * 两类订阅使用不同的分流规则，因此不能混在同一份客户端配置里。
+     */
+    exit_direction?: string;
+    /**
      * ── 出口开关（默认开启）──────────────────────────────────────────────
      * ExitEnabled 是管理员开关；OwnerExitEnabled 是设备所有者在客户门户的开关。
      * 实际是否作为 Xray 出口 = ExitEnabled && OwnerExitEnabled && Enabled && Status==active。

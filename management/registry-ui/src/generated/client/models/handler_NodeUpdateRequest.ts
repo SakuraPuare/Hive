@@ -10,6 +10,10 @@ export type handler_NodeUpdateRequest = {
     easytier_ip?: string;
     enabled?: boolean;
     /**
+     * 订阅方向：overseas（出海，节点在墙外，默认）/ domestic（回国，节点在墙内）
+     */
+    exit_direction?: string;
+    /**
      * 管理员出口开关；默认 true。实际出口还需设备所有者的 owner_exit_enabled。
      */
     exit_enabled?: boolean;

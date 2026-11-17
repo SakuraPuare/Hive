@@ -488,7 +488,18 @@ function GatewayTable({
               .split(',')
               .map((s) => s.trim())
               .filter(Boolean);
-            const candidates = nodes.filter((c) => c.mac && c.mac !== mac);
+            const candidates = nodes.filter((c) => {
+              if (!c.mac || c.mac === mac) return false;
+              // 上游必须与本网关方向互补，与服务端过滤保持一致：
+              // 境内网关(domestic)用出海节点，境外网关(overseas)用回国节点，
+              // global/direct 用节点自身方向的对侧。
+              const required = direction === 'overseas'
+                ? 'domestic'
+                : direction === 'domestic'
+                  ? 'overseas'
+                  : (n.exit_direction === 'domestic' ? 'overseas' : 'domestic');
+              return (c.exit_direction || 'overseas') === required;
+            });
             const isSaving = savingMacs.has(mac);
             const rowDisabled = !canWrite || isSaving;
             // P2 fix: only show "enable gateway first" tooltip when the row is

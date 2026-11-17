@@ -205,6 +205,69 @@ func TestCustomerSubscriptionClash(t *testing.T) {
 	}
 }
 
+func TestCustomerSubscriptionSplitsOverseasAndDomestic(t *testing.T) {
+	resetDB(t)
+	token := setupCustomerSubscription(t) // aabbccddeeff is an overseas node (default)
+	insertSubTestNode(t, "001122334455")
+	mustExec(t, "UPDATE nodes SET hostname='cn-node', cf_url='https://cn.example.com', exit_direction='domestic' WHERE mac='001122334455'")
+	mustExec(t, "INSERT INTO line_nodes (line_id, node_mac) SELECT id, '001122334455' FROM `lines`")
+
+	// 出海 (default): overseas nodes only, non-CN traffic proxied.
+	overseas := readBody(doJSON("GET", "/c/"+token, nil, nil))
+	if !strings.Contains(overseas, "test.example.com") {
+		t.Fatalf("overseas config lost its overseas node: %s", overseas)
+	}
+	if strings.Contains(overseas, "cn.example.com") {
+		t.Fatalf("overseas config leaked a domestic node: %s", overseas)
+	}
+	if !strings.Contains(overseas, "MATCH,其他") || strings.Contains(overseas, "MATCH,直连") {
+		t.Fatalf("overseas config must proxy non-CN traffic: %s", overseas)
+	}
+
+	// 回国: domestic nodes only, CN traffic proxied, everything else direct.
+	domestic := readBody(doJSON("GET", "/c/"+token+"/domestic", nil, nil))
+	if !strings.Contains(domestic, "cn.example.com") {
+		t.Fatalf("domestic config lost its domestic node: %s", domestic)
+	}
+	if strings.Contains(domestic, "test.example.com") {
+		t.Fatalf("domestic config leaked an overseas node: %s", domestic)
+	}
+	if !strings.Contains(domestic, "RULE-SET,cn_domain,回国") || !strings.Contains(domestic, "MATCH,直连") {
+		t.Fatalf("domestic config must proxy CN traffic only: %s", domestic)
+	}
+
+	// VLESS split uses the same node filter.
+	decode := func(path string) string {
+		raw := strings.TrimSpace(readBody(doJSON("GET", path, nil, nil)))
+		out, err := base64.StdEncoding.DecodeString(raw)
+		if err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+		return string(out)
+	}
+	if vless := decode("/c/" + token + "/vless"); !strings.Contains(vless, "test.example.com") || strings.Contains(vless, "cn.example.com") {
+		t.Fatalf("overseas VLESS split wrong: %s", vless)
+	}
+	if vless := decode("/c/" + token + "/domestic/vless"); !strings.Contains(vless, "cn.example.com") || strings.Contains(vless, "test.example.com") {
+		t.Fatalf("domestic VLESS split wrong: %s", vless)
+	}
+
+	// A plan without domestic nodes still returns a usable, clearly-labelled config.
+	mustExec(t, "UPDATE nodes SET exit_direction='overseas' WHERE mac='001122334455'")
+	if body := readBody(doJSON("GET", "/c/"+token+"/domestic", nil, nil)); !strings.Contains(body, "暂无可用的回国节点") {
+		t.Fatalf("empty domestic export must state why: %s", body)
+	}
+}
+
+func TestSubscriptionDirectionValidation(t *testing.T) {
+	resetDB(t)
+	token := setupCustomerSubscription(t)
+
+	resp := doJSON("GET", "/subscription/clash?subscription="+token+"&direction=sideways", nil, adminCookie())
+	assertStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+}
+
 func TestCustomerSubscriptionVless(t *testing.T) {
 	resetDB(t)
 	token := setupCustomerSubscription(t)

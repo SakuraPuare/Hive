@@ -34,10 +34,10 @@
 | POST | /api/nodes/register | Cookie 或 Bearer | 节点注册（幂等） |
 | GET | /api/nodes | Cookie 或 Bearer | 列出所有节点 |
 | GET | /api/nodes/{mac} | Cookie 或 Bearer | 单节点详情 |
-| PATCH | /api/nodes/{mac} | Cookie 或 Bearer | 更新 location/note/tailscale_ip |
+| PATCH | /api/nodes/{mac} | Cookie 或 Bearer | 更新 location/note/tailscale_ip/gateway_*/exit_*（含 `exit_direction`） |
 | DELETE | /api/nodes/{mac} | Cookie 或 Bearer | 删除节点 |
-| GET | /api/subscription | Cookie 或 Bearer | 节点订阅（Base64） |
-| GET | /api/subscription/clash | Cookie 或 Bearer | Clash/Mihomo YAML 订阅 |
+| GET | /api/subscription | Cookie 或 Bearer | 节点订阅（Base64）；`?direction=domestic` 导出回国方向 |
+| GET | /api/subscription/clash | Cookie 或 Bearer | Clash/Mihomo YAML 订阅；`?direction=domestic` 导出回国方向 |
 | GET | /api/prometheus-targets | Cookie 或 Bearer | Prometheus file_sd JSON |
 | GET | /api/labels | Cookie 或 Bearer | 可打印标签 HTML |
 | GET | /api/portal/devices/{mac}/dashboard | 客户会话 | 网关节点 Mihomo 面板地址 + per-node secret |

@@ -40,9 +40,20 @@ export function apiUrl(path: string) {
  * `/c/{token}` is a registry endpoint (not a Next.js page): the static export
  * has no `/c/` route and nginx only forwards `/api/` to the backend. Clients
  * therefore fetch `<panel>/api/c/{token}` (or `/c/{token}/vless`).
+ *
+ * `direction` selects the split config: `overseas` (default, 出海) or
+ * `domestic` (回国, `/c/{token}/domestic`). The two are separate configs
+ * because their CN routing rules are opposite.
  */
-export function customerSubscriptionUrl(token: string, vless = false) {
-  return apiUrl(`/c/${token}${vless ? '/vless' : ''}`);
+export type SubscriptionDirection = 'overseas' | 'domestic';
+
+export function customerSubscriptionUrl(
+  token: string,
+  vless = false,
+  direction: SubscriptionDirection = 'overseas',
+) {
+  const path = direction === 'domestic' ? `/domestic${vless ? '/vless' : ''}` : vless ? '/vless' : '';
+  return apiUrl(`/c/${token}${path}`);
 }
 
 function isBrowser() {

@@ -41,6 +41,8 @@ export type { handler_ForgotPasswordRequest } from './models/handler_ForgotPassw
 export type { handler_MeResponse } from './models/handler_MeResponse';
 export type { handler_NodeAccountingRequest } from './models/handler_NodeAccountingRequest';
 export type { handler_NodeAccountingState } from './models/handler_NodeAccountingState';
+export type { handler_NodeDeviceLimit } from './models/handler_NodeDeviceLimit';
+export type { handler_NodeOnlineDevice } from './models/handler_NodeOnlineDevice';
 export type { handler_NodeRegisterRequest } from './models/handler_NodeRegisterRequest';
 export type { handler_NodeRegisterResponse } from './models/handler_NodeRegisterResponse';
 export type { handler_NodeTrafficCounter } from './models/handler_NodeTrafficCounter';

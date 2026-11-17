@@ -113,8 +113,11 @@ describe('PortalDashboardPage', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [mockSub], loading: false });
     await renderAndSettle(<PortalDashboardPage />);
 
-    expect(screen.getByText('portal.copyClash')).toBeInTheDocument();
-    expect(screen.getByText('portal.copyVless')).toBeInTheDocument();
+    // 出海 and 回国 are separate configs, so each direction gets its own pair.
+    expect(screen.getByText('portal.overseasSubscription')).toBeInTheDocument();
+    expect(screen.getByText('portal.domesticSubscription')).toBeInTheDocument();
+    expect(screen.getAllByText('portal.copyClash')).toHaveLength(2);
+    expect(screen.getAllByText('portal.copyVless')).toHaveLength(2);
   });
 
   it('copies Clash link to clipboard', async () => {
@@ -124,7 +127,7 @@ describe('PortalDashboardPage', () => {
 
     await renderAndSettle(<PortalDashboardPage />);
 
-    fireEvent.click(screen.getByText('portal.copyClash'));
+    fireEvent.click(screen.getAllByText('portal.copyClash')[0]);
     expect(writeText).toHaveBeenCalledWith('http://localhost/api/c/abc123');
     // Copy now resolves asynchronously before the button flips to the "copied"
     // state; "copied" appears both in the button and the sr-only live region.
@@ -140,8 +143,33 @@ describe('PortalDashboardPage', () => {
 
     await renderAndSettle(<PortalDashboardPage />);
 
-    fireEvent.click(screen.getByText('portal.copyVless'));
+    fireEvent.click(screen.getAllByText('portal.copyVless')[0]);
     expect(writeText).toHaveBeenCalledWith('http://localhost/api/c/abc123/vless');
+  });
+
+  it('copies the separate 回国 subscription links', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [mockSub], loading: false });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    await renderAndSettle(<PortalDashboardPage />);
+
+    fireEvent.click(screen.getAllByText('portal.copyClash')[1]);
+    expect(writeText).toHaveBeenCalledWith('http://localhost/api/c/abc123/domestic');
+    fireEvent.click(screen.getAllByText('portal.copyVless')[1]);
+    expect(writeText).toHaveBeenCalledWith('http://localhost/api/c/abc123/domestic/vless');
+  });
+
+  it('disables a direction that has no usable nodes', async () => {
+    mockUseCustomer.mockReturnValue({
+      customer: mockCustomer,
+      subscriptions: [{ ...mockSub, has_domestic: false }],
+      loading: false,
+    });
+    await renderAndSettle(<PortalDashboardPage />);
+
+    expect(screen.getByText('portal.noDirectionNodes')).toBeInTheDocument();
+    expect(screen.getAllByText('portal.copyClash')).toHaveLength(1);
   });
 
   it('renders quick action buttons with correct links', async () => {

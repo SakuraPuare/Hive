@@ -144,8 +144,12 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("PUT /admin/plans/{id}/lines", perm("plan:write")(h.HandleSetPlanLines))
 
 	// ── 客户订阅（公开，token 认证）─────────────────────────────────────
+	// 出海（默认，/c/{token}）与回国（/c/{token}/domestic）是两份独立配置：
+	// 节点方向不同、CN 分流规则相反，不能合并。
 	mux.HandleFunc("GET /c/{token}", h.HandleCustomerSubscriptionClash)
 	mux.HandleFunc("GET /c/{token}/vless", h.HandleCustomerSubscriptionVless)
+	mux.HandleFunc("GET /c/{token}/domestic", h.HandleCustomerSubscriptionDomesticClash)
+	mux.HandleFunc("GET /c/{token}/domestic/vless", h.HandleCustomerSubscriptionDomesticVless)
 
 	// ── 订单管理 ──────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /admin/orders", perm("order:read")(h.HandleListOrders))

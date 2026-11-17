@@ -7,6 +7,8 @@ export type handler_PortalSubscription = {
     customer_id?: number;
     device_limit?: number;
     expires_at?: string;
+    has_domestic?: boolean;
+    has_overseas?: boolean;
     id?: number;
     plan_id?: number;
     plan_name?: string;

@@ -2,6 +2,13 @@
 
 客户订阅继续使用 `/c/{token}`，每份订阅拥有独立的 Xray UUID。重置订阅链接现在同时轮换 UUID，已导入的旧配置也会被撤销。
 
+自 migration 33 起，节点带 `exit_direction`（`overseas` 出海 / `domestic` 回国），客户订阅拆成两份**独立配置**，不能合并：
+
+- `GET /c/{token}`、`/c/{token}/vless`：出海订阅，只含 `overseas` 节点，CN 直连、其余走代理（默认行为，旧链接不变）；
+- `GET /c/{token}/domestic`、`/c/{token}/domestic/vless`：回国订阅，只含 `domestic` 节点，CN 走代理、其余直连。
+
+两类节点的落地方向和 CN 分流规则相反，混在一份配置里会把一半流量送错方向。线路/分组导出用 `?direction=domestic` 切换；客户门户分别展示两份链接，套餐在某方向没有可用节点时该方向置灰。网关上游也按方向互补过滤，见 [GATEWAY.md](GATEWAY.md)。
+
 ## 当前行为
 
 - 自 migration 31 起，**所有节点默认作为 Xray 出口**：普通设备、客户网关、可信出口都参与订阅和网关上游。管理员可在节点编辑里关闭「作为出口」，设备所有者也可在客户门户关闭自己设备的出口；实际出口 = `exit_enabled && owner_exit_enabled && enabled && status=active`。

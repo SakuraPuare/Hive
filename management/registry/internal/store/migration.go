@@ -658,6 +658,14 @@ CREATE TABLE IF NOT EXISTS subscription_online_devices (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订阅在线设备 IP（出口侧设备数限制）';
 `,
 	},
+	{
+		version: 33,
+		desc:    "nodes: exit_direction splits 出海 (overseas) and 回国 (domestic) subscriptions",
+		up: `
+ALTER TABLE nodes ADD COLUMN exit_direction VARCHAR(16) NOT NULL DEFAULT 'overseas' COMMENT '出口方向: overseas(出海/节点在墙外)/domestic(回国/节点在墙内)';
+CREATE INDEX idx_nodes_exit_direction ON nodes (exit_direction);
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

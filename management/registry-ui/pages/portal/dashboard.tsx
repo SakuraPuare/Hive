@@ -25,11 +25,104 @@ function trafficGB(bytes: number) {
   return (bytes / (1024 ** 3)).toFixed(2);
 }
 
-function SubscriptionCard({ sub, index, onCopied }: { sub: SubWithPlan; index: number; onCopied?: () => void }) {
+/**
+ * One direction's copy buttons. 出海 and 回国 are independent subscriptions with
+ * opposite CN routing rules, so each gets its own Clash / VLESS links.
+ */
+function SubscriptionLinkPair({
+  title,
+  description,
+  clashLink,
+  vlessLink,
+  disabled,
+  planLabel,
+  onCopied,
+}: {
+  title: string;
+  description: string;
+  clashLink: string;
+  vlessLink: string;
+  disabled?: boolean;
+  planLabel: string;
+  onCopied?: () => void;
+}) {
   const t = useTranslations('portal');
   const toast = useToast();
   const { copied: copiedClash, copy: copyClash } = useClipboard();
   const { copied: copiedVless, copy: copyVless } = useClipboard();
+
+  const handleCopyClash = useCallback(async () => {
+    const ok = await copyClash(clashLink);
+    if (ok) {
+      onCopied?.();
+      toast.success(t('copiedPlan', { name: planLabel, type: `${title} Clash` }));
+    } else {
+      toast.error(t('copyFailed'));
+    }
+  }, [copyClash, clashLink, toast, t, onCopied, planLabel, title]);
+
+  const handleCopyVless = useCallback(async () => {
+    const ok = await copyVless(vlessLink);
+    if (ok) {
+      onCopied?.();
+      toast.success(t('copiedPlan', { name: planLabel, type: `${title} VLESS` }));
+    } else {
+      toast.error(t('copyFailed'));
+    }
+  }, [copyVless, vlessLink, toast, t, onCopied, planLabel, title]);
+
+  if (disabled) {
+    return (
+      <div className="space-y-1 rounded-xl border border-dashed border-border/70 px-3 py-2.5">
+        <p className="text-sm font-500 text-muted-foreground">{title}</p>
+        <p className="text-xs text-muted-foreground">{t('noDirectionNodes')}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <p className="text-sm font-500 text-foreground">{title}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <p className="truncate text-xs text-muted-foreground" title={clashLink}>
+        {t('subscriptionLink')}: <code className="font-mono">{clashLink.replace(/^https?:\/\//, '')}</code>
+      </p>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="flex-1 h-12 gap-1.5 text-sm font-500"
+          onClick={handleCopyClash}
+          aria-label={t('copyClashAriaNamed', { name: `${planLabel} · ${title}` })}
+        >
+          {copiedClash
+            ? <Check className="h-4 w-4 text-md-tertiary" aria-hidden="true" />
+            : <Copy className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          }
+          {copiedClash ? t('copied') : t('copyClash')}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="flex-1 h-12 gap-1.5 text-sm font-500"
+          onClick={handleCopyVless}
+          aria-label={t('copyVlessAriaNamed', { name: `${planLabel} · ${title}` })}
+        >
+          {copiedVless
+            ? <Check className="h-4 w-4 text-md-tertiary" aria-hidden="true" />
+            : <Copy className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          }
+          {copiedVless ? t('copied') : t('copyVless')}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SubscriptionCard({ sub, index, onCopied }: { sub: SubWithPlan; index: number; onCopied?: () => void }) {
+  const t = useTranslations('portal');
 
   const isExpired = new Date(sub.expires_at ?? '') < new Date();
   const usedGB = trafficGB(sub.traffic_used ?? 0);
@@ -45,29 +138,13 @@ function SubscriptionCard({ sub, index, onCopied }: { sub: SubWithPlan; index: n
   // /c/{token} is a registry endpoint, not a Next.js page: the static export
   // has no /c/ route and nginx only proxies /api/ to the backend. Client
   // apps must therefore fetch <panel>/api/c/{token}.
-  const clashLink = customerSubscriptionUrl(sub.token ?? '');
-  const vlessLink = customerSubscriptionUrl(sub.token ?? '', true);
+  // 出海 (default) and 回国 (/domestic) are separate configs: their node
+  // directions and CN routing rules are opposite, so they are never merged.
+  const overseasClashLink = customerSubscriptionUrl(sub.token ?? '', false, 'overseas');
+  const overseasVlessLink = customerSubscriptionUrl(sub.token ?? '', true, 'overseas');
+  const domesticClashLink = customerSubscriptionUrl(sub.token ?? '', false, 'domestic');
+  const domesticVlessLink = customerSubscriptionUrl(sub.token ?? '', true, 'domestic');
   const planLabel = sub.plan_name || `${t('planName')} #${sub.plan_id}`;
-
-  const handleCopyClash = useCallback(async () => {
-    const ok = await copyClash(clashLink);
-    if (ok) {
-      onCopied?.();
-      toast.success(t('copiedPlan', { name: planLabel, type: 'Clash' }));
-    } else {
-      toast.error(t('copyFailed'));
-    }
-  }, [copyClash, clashLink, toast, t, onCopied, planLabel]);
-
-  const handleCopyVless = useCallback(async () => {
-    const ok = await copyVless(vlessLink);
-    if (ok) {
-      onCopied?.();
-      toast.success(t('copiedPlan', { name: planLabel, type: 'VLESS' }));
-    } else {
-      toast.error(t('copyFailed'));
-    }
-  }, [copyVless, vlessLink, toast, t, onCopied, planLabel]);
 
   // Traffic bar color: use M3 semantic roles
   const barColor = pct > 80
@@ -169,37 +246,27 @@ function SubscriptionCard({ sub, index, onCopied }: { sub: SubWithPlan; index: n
           </div>
         )}
 
-        {/* Copy link buttons */}
-        <p className="truncate text-xs text-muted-foreground" title={clashLink}>
-          {t('subscriptionLink')}: <code className="font-mono">{clashLink.replace(/^https?:\/\//, '')}</code>
-        </p>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1 h-12 gap-1.5 text-sm font-500"
-            onClick={handleCopyClash}
-            aria-label={t('copyClashAriaNamed', { name: planLabel })}
-          >
-            {copiedClash
-              ? <Check className="h-4 w-4 text-md-tertiary" aria-hidden="true" />
-              : <Copy className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            }
-            {copiedClash ? t('copied') : t('copyClash')}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1 h-12 gap-1.5 text-sm font-500"
-            onClick={handleCopyVless}
-            aria-label={t('copyVlessAriaNamed', { name: planLabel })}
-          >
-            {copiedVless
-              ? <Check className="h-4 w-4 text-md-tertiary" aria-hidden="true" />
-              : <Copy className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            }
-            {copiedVless ? t('copied') : t('copyVless')}
-          </Button>
+        {/* Copy links — 出海 and 回国 are separate configs (opposite CN routing) */}
+        <div className="space-y-4">
+          <SubscriptionLinkPair
+            title={t('overseasSubscription')}
+            description={t('overseasSubscriptionDesc')}
+            clashLink={overseasClashLink}
+            vlessLink={overseasVlessLink}
+            disabled={sub.has_overseas === false}
+            planLabel={planLabel}
+            onCopied={onCopied}
+          />
+          <div className="h-px bg-border/60" role="presentation" />
+          <SubscriptionLinkPair
+            title={t('domesticSubscription')}
+            description={t('domesticSubscriptionDesc')}
+            clashLink={domesticClashLink}
+            vlessLink={domesticVlessLink}
+            disabled={sub.has_domestic === false}
+            planLabel={planLabel}
+            onCopied={onCopied}
+          />
         </div>
 
       </CardContent>

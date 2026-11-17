@@ -81,6 +81,7 @@ export function NodeEditDialog({
   const [status, setStatus] = useState(node?.status ?? 'active');
   const [weight, setWeight] = useState(String(node?.weight ?? 100));
   const [region, setRegion] = useState(node?.region ?? '');
+  const [exitDirection, setExitDirection] = useState(node?.exit_direction || 'overseas');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [weightError, setWeightError] = useState('');
@@ -109,7 +110,7 @@ export function NodeEditDialog({
       await sessionApi(
         AdminService.nodeUpdate({
           mac: node.mac,
-          requestBody: { location, note, enabled, exit_enabled: exitEnabled, status, weight: weightValue, region } as handler_NodeUpdateRequest,
+          requestBody: { location, note, enabled, exit_enabled: exitEnabled, exit_direction: exitDirection, status, weight: weightValue, region } as handler_NodeUpdateRequest,
         }),
       );
       toast.success(t('saved'));
@@ -183,6 +184,19 @@ export function NodeEditDialog({
             <div className="space-y-1.5">
               <Label htmlFor="node-edit-region" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('region')}</Label>
               <Input id="node-edit-region" value={region} onChange={(e) => setRegion(e.target.value)} placeholder={t('regionPlaceholder')} helperText={t('regionHelper')} />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label id="node-edit-exit-direction-label" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('exitDirection')}</Label>
+              <Select value={exitDirection} onValueChange={setExitDirection}>
+                <SelectTrigger aria-labelledby="node-edit-exit-direction-label">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="overseas">{t('exitDirectionOverseas')}</SelectItem>
+                  <SelectItem value="domestic">{t('exitDirectionDomestic')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{t('exitDirectionHelper')}</p>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="node-edit-note" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('note')}</Label>

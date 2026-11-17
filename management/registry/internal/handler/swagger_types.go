@@ -98,6 +98,8 @@ type NodeUpdateRequest struct {
 	BoundSubscriptionID *uint `json:"bound_subscription_id,omitempty" example:"42"`
 	// 管理员出口开关；默认 true。实际出口还需设备所有者的 owner_exit_enabled。
 	ExitEnabled *bool `json:"exit_enabled,omitempty" example:"true"`
+	// 订阅方向：overseas（出海，节点在墙外，默认）/ domestic（回国，节点在墙内）
+	ExitDirection *string `json:"exit_direction,omitempty" example:"overseas"`
 }
 
 // ── customer swagger types ───────────────────────────────────────────────────

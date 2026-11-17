@@ -58,19 +58,36 @@ func (h *Handler) HandleSubscriptionClash(w http.ResponseWriter, r *http.Request
 // they are not a privilege escalation over the admin credential that fetched
 // them, and this path grants no access to customer traffic records.
 func (h *Handler) serveAllNodesClash(w http.ResponseWriter, r *http.Request) {
+	direction, ok := normalizeDirection(r.URL.Query().Get("direction"))
+	if !ok {
+		h.jsonErr(w, http.StatusBadRequest, "direction must be overseas or domestic")
+		return
+	}
 	nodes, err := h.queryAllNodes()
 	if err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
+	nodes = filterNodesByDirection(nodes, direction)
+	title, filename := "Hive nodes", "hive-nodes.yaml"
+	if direction == DirectionDomestic {
+		title, filename = "Hive nodes · 回国", "hive-nodes-cn.yaml"
+	}
+	opts := h.clashRenderOptions("")
+	opts.Direction = direction
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="hive-nodes.yaml"`)
-	fmt.Fprint(w, buildFullClashYAML("Hive nodes", nodes, h.clashRenderOptions("")))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	fmt.Fprint(w, buildFullClashYAML(title, nodes, opts))
 }
 
 // serveAllNodesVless exports every node as a base64 VLESS subscription.
 // Same automation-only trust boundary as serveAllNodesClash.
 func (h *Handler) serveAllNodesVless(w http.ResponseWriter, r *http.Request) {
+	direction, ok := normalizeDirection(r.URL.Query().Get("direction"))
+	if !ok {
+		h.jsonErr(w, http.StatusBadRequest, "direction must be overseas or domestic")
+		return
+	}
 	nodes, err := h.queryAllNodes()
 	if err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
@@ -78,14 +95,18 @@ func (h *Handler) serveAllNodesVless(w http.ResponseWriter, r *http.Request) {
 	}
 
 	links := make([]string, 0, len(nodes))
-	for _, n := range nodes {
+	for _, n := range filterNodesByDirection(nodes, direction) {
 		if link := vlessLink(n, n.XrayUUID, h.Config.XrayPath, h.Config.CFPreferredHost); link != "" {
 			links = append(links, link)
 		}
 	}
 
+	filename := "hive-nodes.txt"
+	if direction == DirectionDomestic {
+		filename = "hive-nodes-cn.txt"
+	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="hive-nodes.txt"`)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n"))))
 }
 

@@ -99,6 +99,18 @@ proxies:
       early-data-header-name: Sec-WebSocket-Protocol
 {{ end }}
 proxy-groups:
+{{ if eq .Direction "domestic" }}
+  # 回国订阅：所有代理都是境内节点，只把国内流量送进去。
+  - name: 回国
+    type: select
+    proxies: [回国自动选择,直连,大陆,全部节点]
+
+{{ range .ServiceGroups }}
+  - name: {{ .Name }}
+    type: select
+    proxies: [{{ .First }},直连,大陆,全部节点]
+{{ end }}
+{{ else }}
   - name: 境外
     type: select
     proxies: [境外自动选择,直连,香港,台湾,日本,新加坡,美国,巴西,其它地区,大陆,全部节点]
@@ -111,6 +123,7 @@ proxy-groups:
   - name: {{ .Name }}
     type: select
     proxies: [{{ .First }},境外自动选择,{{ if eq .First "境外" }}境内{{ else }}境外{{ end }},大陆,香港,台湾,日本,新加坡,美国,巴西,其它地区,全部节点]
+{{ end }}
 {{ end }}
 {{ range .RegionGroups }}
   - name: {{ .Name }}
@@ -127,6 +140,15 @@ proxy-groups:
     include-all: true
     exclude-type: direct
 
+{{ if eq .Direction "domestic" }}
+  - name: 回国自动选择
+    type: url-test
+    include-all: true
+    exclude-type: direct
+    tolerance: 10
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+{{ else }}
   - name: 境外自动选择
     type: url-test
     include-all: true
@@ -135,6 +157,7 @@ proxy-groups:
     tolerance: 10
     url: http://www.gstatic.com/generate_204
     interval: 300
+{{ end }}
 
 rule-anchor:
   ip: &ip {type: http, interval: 86400, behavior: ipcidr, format: mrs}
@@ -160,6 +183,16 @@ rules:
   # IPv6 同样要放行：auto-route 也接管 ::/1，EasyTier 对端的 v6 直连包
   # 会带着 TUN 的 v6 源地址进来，漏了它就被 MATCH/规则集 REJECT。
   - SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT
+{{ if eq .Direction "domestic" }}
+  # 回国订阅：只把国内流量送进境内节点。对国内目标丢弃 QUIC，浏览器回落到
+  # TCP 才能被只有 TCP 的 VLESS-WS 代理接住；其余流量一律直连。
+  - AND,(AND,(DST-PORT,443),(NETWORK,UDP)),(GEOSITE,cn),REJECT
+  - RULE-SET,private_ip,直连,no-resolve
+  - RULE-SET,bilibili_domain,哔哩哔哩
+  - RULE-SET,cn_domain,回国
+  - RULE-SET,cn_ip,回国
+  - MATCH,直连
+{{ else }}
   - AND,(AND,(DST-PORT,443),(NETWORK,UDP)),(NOT,((GEOSITE,cn))),REJECT
   - RULE-SET,private_ip,直连,no-resolve
   - RULE-SET,github_domain,Github
@@ -179,3 +212,4 @@ rules:
   - RULE-SET,twitter_ip,Twitter
   - RULE-SET,cn_ip,境内
   - MATCH,其他
+{{ end }}

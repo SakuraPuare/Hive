@@ -43,10 +43,13 @@ type UpdateSubscriptionRequest struct {
 
 // SubscriptionWithPlan is a subscription row joined with its plan name so the
 // admin customer page can distinguish e.g. "test" from "test1" before copying
-// a subscription link.
+// a subscription link. has_overseas/has_domestic tell the portal which of the
+// two split configs (出海 / 回国) currently has usable nodes.
 type SubscriptionWithPlan struct {
 	model.CustomerSubscription
-	PlanName string `json:"plan_name"`
+	PlanName    string `json:"plan_name"`
+	HasOverseas bool   `json:"has_overseas"`
+	HasDomestic bool   `json:"has_domestic"`
 }
 
 type CustomerDetail struct {

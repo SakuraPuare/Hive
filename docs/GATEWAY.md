@@ -49,11 +49,21 @@
 | `global`（全局代理） | 走代理 | 走代理 | 全部流量都走代理链路 |
 | `direct`（全直连） | 直连 | 直连 | 仅做智能路由 NAT，不代理 |
 
+> 节点的 `exit_direction`（出海 `overseas` / 回国 `domestic`）表示它**位于哪一侧**，应和网关方向一致：境内节点填 `domestic`，境外节点填 `overseas`。它同时决定该节点进入哪份客户订阅。
+
 ## 上游出口怎么选
 
 网关的"代理"流量要送到集群里**别的出口节点**（境外节点的现有 Xray VLESS 出口）。上游池由 registry 自动生成——列出集群所有 `exit_enabled && owner_exit_enabled && enabled && status=active` 的出口节点（默认所有节点都是出口，管理员或设备所有者可关闭），**且永远排除节点自己**（不会自己代理给自己造成回环）。
 
 授权检查前先排除本网关，并与所绑定订阅的套餐线路取交集。若有效上游为空（例如线路只包含本网关），返回 `X-Hive-Access: blocked` 与 REJECT 配置，不会静默降级为全直连。
+
+上游池还按**方向互补**过滤（节点字段 `exit_direction`，`overseas` 出海 / `domestic` 回国）：
+
+- `gateway_direction=domestic`（节点在境内）只取 `exit_direction=overseas` 的墙外出口；
+- `gateway_direction=overseas`（节点在墙外）只取 `exit_direction=domestic` 的境内节点；
+- `global`/`direct` 没有 CN 分流，取与节点自身 `exit_direction` 相反的方向。
+
+两类节点不会混进同一个上游池：把境外网关代理到另一个境外节点拿不到国内 IP，反之亦然。方向不匹配导致上游为空时同样 fail-closed。
 
 面板里每个节点可配 `gateway_upstream_mode`：
 

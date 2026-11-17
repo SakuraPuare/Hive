@@ -272,7 +272,7 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		"region": true, "mesh_tunnel_id": true, "mesh_ip": true,
 		"gateway_enabled": true, "gateway_direction": true,
 		"gateway_upstream_mode": true, "gateway_upstream_nodes": true,
-		"bound_subscription_id": true, "exit_enabled": true,
+		"bound_subscription_id": true, "exit_enabled": true, "exit_direction": true,
 	}
 	updates := make(map[string]any)
 	for k, v := range body {
@@ -283,6 +283,20 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	if len(updates) == 0 {
 		h.jsonErr(w, http.StatusBadRequest, "no valid fields to update")
 		return
+	}
+	if raw, ok := updates["exit_direction"]; ok {
+		rawDir, isString := raw.(string)
+		if !isString {
+			h.jsonErr(w, http.StatusBadRequest, "exit_direction must be overseas or domestic")
+			return
+		}
+		rawDir = strings.TrimSpace(rawDir)
+		dir, valid := normalizeDirection(rawDir)
+		if !valid || rawDir == "" {
+			h.jsonErr(w, http.StatusBadRequest, "exit_direction must be overseas or domestic")
+			return
+		}
+		updates["exit_direction"] = dir
 	}
 
 	if err := h.DB.Model(&model.Node{}).Where("mac = ?", mac).Updates(updates).Error; err != nil {

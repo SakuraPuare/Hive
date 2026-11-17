@@ -52,7 +52,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Plus, Trash2, KeyRound, Copy, Link, RefreshCw, X, User } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, KeyRound, Copy, Link, Home, RefreshCw, X, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 // Backend returns plan_name via JOIN; extend the generated type locally
@@ -129,7 +129,7 @@ export default function CustomerDetail() {
 
   // Track which subscription's token or link was last copied
   const [lastCopiedSubId, setLastCopiedSubId] = useState<number | null>(null);
-  const [lastCopiedType, setLastCopiedType] = useState<'token' | 'link' | null>(null);
+  const [lastCopiedType, setLastCopiedType] = useState<'token' | 'link' | 'link-domestic' | null>(null);
 
   useEffect(() => {
     if (!authLoading && user && !user.can('customer:read')) {
@@ -283,12 +283,12 @@ export default function CustomerDetail() {
     }
   }
 
-  async function copySubLink(sub: Subscription) {
-    const url = customerSubscriptionUrl(sub.token ?? '');
+  async function copySubLink(sub: Subscription, direction: 'overseas' | 'domestic' = 'overseas') {
+    const url = customerSubscriptionUrl(sub.token ?? '', false, direction);
     const ok = await copyToClipboard(url);
     if (ok) {
       setLastCopiedSubId(sub.id ?? null);
-      setLastCopiedType('link');
+      setLastCopiedType(direction === 'domestic' ? 'link-domestic' : 'link');
       toast.success(t('copiedLink'));
     }
   }
@@ -483,12 +483,31 @@ export default function CustomerDetail() {
                               </TooltipTrigger>
                               <TooltipContent>{t('copySubLink')}</TooltipContent>
                             </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  onClick={() => copySubLink(sub, 'domestic')}
+                                  aria-label={t('copySubLinkDomestic')}
+                                  className="text-muted-foreground hover:text-foreground"
+                                >
+                                  <Home className="h-3 w-3" aria-hidden="true" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{t('copySubLinkDomestic')}</TooltipContent>
+                            </Tooltip>
                             {copied && lastCopiedSubId === sub.id && lastCopiedType === 'token' && (
                               <span className="text-xs font-500 text-md-tertiary animate-fade-in">
                                 {t('copied')}
                               </span>
                             )}
                             {copied && lastCopiedSubId === sub.id && lastCopiedType === 'link' && (
+                              <span className="text-xs font-500 text-md-tertiary animate-fade-in">
+                                {t('copied')}
+                              </span>
+                            )}
+                            {copied && lastCopiedSubId === sub.id && lastCopiedType === 'link-domestic' && (
                               <span className="text-xs font-500 text-md-tertiary animate-fade-in">
                                 {t('copied')}
                               </span>

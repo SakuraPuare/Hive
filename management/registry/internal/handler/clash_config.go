@@ -14,8 +14,50 @@ var clashTemplate string
 
 var clashTmpl = template.Must(template.New("clash").Parse(clashTemplate))
 
+// 节点出口方向：一个节点只服务一类客户端订阅，因为两类订阅的分流规则相反。
+//
+//	overseas：节点在墙外，进"出海"订阅（国内用户翻墙，CN 直连、其余走代理）；
+//	domestic：节点在墙内，进"回国"订阅（海外用户回国，CN 走代理、其余直连）。
+const (
+	DirectionOverseas = "overseas"
+	DirectionDomestic = "domestic"
+)
+
+// normalizeDirection validates a request value. Empty selects the default 出海
+// direction so existing subscription links keep working unchanged.
+func normalizeDirection(raw string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", DirectionOverseas:
+		return DirectionOverseas, true
+	case DirectionDomestic:
+		return DirectionDomestic, true
+	}
+	return "", false
+}
+
+// nodeDirection normalizes a node's stored direction. Rows predating migration
+// 33 (or written by an older agent) carry an empty value and default to overseas.
+func nodeDirection(n model.Node) string {
+	if strings.EqualFold(strings.TrimSpace(n.ExitDirection), DirectionDomestic) {
+		return DirectionDomestic
+	}
+	return DirectionOverseas
+}
+
+// filterNodesByDirection keeps only nodes serving the requested subscription.
+func filterNodesByDirection(nodes []model.Node, direction string) []model.Node {
+	out := make([]model.Node, 0, len(nodes))
+	for _, n := range nodes {
+		if nodeDirection(n) == direction {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 type clashData struct {
 	Title           string
+	Direction       string
 	XrayPath        string
 	Proxies         []clashProxy
 	ServiceGroups   []serviceGroup
@@ -98,11 +140,33 @@ var defaultIPProviders = []ruleProvider{
 	{"telegram_ip", "telegram"},
 }
 
+// 回国订阅只要"国内服务走回国节点、其余直连"，因此只下发 CN 相关的规则集。
+var domesticServiceGroups = []serviceGroup{
+	{"哔哩哔哩", "回国"},
+}
+
+var domesticRegionGroups = []regionGroup{
+	// 回国配置里的代理全部是境内节点，所以"大陆"分组直接包含全部代理。
+	{"大陆", `"(?i).*"`},
+}
+
+var domesticDomainProviders = []ruleProvider{
+	{"private_domain", "private"},
+	{"cn_domain", "cn"},
+	{"bilibili_domain", "bilibili"},
+}
+
+var domesticIPProviders = []ruleProvider{
+	{"private_ip", "private"},
+	{"cn_ip", "cn"},
+}
+
 // clashOptions carries the per-request knobs for a generated client config.
 type clashOptions struct {
 	XrayPath      string
 	OverrideUUID  string // non-empty → every proxy uses this UUID (per-subscription billing identity)
 	PreferredHost string // non-empty → dial this Cloudflare 优选 host instead of the node host
+	Direction     string // overseas (default) / domestic; selects the rule set
 }
 
 // buildFullClashYAML generates a complete Clash/Mihomo YAML subscription config.
@@ -110,6 +174,11 @@ type clashOptions struct {
 // node's own XrayUUID — used for per-subscription (per-customer) configs so
 // traffic is attributed to the subscription's Xray client identity.
 func buildFullClashYAML(title string, nodes []model.Node, opts clashOptions) string {
+	direction := opts.Direction
+	if direction != DirectionDomestic {
+		direction = DirectionOverseas
+	}
+
 	var proxies []clashProxy
 	for _, n := range nodes {
 		host := stripScheme(n.CFURL)
@@ -128,14 +197,26 @@ func buildFullClashYAML(title string, nodes []model.Node, opts clashOptions) str
 		})
 	}
 
+	serviceGroups := defaultServiceGroups
+	regionGroups := defaultRegionGroups
+	domainProviders := defaultDomainProviders
+	ipProviders := defaultIPProviders
+	if direction == DirectionDomestic {
+		serviceGroups = domesticServiceGroups
+		regionGroups = domesticRegionGroups
+		domainProviders = domesticDomainProviders
+		ipProviders = domesticIPProviders
+	}
+
 	data := clashData{
 		Title:           title,
+		Direction:       direction,
 		XrayPath:        opts.XrayPath,
 		Proxies:         proxies,
-		ServiceGroups:   defaultServiceGroups,
-		RegionGroups:    defaultRegionGroups,
-		DomainProviders: defaultDomainProviders,
-		IPProviders:     defaultIPProviders,
+		ServiceGroups:   serviceGroups,
+		RegionGroups:    regionGroups,
+		DomainProviders: domainProviders,
+		IPProviders:     ipProviders,
 	}
 
 	var buf bytes.Buffer
@@ -145,5 +226,8 @@ func buildFullClashYAML(title string, nodes []model.Node, opts clashOptions) str
 
 	// collapse excessive blank lines
 	result := strings.ReplaceAll(buf.String(), "\n\n\n", "\n\n")
+	if direction == DirectionDomestic && len(proxies) == 0 {
+		result = "# 本套餐暂无可用的回国节点；以下配置不会代理任何流量。\n" + result
+	}
 	return result
 }

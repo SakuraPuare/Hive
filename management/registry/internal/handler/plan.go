@@ -380,9 +380,10 @@ func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.N
 }
 
 // HandleCustomerSubscriptionClash handles GET /c/{token}
-// @Summary      获取客户 Clash 订阅
+// @Summary      获取客户 Clash 订阅（出海）
 // @ID           CustomerSubscriptionClash
-// @Description  根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)
+// @Description  根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)。
+// @Description  只包含 exit_direction=overseas 的出海节点，CN 直连、其余走代理。
 // @Tags         subscription
 // @Produce      plain
 // @Param        token path string true "订阅 token"
@@ -390,13 +391,13 @@ func (h *Handler) queryPlanNodes(token string) (planName string, nodes []model.N
 // @Failure      404 {string} string "Not Found"
 // @Router       /c/{token} [get]
 func (h *Handler) HandleCustomerSubscriptionClash(w http.ResponseWriter, r *http.Request) {
-	h.serveCustomerSubscription(w, r, r.PathValue("token"), nil, false)
+	h.serveCustomerSubscription(w, r, r.PathValue("token"), nil, DirectionOverseas, false)
 }
 
 // HandleCustomerSubscriptionVless handles GET /c/{token}/vless
-// @Summary      获取客户 VLESS 订阅
+// @Summary      获取客户 VLESS 订阅（出海）
 // @ID           CustomerSubscriptionVless
-// @Description  根据订阅 token 返回 base64 编码的 VLESS 订阅链接 (text/plain)
+// @Description  根据订阅 token 返回 base64 编码的出海 VLESS 订阅链接 (text/plain)
 // @Tags         subscription
 // @Produce      plain
 // @Param        token path string true "订阅 token"
@@ -404,15 +405,50 @@ func (h *Handler) HandleCustomerSubscriptionClash(w http.ResponseWriter, r *http
 // @Failure      404 {string} string "Not Found"
 // @Router       /c/{token}/vless [get]
 func (h *Handler) HandleCustomerSubscriptionVless(w http.ResponseWriter, r *http.Request) {
-	h.serveCustomerSubscription(w, r, r.PathValue("token"), nil, true)
+	h.serveCustomerSubscription(w, r, r.PathValue("token"), nil, DirectionOverseas, true)
+}
+
+// HandleCustomerSubscriptionDomesticClash handles GET /c/{token}/domestic
+// @Summary      获取客户 Clash 订阅（回国）
+// @ID           CustomerSubscriptionDomesticClash
+// @Description  根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)。
+// @Description  只包含 exit_direction=domestic 的回国节点，CN 走代理、其余直连。
+// @Tags         subscription
+// @Produce      plain
+// @Param        token path string true "订阅 token"
+// @Success      200 {string} string "Clash subscription"
+// @Failure      404 {string} string "Not Found"
+// @Router       /c/{token}/domestic [get]
+func (h *Handler) HandleCustomerSubscriptionDomesticClash(w http.ResponseWriter, r *http.Request) {
+	h.serveCustomerSubscription(w, r, r.PathValue("token"), nil, DirectionDomestic, false)
+}
+
+// HandleCustomerSubscriptionDomesticVless handles GET /c/{token}/domestic/vless
+// @Summary      获取客户 VLESS 订阅（回国）
+// @ID           CustomerSubscriptionDomesticVless
+// @Description  根据订阅 token 返回 base64 编码的回国 VLESS 订阅链接 (text/plain)
+// @Tags         subscription
+// @Produce      plain
+// @Param        token path string true "订阅 token"
+// @Success      200 {string} string "VLESS subscription"
+// @Failure      404 {string} string "Not Found"
+// @Router       /c/{token}/domestic/vless [get]
+func (h *Handler) HandleCustomerSubscriptionDomesticVless(w http.ResponseWriter, r *http.Request) {
+	h.serveCustomerSubscription(w, r, r.PathValue("token"), nil, DirectionDomestic, true)
 }
 
 // A line/group is only a node filter. Its token never grants access by itself.
+// ?direction=domestic switches the export to the 回国 rule set (default 出海).
 func (h *Handler) serveScopedSubscription(w http.ResponseWriter, r *http.Request, nodes []model.Node, vless bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	token := r.URL.Query().Get("subscription")
 	if len(token) != 64 {
 		h.jsonErr(w, http.StatusUnauthorized, "a customer subscription token is required")
+		return
+	}
+	direction, ok := normalizeDirection(r.URL.Query().Get("direction"))
+	if !ok {
+		h.jsonErr(w, http.StatusBadRequest, "direction must be overseas or domestic")
 		return
 	}
 	var allowed map[string]bool
@@ -422,10 +458,13 @@ func (h *Handler) serveScopedSubscription(w http.ResponseWriter, r *http.Request
 			allowed[n.MAC] = true
 		}
 	}
-	h.serveCustomerSubscription(w, r, token, allowed, vless)
+	h.serveCustomerSubscription(w, r, token, allowed, direction, vless)
 }
 
-func (h *Handler) serveCustomerSubscription(w http.ResponseWriter, r *http.Request, token string, allowed map[string]bool, vless bool) {
+// serveCustomerSubscription renders one subscription for one direction. Nodes of
+// the other direction are dropped: 出海 and 回国 need opposite CN routing rules,
+// so mixing them in one config would send half the traffic the wrong way.
+func (h *Handler) serveCustomerSubscription(w http.ResponseWriter, r *http.Request, token string, allowed map[string]bool, direction string, vless bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	middleware.SubscriptionRequestsTotal.WithLabelValues("customer").Inc()
 	if len(token) != 64 {
@@ -448,13 +487,26 @@ func (h *Handler) serveCustomerSubscription(w http.ResponseWriter, r *http.Reque
 	}
 	filtered := make([]model.Node, 0, len(nodes))
 	for _, n := range nodes {
+		if nodeDirection(n) != direction {
+			continue
+		}
 		if n.ExitEnabled && n.OwnerExitEnabled && n.Enabled && n.Status == "active" && (allowed == nil || allowed[n.MAC]) {
 			filtered = append(filtered, n)
 		}
 	}
+
+	title := planName
+	suffix := ""
+	if direction == DirectionDomestic {
+		title += " · 回国"
+		suffix = "-cn"
+	}
+
 	if !vless {
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.yaml"`, planName))
-		fmt.Fprint(w, buildFullClashYAML(planName, filtered, h.clashRenderOptions(sub.XrayUUID)))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s%s.yaml"`, planName, suffix))
+		opts := h.clashRenderOptions(sub.XrayUUID)
+		opts.Direction = direction
+		fmt.Fprint(w, buildFullClashYAML(title, filtered, opts))
 		return
 	}
 	var links []string
@@ -463,6 +515,9 @@ func (h *Handler) serveCustomerSubscription(w http.ResponseWriter, r *http.Reque
 			links = append(links, link)
 		}
 	}
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s.txt"`, planName))
+	if len(links) == 0 && direction == DirectionDomestic {
+		links = append(links, "# 本套餐暂无可用的回国节点")
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hive-%s%s.txt"`, planName, suffix))
 	fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n"))))
 }

@@ -16,6 +16,9 @@ func boundGatewayFixture(t *testing.T) (string, uint, uint, string) {
 	owner := uint(scalar(t, "SELECT customer_id FROM customer_subscriptions WHERE id = ?", sid))
 	mac := "112233445566"
 	insertSubTestNode(t, mac)
+	// The fixture gateway sits abroad (global) and must dial a domestic entry for
+	// its proxied traffic, so the only plan node is marked as a 回国 node.
+	mustExec(t, "UPDATE nodes SET exit_direction = 'domestic' WHERE mac = 'aabbccddeeff'")
 	mustExec(t, "UPDATE nodes SET owner_customer_id = ?, bound_subscription_id = ?, gateway_enabled = 1, gateway_direction = 'global', owner_exit_enabled = 0, claim_code_hash = ? WHERE mac = ?", owner, sid, hashClaimCode("ABCD-EFGH"), mac)
 	return mac, owner, sid, deviceToken(t, mac)
 }
@@ -116,6 +119,38 @@ func TestGatewaySelfOnlyUpstreamFailsClosed(t *testing.T) {
 	mustExec(t, "INSERT INTO line_nodes (line_id, node_mac) SELECT id, 'aabbccddeeff' FROM `lines`")
 	mustExec(t, "UPDATE nodes SET gateway_direction = 'global' WHERE mac = ?", mac)
 	assertGatewayAccess(t, mac, credential, "active")
+}
+
+func TestGatewayUpstreamFollowsNodeDirection(t *testing.T) {
+	mac, _, _, credential := boundGatewayFixture(t)
+	// Fixture: overseas gateway (global) + one domestic plan node → active.
+	resp := doBearer("GET", "/nodes/"+mac+"/clash-config", nil, credential)
+	assertStatus(t, resp, http.StatusOK)
+	if got := resp.Header.Get("X-Hive-Access"); got != "active" {
+		t.Fatalf("gateway access = %q, want active", got)
+	}
+	if body := readBody(resp); !strings.Contains(body, "test.example.com") {
+		t.Fatalf("overseas gateway must dial the domestic node, got: %s", body)
+	}
+
+	// The only plan node turns overseas → a global overseas gateway has no
+	// domestic entry left and must fail closed instead of looping abroad.
+	mustExec(t, "UPDATE nodes SET exit_direction = 'overseas' WHERE mac = 'aabbccddeeff'")
+	assertGatewayAccess(t, mac, credential, "blocked")
+
+	// A domestic gateway proxies non-CN traffic, so the overseas node is now
+	// exactly the right upstream.
+	mustExec(t, "UPDATE nodes SET gateway_direction = 'domestic' WHERE mac = ?", mac)
+	assertGatewayAccess(t, mac, credential, "active")
+	resp = doBearer("GET", "/nodes/"+mac+"/clash-config", nil, credential)
+	assertStatus(t, resp, http.StatusOK)
+	if body := readBody(resp); !strings.Contains(body, "test.example.com") {
+		t.Fatalf("domestic gateway must dial the overseas node, got: %s", body)
+	}
+
+	// Flipping the node back to domestic starves the domestic gateway.
+	mustExec(t, "UPDATE nodes SET exit_direction = 'domestic' WHERE mac = 'aabbccddeeff'")
+	assertGatewayAccess(t, mac, credential, "blocked")
 }
 
 func TestGatewayRendererRejectsEmptyEffectiveUpstream(t *testing.T) {

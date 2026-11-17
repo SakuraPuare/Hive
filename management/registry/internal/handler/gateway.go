@@ -20,6 +20,24 @@ func (h *Handler) gatewaySecret(mac string) string {
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
+// gatewayUpstreamDirection returns the node direction a gateway must dial for the
+// traffic it proxies. A domestic gateway (node in China) sends non-CN traffic to
+// an overseas exit; an overseas gateway (node abroad) sends CN traffic to a
+// domestic entry. global/direct have no CN split, so they use the opposite of the
+// node's own direction: the gateway still needs exits on the other side.
+func gatewayUpstreamDirection(gatewayDirection, nodeExitDirection string) string {
+	switch gatewayDirection {
+	case "overseas":
+		return DirectionDomestic
+	case "domestic":
+		return DirectionOverseas
+	}
+	if nodeExitDirection == DirectionDomestic {
+		return DirectionOverseas
+	}
+	return DirectionDomestic
+}
+
 // HandleNodeClashConfig godoc
 // @Summary Gateway Mihomo config for a node
 // @ID      NodeClashConfig
@@ -74,12 +92,17 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 		upstreamMACs = strings.Split(self.GatewayUpstreamNodes, ",")
 	}
 
+	// 上游方向必须与本网关的分流方向互补：境内网关只需要墙外出口（出海），
+	// 境外网关只需要墙内节点（回国）。把两类节点混进同一个上游池会出现"境外
+	// 网关代理到另一个境外节点"和"境内网关回国"这类拿不到目标地区 IP 的路线。
+	upstreamDirection := gatewayUpstreamDirection(direction, nodeDirection(self))
+
 	// Exclude self before deciding whether an authorized upstream exists.
 	var all []model.Node
 	if err := h.DB.Raw(
 		"SELECT "+model.NodeColsPlain+" FROM nodes "+
-			"WHERE mac <> ? AND enabled = 1 AND exit_enabled = 1 AND owner_exit_enabled = 1 AND status = 'active' AND cf_url <> '' AND xray_uuid <> '' "+
-			"ORDER BY weight DESC, hostname", mac,
+			"WHERE mac <> ? AND enabled = 1 AND exit_enabled = 1 AND owner_exit_enabled = 1 AND status = 'active' AND cf_url <> '' AND xray_uuid <> '' AND exit_direction = ? "+
+			"ORDER BY weight DESC, hostname", mac, upstreamDirection,
 	).Scan(&all).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return

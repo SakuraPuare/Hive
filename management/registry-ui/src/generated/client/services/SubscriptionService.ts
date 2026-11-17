@@ -7,8 +7,9 @@ import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class SubscriptionService {
     /**
-     * 获取客户 Clash 订阅
-     * 根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)
+     * 获取客户 Clash 订阅（出海）
+     * 根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)。
+     * 只包含 exit_direction=overseas 的出海节点，CN 直连、其余走代理。
      * @returns string Clash subscription
      * @throws ApiError
      */
@@ -32,8 +33,59 @@ export class SubscriptionService {
         });
     }
     /**
-     * 获取客户 VLESS 订阅
-     * 根据订阅 token 返回 base64 编码的 VLESS 订阅链接 (text/plain)
+     * 获取客户 Clash 订阅（回国）
+     * 根据订阅 token 返回 Clash/Mihomo YAML 格式配置 (text/plain)。
+     * 只包含 exit_direction=domestic 的回国节点，CN 走代理、其余直连。
+     * @returns string Clash subscription
+     * @throws ApiError
+     */
+    public static customerSubscriptionDomesticClash({
+        token,
+    }: {
+        /**
+         * 订阅 token
+         */
+        token: string,
+    }): CancelablePromise<string> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/c/{token}/domestic',
+            path: {
+                'token': token,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 获取客户 VLESS 订阅（回国）
+     * 根据订阅 token 返回 base64 编码的回国 VLESS 订阅链接 (text/plain)
+     * @returns string VLESS subscription
+     * @throws ApiError
+     */
+    public static customerSubscriptionDomesticVless({
+        token,
+    }: {
+        /**
+         * 订阅 token
+         */
+        token: string,
+    }): CancelablePromise<string> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/c/{token}/domestic/vless',
+            path: {
+                'token': token,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 获取客户 VLESS 订阅（出海）
+     * 根据订阅 token 返回 base64 编码的出海 VLESS 订阅链接 (text/plain)
      * @returns string VLESS subscription
      * @throws ApiError
      */

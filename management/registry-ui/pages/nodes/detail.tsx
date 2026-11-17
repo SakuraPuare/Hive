@@ -198,6 +198,11 @@ export default function NodeDetail() {
             <FieldRow label={t('nodeStatus')} value={node.status} noData={noData} />
             <FieldRow label={t('weight')} value={node.weight} noData={noData} />
             <FieldRow label={t('region')} value={node.region} noData={noData} />
+            <FieldRow
+              label={t('exitDirection')}
+              value={node.exit_direction === 'domestic' ? t('exitDirectionDomestic') : t('exitDirectionOverseas')}
+              noData={noData}
+            />
           </CardContent>
         </Card>
 

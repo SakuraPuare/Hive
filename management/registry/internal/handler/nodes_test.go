@@ -129,8 +129,9 @@ func TestUpdateNode(t *testing.T) {
 
 	location := "Tokyo DC"
 	resp := doJSON("PATCH", "/nodes/aabbccddeeff", map[string]any{
-		"location":     location,
-		"exit_enabled": false,
+		"location":       location,
+		"exit_enabled":   false,
+		"exit_direction": "domestic",
 	}, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 
@@ -143,6 +144,24 @@ func TestUpdateNode(t *testing.T) {
 	}
 	if body["exit_enabled"] != false {
 		t.Fatalf("expected exit_enabled=false, got %v", body["exit_enabled"])
+	}
+	if body["exit_direction"] != "domestic" {
+		t.Fatalf("expected exit_direction=domestic, got %v", body["exit_direction"])
+	}
+}
+
+func TestUpdateNode_RejectsUnknownExitDirection(t *testing.T) {
+	resetDB(t)
+	insertTestNode(t, "aabbccddeeff")
+
+	resp := doJSON("PATCH", "/nodes/aabbccddeeff", map[string]any{"exit_direction": "sideways"}, adminCookie())
+	assertStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+
+	resp = doJSON("GET", "/nodes/aabbccddeeff", nil, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	if got := parseJSON(resp)["exit_direction"]; got != "overseas" {
+		t.Fatalf("invalid direction was applied: exit_direction=%v", got)
 	}
 }
 

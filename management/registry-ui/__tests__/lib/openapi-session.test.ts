@@ -24,6 +24,11 @@ describe('customerSubscriptionUrl', () => {
   it('appends /vless for the VLESS export', () => {
     expect(customerSubscriptionUrl('a'.repeat(64), true)).toBe(`https://panel.example/api/c/${'a'.repeat(64)}/vless`);
   });
+
+  it('routes the 回国 config to /domestic', () => {
+    expect(customerSubscriptionUrl('a'.repeat(64), false, 'domestic')).toBe(`https://panel.example/api/c/${'a'.repeat(64)}/domestic`);
+    expect(customerSubscriptionUrl('a'.repeat(64), true, 'domestic')).toBe(`https://panel.example/api/c/${'a'.repeat(64)}/domestic/vless`);
+  });
 });
 
 describe('sessionApi', () => {
