@@ -129,7 +129,8 @@ func TestUpdateNode(t *testing.T) {
 
 	location := "Tokyo DC"
 	resp := doJSON("PATCH", "/nodes/aabbccddeeff", map[string]any{
-		"location": location,
+		"location":     location,
+		"exit_enabled": false,
 	}, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 
@@ -139,6 +140,9 @@ func TestUpdateNode(t *testing.T) {
 	body := parseJSON(resp)
 	if body["location"] != "Tokyo DC" {
 		t.Fatalf("expected location=Tokyo DC, got %v", body["location"])
+	}
+	if body["exit_enabled"] != false {
+		t.Fatalf("expected exit_enabled=false, got %v", body["exit_enabled"])
 	}
 }
 
