@@ -5,10 +5,11 @@
 
 set -e
 
-# SECONDS 会从环境继承：镜像里若有上游脚本 export 了 SECONDS（实测首启带着 ~9112
-# 进来），预算检查会在开机 74s 时就判"已用 9112s / 超出 600s 预算"并中止首启置备。
-# 从脚本启动重新计时，预算才代表本脚本真正花掉的时间。
-SECONDS=0
+# 预算必须用单调时钟。首启实测：RTC 读不到、NTP 在跑完 enroll 后把时间从镜像构建
+# 时刻跳到当前时刻，bash 的 SECONDS（按 time() 差值算）凭空多出 94 分钟，紧接着的
+# budget_exceeded 判"已用 5666s / 超出 600s"并把整轮首启中止。SECONDS 还会从环境
+# 继承（实测首启带着 ~9112 进来）。/proc/uptime 不受时钟跳变影响，也拿不到继承值。
+PROVISION_START_UPTIME=$(awk '{print int($1)}' /proc/uptime)
 
 DONE_MARKER="/etc/hive/provisioned"
 LOG="/var/log/provision-node.log"
@@ -31,8 +32,17 @@ trap 'rm -f "$PROVISIONING_MARKER"' EXIT
 # 可能截断。超过预算就主动退出并留下可诊断的状态，让下次开机重试有据可查。
 # 每个外部 API 调用都有 --max-time，所以预算是可推算的。
 PROVISION_BUDGET="${PROVISION_BUDGET:-600}"
+provision_spent() {
+    local now
+    now=$(awk '{print int($1)}' /proc/uptime) || return 1
+    # 读取失败或计数回绕时按 0 处理，宁可多给一轮重试也不误判超预算。
+    [ "$now" -ge "$PROVISION_START_UPTIME" ] || { echo 0; return 0; }
+    echo $((now - PROVISION_START_UPTIME))
+}
+
 budget_exceeded() {
-    local spent=$1 stage="$2"
+    local stage="$1" spent
+    spent=$(provision_spent) || spent=0
     # 未超预算时必须返回 0：调用点处在 set -e 之下，返回 1 会直接终止脚本。
     [ "$spent" -ge "$PROVISION_BUDGET" ] || return 0
     echo "!!! provision 超出时间预算 ${PROVISION_BUDGET}s（在 ${stage} 阶段），放弃本次首启置备"
