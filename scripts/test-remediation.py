@@ -385,7 +385,11 @@ class DeploymentRegressionTests(unittest.TestCase):
                                 env=dict(os.environ, ADMIN_API_SECRET=explicit),
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        values = dict(line.split('=', 1) for line in self.env_file.read_text().splitlines())
+        values = dict(
+            line.split('=', 1)
+            for line in self.env_file.read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith(('#', ';'))
+        )
         self.assertEqual(self.env_file.stat().st_mode & 0o777, 0o600)
         return values['ADMIN_API_SECRET']
 
