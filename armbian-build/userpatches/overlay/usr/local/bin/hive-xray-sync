@@ -128,7 +128,8 @@ apply_device_limits() {
             # Never block every device because the registry returned an empty
             # allowlist; that means the report was not accepted yet.
             | select((($d.allowed_ips // []) | length) > 0)
-            | {ruleTag: "hive-devlimit-\($d.subscription_id)",
+            | {type: "field",
+               ruleTag: "hive-devlimit-\($d.subscription_id)",
                user: ["sub-\($d.subscription_id)"],
                source: [$blocked[] | if test(":") then . + "/128" else . + "/32" end],
                outboundTag: "block"}
