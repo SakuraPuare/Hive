@@ -18,3 +18,4 @@ export type handler_otaRolloutItem = {
     url?: string;
     version?: string;
 };
+

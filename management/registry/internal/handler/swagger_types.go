@@ -96,6 +96,8 @@ type NodeUpdateRequest struct {
 	GatewayUpstreamNodes *string `json:"gateway_upstream_nodes,omitempty" example:"aabbccddeeff,001122334455"`
 	// 网关计费绑定：设为某客户订阅 id 后本网关上游流量按该订阅计费；设为 null 解绑
 	BoundSubscriptionID *uint `json:"bound_subscription_id,omitempty" example:"42"`
+	// 管理员出口开关；默认 true。实际出口还需设备所有者的 owner_exit_enabled。
+	ExitEnabled *bool `json:"exit_enabled,omitempty" example:"true"`
 }
 
 // ── customer swagger types ───────────────────────────────────────────────────

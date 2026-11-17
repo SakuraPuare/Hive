@@ -4,6 +4,7 @@
 /* eslint-disable */
 import type { handler_AdminLoginRequest } from '../models/handler_AdminLoginRequest';
 import type { handler_AdminReferralListResponse } from '../models/handler_AdminReferralListResponse';
+import type { handler_AdminSSHConfigResponse } from '../models/handler_AdminSSHConfigResponse';
 import type { handler_AnnouncementListResponse } from '../models/handler_AnnouncementListResponse';
 import type { handler_AnnouncementRequest } from '../models/handler_AnnouncementRequest';
 import type { handler_AssignDeviceRequest } from '../models/handler_AssignDeviceRequest';
@@ -342,6 +343,7 @@ export class AdminService {
                 'id': id,
             },
             errors: {
+                409: `Conflict`,
                 500: `Internal Server Error`,
             },
         });
@@ -1525,6 +1527,7 @@ export class AdminService {
                 'id': id,
             },
             errors: {
+                404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
@@ -1558,6 +1561,7 @@ export class AdminService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
+                404: `Not Found`,
                 500: `Internal Server Error`,
             },
         });
@@ -1725,6 +1729,18 @@ export class AdminService {
                 404: `Not Found`,
                 500: `Internal Server Error`,
             },
+        });
+    }
+    /**
+     * 管理端 SSH 连接配置
+     * 返回生成 SSH 命令所需的全局信息（当前只有 FRP 服务器地址）。未配置时返回空串。
+     * @returns handler_AdminSSHConfigResponse OK
+     * @throws ApiError
+     */
+    public static adminSshConfig(): CancelablePromise<handler_AdminSSHConfigResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/ssh-config',
         });
     }
     /**

@@ -77,18 +77,19 @@ func TestServerAccountingRejectsCustomerDeviceAndAdminCredentials(t *testing.T) 
 		assertStatus(t, resp, 401)
 		resp.Body.Close()
 	}
-	for _, method := range []string{"GET", "POST"} {
-		resp := doBearer(method, "/nodes/"+mac+"/xray-users", report, device)
-		assertStatus(t, resp, 426)
-		resp.Body.Close()
-	}
+	resp := doBearer("GET", "/nodes/"+mac+"/xray-users", report, device)
+	assertStatus(t, resp, 426)
+	resp.Body.Close()
+	resp = doBearer("POST", "/nodes/"+mac+"/xray-users", emptyNodeReport(), device)
+	assertStatus(t, resp, 200)
+	resp.Body.Close()
 	if scalar(t, "SELECT traffic_used FROM customer_subscriptions WHERE id=?", id) != 0 {
 		t.Fatal("device report was billed")
 	}
 	if scalar(t, "SELECT COUNT(*) FROM node_traffic_counters") != 0 {
 		t.Fatal("device report persisted")
 	}
-	resp := doBearer("GET", "/nodes/"+mac+"/clash-config", nil, server)
+	resp = doBearer("GET", "/nodes/"+mac+"/clash-config", nil, server)
 	assertStatus(t, resp, 401)
 	resp.Body.Close()
 	resp = doBearer("POST", "/servers/"+mac+"/accounting", report, server)
@@ -237,38 +238,71 @@ func TestServerPromotionSerializesWithOwnership(t *testing.T) {
 	}
 }
 
-func TestOnlyTrustedExitsAppearInSubscriptionsAndGateway(t *testing.T) {
+func TestDefaultExitsAndSwitchesControlSubscriptionsAndGateway(t *testing.T) {
 	token, id, _ := accountingFixture(t)
 	const client = "112233445566"
 	insertSubTestNode(t, client)
 	mustExec(t, "UPDATE nodes SET cf_url='https://untrusted.invalid',bound_subscription_id=? WHERE mac=?", id, client)
 	mustExec(t, "INSERT INTO line_nodes (line_id,node_mac) SELECT id,? FROM `lines`", client)
+
+	// Both nodes are exits by default, even the ordinary/customer-gateway one.
 	for _, path := range []string{"/c/" + token, "/subscription/clash?subscription=" + token} {
 		resp := doJSON("GET", path, nil, adminCookie())
 		assertStatus(t, resp, 200)
 		body := readBody(resp)
-		if strings.Contains(body, "untrusted.invalid") || !strings.Contains(body, "test.example.com") {
-			t.Fatalf("exported wrong roles: %s", body)
+		if !strings.Contains(body, "untrusted.invalid") || !strings.Contains(body, "test.example.com") {
+			t.Fatalf("default exits missing from export: %s", body)
 		}
 	}
 	device := deviceToken(t, client)
 	resp := doBearer("GET", "/nodes/"+client+"/clash-config", nil, device)
 	assertStatus(t, resp, 200)
 	if body := readBody(resp); !strings.Contains(body, "test.example.com") || strings.Contains(body, "untrusted.invalid") {
-		t.Fatalf("gateway upstreams: %s", body)
+		t.Fatalf("gateway upstreams missing default exit: %s", body)
 	}
+
+	// Admin switch off removes the client from exports and gateway upstreams.
+	mustExec(t, "UPDATE nodes SET exit_enabled=0 WHERE mac=?", client)
+	resp = doJSON("GET", "/c/"+token, nil, nil)
+	assertStatus(t, resp, 200)
+	if body := readBody(resp); strings.Contains(body, "untrusted.invalid") || !strings.Contains(body, "test.example.com") {
+		t.Fatalf("admin-disabled exit still exported: %s", body)
+	}
+	resp = doBearer("GET", "/nodes/"+client+"/clash-config", nil, device)
+	assertStatus(t, resp, 200)
+	if body := readBody(resp); strings.Contains(body, "untrusted.invalid") || !strings.Contains(body, "test.example.com") {
+		t.Fatalf("gateway kept admin-disabled upstream: %s", body)
+	}
+
+	// Owner switch off also removes it; the admin switch alone cannot re-enable.
+	mustExec(t, "UPDATE nodes SET exit_enabled=1, owner_exit_enabled=0 WHERE mac=?", client)
+	resp = doJSON("GET", "/c/"+token, nil, nil)
+	assertStatus(t, resp, 200)
+	if body := readBody(resp); strings.Contains(body, "untrusted.invalid") {
+		t.Fatalf("owner-disabled exit still exported: %s", body)
+	}
+
+	// Revoking trusted accounting does not remove an ordinary exit.
 	resp = doJSON("DELETE", "/admin/nodes/aabbccddeeff/server-credential", nil, adminCookie())
 	assertStatus(t, resp, 200)
 	resp.Body.Close()
 	resp = doJSON("GET", "/c/"+token, nil, nil)
 	assertStatus(t, resp, 200)
+	if body := readBody(resp); !strings.Contains(body, "test.example.com") {
+		t.Fatalf("revoking accounting removed ordinary exit: %s", body)
+	}
+
+	// Turning off both exits blocks the gateway.
+	mustExec(t, "UPDATE nodes SET exit_enabled=0 WHERE mac IN ('aabbccddeeff', ?)", client)
+	resp = doJSON("GET", "/c/"+token, nil, nil)
+	assertStatus(t, resp, 200)
 	if body := readBody(resp); strings.Contains(body, "test.example.com") || strings.Contains(body, "untrusted.invalid") {
-		t.Fatalf("revoked exit exported: %s", body)
+		t.Fatalf("disabled exits still exported: %s", body)
 	}
 	resp = doBearer("GET", "/nodes/"+client+"/clash-config", nil, device)
 	assertStatus(t, resp, 200)
 	if resp.Header.Get("X-Hive-Access") != "blocked" {
-		t.Fatal("gateway retained revoked exit")
+		t.Fatal("gateway retained disabled exits")
 	}
 	resp.Body.Close()
 }

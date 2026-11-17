@@ -11,6 +11,7 @@ export type { handler_ackCommandRequest } from './models/handler_ackCommandReque
 export type { handler_AdminLoginRequest } from './models/handler_AdminLoginRequest';
 export type { handler_AdminReferralItem } from './models/handler_AdminReferralItem';
 export type { handler_AdminReferralListResponse } from './models/handler_AdminReferralListResponse';
+export type { handler_AdminSSHConfigResponse } from './models/handler_AdminSSHConfigResponse';
 export type { handler_AnnouncementListResponse } from './models/handler_AnnouncementListResponse';
 export type { handler_AnnouncementRequest } from './models/handler_AnnouncementRequest';
 export type { handler_AssignDeviceRequest } from './models/handler_AssignDeviceRequest';
@@ -31,7 +32,9 @@ export type { handler_CreateUserRequest } from './models/handler_CreateUserReque
 export type { handler_CustomerDetail } from './models/handler_CustomerDetail';
 export type { handler_CustomerListResponse } from './models/handler_CustomerListResponse';
 export type { handler_CustomerTrafficResponse } from './models/handler_CustomerTrafficResponse';
+export type { handler_DashboardResponse } from './models/handler_DashboardResponse';
 export type { handler_enqueueCommandRequest } from './models/handler_enqueueCommandRequest';
+export type { handler_EnrollResponse } from './models/handler_EnrollResponse';
 export type { handler_ErrorResponse } from './models/handler_ErrorResponse';
 export type { handler_ForgotPasswordRequest } from './models/handler_ForgotPasswordRequest';
 export type { handler_MeResponse } from './models/handler_MeResponse';
@@ -56,6 +59,7 @@ export type { handler_PortalCreateOrderRequest } from './models/handler_PortalCr
 export type { handler_PortalCreateOrderResponse } from './models/handler_PortalCreateOrderResponse';
 export type { handler_PortalCreateTicketRequest } from './models/handler_PortalCreateTicketRequest';
 export type { handler_PortalCreateTicketResponse } from './models/handler_PortalCreateTicketResponse';
+export type { handler_PortalDeviceExitRequest } from './models/handler_PortalDeviceExitRequest';
 export type { handler_PortalLoginRequest } from './models/handler_PortalLoginRequest';
 export type { handler_PortalMeResponse } from './models/handler_PortalMeResponse';
 export type { handler_PortalOrderListResponse } from './models/handler_PortalOrderListResponse';

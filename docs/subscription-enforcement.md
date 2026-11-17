@@ -4,6 +4,7 @@
 
 ## 当前行为
 
+- 自 migration 31 起，**所有节点默认作为 Xray 出口**：普通设备、客户网关、可信出口都参与订阅和网关上游。管理员可在节点编辑里关闭「作为出口」，设备所有者也可在客户门户关闭自己设备的出口；实际出口 = `exit_enabled && owner_exit_enabled && enabled && status=active`。
 - 恢复“开机即运行 Xray”的兼容模式：安装 `/etc/hive/server-token` 的可信出口通过独立接口 `POST /servers/{mac}/accounting` 计费；没有 server-token 的普通设备使用设备凭据走回退接口 `POST /nodes/{mac}/xray-users`，同样上报累计计数并取得自己线路上的有效用户。设备凭据不能冒充服务器凭据调用 `/servers`，但可以在回退接口参与自己线路的计费。
 - 出口每约 15 秒通过 `POST /servers/{mac}/accounting` 同步 Xray 原始累计计数，再获得有效客户列表。上传和下载分别计费，多个出口的用量合并到同一订阅。服务端将身份校验、节点锁、计数更新配合处理，撤销或轮换密钥后，尚未提交的旧凭据请求不能继续入账。
 - 可信出口的上报使用 Xray systemd InvocationID 和递增的 `generation` 区分计数器生命周期；设备凭据回退模式固定使用 `generation=0`，不做周期推进。migration 25 保存最大已确认值，migration 29 增加每出口一条周期状态；事务同时提交流量、计数位置及周期推进。响应丢失、同周期乱序、重试不会重复扣量。待确认快照保存在 `/var/lib/hive/traffic-pending/`，周期文件为 `/var/lib/hive/traffic-generation.json`，重启代理前尽量捕获最后一份快照。
@@ -14,13 +15,13 @@
 - 客户网关失效或租约超时后，同时安装 IPv4/IPv6 FORWARD 阻断规则并写入 REJECT 配置；避免 TUN 停止时被局域网 NAT 直连绕过。续期成功且代理配置应用成功才解除阻断。
 - 显式设置 `GATEWAY_ENABLED=off`（也接受 `0/false/no`）时停止 Mihomo、清除网关租约及 Hive 自己添加的 `hive-subscription` FORWARD DROP，不改动其他转发/NAT 规则；服务启动条件和租约守护同样遵守此开关；`ExecCondition` 只有禁用网关（或首次启动时尚无配置）返回 1–254 跳过，清理失败或阻断规则写入失败返回 255，让单元失败并由 `Restart=on-failure` 重试，不会把故障静默当成“已禁用”。重新开启后必须取得新授权才放行。该开关不影响可信出口的 Xray 租约执行。
 - Xray 启动前清空静态 VLESS 客户端，公共节点 UUID 不再提供代理访问。网关必须绑定有效客户订阅，无订阅的内部网关也不再提供免费出口。
-- 线路和分组仍可组织节点，但导出需提供 `?subscription=<客户订阅Token>`。结果取线路/分组、客户套餐和可信出口的交集，并使用客户 UUID。后台增加客户订阅链接输入框；未输入时不能复制或预览有效导出。
+- 线路和分组仍可组织节点，但导出需提供 `?subscription=<客户订阅Token>`。结果取线路/分组、客户套餐和已启用出口的交集，并使用客户 UUID。后台增加客户订阅链接输入框；未输入时不能复制或预览有效导出。
 
 ### 角色与信任边界
 
 ```mermaid
 flowchart LR
-    C[客户端 / NanoPi 客户网关] -->|订阅 UUID 连接| S[运营方可信出口 Xray]
+    C[客户端 / NanoPi 客户网关] -->|订阅 UUID 连接| S[任一启用出口 Xray]
     S -->|服务器密钥 + 累计流量| R[Registry 面板]
     R -->|扣量后返回有效用户与短期租约| S
     C -->|设备凭据：心跳、网关配置、OTA| R
@@ -28,7 +29,7 @@ flowchart LR
 
 这是 v2board/v2node 的服务器计量思路：[v2node 读取出口内核流量](https://github.com/wyx2685/v2node/blob/main/node/user.go)，通过 [ReportUserTraffic 向面板发送用量](https://github.com/wyx2685/v2node/blob/main/api/v2board/user.go)，[v2board 的 UniProxy 接口](https://github.com/wyx2685/v2board/blob/master/app/Http/Controllers/V1/Server/UniProxyController.php)核验服务器密钥并处理用户授权和流量。这里的上报方是运营方服务器，不是用户客户端。本次参考职责划分，保留 Hive 自己的累计计数、去重和租约协议；**没有实现直接接入原版 v2node 的 UniProxy 兼容层**。
 
-每个出口使用独立密钥，普通设备凭据不能冒充服务器凭据调用 `/servers/{mac}/accounting`。可信出口不能被客户认领或分配给客户；撤销出口后解除这种限制，但解绑客户设备不会自动变为出口。Xray 在所有节点开机启动：安装 `/etc/hive/server-token` 的出口走可信出口接口，没有该文件的节点回退到设备凭据 `/nodes/{mac}/xray-users`。不要将客户实际拥有 root 权限的机器登记为可信出口，即使它暂时没有数据库客户归属。对出口服务器 root 管理者的信任仍然存在；把推送改成拉取也无法验证被篡改的代理内核计数。
+默认模型下所有节点都可能是出口，包括客户名下的设备；这是有意的共享出口池。客户设备作为出口时，其他订阅用户的流量会从该设备出网，设备所有者可在门户关闭自己的出口开关。管理员关闭 `exit_enabled` 后，即使所有者重新打开也无法恢复。可信计费密钥仍是独立信任层：普通设备凭据不能冒充服务器凭据调用 `/servers/{mac}/accounting`；安装 `/etc/hive/server-token` 的节点走可信出口接口，没有该文件的节点回退到设备凭据 `/nodes/{mac}/xray-users`。不要把客户可篡改的机器登记为可信计费出口；它仍可作为普通出口运行，但计量由设备凭据回退路径承担。
 
 这些是周期性计量和短期授权，不是逐字节硬限额。实际超额量仍受 15 秒上报间隔、网络和节点负载影响。突然断电可能丢失最后一次采样之后的流量。正常到期可由本地短期租约截止，不必等待后台十分钟生命周期任务。
 
@@ -38,7 +39,7 @@ flowchart LR
 
 1. 备份数据库，并为出口节点安排短维护窗口。先停止旧节点代理，避免新旧计费同时运行。
 2. 更新 Registry 和前端。Registry 自动执行待运行迁移（计费为 migration 25，续费与暂停原因为 migration 26，出口身份隔离为 migration 28，计数回收为 migration 29）。migration 28 默认将存量节点全部设为普通设备；不会因“未认领”或“已有线路”而自动信任。旧的 `GET /nodes/{mac}/xray-users` 仍返回 426；`POST` 作为设备凭据回退接口保留，供没有 server-token 的节点使用。migration 29 调整计数表主键，历史数据量大时应预留维护时间。
-3. 核对哪些机器由运营方独占控制，在「节点详情 → 出口计费权限」启用相应服务器；也可调用管理员接口 `POST /admin/nodes/{mac}/server-credential`。密钥只返回一次，单独通过可信 SSH 安装到对应出口 `/etc/hive/server-token`，root 所有、权限 `0600`，不要写进通用镜像、客户设备或日志。普通 `/etc/hive/device-token` 仍用于该机器的注册、心跳与 OTA。密钥轮换立即废弃旧密钥；同一路径 `DELETE` 撤销出口并将其从订阅配置中移除，现有连接在剩余租约结束后停止。客户设备无需此密钥。若撤销后改作客户网关，删除旧 `/etc/hive/server-token` 即可；Xray 会回退到 `/etc/hive/device-token` 继续运行（兼容模式），不再要求手动停用。
+3. 「作为出口」默认开启，无需逐个启用。仅对运营方独占控制、需要可信计费的机器，在「节点详情 → 可信出口计费」生成服务器密钥；也可调用管理员接口 `POST /admin/nodes/{mac}/server-credential`。密钥只返回一次，单独通过可信 SSH 安装到对应出口 `/etc/hive/server-token`，root 所有、权限 `0600`，不要写进通用镜像、客户设备或日志。普通 `/etc/hive/device-token` 仍用于该机器的注册、心跳与 OTA。密钥轮换立即废弃旧密钥；同一路径 `DELETE` 只撤销可信计费密钥，是否继续作为普通出口由「作为出口」开关决定；撤销后现有连接在剩余租约结束后停止。客户设备无需此密钥。若撤销后改作客户网关，删除旧 `/etc/hive/server-token` 即可；Xray 会回退到 `/etc/hive/device-token` 继续运行（兼容模式），不再要求手动停用。
 4. 安装本次设备脚本与 systemd 单元。默认 OTA 包已包含这些文件，并自动启用/启动租约守护与同步定时器。定制 OTA 包必须包含 `hive-subscription-state`、`hive-subscription-guard`、`hive-xray-prepare`、`hive-gateway-prepare`、两个同步脚本及相应服务/定时器。没有服务器密钥的设备仍启动 Xray，并用设备凭据走回退接口上报/续租；其 Mihomo 网关继续按绑定订阅工作。可信出口模式优先使用独立服务器密钥。
 5. 手动安装时执行：
 
@@ -52,7 +53,7 @@ flowchart LR
 
 6. 从 Prometheus 计费版本首次升级时，可信出口会重新启动 Xray，并写入 `/var/lib/hive/subscription-accounting-v1`。升级前运行周期的计数已经由旧 Prometheus 方案统计，不再整段补扣；切换前尚未采集的尾部流量需按业务需要核对。已使用 migration 25 累计计费的出口保持计数表、此标记和待确认快照，改用服务器凭据继续去重同步。不要删除这些数据来“清理缓存”。
 7. 为需要提供网关服务的设备绑定客户订阅。向客户发送 `https://<面板域名>/api/c/<token>`（VLESS 为 `.../vless`；`/c/` 是 Registry 端点，nginx 只把 `/api/` 前缀转发给后端），或在后台输入客户订阅链接后生成新的线路/分组链接；历史裸 `/l/`、`/s/` 链接不再可用。
-8. 验证普通设备 Token 调 `/servers/{mac}/accounting` 返回 401；调 `POST /nodes/{mac}/xray-users` 能取得自己线路上的用户并上报（回退模式）。验证普通客户设备不会出现在订阅代理列表中。再验证有效订阅能连接出口；将测试订阅流量设为额度或到期后，确认现有长连接关闭；阻断出口到 Registry 的连接，确认租约到期后停止服务，再恢复网络验证恢复。
+8. 验证普通设备 Token 调 `/servers/{mac}/accounting` 返回 401；调 `POST /nodes/{mac}/xray-users` 能取得自己线路上的用户并上报（回退模式）。验证普通节点和客户网关默认出现在订阅中；管理员关闭 `exit_enabled` 或设备所有者在门户关闭 `owner_exit_enabled` 后，节点应从订阅和网关上游候选中消失（最长等待一个 45 秒租约）。再验证有效订阅能连接出口；将测试订阅流量设为额度或到期后，确认现有长连接关闭；阻断出口到 Registry 的连接，确认租约到期后停止服务，再恢复网络验证恢复。
 
 正常流量配额重置保留累计计数位置，不会把历史流量重新扣到新额度中。
 

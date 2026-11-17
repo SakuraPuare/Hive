@@ -3,8 +3,11 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { handler_ackCommandRequest } from '../models/handler_ackCommandRequest';
+import type { handler_EnrollResponse } from '../models/handler_EnrollResponse';
+import type { handler_NodeAccountingRequest } from '../models/handler_NodeAccountingRequest';
 import type { handler_NodeRegisterRequest } from '../models/handler_NodeRegisterRequest';
 import type { handler_NodeRegisterResponse } from '../models/handler_NodeRegisterResponse';
+import type { handler_NodeXrayUsersResponse } from '../models/handler_NodeXrayUsersResponse';
 import type { handler_otaAckRequest } from '../models/handler_otaAckRequest';
 import type { handler_StatusResponse } from '../models/handler_StatusResponse';
 import type { model_DeviceCommand } from '../models/model_DeviceCommand';
@@ -46,7 +49,7 @@ export class NodesService {
     }
     /**
      * 节点拉取待执行命令
-     * 节点定时轮询本机 MAC 的 pending 命令。返回前把它们置为 sent 并记录 sent_at；超过 TTL 的 pending 惰性标记 expired、不再下发。设备鉴权（Bearer API_SECRET）。
+     * 节点定时轮询本机 MAC 的待执行命令。返回前把 pending 置为 sent 并记录 sent_at；超过 TTL 的 pending 与 sent 都惰性标记 expired、不再下发（设备端 ACK 失败会无界重领，重启命令尤其不能重复执行）。设备鉴权（Bearer API_SECRET）。
      * @returns model_DeviceCommand OK
      * @throws ApiError
      */
@@ -193,6 +196,39 @@ export class NodesService {
         });
     }
     /**
+     * Report device traffic and renew subscription authorization (legacy device mode)
+     * @returns handler_NodeXrayUsersResponse OK
+     * @throws ApiError
+     */
+    public static nodeAccountingLegacy({
+        mac,
+        requestBody,
+    }: {
+        /**
+         * Node MAC
+         */
+        mac: string,
+        /**
+         * Cumulative traffic counters
+         */
+        requestBody: handler_NodeAccountingRequest,
+    }): CancelablePromise<handler_NodeXrayUsersResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/nodes/{mac}/xray-users',
+            path: {
+                'mac': mac,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
      * Allocate EasyTier IP for a MAC
      * Idempotently allocates (or returns the existing) 172.20.0.0/16 EasyTier
      * IP for the given MAC. Called by provision-node.sh as its first step so the
@@ -215,6 +251,35 @@ export class NodesService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * Device self-enrollment (first boot)
+     * Issues this device's MAC-scoped credential so a newly flashed node
+     * can authenticate. Creates the node row immediately (admin panel shows
+     * the device as soon as it boots) and mints the customer claim code once.
+     * Refuses claimed or already-enrolled devices: re-issuing needs an admin.
+     * @returns handler_EnrollResponse OK
+     * @throws ApiError
+     */
+    public static nodeEnroll({
+        requestBody,
+    }: {
+        /**
+         * mac, mac6, hostname
+         */
+        requestBody: Record<string, any>,
+    }): CancelablePromise<handler_EnrollResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/nodes/enroll',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                409: `Conflict`,
                 500: `Internal Server Error`,
             },
         });

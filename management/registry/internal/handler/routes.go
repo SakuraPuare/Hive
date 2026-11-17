@@ -222,6 +222,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	mux.HandleFunc("GET /portal/devices/{mac}", cust(h.HandlePortalGetDevice))
 	mux.HandleFunc("POST /portal/devices/claim", cust(h.HandlePortalClaimDevice))
 	mux.HandleFunc("POST /portal/devices/{mac}/unbind", cust(h.HandlePortalUnbindDevice))
+	mux.HandleFunc("PUT /portal/devices/{mac}/exit", cust(h.HandlePortalSetDeviceExit))
 	mux.HandleFunc("PUT /portal/devices/{mac}/subscription", cust(h.HandlePortalBindDeviceSubscription))
 	mux.HandleFunc("DELETE /portal/devices/{mac}/subscription", cust(h.HandlePortalUnbindDeviceSubscription))
 	mux.HandleFunc("GET /portal/devices/{mac}/commands", cust(h.HandlePortalListCommands))

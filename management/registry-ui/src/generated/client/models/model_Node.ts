@@ -12,6 +12,12 @@ export type model_Node = {
     claimed_at?: string;
     easytier_ip?: string;
     enabled?: boolean;
+    /**
+     * ── 出口开关（默认开启）──────────────────────────────────────────────
+     * ExitEnabled 是管理员开关；OwnerExitEnabled 是设备所有者在客户门户的开关。
+     * 实际是否作为 Xray 出口 = ExitEnabled && OwnerExitEnabled && Enabled && Status==active。
+     */
+    exit_enabled?: boolean;
     frp_port?: number;
     /**
      * 分流方向：domestic（境内,墙外走代理）/ overseas（境外,墙内走代理）/ global（全走代理）/ direct（全直连）
@@ -43,6 +49,7 @@ export type model_Node = {
      * claim_code_hash 只存哈希、不出 JSON（明文仅在注册响应回传一次）。
      */
     owner_customer_id?: number;
+    owner_exit_enabled?: boolean;
     probe_status?: string;
     region?: string;
     registered_at?: string;

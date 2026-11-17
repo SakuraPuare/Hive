@@ -2,6 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { handler_DashboardResponse } from '../models/handler_DashboardResponse';
 import type { handler_enqueueCommandRequest } from '../models/handler_enqueueCommandRequest';
 import type { handler_PortalBindSubscriptionRequest } from '../models/handler_PortalBindSubscriptionRequest';
 import type { handler_PortalClaimRequest } from '../models/handler_PortalClaimRequest';
@@ -9,6 +10,7 @@ import type { handler_PortalCreateOrderRequest } from '../models/handler_PortalC
 import type { handler_PortalCreateOrderResponse } from '../models/handler_PortalCreateOrderResponse';
 import type { handler_PortalCreateTicketRequest } from '../models/handler_PortalCreateTicketRequest';
 import type { handler_PortalCreateTicketResponse } from '../models/handler_PortalCreateTicketResponse';
+import type { handler_PortalDeviceExitRequest } from '../models/handler_PortalDeviceExitRequest';
 import type { handler_PortalMeResponse } from '../models/handler_PortalMeResponse';
 import type { handler_PortalOrderListResponse } from '../models/handler_PortalOrderListResponse';
 import type { handler_PortalReferralRecordsResponse } from '../models/handler_PortalReferralRecordsResponse';
@@ -122,12 +124,105 @@ export class PortalService {
         });
     }
     /**
-     * 解绑我的设备
-     * 客户把设备从自己名下解绑；解绑后设备恢复未认领状态，认领码重新生效。
+     * 我的设备的 Mihomo 面板地址
+     * 返回网关节点 Mihomo 面板的候选地址与 per-node secret。客户在节点
+     * WiFi（10.42.x）、EasyTier（172.20.x）或 Tailscale（100.64.x）内时可直接打开。
+     * @returns handler_DashboardResponse OK
+     * @throws ApiError
+     */
+    public static portalDeviceDashboard({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<handler_DashboardResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/portal/devices/{mac}/dashboard',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 设置我的设备是否作为 Xray 出口
+     * 设备所有者关闭后，该设备立即从订阅与网关上游候选中移除；管理员开关仍然优先。
      * @returns handler_StatusResponse OK
      * @throws ApiError
      */
-    public static portalUnbindDevice({
+    public static portalSetDeviceExit({
+        mac,
+        requestBody,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+        /**
+         * 出口开关
+         */
+        requestBody: handler_PortalDeviceExitRequest,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/portal/devices/{mac}/exit',
+            path: {
+                'mac': mac,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 代理节点 Mihomo API（只读）
+     * 把门户会话换成节点侧 per-node secret，向节点 :9090 取只读数据。
+     * 用于门户里展示实时速率与活跃会话，客户无需在节点的 LAN/mesh 内。
+     * @returns any OK
+     * @throws ApiError
+     */
+    public static portalDeviceMihomo({
+        mac,
+        path,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+        /**
+         * version|connections
+         */
+        path: string,
+    }): CancelablePromise<Record<string, any>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/portal/devices/{mac}/mihomo/{path}',
+            path: {
+                'mac': mac,
+                'path': path,
+            },
+            errors: {
+                404: `Not Found`,
+                502: `Bad Gateway`,
+                503: `Service Unavailable`,
+            },
+        });
+    }
+    /**
+     * 解绑网关设备的订阅配置
+     * 客户解除网关设备与订阅的绑定；设备下一次同步后进入未绑定（fail-closed）配置。
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static portalUnbindDeviceSubscription({
         mac,
     }: {
         /**
@@ -136,8 +231,8 @@ export class PortalService {
         mac: string,
     }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
-            method: 'POST',
-            url: '/portal/devices/{mac}/unbind',
+            method: 'DELETE',
+            url: '/portal/devices/{mac}/subscription',
             path: {
                 'mac': mac,
             },
@@ -181,12 +276,12 @@ export class PortalService {
         });
     }
     /**
-     * 解绑网关设备的订阅配置
-     * 客户解除网关设备与订阅的绑定；设备下一次同步后进入未绑定（fail-closed）配置。
+     * 解绑我的设备
+     * 客户把设备从自己名下解绑；解绑后设备恢复未认领状态，认领码重新生效。
      * @returns handler_StatusResponse OK
      * @throws ApiError
      */
-    public static portalUnbindDeviceSubscription({
+    public static portalUnbindDevice({
         mac,
     }: {
         /**
@@ -195,8 +290,8 @@ export class PortalService {
         mac: string,
     }): CancelablePromise<handler_StatusResponse> {
         return __request(OpenAPI, {
-            method: 'DELETE',
-            url: '/portal/devices/{mac}/subscription',
+            method: 'POST',
+            url: '/portal/devices/{mac}/unbind',
             path: {
                 'mac': mac,
             },

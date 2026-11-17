@@ -632,6 +632,14 @@ ALTER TABLE ticket_replies MODIFY COLUMN author VARCHAR(128) NOT NULL COMMENT '�
 ALTER TABLE audit_logs MODIFY COLUMN username VARCHAR(128) NOT NULL COMMENT '操作用户';
 `,
 	},
+	{
+		version: 31,
+		desc:    "per-node exit switches defaulting on for all devices",
+		up: `
+ALTER TABLE nodes ADD COLUMN exit_enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT '管理员出口开关';
+ALTER TABLE nodes ADD COLUMN owner_exit_enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT '设备所有者出口开关';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

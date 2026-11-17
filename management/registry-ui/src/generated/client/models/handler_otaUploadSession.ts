@@ -7,3 +7,4 @@ export type handler_otaUploadSession = {
     id?: string;
     size?: number;
 };
+

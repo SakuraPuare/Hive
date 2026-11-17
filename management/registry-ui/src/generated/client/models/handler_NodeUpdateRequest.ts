@@ -9,6 +9,10 @@ export type handler_NodeUpdateRequest = {
     bound_subscription_id?: number;
     easytier_ip?: string;
     enabled?: boolean;
+    /**
+     * 管理员出口开关；默认 true。实际出口还需设备所有者的 owner_exit_enabled。
+     */
+    exit_enabled?: boolean;
     frp_port?: number;
     gateway_direction?: string;
     /**

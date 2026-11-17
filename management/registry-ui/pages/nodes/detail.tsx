@@ -190,6 +190,11 @@ export default function NodeDetail() {
           </CardHeader>
           <CardContent className="px-5 pb-5">
             <FieldRow label={t('enabled')} value={node.enabled ? t('enabledOn') : t('enabledOff')} noData={noData} />
+            <FieldRow
+              label={t('exitStatus')}
+              value={!node.exit_enabled ? t('exitStatusAdminOff') : node.owner_exit_enabled === false ? t('exitStatusOwnerOff') : t('exitStatusOn')}
+              noData={noData}
+            />
             <FieldRow label={t('nodeStatus')} value={node.status} noData={noData} />
             <FieldRow label={t('weight')} value={node.weight} noData={noData} />
             <FieldRow label={t('region')} value={node.region} noData={noData} />

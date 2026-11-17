@@ -5,3 +5,4 @@
 export type handler_assignRequest = {
     node_macs?: Array<string>;
 };
+

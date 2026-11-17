@@ -10,3 +10,4 @@ export type handler_otaArtifactResponse = {
     url?: string;
     version?: string;
 };
+

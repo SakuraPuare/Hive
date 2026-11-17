@@ -41,6 +41,11 @@ definitions:
       total:
         type: integer
     type: object
+  handler.AdminSSHConfigResponse:
+    properties:
+      frp_server_addr:
+        type: string
+    type: object
   handler.AnnouncementListResponse:
     properties:
       items:
@@ -351,6 +356,10 @@ definitions:
       enabled:
         example: true
         type: boolean
+      exit_enabled:
+        description: 管理员出口开关；默认 true。实际出口还需设备所有者的 owner_exit_enabled。
+        example: true
+        type: boolean
       frp_port:
         example: 7000
         type: integer
@@ -426,8 +435,6 @@ definitions:
       subscription_id:
         example: 42
         type: integer
-    required:
-    - subscription_id
     type: object
   handler.PortalClaimRequest:
     properties:
@@ -476,6 +483,12 @@ definitions:
       id:
         example: 1
         type: integer
+    type: object
+  handler.PortalDeviceExitRequest:
+    properties:
+      enabled:
+        example: false
+        type: boolean
     type: object
   handler.PortalLoginRequest:
     properties:
@@ -1213,6 +1226,12 @@ definitions:
         type: string
       enabled:
         type: boolean
+      exit_enabled:
+        description: |-
+          ── 出口开关（默认开启）──────────────────────────────────────────────
+          ExitEnabled 是管理员开关；OwnerExitEnabled 是设备所有者在客户门户的开关。
+          实际是否作为 Xray 出口 = ExitEnabled && OwnerExitEnabled && Enabled && Status==active。
+        type: boolean
       frp_port:
         type: integer
       gateway_direction:
@@ -1250,6 +1269,8 @@ definitions:
           设备归属：owner_customer_id 非空即"这台设备属于某客户"，客户可在门户查看/管理。
           claim_code_hash 只存哈希、不出 JSON（明文仅在注册响应回传一次）。
         type: integer
+      owner_exit_enabled:
+        type: boolean
       probe_status:
         type: string
       region:
@@ -3347,6 +3368,22 @@ paths:
       summary: 更新角色权限
       tags:
       - admin
+  /admin/ssh-config:
+    get:
+      description: 返回生成 SSH 命令所需的全局信息（当前只有 FRP 服务器地址）。未配置时返回空串。
+      operationId: AdminSSHConfig
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.AdminSSHConfigResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 管理端 SSH 连接配置
+      tags:
+      - admin
   /admin/subscription-groups:
     get:
       description: 返回所有订阅组
@@ -4655,6 +4692,48 @@ paths:
       summary: 节点查询待安装 OTA 版本
       tags:
       - nodes
+  /nodes/{mac}/xray-users:
+    post:
+      consumes:
+      - application/json
+      operationId: NodeAccountingLegacy
+      parameters:
+      - description: Node MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      - description: Cumulative traffic counters
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.NodeAccountingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.NodeXrayUsersResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Report device traffic and renew subscription authorization (legacy
+        device mode)
+      tags:
+      - nodes
   /nodes/allocate-easytier:
     post:
       consumes:
@@ -4957,6 +5036,44 @@ paths:
       security:
       - CustomerSessionCookie: []
       summary: 我的设备的 Mihomo 面板地址
+      tags:
+      - portal
+  /portal/devices/{mac}/exit:
+    put:
+      consumes:
+      - application/json
+      description: 设备所有者关闭后，该设备立即从订阅与网关上游候选中移除；管理员开关仍然优先。
+      operationId: PortalSetDeviceExit
+      parameters:
+      - description: 设备 MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      - description: 出口开关
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.PortalDeviceExitRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 设置我的设备是否作为 Xray 出口
       tags:
       - portal
   /portal/devices/{mac}/mihomo/{path}:

@@ -8,3 +8,4 @@ export type handler_otaAckRequest = {
     status?: string;
     version?: string;
 };
+

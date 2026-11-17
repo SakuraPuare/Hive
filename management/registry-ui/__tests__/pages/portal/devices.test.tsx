@@ -15,6 +15,7 @@ const mockEnqueue = vi.fn();
 const mockCommands = vi.fn();
 const mockBindSubscription = vi.fn();
 const mockUnbindSubscription = vi.fn();
+const mockSetDeviceExit = vi.fn();
 
 vi.mock('@/src/generated/client', () => ({
   PortalService: {
@@ -25,6 +26,7 @@ vi.mock('@/src/generated/client', () => ({
     portalEnqueueDeviceCommand: (...args: unknown[]) => mockEnqueue(...args),
     portalBindDeviceSubscription: (...args: unknown[]) => mockBindSubscription(...args),
     portalUnbindDeviceSubscription: (...args: unknown[]) => mockUnbindSubscription(...args),
+    portalSetDeviceExit: (...args: unknown[]) => mockSetDeviceExit(...args),
   },
 }));
 
@@ -40,6 +42,8 @@ const gatewayNode = {
   tailscale_ip: '100.64.0.9',
   easytier_ip: '172.20.1.7',
   gateway_enabled: true,
+  exit_enabled: true,
+  owner_exit_enabled: true,
   last_seen: '2026-11-14T10:00:00Z',
 };
 
@@ -60,6 +64,7 @@ describe('PortalDevicesPage', () => {
     mockCommands.mockReset();
     mockBindSubscription.mockReset();
     mockUnbindSubscription.mockReset();
+    mockSetDeviceExit.mockReset();
     mockFetch.mockReset();
     mockFetch.mockImplementation(async (url: string) => ({
       ok: true,
@@ -82,6 +87,24 @@ describe('PortalDevicesPage', () => {
     });
     expect(screen.getByText('portal.statusOnline')).toBeInTheDocument();
     expect(screen.getByText('hive-cdeeff')).toBeInTheDocument();
+  });
+
+  it('lets the owner turn the device exit switch off', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    mockSetDeviceExit.mockResolvedValue({ status: 'ok' });
+
+    render(<PortalDevicesPage />);
+    await waitFor(() => screen.getByText('hive-cdeeff'));
+
+    fireEvent.click(screen.getByRole('switch', { name: 'portal.colExit' }));
+
+    await waitFor(() => {
+      expect(mockSetDeviceExit).toHaveBeenCalledWith({
+        mac: 'aabbccddeeff',
+        requestBody: { enabled: false },
+      });
+    });
   });
 
   it('opens the mihomo panel dialog with the per-node secret and dashboard url', async () => {

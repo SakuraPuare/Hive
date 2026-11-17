@@ -6,3 +6,4 @@ export type handler_ServerCredentialResponse = {
     mac?: string;
     token?: string;
 };
+

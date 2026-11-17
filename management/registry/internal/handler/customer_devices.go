@@ -235,6 +235,48 @@ func (h *Handler) HandlePortalUnbindDeviceSubscription(w http.ResponseWriter, r 
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// PortalDeviceExitRequest is the body for PUT /portal/devices/{mac}/exit.
+type PortalDeviceExitRequest struct {
+	Enabled *bool `json:"enabled" example:"false"`
+}
+
+// HandlePortalSetDeviceExit godoc
+// @Summary      设置我的设备是否作为 Xray 出口
+// @ID           PortalSetDeviceExit
+// @Description  设备所有者关闭后，该设备立即从订阅与网关上游候选中移除；管理员开关仍然优先。
+// @Tags         portal
+// @Security     CustomerSessionCookie
+// @Accept       json
+// @Produce      json
+// @Param        mac path string true "设备 MAC"
+// @Param        body body PortalDeviceExitRequest true "出口开关"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Router       /portal/devices/{mac}/exit [put]
+func (h *Handler) HandlePortalSetDeviceExit(w http.ResponseWriter, r *http.Request) {
+	cid := customerID(r)
+	mac := r.PathValue("mac")
+	if _, ok := h.ownedNode(w, mac, cid); !ok {
+		return
+	}
+	var req PortalDeviceExitRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Enabled == nil {
+		h.jsonErr(w, http.StatusBadRequest, "enabled is required")
+		return
+	}
+	if err := h.DB.Exec(
+		"UPDATE nodes SET owner_exit_enabled = ? WHERE mac = ? AND owner_customer_id = ? AND server_enabled = 0",
+		*req.Enabled, mac, cid,
+	).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	store.WriteAuditLog(h.DB, customerActor(cid), "device_exit_toggle",
+		"mac="+mac+" enabled="+strconv.FormatBool(*req.Enabled), getClientIP(r))
+	h.jsonOK(w, map[string]string{"status": "ok"})
+}
+
 // HandlePortalUnbindDevice godoc
 // @Summary      解绑我的设备
 // @ID           PortalUnbindDevice
@@ -252,7 +294,7 @@ func (h *Handler) HandlePortalUnbindDevice(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := h.DB.Exec(
-		"UPDATE nodes SET owner_customer_id = NULL, claimed_at = NULL WHERE mac = ? AND owner_customer_id = ?",
+		"UPDATE nodes SET owner_customer_id = NULL, claimed_at = NULL, owner_exit_enabled = 1 WHERE mac = ? AND owner_customer_id = ?",
 		mac, cid,
 	).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())

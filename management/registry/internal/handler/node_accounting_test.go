@@ -83,6 +83,24 @@ func TestLegacyDeviceAccountingServesAndBills(t *testing.T) {
 	}
 }
 
+func TestExitSwitchesStopDeviceAuthorization(t *testing.T) {
+	_, _, _ = accountingFixture(t)
+	mustExec(t, "UPDATE nodes SET server_enabled = 0, owner_customer_id = NULL, exit_enabled = 0 WHERE mac = 'aabbccddeeff'")
+	for _, update := range []string{
+		"UPDATE nodes SET exit_enabled = 0, owner_exit_enabled = 1 WHERE mac = 'aabbccddeeff'",
+		"UPDATE nodes SET exit_enabled = 1, owner_exit_enabled = 0 WHERE mac = 'aabbccddeeff'",
+	} {
+		mustExec(t, update)
+		resp := doBearer("POST", "/nodes/aabbccddeeff/xray-users", emptyNodeReport(), deviceToken(t, "aabbccddeeff"))
+		assertStatus(t, resp, 200)
+		var out NodeXrayUsersResponse
+		decodeBody(t, resp, &out)
+		if len(out.Users) != 0 {
+			t.Fatalf("disabled exit still received users: %+v", out.Users)
+		}
+	}
+}
+
 func TestNodeAccountingEpochsAndConcurrentRetry(t *testing.T) {
 	_, id, credential := accountingFixture(t)
 	report := NodeAccountingRequest{Epoch: "epoch-one", Counters: []NodeTrafficCounter{{Name: fmt.Sprintf("user>>>sub-%d>>>traffic>>>downlink", id), Value: 70}}}

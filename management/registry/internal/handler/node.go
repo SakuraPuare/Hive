@@ -272,7 +272,7 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		"region": true, "mesh_tunnel_id": true, "mesh_ip": true,
 		"gateway_enabled": true, "gateway_direction": true,
 		"gateway_upstream_mode": true, "gateway_upstream_nodes": true,
-		"bound_subscription_id": true,
+		"bound_subscription_id": true, "exit_enabled": true,
 	}
 	updates := make(map[string]any)
 	for k, v := range body {
@@ -379,9 +379,9 @@ func (h *Handler) respondXrayUsers(w http.ResponseWriter, r *http.Request, requi
 	// -> active subscriptions of those plans whose customer is active, not expired,
 	// and not over traffic quota. DISTINCT because a sub's plan may map to several
 	// lines that all include this node.
-	serverFilter := ""
+	eligibilityFilter := "AND n.exit_enabled = 1 AND n.owner_exit_enabled = 1 "
 	if requireServer {
-		serverFilter = "AND n.server_enabled = 1 AND n.owner_customer_id IS NULL "
+		eligibilityFilter += "AND n.server_enabled = 1 AND n.owner_customer_id IS NULL "
 	}
 	query := "SELECT DISTINCT cs.id, cs.xray_uuid, cs.expires_at " +
 		"FROM customer_subscriptions cs " +
@@ -390,7 +390,7 @@ func (h *Handler) respondXrayUsers(w http.ResponseWriter, r *http.Request, requi
 		"JOIN `lines` l ON l.id = pl.line_id AND l.enabled = 1 " +
 		"JOIN line_nodes ln ON ln.line_id = pl.line_id AND ln.node_mac = ? " +
 		"JOIN nodes n ON n.mac = ln.node_mac AND n.enabled = 1 AND n.status = 'active' " +
-		serverFilter +
+		eligibilityFilter +
 		"WHERE cs.status = 'active' " +
 		"AND cs.xray_uuid <> '' " +
 		"AND cs.expires_at > ? " +

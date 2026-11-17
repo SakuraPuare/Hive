@@ -77,6 +77,7 @@ export function NodeEditDialog({
   const [location, setLocation] = useState(node?.location ?? '');
   const [note, setNote] = useState(node?.note ?? '');
   const [enabled, setEnabled] = useState(node?.enabled ?? true);
+  const [exitEnabled, setExitEnabled] = useState(node?.exit_enabled ?? true);
   const [status, setStatus] = useState(node?.status ?? 'active');
   const [weight, setWeight] = useState(String(node?.weight ?? 100));
   const [region, setRegion] = useState(node?.region ?? '');
@@ -108,7 +109,7 @@ export function NodeEditDialog({
       await sessionApi(
         AdminService.nodeUpdate({
           mac: node.mac,
-          requestBody: { location, note, enabled, status, weight: weightValue, region } as handler_NodeUpdateRequest,
+          requestBody: { location, note, enabled, exit_enabled: exitEnabled, status, weight: weightValue, region } as handler_NodeUpdateRequest,
         }),
       );
       toast.success(t('saved'));
@@ -235,6 +236,22 @@ export function NodeEditDialog({
                 offLabel={t('enabledOff')}
               />
               <Label htmlFor="node-edit-enabled" className="cursor-pointer text-sm font-500 text-foreground">{t('enabled')}</Label>
+            </div>
+            <div className="space-y-1.5 py-1 sm:col-span-2">
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="node-edit-exit-enabled"
+                  checked={exitEnabled}
+                  onCheckedChange={setExitEnabled}
+                  onLabel={t('exitStatusOn')}
+                  offLabel={t('exitStatusAdminOff')}
+                />
+                <Label htmlFor="node-edit-exit-enabled" className="cursor-pointer text-sm font-500 text-foreground">{t('exitEnabled')}</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">{t('exitEnabledHelper')}</p>
+              {node?.owner_exit_enabled === false && (
+                <p role="status" className="text-xs text-md-error">{t('exitOwnerDisabled')}</p>
+              )}
             </div>
             {saveError && (
               <div role="alert" aria-live="assertive" className="sm:col-span-2 flex items-center gap-2 rounded-lg bg-md-error-container px-3 py-2.5 text-sm text-md-on-error-container">

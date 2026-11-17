@@ -89,7 +89,7 @@ func (h *Handler) HandleAdminAssignDevice(w http.ResponseWriter, r *http.Request
 func (h *Handler) HandleAdminUnassignDevice(w http.ResponseWriter, r *http.Request) {
 	mac := r.PathValue("mac")
 	res := h.DB.Exec(
-		"UPDATE nodes SET owner_customer_id = NULL, claimed_at = NULL WHERE mac = ?", mac,
+		"UPDATE nodes SET owner_customer_id = NULL, claimed_at = NULL, owner_exit_enabled = 1 WHERE mac = ?", mac,
 	)
 	if res.Error != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())

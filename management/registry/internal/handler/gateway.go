@@ -78,7 +78,7 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 	var all []model.Node
 	if err := h.DB.Raw(
 		"SELECT " + model.NodeColsPlain + " FROM nodes " +
-			"WHERE enabled = 1 AND server_enabled = 1 AND owner_customer_id IS NULL AND status = 'active' AND cf_url <> '' AND xray_uuid <> '' " +
+			"WHERE enabled = 1 AND exit_enabled = 1 AND owner_exit_enabled = 1 AND status = 'active' AND cf_url <> '' AND xray_uuid <> '' " +
 			"ORDER BY weight DESC, hostname",
 	).Scan(&all).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())

@@ -3,5 +3,6 @@
 /* tslint:disable */
 /* eslint-disable */
 export type handler_PortalBindSubscriptionRequest = {
-    subscription_id: number;
+    subscription_id?: number;
 };
+

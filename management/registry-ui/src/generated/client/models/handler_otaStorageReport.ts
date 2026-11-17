@@ -15,3 +15,4 @@ export type handler_otaStorageReport = {
     retention_days?: number;
     staging_bytes?: number;
 };
+

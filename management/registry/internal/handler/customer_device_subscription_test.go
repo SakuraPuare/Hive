@@ -12,6 +12,45 @@ func portalGatewayNode(t *testing.T, mac string, customerID uint) {
 	mustExec(t, "UPDATE nodes SET owner_customer_id = ?, gateway_enabled = 1 WHERE mac = ?", customerID, mac)
 }
 
+func TestPortalSetDeviceExit(t *testing.T) {
+	resetDB(t)
+	cid := insertTestCustomer(t, "gateway-exit@example.com")
+	other := insertTestCustomer(t, "gateway-exit-other@example.com")
+	mac := "aabbccddeeff"
+	portalGatewayNode(t, mac, cid)
+
+	resp := doJSON("PUT", "/portal/devices/"+mac+"/exit", map[string]any{"enabled": false}, customerCookie(cid))
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	if got := scalar(t, "SELECT owner_exit_enabled FROM nodes WHERE mac = ?", mac); got != 0 {
+		t.Fatalf("owner_exit_enabled = %d after disable, want 0", got)
+	}
+
+	resp = doJSON("PUT", "/portal/devices/"+mac+"/exit", map[string]any{"enabled": true}, customerCookie(cid))
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	if got := scalar(t, "SELECT owner_exit_enabled FROM nodes WHERE mac = ?", mac); got != 1 {
+		t.Fatalf("owner_exit_enabled = %d after enable, want 1", got)
+	}
+
+	// Foreign customer cannot toggle it.
+	resp = doJSON("PUT", "/portal/devices/"+mac+"/exit", map[string]any{"enabled": false}, customerCookie(other))
+	assertStatus(t, resp, http.StatusNotFound)
+	resp.Body.Close()
+	if got := scalar(t, "SELECT owner_exit_enabled FROM nodes WHERE mac = ?", mac); got != 1 {
+		t.Fatalf("foreign customer changed owner_exit_enabled to %d", got)
+	}
+
+	// Unbinding clears the owner preference so the next owner starts from the default.
+	mustExec(t, "UPDATE nodes SET owner_exit_enabled = 0 WHERE mac = ?", mac)
+	resp = doJSON("POST", "/portal/devices/"+mac+"/unbind", nil, customerCookie(cid))
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	if got := scalar(t, "SELECT owner_exit_enabled FROM nodes WHERE mac = ?", mac); got != 1 {
+		t.Fatalf("owner_exit_enabled = %d after unbind, want 1", got)
+	}
+}
+
 func TestPortalBindDeviceSubscription(t *testing.T) {
 	resetDB(t)
 	cid := insertTestCustomer(t, "gateway-bind@example.com")

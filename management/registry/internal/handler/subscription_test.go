@@ -70,6 +70,39 @@ func setupCustomerSubscription(t *testing.T) string {
 	return token
 }
 
+func TestCustomerSubscriptionIncludesDefaultExitAndHonorsSwitches(t *testing.T) {
+	resetDB(t)
+	token := setupCustomerSubscription(t)
+	// Ordinary node: no trusted server credential, not customer-owned.
+	mustExec(t, "UPDATE nodes SET server_enabled = 0 WHERE mac = 'aabbccddeeff'")
+
+	body := readBody(doJSON("GET", "/c/"+token, nil, nil))
+	if !strings.Contains(body, "test.example.com") {
+		t.Fatalf("ordinary node missing from subscription: %s", body)
+	}
+
+	// Admin switch off.
+	mustExec(t, "UPDATE nodes SET exit_enabled = 0 WHERE mac = 'aabbccddeeff'")
+	body = readBody(doJSON("GET", "/c/"+token, nil, nil))
+	if strings.Contains(body, "test.example.com") {
+		t.Fatal("admin-disabled node still exported")
+	}
+
+	// Owner switch off (admin switch back on).
+	mustExec(t, "UPDATE nodes SET exit_enabled = 1, owner_exit_enabled = 0 WHERE mac = 'aabbccddeeff'")
+	body = readBody(doJSON("GET", "/c/"+token, nil, nil))
+	if strings.Contains(body, "test.example.com") {
+		t.Fatal("owner-disabled node still exported")
+	}
+
+	// Node disabled wins over both switches.
+	mustExec(t, "UPDATE nodes SET owner_exit_enabled = 1, enabled = 0 WHERE mac = 'aabbccddeeff'")
+	body = readBody(doJSON("GET", "/c/"+token, nil, nil))
+	if strings.Contains(body, "test.example.com") {
+		t.Fatal("disabled node still exported")
+	}
+}
+
 // ── Admin subscription tests ────────────────────────────────────────────────
 
 func TestAdminSubscriptionVless(t *testing.T) {

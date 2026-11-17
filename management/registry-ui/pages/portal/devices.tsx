@@ -9,6 +9,7 @@ import { PortalService } from '@/src/generated/client';
 import type { model_Node, model_DeviceCommand } from '@/src/generated/client';
 import { useFormat } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/toast';
@@ -98,6 +99,7 @@ export default function PortalDevicesPage() {
   const [devices, setDevices] = useState<model_Node[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [exitBusy, setExitBusy] = useState('');
 
   // 认领对话框
   const [claimOpen, setClaimOpen] = useState(false);
@@ -148,6 +150,23 @@ export default function PortalDevicesPage() {
     if (!authLoading && !customer) { router.replace('/portal/login'); return; }
     if (!authLoading && customer) loadDevices();
   }, [authLoading, customer, router, loadDevices]);
+
+  const toggleExit = useCallback(async (device: model_Node, enabled: boolean) => {
+    if (!device.mac) return;
+    setExitBusy(device.mac);
+    try {
+      await portalSessionApi(PortalService.portalSetDeviceExit({
+        mac: device.mac,
+        requestBody: { enabled },
+      }));
+      setDevices((prev) => prev.map((d) => d.mac === device.mac ? { ...d, owner_exit_enabled: enabled } : d));
+      toast.success(t('exitToggleSuccess'));
+    } catch (e) {
+      toast.error(getErrorMessage(e, t('exitToggleFailed')));
+    } finally {
+      setExitBusy('');
+    }
+  }, [t, toast]);
 
   const submitClaim = useCallback(async () => {
     const code = claimCode.trim();
@@ -406,6 +425,7 @@ export default function PortalDevicesPage() {
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colHostname')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colMac')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colStatus')}</TableHead>
+                  <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colExit')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colSubscription')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colAddress')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colLastSeen')}</TableHead>
@@ -426,6 +446,20 @@ export default function PortalDevicesPage() {
                         {d.probe_status === 'online' ? t('statusOnline')
                           : d.probe_status === 'offline' ? t('statusOffline') : t('statusUnknown')}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={d.owner_exit_enabled ?? true}
+                          disabled={d.exit_enabled === false || exitBusy === d.mac}
+                          loading={exitBusy === d.mac}
+                          onCheckedChange={(v) => void toggleExit(d, v)}
+                          aria-label={t('colExit')}
+                        />
+                        {d.exit_enabled === false && (
+                          <span className="text-xs text-md-error">{t('exitAdminDisabled')}</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {d.gateway_enabled
