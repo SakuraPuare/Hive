@@ -285,11 +285,15 @@ FULL_DOMAIN="hive-${MAC6}.${CF_DOMAIN}"
 echo ">>> Creating CF Tunnel: ${TUNNEL_NAME} → ${FULL_DOMAIN}"
 
 # 先尝试查找已存在的同名 tunnel（幂等）
-EXISTING=$(curl -s --connect-timeout 10 --max-time 30 -G \
+if ! EXISTING=$(curl -s --connect-timeout 10 --max-time 30 -G \
     "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/tunnels" \
     -H "Authorization: Bearer ${CF_API_TOKEN}" \
     --data-urlencode "name=${TUNNEL_NAME}" \
-    --data-urlencode "is_deleted=false")
+    --data-urlencode "is_deleted=false"); then
+    # 查询失败按"不存在"处理，不能因为一次 API 抖动中断首启。
+    echo ">>> CF Tunnel 查询失败（non-fatal），按不存在处理"
+    EXISTING=""
+fi
 
 TUNNEL_ID=$(echo "$EXISTING" | jq -r '.result[0].id // empty')
 
@@ -306,11 +310,18 @@ else
             || echo ">>> 删除旧 tunnel 失败（non-fatal，继续尝试创建）"
     fi
 
-    CREATE_RES=$(curl -s --connect-timeout 10 --max-time 30 -X POST \
+    if ! CREATE_RES=$(curl -s --connect-timeout 10 --max-time 30 -X POST \
         "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/tunnels" \
         -H "Authorization: Bearer ${CF_API_TOKEN}" \
         -H "Content-Type: application/json" \
-        --data "{\"name\":\"${TUNNEL_NAME}\",\"config_src\":\"local\"}")
+        --data "{\"name\":\"${TUNNEL_NAME}\",\"config_src\":\"local\"}"); then
+        # 传输层失败（实测 curl 35 TLS handshake）不能拖垮首启：Cloudflare 只是
+        # 三条管理通道之一，按"不可用"继续，Tailscale 与 EasyTier 仍能工作。
+        echo ">>> CF Tunnel API 请求失败（non-fatal），按 Cloudflare 不可用继续"
+        CREATE_RES=""
+        CLOUDFLARE_UNAVAILABLE=1
+        : > /etc/hive/cloudflare-unavailable
+    fi
 
     TUNNEL_ID=$(echo "$CREATE_RES" | jq -r '.result.id')
     TUNNEL_SECRET=$(echo "$CREATE_RES" | jq -r '.result.credentials_file.TunnelSecret')
@@ -342,11 +353,14 @@ if [ -z "$TUNNEL_ID" ]; then
     : > /etc/hive/cloudflare-unavailable
 else
 # 添加 DNS CNAME 记录（幂等：先查再建）
-EXISTING_DNS=$(curl -s --connect-timeout 10 --max-time 30 -G \
+if ! EXISTING_DNS=$(curl -s --connect-timeout 10 --max-time 30 -G \
     "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records" \
     -H "Authorization: Bearer ${CF_API_TOKEN}" \
     --data-urlencode "type=CNAME" \
-    --data-urlencode "name=${FULL_DOMAIN}")
+    --data-urlencode "name=${FULL_DOMAIN}"); then
+    echo ">>> DNS 记录查询失败（non-fatal），按不存在处理"
+    EXISTING_DNS=""
+fi
 
 DNS_ID=$(echo "$EXISTING_DNS" | jq -r '.result[0].id // empty')
 
@@ -359,11 +373,16 @@ if [ -n "$DNS_ID" ]; then
         --data "{\"type\":\"CNAME\",\"name\":\"${TUNNEL_NAME}\",\"content\":\"${TUNNEL_ID}.cfargotunnel.com\",\"proxied\":true}" >/dev/null \
         || { echo ">>> DNS 记录更新失败（non-fatal）"; CLOUDFLARE_UNAVAILABLE=1; : > /etc/hive/cloudflare-unavailable; }
 else
-    DNS_RES=$(curl -s --connect-timeout 10 --max-time 30 -X POST \
+    if ! DNS_RES=$(curl -s --connect-timeout 10 --max-time 30 -X POST \
         "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records" \
         -H "Authorization: Bearer ${CF_API_TOKEN}" \
         -H "Content-Type: application/json" \
-        --data "{\"type\":\"CNAME\",\"name\":\"${TUNNEL_NAME}\",\"content\":\"${TUNNEL_ID}.cfargotunnel.com\",\"proxied\":true}")
+        --data "{\"type\":\"CNAME\",\"name\":\"${TUNNEL_NAME}\",\"content\":\"${TUNNEL_ID}.cfargotunnel.com\",\"proxied\":true}"); then
+        echo ">>> DNS 记录创建请求失败（non-fatal）"
+        DNS_RES='{"success":false}'
+        CLOUDFLARE_UNAVAILABLE=1
+        : > /etc/hive/cloudflare-unavailable
+    fi
     if ! echo "$DNS_RES" | grep -q '"success":true'; then
         echo "!!! DNS record creation failed (non-fatal):"
         echo "$DNS_RES"
@@ -477,7 +496,7 @@ TS_ACCESS_TOKEN=$(curl -sf --connect-timeout 10 --max-time 30 -X POST "https://a
     -d "client_secret=${TAILSCALE_OAUTH_SECRET}" | jq -r '.access_token // empty')
 
 if [ -n "${TS_ACCESS_TOKEN}" ]; then
-    TS_AUTHKEY=$(curl -sf --connect-timeout 10 --max-time 30 -X POST "https://api.tailscale.com/api/v2/tailnet/-/keys" \
+    if ! TS_AUTHKEY=$(curl -sf --connect-timeout 10 --max-time 30 -X POST "https://api.tailscale.com/api/v2/tailnet/-/keys" \
         -H "Authorization: Bearer ${TS_ACCESS_TOKEN}" \
         -H "Content-Type: application/json" \
         -d "{
@@ -492,7 +511,10 @@ if [ -n "${TS_ACCESS_TOKEN}" ]; then
                 }
             },
             \"expirySeconds\": 300
-        }" | jq -r '.key // empty')
+        }" | jq -r '.key // empty'); then
+        # 签发失败回退到 OAuth secret（下面有兜底），不能中断首启。
+        TS_AUTHKEY=""
+    fi
 fi
 
 if [ -z "${TS_AUTHKEY}" ]; then
@@ -560,11 +582,15 @@ else
 
     # 3) 创建新的 Mesh node
     echo ">>> Creating new Mesh node..."
-    MESH_CREATE_RES=$(curl -s --connect-timeout 10 --max-time 30 -X POST \
+    if ! MESH_CREATE_RES=$(curl -s --connect-timeout 10 --max-time 30 -X POST \
         "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/warp_connector" \
         -H "Authorization: Bearer ${CF_API_TOKEN}" \
         -H "Content-Type: application/json" \
-        -d "{\"name\":\"${MESH_NAME}\"}")
+        -d "{\"name\":\"${MESH_NAME}\"}"); then
+        # Mesh 是可选通道；一次 TLS 抖动（实测 curl 35）不能中断整轮首启。
+        echo ">>> Mesh API 请求失败（non-fatal）"
+        MESH_CREATE_RES=""
+    fi
     MESH_TUNNEL_ID=$(echo "$MESH_CREATE_RES" | jq -r '.result.id // empty')
 
     # 4) 仍因撞名失败（残留未能清理等）→ 兜底再查一次未删除列表复用其 ID

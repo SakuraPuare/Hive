@@ -251,20 +251,27 @@ exit 0
         source = (BIN / 'provision-node.sh').read_text()
         joined = re.sub(r'\\\n\s*', ' ', source)
         unbounded = [line.strip() for line in joined.splitlines()
-                     if 'curl ' in line and '--max-time' not in line and '--connect-timeout' not in line]
+                     if 'curl ' in line and not line.lstrip().startswith('#')
+                     and '--max-time' not in line and '--connect-timeout' not in line]
         self.assertEqual(unbounded, [])
 
     def test_bare_curl_calls_cannot_abort_provisioning(self):
-        # set -e is active. A curl that is neither captured nor guarded aborts
-        # the script on any non-zero exit, before the diagnostic stages run.
+        # set -e is active. A curl captured into a variable still aborts the script
+        # when it exits non-zero, unless the assignment is guarded or the value
+        # comes through a pipeline. Multi-line calls hid two unguarded POSTs from
+        # this check until a real boot died on curl 35 at the Cloudflare Mesh step.
         source = (BIN / 'provision-node.sh').read_text()
-        for number, line in enumerate(source.splitlines(), 1):
-            if not re.match(r'\s+curl ', line):
+        joined = re.sub(r'\\\n\s*', ' ', source)
+        offenders = []
+        for line in joined.splitlines():
+            if 'curl ' not in line or '=$(' not in line:
                 continue
-            block = '\n'.join(source.splitlines()[number - 1:number + 8])
-            captured = '=$(' in source.splitlines()[number - 2] if number > 1 else False
-            guarded = re.search(r'\|\|\s*(true|echo|\{)', block)
-            self.assertTrue(captured or guarded, f'line {number} aborts provisioning: {line.strip()}')
+            if re.search(r'\|\s*jq\b', line):  # pipeline status is jq's
+                continue
+            if '||' in line or line.lstrip().startswith('if ! ') or 'if ! ' in line:
+                continue
+            offenders.append(line.strip())
+        self.assertEqual(offenders, [])
 
     def test_provisioning_budget_fits_inside_the_unit_timeout(self):
         # The script gives up on its own budget first; systemd is the backstop
