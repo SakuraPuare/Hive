@@ -115,12 +115,7 @@ func buildGatewayClashYAML(args gatewayClashArgs) string {
 	}
 
 	hasUpstream := len(proxies) > 0
-	if !hasUpstream {
-		// no upstream available → don't reference 代理 group, fall back to direct
-		cnAction, otherAction = "直连", "直连"
-	}
-
-	if args.Direction == "blocked" || args.OverrideUUID == "" {
+	if !hasUpstream || args.Direction == "blocked" || args.OverrideUUID == "" {
 		cnAction, otherAction = "REJECT", "REJECT"
 	}
 

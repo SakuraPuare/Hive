@@ -51,25 +51,37 @@ func (h *Handler) HandleAdminAssignDevice(w http.ResponseWriter, r *http.Request
 	}
 	now := time.Now().UTC().Format(model.TimeLayout)
 	res := h.DB.Exec(
-		"UPDATE nodes SET owner_customer_id = ?, claimed_at = ? WHERE mac = ? AND server_enabled = 0",
-		body.CustomerID, now, mac,
+		"UPDATE nodes SET bound_subscription_id = IF(owner_customer_id = ?, bound_subscription_id, NULL), "+
+			"owner_exit_enabled = IF(owner_customer_id = ?, owner_exit_enabled, 1), "+
+			"owner_customer_id = ?, claimed_at = ? WHERE mac = ? AND server_enabled = 0",
+		body.CustomerID, body.CustomerID, body.CustomerID, now, mac,
 	)
 	if res.Error != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())
 		return
 	}
 	if res.RowsAffected == 0 {
-		var server bool
-		if err := h.DB.Raw("SELECT server_enabled FROM nodes WHERE mac = ?", mac).Scan(&server).Error; err != nil {
+		var existing struct {
+			MAC             string
+			ServerEnabled   bool
+			OwnerCustomerID *uint
+		}
+		if err := h.DB.Raw("SELECT mac, server_enabled, owner_customer_id FROM nodes WHERE mac = ?", mac).Scan(&existing).Error; err != nil {
 			h.jsonErr(w, 500, "cannot check device role")
 			return
 		}
-		if server {
+		if existing.ServerEnabled {
 			h.jsonErr(w, 409, "revoke the exit server credential before assigning this device")
 			return
 		}
-		h.jsonErr(w, http.StatusNotFound, "node not found")
-		return
+		if existing.MAC == "" {
+			h.jsonErr(w, http.StatusNotFound, "node not found")
+			return
+		}
+		if existing.OwnerCustomerID == nil || *existing.OwnerCustomerID != body.CustomerID {
+			h.jsonErr(w, http.StatusConflict, "device ownership changed")
+			return
+		}
 	}
 	actor, _, _ := h.Auth.ParseSession(r)
 	store.WriteAuditLog(h.DB, actor, "device_assign", "mac="+mac+" customer_id="+strconv.FormatUint(uint64(body.CustomerID), 10), getClientIP(r))
@@ -89,7 +101,7 @@ func (h *Handler) HandleAdminAssignDevice(w http.ResponseWriter, r *http.Request
 func (h *Handler) HandleAdminUnassignDevice(w http.ResponseWriter, r *http.Request) {
 	mac := r.PathValue("mac")
 	res := h.DB.Exec(
-		"UPDATE nodes SET owner_customer_id = NULL, claimed_at = NULL, owner_exit_enabled = 1 WHERE mac = ?", mac,
+		"UPDATE nodes SET owner_customer_id = NULL, claimed_at = NULL, bound_subscription_id = NULL, owner_exit_enabled = 1 WHERE mac = ?", mac,
 	)
 	if res.Error != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())

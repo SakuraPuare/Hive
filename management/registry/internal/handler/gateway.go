@@ -74,12 +74,12 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 		upstreamMACs = strings.Split(self.GatewayUpstreamNodes, ",")
 	}
 
-	// Candidate upstreams: all enabled, active exit nodes (self excluded inside builder).
+	// Exclude self before deciding whether an authorized upstream exists.
 	var all []model.Node
 	if err := h.DB.Raw(
-		"SELECT " + model.NodeColsPlain + " FROM nodes " +
-			"WHERE enabled = 1 AND exit_enabled = 1 AND owner_exit_enabled = 1 AND status = 'active' AND cf_url <> '' AND xray_uuid <> '' " +
-			"ORDER BY weight DESC, hostname",
+		"SELECT "+model.NodeColsPlain+" FROM nodes "+
+			"WHERE mac <> ? AND enabled = 1 AND exit_enabled = 1 AND owner_exit_enabled = 1 AND status = 'active' AND cf_url <> '' AND xray_uuid <> '' "+
+			"ORDER BY weight DESC, hostname", mac,
 	).Scan(&all).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
@@ -104,7 +104,9 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 		}
 		if err := h.DB.Raw(
 			"SELECT cs.status, cs.xray_uuid, cs.traffic_used, cs.traffic_limit, cs.expires_at, cs.plan_id, c.status AS customer_status "+
-				"FROM customer_subscriptions cs JOIN customers c ON c.id = cs.customer_id WHERE cs.id = ?", *self.BoundSubscriptionID,
+				"FROM customer_subscriptions cs JOIN customers c ON c.id = cs.customer_id "+
+				"JOIN nodes n ON n.mac = ? AND n.bound_subscription_id = cs.id "+
+				"WHERE cs.id = ? AND (n.owner_customer_id IS NULL OR n.owner_customer_id = cs.customer_id)", mac, *self.BoundSubscriptionID,
 		).Scan(&srow).Error; err != nil {
 			log.Printf("gateway: query bound subscription %d for node %s: %v", *self.BoundSubscriptionID, mac, err)
 		} else if srow.XrayUUID != "" {
