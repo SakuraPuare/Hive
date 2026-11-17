@@ -4,7 +4,7 @@ import type { handler_PortalMeResponse } from '@/src/generated/client';
 import type { model_CustomerSubscription } from '@/src/generated/client/models/model_CustomerSubscription';
 import { ApiError } from '@/src/generated/client/core/ApiError';
 
-export type CustomerSubscription = model_CustomerSubscription;
+export type CustomerSubscription = model_CustomerSubscription & { plan_name?: string };
 
 export type Customer = Pick<handler_PortalMeResponse, 'id' | 'email' | 'nickname' | 'status' | 'created_at'>;
 

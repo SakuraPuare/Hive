@@ -28,6 +28,8 @@ func TestCreateCustomer(t *testing.T) {
 func TestGetCustomer(t *testing.T) {
 	resetDB(t)
 	cid := insertTestCustomer(t, "get@example.com")
+	pid := insertTestPlan(t, "test1")
+	insertTestSubscription(t, cid, pid, "active", time.Now().Add(24*time.Hour))
 
 	resp := doJSON("GET", fmt.Sprintf("/admin/customers/%d", cid), nil, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
@@ -36,6 +38,13 @@ func TestGetCustomer(t *testing.T) {
 	customer := body["customer"].(map[string]any)
 	if customer["email"] != "get@example.com" {
 		t.Fatalf("expected email=get@example.com, got %v", customer["email"])
+	}
+	subs := body["subscriptions"].([]any)
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subscription, got %d", len(subs))
+	}
+	if got := subs[0].(map[string]any)["plan_name"]; got != "test1" {
+		t.Fatalf("plan_name = %v, want test1", got)
 	}
 }
 

@@ -54,12 +54,12 @@ type PortalReplyTicketRequest struct {
 
 // PortalMeResponse is the response body for GET /portal/me.
 type PortalMeResponse struct {
-	ID        uint                         `json:"id" example:"1"`
-	Email     string                       `json:"email" example:"user@example.com"`
-	Nickname  string                       `json:"nickname" example:"alice"`
-	Status    string                       `json:"status" example:"active"`
-	CreatedAt string                       `json:"created_at" example:"2025-01-01 00:00:00"`
-	Subs      []model.CustomerSubscription `json:"subscriptions"`
+	ID        uint                   `json:"id" example:"1"`
+	Email     string                 `json:"email" example:"user@example.com"`
+	Nickname  string                 `json:"nickname" example:"alice"`
+	Status    string                 `json:"status" example:"active"`
+	CreatedAt string                 `json:"created_at" example:"2025-01-01 00:00:00"`
+	Subs      []SubscriptionWithPlan `json:"subscriptions"`
 }
 
 // PortalUpdateMeRequest is the request body for PATCH /portal/me. Fields are
@@ -68,8 +68,8 @@ type PortalUpdateMeRequest struct {
 	Nickname *string `json:"nickname" example:"alice"`
 }
 
-// PortalSubscription is an alias for model.CustomerSubscription used in swagger docs.
-type PortalSubscription = model.CustomerSubscription
+// PortalSubscription is an alias for SubscriptionWithPlan used in swagger docs.
+type PortalSubscription = SubscriptionWithPlan
 
 // PortalOrder is an alias for model.Order used in swagger docs.
 type PortalOrder = model.Order
@@ -341,8 +341,11 @@ func (h *Handler) HandlePortalMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subs := make([]model.CustomerSubscription, 0)
-	if err := h.DB.Raw("SELECT * FROM customer_subscriptions WHERE customer_id = ? AND status = 'active' ORDER BY id DESC", cid).Scan(&subs).Error; err != nil {
+	subs := make([]SubscriptionWithPlan, 0)
+	if err := h.DB.Raw(
+		"SELECT cs.*, COALESCE(p.name, '') AS plan_name FROM customer_subscriptions cs "+
+			"LEFT JOIN plans p ON p.id = cs.plan_id WHERE cs.customer_id = ? AND cs.status = 'active' ORDER BY cs.id DESC", cid,
+	).Scan(&subs).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
@@ -447,8 +450,11 @@ func (h *Handler) HandlePortalPlans(w http.ResponseWriter, r *http.Request) {
 // @Router       /portal/subscriptions [get]
 func (h *Handler) HandlePortalSubscriptions(w http.ResponseWriter, r *http.Request) {
 	cid := customerID(r)
-	subs := make([]model.CustomerSubscription, 0)
-	if err := h.DB.Raw("SELECT * FROM customer_subscriptions WHERE customer_id = ? ORDER BY id DESC", cid).Scan(&subs).Error; err != nil {
+	subs := make([]SubscriptionWithPlan, 0)
+	if err := h.DB.Raw(
+		"SELECT cs.*, COALESCE(p.name, '') AS plan_name FROM customer_subscriptions cs "+
+			"LEFT JOIN plans p ON p.id = cs.plan_id WHERE cs.customer_id = ? ORDER BY cs.id DESC", cid,
+	).Scan(&subs).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}

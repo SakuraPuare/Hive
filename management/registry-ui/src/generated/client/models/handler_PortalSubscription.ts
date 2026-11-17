@@ -9,6 +9,7 @@ export type handler_PortalSubscription = {
     expires_at?: string;
     id?: number;
     plan_id?: number;
+    plan_name?: string;
     started_at?: string;
     status?: string;
     token?: string;

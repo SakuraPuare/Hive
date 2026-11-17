@@ -2,10 +2,10 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { handler_SubscriptionWithPlan } from './handler_SubscriptionWithPlan';
 import type { model_Customer } from './model_Customer';
-import type { model_CustomerSubscription } from './model_CustomerSubscription';
 export type handler_CustomerDetail = {
     customer?: model_Customer;
-    subscriptions?: Array<model_CustomerSubscription>;
+    subscriptions?: Array<handler_SubscriptionWithPlan>;
 };
 

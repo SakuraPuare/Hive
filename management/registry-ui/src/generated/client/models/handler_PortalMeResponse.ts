@@ -2,13 +2,13 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-import type { model_CustomerSubscription } from './model_CustomerSubscription';
+import type { handler_SubscriptionWithPlan } from './handler_SubscriptionWithPlan';
 export type handler_PortalMeResponse = {
     created_at?: string;
     email?: string;
     id?: number;
     nickname?: string;
     status?: string;
-    subscriptions?: Array<model_CustomerSubscription>;
+    subscriptions?: Array<handler_SubscriptionWithPlan>;
 };
 

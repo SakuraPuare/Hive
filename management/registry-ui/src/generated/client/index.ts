@@ -87,6 +87,7 @@ export type { handler_SetPlanLinesRequest } from './models/handler_SetPlanLinesR
 export type { handler_SetRolesRequest } from './models/handler_SetRolesRequest';
 export type { handler_StatusResponse } from './models/handler_StatusResponse';
 export type { handler_SubscriptionListItem } from './models/handler_SubscriptionListItem';
+export type { handler_SubscriptionWithPlan } from './models/handler_SubscriptionWithPlan';
 export type { handler_SubTraffic } from './models/handler_SubTraffic';
 export type { handler_TicketDetailResponse } from './models/handler_TicketDetailResponse';
 export type { handler_TicketListResponse } from './models/handler_TicketListResponse';

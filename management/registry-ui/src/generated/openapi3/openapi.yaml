@@ -5322,7 +5322,7 @@ components:
           $ref: "#/components/schemas/model.Customer"
         subscriptions:
           items:
-            $ref: "#/components/schemas/model.CustomerSubscription"
+            $ref: "#/components/schemas/handler.SubscriptionWithPlan"
           type: array
       type: object
     handler.CustomerListResponse:
@@ -5648,7 +5648,7 @@ components:
           type: string
         subscriptions:
           items:
-            $ref: "#/components/schemas/model.CustomerSubscription"
+            $ref: "#/components/schemas/handler.SubscriptionWithPlan"
           type: array
       type: object
     handler.PortalOrderListResponse:
@@ -5736,6 +5736,8 @@ components:
           type: integer
         plan_id:
           type: integer
+        plan_name:
+          type: string
         started_at:
           type: string
         status:
@@ -5921,6 +5923,39 @@ components:
         plan_name:
           type: string
         status:
+          type: string
+      type: object
+    handler.SubscriptionWithPlan:
+      properties:
+        created_at:
+          type: string
+        customer_id:
+          type: integer
+        device_limit:
+          type: integer
+        expires_at:
+          type: string
+        id:
+          type: integer
+        plan_id:
+          type: integer
+        plan_name:
+          type: string
+        started_at:
+          type: string
+        status:
+          type: string
+        token:
+          type: string
+        traffic_limit:
+          type: integer
+        traffic_reset_at:
+          type: string
+        traffic_used:
+          type: integer
+        updated_at:
+          type: string
+        xray_uuid:
           type: string
       type: object
     handler.TicketDetailResponse:

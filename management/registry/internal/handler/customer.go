@@ -41,9 +41,17 @@ type UpdateSubscriptionRequest struct {
 	ExpiresAt    *string `json:"expires_at"`
 }
 
+// SubscriptionWithPlan is a subscription row joined with its plan name so the
+// admin customer page can distinguish e.g. "test" from "test1" before copying
+// a subscription link.
+type SubscriptionWithPlan struct {
+	model.CustomerSubscription
+	PlanName string `json:"plan_name"`
+}
+
 type CustomerDetail struct {
-	Customer      model.Customer               `json:"customer"`
-	Subscriptions []model.CustomerSubscription `json:"subscriptions"`
+	Customer      model.Customer         `json:"customer"`
+	Subscriptions []SubscriptionWithPlan `json:"subscriptions"`
 }
 
 type SubTraffic struct {
@@ -209,8 +217,11 @@ func (h *Handler) HandleGetCustomer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subs := make([]model.CustomerSubscription, 0)
-	if err := h.DB.Table("customer_subscriptions").Where("customer_id = ?", id).Order("id DESC").Find(&subs).Error; err != nil {
+	subs := make([]SubscriptionWithPlan, 0)
+	if err := h.DB.Raw(
+		"SELECT cs.*, COALESCE(p.name, '') AS plan_name FROM customer_subscriptions cs "+
+			"LEFT JOIN plans p ON p.id = cs.plan_id WHERE cs.customer_id = ? ORDER BY cs.id DESC", id,
+	).Scan(&subs).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
@@ -485,8 +496,11 @@ func (h *Handler) HandleResetCustomerPassword(w http.ResponseWriter, r *http.Req
 func (h *Handler) HandleListSubscriptions(w http.ResponseWriter, r *http.Request) {
 	customerID := r.PathValue("id")
 
-	items := make([]model.CustomerSubscription, 0)
-	if err := h.DB.Table("customer_subscriptions").Where("customer_id = ?", customerID).Order("id DESC").Find(&items).Error; err != nil {
+	items := make([]SubscriptionWithPlan, 0)
+	if err := h.DB.Raw(
+		"SELECT cs.*, COALESCE(p.name, '') AS plan_name FROM customer_subscriptions cs "+
+			"LEFT JOIN plans p ON p.id = cs.plan_id WHERE cs.customer_id = ? ORDER BY cs.id DESC", customerID,
+	).Scan(&items).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}

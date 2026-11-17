@@ -192,7 +192,7 @@ definitions:
         $ref: '#/definitions/model.Customer'
       subscriptions:
         items:
-          $ref: '#/definitions/model.CustomerSubscription'
+          $ref: '#/definitions/handler.SubscriptionWithPlan'
         type: array
     type: object
   handler.CustomerListResponse:
@@ -518,7 +518,7 @@ definitions:
         type: string
       subscriptions:
         items:
-          $ref: '#/definitions/model.CustomerSubscription'
+          $ref: '#/definitions/handler.SubscriptionWithPlan'
         type: array
     type: object
   handler.PortalOrderListResponse:
@@ -606,6 +606,8 @@ definitions:
         type: integer
       plan_id:
         type: integer
+      plan_name:
+        type: string
       started_at:
         type: string
       status:
@@ -791,6 +793,39 @@ definitions:
       plan_name:
         type: string
       status:
+        type: string
+    type: object
+  handler.SubscriptionWithPlan:
+    properties:
+      created_at:
+        type: string
+      customer_id:
+        type: integer
+      device_limit:
+        type: integer
+      expires_at:
+        type: string
+      id:
+        type: integer
+      plan_id:
+        type: integer
+      plan_name:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+      token:
+        type: string
+      traffic_limit:
+        type: integer
+      traffic_reset_at:
+        type: string
+      traffic_used:
+        type: integer
+      updated_at:
+        type: string
+      xray_uuid:
         type: string
     type: object
   handler.TicketDetailResponse:

@@ -307,6 +307,9 @@ func TestPortalSubscriptions_Success(t *testing.T) {
 	if len(items) != 2 {
 		t.Fatalf("expected 2 subscriptions, got %d", len(items))
 	}
+	if got := items[0]["plan_name"]; got != "套餐X" {
+		t.Fatalf("plan_name = %v, want 套餐X", got)
+	}
 }
 
 func TestPortalSubscriptions_Empty(t *testing.T) {
