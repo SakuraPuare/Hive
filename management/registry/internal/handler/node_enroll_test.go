@@ -16,6 +16,7 @@ import (
 // retry proof that cannot reset ownership or resurrect an admin-revoked token.
 
 const claimCodeShape = `^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$`
+
 var testEnrollmentToken = strings.Repeat("a", 64)
 
 func insertNodeRow(t *testing.T, mac, hostname, easytierIP, tailscaleIP string, owner *uint, gateway bool) {
