@@ -496,6 +496,14 @@ class SubscriptionScripts(unittest.TestCase):
         self.run_agent('hive-xray-prepare')
         self.assertEqual(json.loads(p.read_text())['inbounds'][0]['settings']['clients'],[])
 
+    def test_nginx_overwrites_client_forwarded_ip_with_cloudflare_header(self):
+        # Cloudflare appends the real client IP to a client-supplied
+        # X-Forwarded-For. Xray takes the first value, so nginx must replace it
+        # with the authoritative CF-Connecting-IP before proxying to Xray.
+        config=(OVERLAY/'etc/nginx/sites-available/hive').read_text()
+        self.assertIn('proxy_set_header X-Forwarded-For $http_cf_connecting_ip;',config)
+        self.assertIn('proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;',config)
+
     def test_device_limit_blocks_new_ip_and_reports_online(self):
         self.state_update(online=[{'email':'sub-1','ips':[{'ip':'203.0.113.7','lastSeen':1},{'ip':'203.0.113.8','lastSeen':1}]}])
         self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'used':2,'allowed_ips':['203.0.113.7']}])

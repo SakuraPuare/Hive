@@ -5,7 +5,7 @@
 ## 当前行为
 
 - 自 migration 31 起，**所有节点默认作为 Xray 出口**：普通设备、客户网关、可信出口都参与订阅和网关上游。管理员可在节点编辑里关闭「作为出口」，设备所有者也可在客户门户关闭自己设备的出口；实际出口 = `exit_enabled && owner_exit_enabled && enabled && status=active`。
-- 订阅的设备数限制在出口侧执行：Xray 的 WS 入站用 `sockopt.trustedXForwardedFor: ["CF-Connecting-IP"]` 取 Cloudflare 传来的真实客户端 IP，`statsUserOnline` 记录每个 `sub-<id>` 的在线源 IP；`hive-xray-sync` 每 15 秒把这些 IP 随计费上报一起发给 Registry。Registry 按订阅聚合各出口的不同 IP，最早出现的 `device_limit` 个 IP 保留名额，其余 IP 由出口用动态路由规则 `user=sub-<id> + source=<ip> → block` 拒绝新连接。`device_limit=0` 表示不限；在线 IP 2 分钟未上报即过期；只阻断新连接，已有连接继续到自然关闭；IPv4/IPv6 分别计数，NAT/CGNAT 会把多台设备合并成一个 IP。
+- 订阅的设备数限制在出口侧执行：cloudflared → nginx → Xray，nginx 的 `/ray` 用 Cloudflare 权威的 `CF-Connecting-IP` 覆盖客户端自带的 `X-Forwarded-For`，Xray 的 WS 入站再用 `sockopt.trustedXForwardedFor: ["CF-Connecting-IP"]` 取真实客户端 IP，`statsUserOnline` 记录每个 `sub-<id>` 的在线源 IP；`hive-xray-sync` 每 15 秒把这些 IP 随计费上报一起发给 Registry。Registry 按订阅聚合各出口的不同 IP，最早出现的 `device_limit` 个 IP 保留名额，其余 IP 由出口用动态路由规则 `user=sub-<id> + source=<ip> → block` 拒绝新连接。`device_limit=0` 表示不限；在线 IP 2 分钟未上报即过期；只阻断新连接，已有连接继续到自然关闭；IPv4/IPv6 分别计数，NAT/CGNAT 会把多台设备合并成一个 IP。
 - 恢复“开机即运行 Xray”的兼容模式：安装 `/etc/hive/server-token` 的可信出口通过独立接口 `POST /servers/{mac}/accounting` 计费；没有 server-token 的普通设备使用设备凭据走回退接口 `POST /nodes/{mac}/xray-users`，同样上报累计计数并取得自己线路上的有效用户。设备凭据不能冒充服务器凭据调用 `/servers`，但可以在回退接口参与自己线路的计费。
 - 出口每约 15 秒通过 `POST /servers/{mac}/accounting` 同步 Xray 原始累计计数，再获得有效客户列表。上传和下载分别计费，多个出口的用量合并到同一订阅。服务端将身份校验、节点锁、计数更新配合处理，撤销或轮换密钥后，尚未提交的旧凭据请求不能继续入账。
 - 所有节点的上报使用 Xray systemd InvocationID 和递增的 `generation` 区分计数器生命周期；服务器与设备凭据共用同一个节点周期，模式切换不会重置编号。migration 25 保存最大已确认值，migration 29 增加每节点一条周期状态；事务同时提交流量、计数位置及周期推进。响应丢失、同周期乱序、重试不会重复扣量。待确认快照保存在 `/var/lib/hive/traffic-pending/`，周期文件为 `/var/lib/hive/traffic-generation.json`，重启代理前尽量捕获最后一份快照。

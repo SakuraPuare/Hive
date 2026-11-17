@@ -19,7 +19,12 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+        # Cloudflare 的 CF-Connecting-IP 是权威客户端 IP；客户端自带的
+        # X-Forwarded-For 不可信（Cloudflare 只会追加），这里必须覆盖掉，
+        # 否则 Xray 的 trustedXForwardedFor 会取到伪造的第一个值。
+        proxy_set_header X-Real-IP $http_cf_connecting_ip;
+        proxy_set_header X-Forwarded-For $http_cf_connecting_ip;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
         proxy_read_timeout 86400s;
     }
 

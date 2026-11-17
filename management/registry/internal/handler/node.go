@@ -353,7 +353,7 @@ type NodeXrayUsersResponse struct {
 	MAC          string            `json:"mac"`
 	LeaseSeconds int               `json:"lease_seconds"`
 	Users        []XrayUser        `json:"users"`
-	DeviceLimits []NodeDeviceLimit `json:"device_limits,omitempty"`
+	DeviceLimits []NodeDeviceLimit `json:"device_limits"`
 }
 
 // nodeDeviceLimits aggregates distinct online IPs across all exits. The
@@ -396,7 +396,7 @@ func (h *Handler) nodeDeviceLimits(subIDs []uint, now time.Time) ([]NodeDeviceLi
 		if sub.DeviceLimit > 0 && len(ips) > sub.DeviceLimit {
 			allowed = ips[:sub.DeviceLimit]
 		}
-		if sub.DeviceLimit <= 0 {
+		if sub.DeviceLimit <= 0 || allowed == nil {
 			allowed = []string{}
 		}
 		limits = append(limits, NodeDeviceLimit{

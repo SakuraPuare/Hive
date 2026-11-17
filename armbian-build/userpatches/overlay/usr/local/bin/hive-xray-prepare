@@ -9,6 +9,10 @@ jq '
   .policy = (.policy // {}) |
   .policy.levels = (.policy.levels // {}) |
   .policy.levels["0"] = ((.policy.levels["0"] // {}) + {statsUserOnline: true}) |
+  .api = (.api // {}) |
+  .api.services = (((.api.services // []) + ["HandlerService", "StatsService", "RoutingService"]) | unique) |
+  .routing = (.routing // {}) |
+  .routing.domainStrategy = (.routing.domainStrategy // "IPIfNonMatch") |
   .inbounds |= map(
     if .protocol == "vless" then
       .streamSettings = (.streamSettings // {}) |

@@ -114,6 +114,10 @@ apply_device_limits() {
         echo "[hive-xray-sync] skipping device limit reconcile (online stats unavailable)" >&2
         return 0
     fi
+    if ! printf '%s' "$response" | jq -e 'has("device_limits")' >/dev/null; then
+        echo "[hive-xray-sync] registry response has no device_limits; keeping existing rules" >&2
+        return 0
+    fi
     if ! rules=$(printf '%s' "$response" | jq -c --argjson online "$online" '
         ($online | map({key: (.subscription_id|tostring), value: .ips}) | from_entries) as $local
         | [ .device_limits[]?
@@ -179,7 +183,7 @@ if online_raw=$(xray api statsonlineiplist --server=127.0.0.1:10085 -all 2>/dev/
         [ .users[]?
           | select(.email | test("^sub-[1-9][0-9]*$"))
           | {subscription_id: (.email | sub("^sub-"; "") | tonumber),
-             ips: ([.ips[]?.ip | select(type == "string")] | unique | .[0:64])}
+             ips: ([.ips[]?.ip | select(type == "string" and test("^[0-9a-fA-F:.]+$"))] | unique | .[0:64])}
           | select(.ips | length > 0)
         ] | .[0:200]
     ' 2>/dev/null); then

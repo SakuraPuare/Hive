@@ -21,7 +21,8 @@
         "listen": "127.0.0.1:10085",
         "services": [
             "HandlerService",
-            "StatsService"
+            "StatsService",
+            "RoutingService"
         ]
     },
     "inbounds": [
