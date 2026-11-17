@@ -278,7 +278,7 @@ echo ">>> Tailscale hostname: ${HOSTNAME}"
 # ─────────────────────────────────────────────
 # 4. Cloudflare Tunnel（参考用户提供的脚本）
 # ─────────────────────────────────────────────
-budget_exceeded "$SECONDS" "cloudflare"
+budget_exceeded "cloudflare"
 TUNNEL_NAME="hive-${MAC6}"
 FULL_DOMAIN="hive-${MAC6}.${CF_DOMAIN}"
 
@@ -463,7 +463,7 @@ systemctl enable --now hive-fail2ban || echo ">>> hive-fail2ban failed (non-fata
 # ─────────────────────────────────────────────
 # 7. Tailscale 加入（使用嵌入的可复用 AuthKey）
 # ─────────────────────────────────────────────
-budget_exceeded "$SECONDS" "tailscale"
+budget_exceeded "tailscale"
 echo ">>> Joining Tailscale..."
 systemctl enable --now tailscaled
 sleep 2
@@ -613,7 +613,7 @@ TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "pending")
 sed -i "s/^TAILSCALE_HOST=.*/TAILSCALE_HOST=${HOSTNAME}\nTAILSCALE_IP=${TAILSCALE_IP}/" \
     /etc/hive/node-info
 
-budget_exceeded "$SECONDS" "registry"
+budget_exceeded "registry"
 if [ -n "${NODE_REGISTRY_URL}" ]; then
     # -4 强制 IPv4：同 allocate-easytier，避开 IPv6+Mihomo 半开死路。
     # 带重试：代理网关上游中继间歇抽风，单次抖动不该让节点漏注册（漏了要等下次
