@@ -121,50 +121,21 @@ test_node() {
         if [ -n "${xray_uuid}" ]; then
             CF_HOST="${cf_url#https://}"
 
-            # 5a. 端到端 VLESS 链路测试（需要管理 VPS 上有 xray 二进制）
-            if command -v xray &>/dev/null; then
-                local _tmp_cfg _tmp_port _xray_pid _http_code
-                _tmp_cfg=$(mktemp /tmp/xray-test-XXXXXX.json)
-                _tmp_port=$((RANDOM % 10000 + 20000))
-                cat > "${_tmp_cfg}" <<XRAYCFG
-{
-  "log": { "loglevel": "none" },
-  "inbounds": [{ "port": ${_tmp_port}, "protocol": "socks", "settings": { "udp": false } }],
-  "outbounds": [{
-    "protocol": "vless",
-    "settings": { "vnext": [{ "address": "${CF_HOST}", "port": 443,
-      "users": [{ "id": "${xray_uuid}", "encryption": "none" }] }] },
-    "streamSettings": { "network": "ws", "security": "tls",
-      "wsSettings": { "path": "/ray" } }
-  }]
-}
-XRAYCFG
-                xray run -c "${_tmp_cfg}" &>/dev/null &
-                _xray_pid=$!
-                sleep 2
-                _http_code=$(curl -x "socks5h://127.0.0.1:${_tmp_port}" -s -o /dev/null \
-                    -w "%{http_code}" --max-time 10 \
-                    "https://www.google.com/generate_204" 2>/dev/null || true)
-                kill "${_xray_pid}" 2>/dev/null || true
-                rm -f "${_tmp_cfg}"
-                if [ "${_http_code}" = "204" ] || [ "${_http_code}" = "200" ]; then
-                    pass "xray-e2e" "VLESS proxy OK (generate_204 → HTTP ${_http_code})"
-                else
-                    fail "xray-e2e" "VLESS proxy failed (generate_204 → HTTP ${_http_code})"
-                fi
+            # 5a. WebSocket 升级检测（服务端判据，不跑 xray 客户端：xray 只做服务端）
+            # 注意 --http1.1，否则 Cloudflare 边缘直接 400。
+            WS_CODE=$(curl -sk --http1.1 -s -o /dev/null -w "%{http_code}" --max-time 8 \
+                -H "Upgrade: websocket" -H "Connection: Upgrade" \
+                -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+                -H "Sec-WebSocket-Version: 13" \
+                "https://${CF_HOST}/ray" 2>/dev/null || true)
+            if [ "$WS_CODE" = "101" ]; then
+                pass "xray-ws" "WebSocket 101 OK via ${CF_HOST}"
             else
-                # xray 不可用时退回 WebSocket 握手检测
-                WS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 \
-                    -H "Upgrade: websocket" -H "Connection: Upgrade" \
-                    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-                    -H "Sec-WebSocket-Version: 13" \
-                    "https://${CF_HOST}/ray" 2>/dev/null || true)
-                if [ "$WS_CODE" = "101" ]; then
-                    pass "xray-ws" "WebSocket 101 OK via ${CF_HOST}"
-                else
-                    warn "xray-ws" "WebSocket ${WS_CODE} via ${CF_HOST} (install xray on mgmt VPS for full e2e test)"
-                fi
+                warn "xray-ws" "WebSocket ${WS_CODE} via ${CF_HOST}"
             fi
+            # 授权是否落地只能在节点侧看：/run/hive-subscriptions/xray.users 非空，
+            # 或节点上 xray api statsquery 出现 user>>>sub-N>>>traffic。
+            warn "xray-auth" "verify authorization on the node: /run/hive-subscriptions/xray.users"
         fi
     else
         warn "cf-tunnel" "CF_URL not set, skipping"
