@@ -38,7 +38,7 @@ flowchart LR
 后端和节点必须配套更新，仅更新网站不能撤销已经缓存到旧节点的公共凭证。
 
 1. 备份数据库，并为出口节点安排短维护窗口。先停止旧节点代理，避免新旧计费同时运行。
-2. 更新 Registry 和前端。Registry 自动执行待运行迁移（计费为 migration 25，续费与暂停原因为 migration 26，出口身份隔离为 migration 28，计数回收为 migration 29）。migration 28 默认将存量节点全部设为普通设备；不会因“未认领”或“已有线路”而自动信任。旧的 `GET /nodes/{mac}/xray-users` 仍返回 426；`POST` 作为设备凭据回退接口保留，供没有 server-token 的节点使用。migration 29 调整计数表主键，历史数据量大时应预留维护时间。
+2. 更新 Registry 和前端。Registry 自动执行待运行迁移（计费为 migration 25，续费与暂停原因为 migration 26，出口身份隔离为 migration 28，计数回收为 migration 29，出口开关为 migration 31）。migration 28 只把 `server_enabled` 作为可信计费开关；migration 31 增加默认开启的 `exit_enabled` / `owner_exit_enabled`，升级后所有存量节点立即作为出口，管理员或设备所有者可关闭。旧的 `GET /nodes/{mac}/xray-users` 仍返回 426；`POST` 作为设备凭据回退接口保留，供没有 server-token 的节点使用。migration 29 调整计数表主键，历史数据量大时应预留维护时间。
 3. 「作为出口」默认开启，无需逐个启用。仅对运营方独占控制、需要可信计费的机器，在「节点详情 → 可信出口计费」生成服务器密钥；也可调用管理员接口 `POST /admin/nodes/{mac}/server-credential`。密钥只返回一次，单独通过可信 SSH 安装到对应出口 `/etc/hive/server-token`，root 所有、权限 `0600`，不要写进通用镜像、客户设备或日志。普通 `/etc/hive/device-token` 仍用于该机器的注册、心跳与 OTA。密钥轮换立即废弃旧密钥；同一路径 `DELETE` 只撤销可信计费密钥，是否继续作为普通出口由「作为出口」开关决定；撤销后现有连接在剩余租约结束后停止。客户设备无需此密钥。若撤销后改作客户网关，删除旧 `/etc/hive/server-token` 即可；Xray 会回退到 `/etc/hive/device-token` 继续运行（兼容模式），不再要求手动停用。
 4. 安装本次设备脚本与 systemd 单元。默认 OTA 包已包含这些文件，并自动启用/启动租约守护与同步定时器。定制 OTA 包必须包含 `hive-subscription-state`、`hive-subscription-guard`、`hive-xray-prepare`、`hive-gateway-prepare`、两个同步脚本及相应服务/定时器。没有服务器密钥的设备仍启动 Xray，并用设备凭据走回退接口上报/续租；其 Mihomo 网关继续按绑定订阅工作。可信出口模式优先使用独立服务器密钥。
 5. 手动安装时执行：
