@@ -184,8 +184,39 @@ apt-get install -y --no-install-recommends \
     dnsmasq-base \
     iw \
     nftables \
-    tailscale \
-    cloudflared
+    tailscale
+
+# cloudflared：优先用 pkg.cloudflare.com 的 apt 包（版本/校验和由 apt 索引管，能跟着升级），
+# 仓库抖动时回落到 download-binaries.sh 预取到 /var/cache/hive-debs 的本地 deb。
+# 两条都用 --force-confold，理由同上面的主安装批次。
+install_cloudflared_deb() {
+    local debs=()
+    local deb
+    for deb in /var/cache/hive-debs/cloudflared_*_arm64.deb; do
+        if [ -f "${deb}" ]; then
+            debs+=("${deb}")
+        fi
+    done
+    if [ "${#debs[@]}" -eq 0 ]; then
+        return 1
+    fi
+    apt-get install -y --no-install-recommends \
+        -o Dpkg::Options::=--force-confdef \
+        -o Dpkg::Options::=--force-confold \
+        "${debs[@]}"
+}
+
+if apt-get install -y --no-install-recommends \
+        -o Dpkg::Options::=--force-confdef \
+        -o Dpkg::Options::=--force-confold \
+        cloudflared; then
+    echo ">>> cloudflared: installed from pkg.cloudflare.com"
+elif install_cloudflared_deb; then
+    echo ">>> cloudflared: pkg.cloudflare.com 不可用，已回落到预取 deb"
+else
+    echo ">>> ERROR: cloudflared 装不上：apt 源与预取 deb 都不可用" >&2
+    exit 1
+fi
 
 # cloudflare-warp 没有任何国内镜像：实测 TUNA / USTC / NJU / ZJU / CERNET / PKU / SJTU /
 # SUSTech / aliyun / tencent / huawei 全 404，77 MB 只能从 pkg.cloudflareclient.com 拉
@@ -211,7 +242,8 @@ else
         -o Dpkg::Options::=--force-confold \
         cloudflare-warp
 fi
-rm -rf /var/cache/hive-debs   # 77 MB，装完就不该留在镜像里
+# 77 MB(warp) + 18 MB(cloudflared)，装完就不该留在镜像里
+rm -rf /var/cache/hive-debs
 
 # hostapd：5G 热点用独立 hostapd 托管（NM 内建 wpa_supplicant 在 MT7922 上开 80MHz 会失败）。
 #   屏蔽发行版自带的 hostapd.service（读 /etc/default/hostapd、DAEMON_CONF 空会空跑/报错）——

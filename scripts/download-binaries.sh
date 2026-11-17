@@ -119,22 +119,29 @@ cp -f "$f" "${DEST}/xray-exporter"
 chmod +x "${DEST}/xray-exporter"
 echo "    xray-exporter: OK"
 
-# ── cloudflare-warp deb ────────────────────────────────────────────────
-# pkg.cloudflareclient.com 没有任何国内镜像（实测 TUNA / USTC / NJU / ZJU / CERNET /
-# PKU / SJTU / SUSTech / aliyun / tencent / huawei 全 404）。deb 77 MB，实测约 478 KB/s，
-# 而 chroot 里的 apt 每次构建都重下一遍（第三方源不进 Armbian 的 aptcache）。
-# 这里按官方 Packages.gz 解析出当前 arm64 版本，下载到持久缓存并放进 overlay 的
-# /var/cache/hive-debs/；customize-image.sh 命中本地 deb 就不再走官方源。
-# 失败只告警：预取不到时构建仍按老路径从官方源装。
+# ── 第三方 apt 仓库的 arm64 deb 预取（cloudflare-warp / cloudflared）──────
+# 这两个源都没有国内镜像（实测 TUNA / USTC / NJU / ZJU / CERNET / PKU / SJTU / SUSTech /
+# aliyun / tencent / huawei 全 404），而 chroot 里的 apt 每次构建都会重下一遍（第三方源不进
+# Armbian 的 aptcache）。这里按各自的官方 Packages.gz 解析当前 arm64 版本，下载到持久缓存并
+# 放进 overlay 的 /var/cache/hive-debs/；customize-image.sh 优先用 apt，apt 拉不到时回落到
+# 这份本地 deb。预取失败只告警，构建仍按 apt 路径走。
 WARP_RELEASE="${WARP_RELEASE:-trixie}"   # 必须与 build.sh 的 RELEASE 一致
+CLOUDFLARED_SUITE="any"                  # pkg.cloudflare.com/cloudflared 没有 trixie 套件
 WARP_DEBS="armbian-build/userpatches/overlay/var/cache/hive-debs"
-echo ""
-echo ">>> cloudflare-warp deb (${WARP_RELEASE}/arm64)..."
-if ! pkgs_gz=$(fetch_raw "https://pkg.cloudflareclient.com/dists/${WARP_RELEASE}/main/binary-arm64/Packages.gz" \
-        "cloudflare-warp-${WARP_RELEASE}-Packages.gz"); then
-    echo "    [警告] 取 cloudflare-warp 包索引失败，跳过预取（构建时走官方源）"
-else
-    warp_meta="$(python3 -c '
+mkdir -p "${WARP_DEBS}"
+
+# <repo 地址去掉 scheme> <suite> <包名>
+prefetch_repo_deb() {
+    local base="$1" suite="$2" pkg="$3" arch="arm64"
+    local gz meta fn sha ver f
+    echo ""
+    echo ">>> ${pkg} deb (${base} ${suite}/${arch})..."
+    if ! gz=$(fetch_raw "https://${base}/dists/${suite}/main/binary-${arch}/Packages.gz" \
+            "${pkg}-${suite}-Packages.gz"); then
+        echo "    [警告] 取 ${pkg} 包索引失败，跳过预取（构建时走 apt）"
+        return 0
+    fi
+    meta="$(python3 -c '
 import gzip, sys
 stanzas, cur = [], {}
 with gzip.open(sys.argv[1], "rt", errors="replace") as fh:
@@ -150,39 +157,43 @@ with gzip.open(sys.argv[1], "rt", errors="replace") as fh:
 if cur:
     stanzas.append(cur)
 
+pkg, arch = sys.argv[2], sys.argv[3]
+
 def vkey(v):
     return tuple(int(p) if p.isdigit() else 0 for p in v.split("."))
 
 cand = [s for s in stanzas
-        if s.get("Package") == "cloudflare-warp" and s.get("Architecture") == "arm64"]
+        if s.get("Package") == pkg and s.get("Architecture") == arch]
 if not cand:
     sys.exit(1)
 best = max(cand, key=lambda s: vkey(s.get("Version", "0")))
 print(best["Filename"])
 print(best.get("SHA256", ""))
 print(best["Version"])
-' "$pkgs_gz" 2>/dev/null)" || warp_meta=""
+' "$gz" "$pkg" "$arch" 2>/dev/null)" || meta=""
 
-    if [ -z "$warp_meta" ]; then
-        echo "    [警告] 解析 cloudflare-warp 包索引失败，跳过预取（构建时走官方源）"
-    else
-        warp_fn="$(printf '%s\n' "$warp_meta" | sed -n 1p)"
-        warp_sha="$(printf '%s\n' "$warp_meta" | sed -n 2p)"
-        warp_ver="$(printf '%s\n' "$warp_meta" | sed -n 3p)"
-        if f=$(fetch_raw "https://pkg.cloudflareclient.com/${warp_fn}" "$(basename "$warp_fn")"); then
-            if [ -n "$warp_sha" ] && [ "$(sha256sum "$f" | cut -d' ' -f1)" != "$warp_sha" ]; then
-                echo "    [警告] cloudflare-warp ${warp_ver} sha256 不符，跳过预取"
-            else
-                mkdir -p "$WARP_DEBS"
-                rm -f "$WARP_DEBS"/cloudflare-warp_*.deb
-                cp -f "$f" "$WARP_DEBS/$(basename "$warp_fn")"
-                echo "    cloudflare-warp: OK (${warp_ver}) -> ${WARP_DEBS}/"
-            fi
-        else
-            echo "    [警告] 下载 cloudflare-warp ${warp_ver} 失败，跳过预取"
-        fi
+    if [ -z "$meta" ]; then
+        echo "    [警告] 解析 ${pkg} 包索引失败，跳过预取（构建时走 apt）"
+        return 0
     fi
-fi
+    fn="$(printf '%s\n' "$meta" | sed -n 1p)"
+    sha="$(printf '%s\n' "$meta" | sed -n 2p)"
+    ver="$(printf '%s\n' "$meta" | sed -n 3p)"
+    if ! f=$(fetch_raw "https://${base}/${fn}" "$(basename "$fn")"); then
+        echo "    [警告] 下载 ${pkg} ${ver} 失败，跳过预取"
+        return 0
+    fi
+    if [ -n "$sha" ] && [ "$(sha256sum "$f" | cut -d' ' -f1)" != "$sha" ]; then
+        echo "    [警告] ${pkg} ${ver} sha256 不符，跳过预取"
+        return 0
+    fi
+    rm -f "${WARP_DEBS}/${pkg}_"*.deb
+    cp -f "$f" "${WARP_DEBS}/$(basename "$fn")"
+    echo "    ${pkg}: OK (${ver}) -> ${WARP_DEBS}/"
+}
+
+prefetch_repo_deb "pkg.cloudflareclient.com" "${WARP_RELEASE}" "cloudflare-warp"
+prefetch_repo_deb "pkg.cloudflare.com/cloudflared" "${CLOUDFLARED_SUITE}" "cloudflared"
 
 echo ""
 echo ">>> All binaries downloaded:"

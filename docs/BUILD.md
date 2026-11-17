@@ -139,7 +139,7 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 | GitHub Releases 二进制（xray/mihomo/frp/easytier/xray-exporter）、厂商内核分支、rkbin | `github.com` | 直连；`download-binaries.sh` 用 `~/.cache/hive-binaries` 持久缓存（缓存键带版本） |
 | Tailscale apt 源 | `pkgs.tailscale.com`（13 MiB） | `customize-image.sh` 改用 `mirrors.ustc.edu.cn/tailscale/debian`（备 `mirror.nju.edu.cn`），签名 keyring 仍取官方 3 KB |
 | Cloudflare WARP | `pkg.cloudflareclient.com`（77 MiB，**没有任何国内镜像**） | `download-binaries.sh` 预取 deb 到 overlay，构建时本地安装 |
-| cloudflared | `pkg.cloudflare.com/cloudflared`（18.3 MiB deb，**没有国内镜像**） | apt 源直接装（`any` 套件），不再预取 raw 二进制（37.7 MiB） |
+| cloudflared | `pkg.cloudflare.com/cloudflared`（18.3 MiB deb，**没有国内镜像**） | 优先 apt 装（`any` 套件）；apt 拉不到时回落到 `download-binaries.sh` 预取的同一份 deb |
 
 实测（构建机 192.168.100.162）：`ghcr.io` 约 150 KB/s，u-boot 包要 45 min；`ghcr.nju.edu.cn` 同一个 blob 50 MB/s，约 8 s；TUNA apt 20 MB/s；GitHub Releases 约 0.4 MB/s。Tailscale 的 13 MiB deb：官方 457 KB/s（29 s）、USTC 3.2 MB/s（4 s）、NJU 19 MB/s（0.7 s）；Cloudflare WARP 77 MiB：官方约 478 KB/s（≈2.7 min），无镜像可换。
 
@@ -170,6 +170,7 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 - 预取失败不会让构建失败，只是回落到 ghcr.io 慢速直连。
 - Tailscale 源由 `customize-image.sh` 现场探测：USTC → NJU → 官方，取第一个能拉到 `dists/${RELEASE}/Release` 的；两个镜像的 `Packages.gz` 与官方逐字节一致（USTC 最新、NJU 快但滞后约两周），所以 apt 的签名校验不受影响。
 - cloudflared 走官方 apt 源 `https://pkg.cloudflare.com/cloudflared`（套件用 `any`：该仓库只有 any/bookworm/jammy/noble/focal，没有 trixie；二进制是静态 Go）。deb 18.3 MiB，比 raw 二进制 37.7 MiB 少一半，且版本与校验和进 apt 索引；包内 postinst 会建 `/usr/local/bin/cloudflared` 软链，所以老路径仍可用（`cloudflared.service` 里的 ExecStart 已改为 `/usr/bin/cloudflared`）。实测 516 KB/s，没有国内镜像。
+- cloudflared 的安装是「apt 优先、失败回落」：`customize-image.sh` 先 `apt-get install cloudflared`，失败才用 `/var/cache/hive-debs/cloudflared_*_arm64.deb`（`download-binaries.sh` 按官方 Packages 预取、校验 sha256）；两者都没有才硬失败。这样仓库抖动不会把整次构建带崩，正常情况又拿到 apt 管理的版本。
 - Cloudflare WARP 没有镜像：实测 TUNA / USTC / NJU / ZJU / CERNET / PKU / SJTU / SUSTech / aliyun / tencent / huawei 全 404。`./scripts/download-binaries.sh` 按官方 `Packages.gz` 解析当前 arm64 版本、校验 sha256 后放进 `userpatches/overlay/var/cache/hive-debs/`（已 gitignore），`customize-image.sh` 命中本地 deb 就不走官方源、装完删除；预取失败自动回落到官方源。
 - 境内/境外的判断看 `GITHUB_SERVER_URL`（只有 GitHub 官方 runner 是 `https://github.com`），不看 `GITHUB_ACTIONS`：自托管 `develop` runner 同样会导出 `GITHUB_ACTIONS=true`，按它判断会让境内 CI 走官方源。
 
