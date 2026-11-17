@@ -2,13 +2,25 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
+	"gorm.io/gorm"
+
 	"hive/registry/internal/model"
 	"hive/registry/internal/store"
 )
+
+var errPortalSubscriptionNotFound = errors.New("subscription not found")
+
+// portalDeviceLimitError carries the subscription's current usage and cap so
+// the customer sees the actual numbers instead of a generic conflict.
+type portalDeviceLimitError struct{ bound, limit int }
+
+func (e *portalDeviceLimitError) Error() string { return "device limit reached" }
 
 // customerActor formats a customer id as an audit-log actor string.
 func customerActor(cid uint) string { return "customer:" + strconv.FormatUint(uint64(cid), 10) }
@@ -192,13 +204,52 @@ func (h *Handler) HandlePortalBindDeviceSubscription(w http.ResponseWriter, r *h
 		return
 	}
 
-	res := h.DB.Exec(
-		"UPDATE nodes SET bound_subscription_id = ? "+
-			"WHERE mac = ? AND owner_customer_id = ? AND server_enabled = 0 AND gateway_enabled = 1",
-		req.SubscriptionID, mac, cid,
-	)
-	if res.Error != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
+		var locked struct {
+			ID          uint
+			DeviceLimit int
+		}
+		// Serialize binds for this subscription so two devices cannot both take
+		// the last slot. The count below excludes this MAC, making a re-bind of
+		// an already-bound device idempotent.
+		if err := tx.Raw(
+			"SELECT id, device_limit FROM customer_subscriptions WHERE id = ? AND customer_id = ? FOR UPDATE",
+			req.SubscriptionID, cid,
+		).Scan(&locked).Error; err != nil {
+			return err
+		}
+		if locked.ID == 0 {
+			return errPortalSubscriptionNotFound
+		}
+		if locked.DeviceLimit > 0 {
+			var bound int64
+			if err := tx.Raw(
+				"SELECT COUNT(*) FROM nodes WHERE bound_subscription_id = ? AND mac <> ?",
+				req.SubscriptionID, mac,
+			).Scan(&bound).Error; err != nil {
+				return err
+			}
+			if bound >= int64(locked.DeviceLimit) {
+				return &portalDeviceLimitError{bound: int(bound), limit: locked.DeviceLimit}
+			}
+		}
+		return tx.Exec(
+			"UPDATE nodes SET bound_subscription_id = ? "+
+				"WHERE mac = ? AND owner_customer_id = ? AND server_enabled = 0 AND gateway_enabled = 1",
+			req.SubscriptionID, mac, cid,
+		).Error
+	})
+	var limitErr *portalDeviceLimitError
+	switch {
+	case errors.As(err, &limitErr):
+		h.jsonErr(w, http.StatusConflict,
+			fmt.Sprintf("设备数已达上限（%d/%d 台），请先解绑其他设备", limitErr.bound, limitErr.limit))
+		return
+	case errors.Is(err, errPortalSubscriptionNotFound):
+		h.jsonErr(w, http.StatusNotFound, "subscription not found")
+		return
+	case err != nil:
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
 

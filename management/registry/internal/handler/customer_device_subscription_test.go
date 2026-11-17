@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 )
@@ -144,5 +145,113 @@ func TestPortalBindDeviceSubscriptionRejectsInvalidSubscription(t *testing.T) {
 	}
 	if got := scalar(t, "SELECT COALESCE(bound_subscription_id,0) FROM nodes WHERE mac = ?", mac); got != 0 {
 		t.Fatalf("invalid subscription was bound: %d", got)
+	}
+}
+
+func TestPortalBindDeviceSubscriptionEnforcesDeviceLimit(t *testing.T) {
+	resetDB(t)
+	cid := insertTestCustomer(t, "gateway-limit@example.com")
+	pid := insertTestPlan(t, "gateway-limit")
+	sid := insertTestSubscription(t, cid, pid, "active", time.Now().Add(24*time.Hour))
+	mustExec(t, "UPDATE customer_subscriptions SET device_limit = 2 WHERE id = ?", sid)
+
+	macs := []string{"aabbccddee01", "aabbccddee02", "aabbccddee03"}
+	for _, mac := range macs {
+		portalGatewayNode(t, mac, cid)
+	}
+
+	for _, mac := range macs[:2] {
+		resp := doJSON("PUT", "/portal/devices/"+mac+"/subscription", map[string]any{"subscription_id": sid}, customerCookie(cid))
+		assertStatus(t, resp, http.StatusOK)
+		resp.Body.Close()
+	}
+
+	// The third device must not take a slot beyond device_limit.
+	resp := doJSON("PUT", "/portal/devices/"+macs[2]+"/subscription", map[string]any{"subscription_id": sid}, customerCookie(cid))
+	assertStatus(t, resp, http.StatusConflict)
+	resp.Body.Close()
+	if got := scalar(t, "SELECT COALESCE(bound_subscription_id,0) FROM nodes WHERE mac = ?", macs[2]); got != 0 {
+		t.Fatalf("over-limit device was bound: %d", got)
+	}
+
+	// Rebinding an already-bound device is idempotent and must not consume a new slot.
+	resp = doJSON("PUT", "/portal/devices/"+macs[0]+"/subscription", map[string]any{"subscription_id": sid}, customerCookie(cid))
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	// Unbinding frees the slot.
+	resp = doJSON("DELETE", "/portal/devices/"+macs[0]+"/subscription", nil, customerCookie(cid))
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	resp = doJSON("PUT", "/portal/devices/"+macs[2]+"/subscription", map[string]any{"subscription_id": sid}, customerCookie(cid))
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	if got := scalar(t, "SELECT COUNT(*) FROM nodes WHERE bound_subscription_id = ?", sid); got != 2 {
+		t.Fatalf("bound devices = %d, want 2", got)
+	}
+}
+
+func TestPortalBindDeviceSubscriptionUnlimitedWhenDeviceLimitZero(t *testing.T) {
+	resetDB(t)
+	cid := insertTestCustomer(t, "gateway-unlimited@example.com")
+	pid := insertTestPlan(t, "gateway-unlimited")
+	sid := insertTestSubscription(t, cid, pid, "active", time.Now().Add(24*time.Hour))
+	mustExec(t, "UPDATE customer_subscriptions SET device_limit = 0 WHERE id = ?", sid)
+
+	for _, mac := range []string{"aabbccddee11", "aabbccddee12", "aabbccddee13"} {
+		portalGatewayNode(t, mac, cid)
+		resp := doJSON("PUT", "/portal/devices/"+mac+"/subscription", map[string]any{"subscription_id": sid}, customerCookie(cid))
+		assertStatus(t, resp, http.StatusOK)
+		resp.Body.Close()
+	}
+
+	if got := scalar(t, "SELECT COUNT(*) FROM nodes WHERE bound_subscription_id = ?", sid); got != 3 {
+		t.Fatalf("bound devices = %d, want 3", got)
+	}
+}
+
+func TestPortalBindDeviceSubscriptionConcurrentLimit(t *testing.T) {
+	resetDB(t)
+	cid := insertTestCustomer(t, "gateway-race@example.com")
+	pid := insertTestPlan(t, "gateway-race")
+	sid := insertTestSubscription(t, cid, pid, "active", time.Now().Add(24*time.Hour))
+	mustExec(t, "UPDATE customer_subscriptions SET device_limit = 1 WHERE id = ?", sid)
+
+	macs := []string{"aabbccddee21", "aabbccddee22", "aabbccddee23"}
+	for _, mac := range macs {
+		portalGatewayNode(t, mac, cid)
+	}
+
+	codes := make(chan int, len(macs))
+	var wg sync.WaitGroup
+	for _, mac := range macs {
+		wg.Add(1)
+		go func(mac string) {
+			defer wg.Done()
+			resp := doJSON("PUT", "/portal/devices/"+mac+"/subscription", map[string]any{"subscription_id": sid}, customerCookie(cid))
+			codes <- resp.StatusCode
+			resp.Body.Close()
+		}(mac)
+	}
+	wg.Wait()
+	close(codes)
+
+	ok, conflict := 0, 0
+	for code := range codes {
+		switch code {
+		case http.StatusOK:
+			ok++
+		case http.StatusConflict:
+			conflict++
+		default:
+			t.Fatalf("unexpected status %d", code)
+		}
+	}
+	if ok != 1 || conflict != 2 {
+		t.Fatalf("ok=%d conflict=%d, want 1/2", ok, conflict)
+	}
+	if got := scalar(t, "SELECT COUNT(*) FROM nodes WHERE bound_subscription_id = ?", sid); got != 1 {
+		t.Fatalf("bound devices = %d, want 1", got)
 	}
 }
