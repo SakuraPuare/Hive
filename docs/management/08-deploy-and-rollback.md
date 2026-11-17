@@ -199,3 +199,32 @@ bash management/scripts/backup-db.sh
 - 节点状态：`NodeDown`、`NodeMassOffline`
 
 告警通过 Alertmanager webhook 发送，配置在 `management/alertmanager/alertmanager.yml`。
+
+### 监控内部路由与公共入口
+
+Prometheus 和 Alertmanager 都显式使用 `--web.route-prefix=/`，监听宿主机回环地址；内部调用不带公共路径前缀：
+
+| 用途 | 内部地址 |
+| --- | --- |
+| Registry 的默认 `PROMETHEUS_URL`、Grafana 数据源 | `http://127.0.0.1:4230`（数据源使用等价的 `localhost`） |
+| Prometheus 查询 / 重载 | `http://127.0.0.1:4230/api/v1/query`、`http://127.0.0.1:4230/-/reload` |
+| Prometheus 向 Alertmanager 发送告警 | `http://localhost:9093/api/v2/alerts`（告警目标不加 `path_prefix`） |
+| Alertmanager 查询 / 重载 | `http://127.0.0.1:9093/api/v2/alerts`、`http://127.0.0.1:9093/-/reload` |
+
+两个 nginx 配置（`management/nginx/nginx.conf` 和 `management/nginx/hive.conf`）都将 `/prometheus/`、`/alertmanager/` 转发到对应的内部根路由。这里 `proxy_pass` 地址末尾的 `/` 必须保留，它负责剥离公共前缀；不带末尾斜杠的公共入口会先重定向到带斜杠的入口，并保留查询参数。
+
+`PROMETHEUS_EXTERNAL_URL`、`ALERTMANAGER_EXTERNAL_URL` 仍分别包含公共 `/prometheus`、`/alertmanager` 路径，用于 UI、跳转和告警中的链接；默认值分别为 `http://localhost/prometheus`、`http://localhost/alertmanager`。生产环境设为实际对外地址即可，不要据此给 Registry URL、Grafana 数据源、重载脚本或告警目标添加前缀。Grafana 仍使用自己的 `serve_from_sub_path=true` 模式，nginx 对 `/grafana/` 保留前缀，不要与这两个服务混用。
+
+从旧配置升级时，需同时更新 Compose 中的两个 `route-prefix` 参数及已安装的 nginx 配置，再按发布流程重新创建监控容器并重载 nginx；只改一侧会产生 404。确认内部与公共路径都可用：
+
+```bash
+# 内部调用（不经过 nginx）
+curl -fsS --get --data-urlencode 'query=vector(1)' http://127.0.0.1:4230/api/v1/query
+curl -fsS -X POST http://127.0.0.1:4230/-/reload
+curl -fsS http://127.0.0.1:9093/api/v2/alerts
+curl -fsS -X POST http://127.0.0.1:9093/-/reload
+
+# 公共路径（PUBLIC_URL 设为实际 nginx 入口，不含路径前缀）
+curl -fsS --get --data-urlencode 'query=vector(1)' "${PUBLIC_URL}/prometheus/api/v1/query"
+curl -fsS "${PUBLIC_URL}/alertmanager/api/v2/alerts"
+```
