@@ -81,3 +81,31 @@ go vet ./...
 验证：119 项固件测试、30 项订阅脚本测试、26 项硬件隔离测试、16 项设备/部署测试通过。Go 1.27.4 的 handler vet 及 amd64/arm64 编译通过；连到构建机 MySQL 完成退款、返利、上传与分片保留/清理的定向 `-race` 测试。固定 v3 action 在 Gitea hostname 环境下向隔离旧版 API 完成创建、逐字节上传和完成请求。变更脚本的 Bash 语法及替换本机不存在可执行路径后的 systemd 单元指令检查通过。
 
 未运行真实 Gitea workflow、整盘镜像构建、真机启动或无线验收，也未部署线上。设备脚本和相应 systemd 单元需要配套安装并 reload。`hive-firmware` 与 `hive-node-info` 属受保护文件，普通应用 OTA 不会更新它们；当前 firmware 包也仅允许引导载荷与内核数据。存量设备须在维护窗口经可信管理通道安装这两项修复，或使用重建后的出厂镜像；本次没有放宽 OTA 路径保护。
+
+## 六项 P1 修复（2026-11-17）
+
+- 设备归属释放、转交和认领会清除原有订阅绑定；同一所有者的重复分配保持幂等。网关配置拒绝已归属设备的异主订阅，无主运营方网关仍可由管理员绑定订阅。
+- 普通设备与可信服务器共享每节点单调计费代际，两个计费入口均拒绝已退役快照。普通设备新增 `GET /nodes/{mac}/accounting/state`，新版同步脚本在重放旧快照后领取下一代际；切换凭据类型不重标累计流量、不绕过去重或清理屏障。
+- 首启脚本先持久化 `/etc/hive/enrollment-token`，再将随机 token 与 MAC 一起提交入网。相同秘密可恢复丢失的响应，不改变已存在的设备状态；不同秘密及管理员轮换后的旧秘密不能重新领证。凭据与认领码发布前执行文件/目录同步，不依赖进程内变量保存唯一秘密。
+- 网关授权检查先排除自身再计算有效上游；空上游返回 blocked/REJECT，渲染器也不再将空代理池降级成全直连。
+- Prometheus/Alertmanager 的内部 API 保持根路径，nginx 剥离公共 `/prometheus/`、`/alertmanager/` 前缀。Compose 与 nginx 配置必须一起更新；Registry、Grafana 和告警发送方继续使用原内部 URL。
+- 部署回归测试按环境文件赋值行解析，跳过合法注释和空行，仍验证自动化密钥保留、显式轮换及不执行保存文件里的命令文本。入网限流窗口随其他限流器在测试用例间重置，不提高生产限额。
+
+发布顺序：先更新 Registry，再更新节点 `hive-xray-sync` 与 `provision-node.sh`/出厂镜像。旧的首启脚本不携带持久化 token，需更新后才能新入网；已有 `/etc/hive/device-token` 的设备继续使用原凭据。计费代际水位不能因密钥轮换或模式切换而清零。本次不增加数据库迁移，也不会自动清空无法区分来源的历史无主网关绑定。
+
+本轮验证：一次性 MySQL 8.4 环境覆盖 46 个后端定向测试，入网测试发现的时间格式断言/限流窗口隔离问题修正后，13 个入网用例复测通过；订阅脚本 44 项、入网恢复脚本 6 项、部署凭据回归 2 项通过。OpenAPI/客户端重新生成，前端类型检查通过。隔离的 Prometheus 3.5.0、Alertmanager 0.35.0、nginx 1.27 实测两套 nginx 配置的内部/公共 API、reload、重定向及告警投递均通过。未运行全仓测试、整盘镜像构建或真机断电验证，未部署生产。
+
+## 设备镜像修复（2026-11-17，真机 `hive-f6e788` 首启实测）
+
+真机（NanoPi Zero2，镜像内容与 `25efdcb` 逐文件 sha256 一致）首启暴露两处必须在镜像里修的问题：
+
+| 现象 | 根因 | 修复 |
+|---|---|---|
+| SSH 变成「Anywhere 限速放行」；`node_exporter:9100` 从 Tailscale 与 EasyTier 两条路都被丢弃，Prometheus 每 20s 刷 `UFW BLOCK DPT=9100` | `ufw` 的每条命令都会整份重写 `/etc/ufw/user.rules`。首启 `hive-firewall.service` 与 `hive-hotspot.service` 同时启动（05:48:43），热点脚本用旧快照重写，把防火墙脚本前段规则（`lo`、四条 `22` 源限制、`9100`×2、`9550`-Tailscale）整段冲掉；丢失后无任何复核 | `setup-firewall.sh` 与 `hive-hotspot-firewall.sh` 共用 `/run/hive-ufw.lock` 串行所有 ufw 变更（嵌套调用用 `HIVE_UFW_LOCK_HELD` 避免自锁）；`hive-hotspot.service` 加 `After=hive-firewall.service`；脚本末尾逐条复核关键放行，缺失重放一次，仍缺失则单元失败（不落 `firewall-configured`，下次开机重跑）。真机并发实测：两条脚本同时运行后 `9100=2 22=4 9550=2`，35s 内 `DPT=9100` 丢包 0 |
+| 首启 `provision-node` 报「超出时间预算 600s（在 cloudflare 阶段）已用时 5666s」并失败，60s 后重启才完成 | RTC 读不到，NTP 在 enroll 后把时钟从镜像构建时刻跳到当前时刻；bash `SECONDS` 按 `time()` 差值计算，凭空 +94 分钟 | 预算改用 `/proc/uptime` 差值（`provision_spent`），不受时钟跳变与环境继承的 `SECONDS` 影响 |
+| 首启 `hive-xray-sync`/`hive-clash-sync` 反复失败（`registry URL or MAC missing`） | 定时器在 `provision-node.sh` 写出 `/etc/hive/node-info` 之前触发 | 两个 service 加 `ConditionPathExists=/etc/hive/node-info`，身份文件出现后自动开始工作 |
+| 每次无租约都打印 `/usr/local/bin/hive-subscription-state: line 11: ...xray.lease: No such file or directory` | `read -r x < missing 2>/dev/null` 的重定向由 shell 先处理，`2>/dev/null` 尚未生效 | 先 `[ -r "$file" ]` 再读 |
+
+已部署到该测试机验证；出厂镜像需重新构建才会包含这些改动。`hive-xray-sync`/`hive-clash-sync`/`setup-firewall.sh`/`hive-hotspot-firewall.sh`/`provision-node.sh` 属 overlay 文件，普通应用 OTA 不会更新，需重刷或走可信通道手工安装。
+
+**仍开放（未在本轮修）**：确认升级后 `firmware_prune_stale_modules` 会删掉备用字母仍可启动的模块树；`hive-ota-transaction` 的健康探测与 `hive-firmware` 的确认探测未加 `-4`，双栈故障时可能误回滚；`ufw limit ssh` 的对象是全网段，源限制只影响顺序，不改变「任何来源都可试 SSH」这一事实。

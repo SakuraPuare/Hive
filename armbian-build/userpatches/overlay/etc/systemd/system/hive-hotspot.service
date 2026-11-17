@@ -3,7 +3,9 @@ Description=Hive Auto WiFi Hotspot (detect wireless NIC → open AP)
 Documentation=https://github.com/SakuraPuare/hive
 # NetworkManager 必须先就绪（AP 模式与 ipv4 shared 都依赖 NM）。
 # 不依赖 network-online.target：开热点不需要外网，且避免无人 pull 该 target 时死等。
-After=NetworkManager.service
+# hive-firewall.service 会 `ufw --force reset`；热点脚本也要写 ufw 规则，排在它之后
+# 才能避免首启互相覆盖（脚本内部另有 /run/hive-ufw.lock 兜底 udev 触发的并发）。
+After=NetworkManager.service hive-firewall.service
 Wants=NetworkManager.service
 
 [Service]

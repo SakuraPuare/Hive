@@ -7,8 +7,11 @@ mkdir -p "$HIVE_ACCESS_DIR" "$HIVE_TRAFFIC_DIR"
 chmod 700 "$HIVE_ACCESS_DIR" "$HIVE_TRAFFIC_DIR"
 hive_now() { awk '{print int($1)}' /proc/uptime; }
 hive_lease_valid() {
-    local deadline
-    read -r deadline < "$HIVE_ACCESS_DIR/$1.lease" 2>/dev/null || return 1
+    local deadline file="$HIVE_ACCESS_DIR/$1.lease"
+    # 先判存在再读：`read < file 2>/dev/null` 里的重定向由 shell 先处理，
+    # 文件缺失时 2>/dev/null 还没生效，每次没租约都会打印一行 No such file。
+    [ -r "$file" ] || return 1
+    read -r deadline < "$file" || return 1
     [[ "$deadline" =~ ^[0-9]+$ ]] && [ "$(hive_now)" -lt "$deadline" ]
 }
 hive_lease_write() {

@@ -2,6 +2,9 @@
 Description=Hive Xray user sync (pull subscriptions from registry -> Xray HandlerService)
 After=network-online.target xray.service
 Wants=network-online.target
+# 首启时 provision-node.sh 还没写 node-info，脚本只能报 "registry URL or MAC missing"
+# 并失败（实测每次刷机都在 15s 定时器上空转）。身份文件出现后条件自动满足。
+ConditionPathExists=/etc/hive/node-info
 
 [Service]
 Type=oneshot

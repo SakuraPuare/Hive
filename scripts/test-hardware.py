@@ -491,12 +491,168 @@ exit 0
         # 默认启动频率限制（5 次/10s）会把 60s 一次的重试掐死
         self.assertEqual(d.get('StartLimitIntervalSec'), ['0'],
                          '必须关掉启动频率限制，否则重试会被掐死在第一分钟')
-        # 409（已被认领/已发证）是永久性失败：必须结束重试并留痕，不能空转刷日志。
-        # 这一段没法在测试里真跑（脚本写死 /etc，且依赖真 registry），退化为结构断言。
-        script = (REPO / 'armbian-build/userpatches/overlay/usr/local/bin/provision-node.sh').read_text()
-        branch = script.split('409)', 1)[1].split(';;', 1)[0]
-        self.assertIn('exit 0', branch, '409 必须 exit 0 终止 Restart=on-failure 循环')
-        self.assertIn('/etc/hive/provision-blocked', branch, '409 必须留下可展示的状态文件')
+
+    def enrollment_fixture(self, mode='success'):
+        # Execute the real bootstrap up to hostname provisioning, relocating only
+        # absolute device paths. curl is the boundary to an isolated fake registry.
+        for path in ['etc/hive', 'var/log', 'usr/local/bin', 'sys/class/net/eth0']:
+            (self.root / path).mkdir(parents=True)
+        (self.root / 'etc/hive/config.env').write_text(
+            'NODE_REGISTRY_URL=https://registry.invalid\nNODE_REGISTRY_API_SECRET=\n')
+        (self.root / 'usr/local/bin/hive-board').write_text(
+            'hive_identity_interface() { echo eth0; }\n')
+        (self.root / 'sys/class/net/eth0/address').write_text('aa:bb:cc:dd:ee:ff\n')
+        (self.root / 'response-mode').write_text(mode)
+        for name in ['ip', 'sleep']:
+            self.mock(name, '#!/bin/sh\nexit 0\n')
+        # Run real fsync/rename while recording their ordering and supporting a
+        # persistence failure between receipt of the response and publication.
+        for name in ['sync', 'mv']:
+            self.mock(name, '#!/usr/bin/env python3\n' +
+                      f'tool = {name!r}\nreal = {shutil.which(name)!r}\n' + r'''
+import json, os, subprocess, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
+target = Path(args[-1])
+failure = r / 'fail-persist'
+if failure.exists() and target.name.startswith(failure.read_text()):
+    sys.exit(1)
+result = subprocess.run([real, *args])
+if result.returncode:
+    sys.exit(result.returncode)
+event = {'op': tool, 'path': str(target.relative_to(r))}
+if tool == 'mv': event['source'] = str(Path(args[-2]).relative_to(r))
+with (r / 'enrollment-events').open('a') as out:
+    out.write(json.dumps(event) + '\n')
+''')
+        self.mock('curl', r'''#!/usr/bin/env python3
+import json, os, re, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
+assert 'https://registry.invalid/nodes/enroll' in args
+request = json.loads(args[args.index('-d') + 1])
+proof = r / 'etc/hive/enrollment-token'
+assert proof.read_text().strip() == request['token']
+assert re.fullmatch('[0-9a-fA-F]{64}', request['token'])
+assert proof.stat().st_mode & 0o777 == 0o600
+assert not (r / 'etc/hive/device-token').exists()
+with (r / 'enrollment-events').open('a') as out:
+    out.write(json.dumps({'op': 'request', **request}) + '\n')
+server = r / 'registry-enrollment'
+if not server.exists():
+    server.write_text(json.dumps({'mac': request['mac'], 'token': request['token'], 'claim_code': 'ABCD-1234'}))
+accepted = json.loads(server.read_text())
+mode = (r / 'response-mode').read_text()
+if mode == 'lost':
+    print('000', end='')
+    sys.exit(28)
+if mode == 'conflict' or accepted['token'] != request['token']:
+    code, response = '409', {'error': 'credential does not match'}
+elif mode == 'wrong-token':
+    code, response = '200', {**accepted, 'token': 'f' * 64}
+elif mode == 'error-with-token':
+    code, response = '500', accepted
+else:
+    code, response = '200', accepted
+Path(args[args.index('-o') + 1]).write_text(json.dumps(response))
+print(code, end='')
+''')
+        source = (BIN / 'provision-node.sh').read_text().split('# 设主机名：', 1)[0]
+        for prefix in ['/etc/', '/var/log/', '/usr/local/bin/', '/sys/class/net/']:
+            source = source.replace(prefix, str(self.root) + prefix)
+        return source + '\nprintf "%s\\n" "$NODE_REGISTRY_API_SECRET" > "$HIVE_TEST_ROOT/resumed-token"\n'
+
+    def enrollment_events(self):
+        path = self.root / 'enrollment-events'
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def assert_enrollment_secret_synced(self, events, name):
+        path = 'etc/hive/' + name
+        rename = next(i for i, event in enumerate(events)
+                      if event['op'] == 'mv' and event['path'] == path)
+        self.assertEqual(events[rename - 1], {'op': 'sync', 'path': events[rename]['source']})
+        self.assertEqual(events[rename + 1], {'op': 'sync', 'path': 'etc/hive'})
+        self.assertEqual((self.root / path).stat().st_mode & 0o777, 0o600)
+        return rename
+
+    def test_enrollment_lost_response_retries_same_durable_secret(self):
+        source = self.enrollment_fixture('lost')
+        self.run_script(source, 1)
+        proof = (self.root / 'etc/hive/enrollment-token').read_text().strip()
+        self.assertRegex(proof, r'^[0-9a-f]{64}$')
+        self.assertFalse((self.root / 'etc/hive/device-token').exists())
+        self.assertFalse((self.root / 'etc/hive/claim-code').exists())
+        self.assertFalse((self.root / 'etc/hive/provision-blocked').exists())
+        before = self.enrollment_events()
+        published = self.assert_enrollment_secret_synced(before, 'enrollment-token')
+        first_request = next(i for i, event in enumerate(before) if event['op'] == 'request')
+        self.assertLess(published + 1, first_request)
+        self.assertEqual(len([event for event in before if event['op'] == 'request']), 6)
+
+        # A fresh provisioning process must recover, not skip enrollment because
+        # it found the pending proof, and must clear stale user-visible blocking.
+        (self.root / 'etc/hive/provision-blocked').write_text('stale failure')
+        (self.root / 'response-mode').write_text('success')
+        self.run_script(source)
+        events = self.enrollment_events()
+        requests = [event for event in events if event['op'] == 'request']
+        self.assertEqual(len(requests), 7)
+        self.assertEqual({request['token'] for request in requests}, {proof})
+        self.assertEqual((self.root / 'resumed-token').read_text().strip(), proof)
+        self.assertEqual((self.root / 'etc/hive/device-token').read_text().strip(), proof)
+        self.assertEqual((self.root / 'etc/hive/claim-code').read_text().strip(), 'ABCD-1234')
+        self.assertFalse((self.root / 'etc/hive/provision-blocked').exists())
+        claim = self.assert_enrollment_secret_synced(events, 'claim-code')
+        credential = self.assert_enrollment_secret_synced(events, 'device-token')
+        self.assertLess(claim + 1, credential)
+        self.assertFalse(list((self.root / 'etc/hive').glob('*.tmp.*')))
+        self.run_script(source)
+        self.assertEqual(len([event for event in self.enrollment_events() if event['op'] == 'request']), 7)
+
+    def test_enrollment_persistence_failure_never_sends_unflushed_proof(self):
+        source = self.enrollment_fixture()
+        (self.root / 'fail-persist').write_text('enrollment-token')
+        self.run_script(source, 1)
+        self.assertFalse(any(event['op'] == 'request' for event in self.enrollment_events()))
+        self.assertFalse((self.root / 'etc/hive/device-token').exists())
+        self.assertFalse((self.root / 'etc/hive/enrollment-token').exists())
+
+    def test_enrollment_claim_persistence_failure_resumes_with_same_proof(self):
+        source = self.enrollment_fixture()
+        (self.root / 'fail-persist').write_text('claim-code')
+        self.run_script(source, 1)
+        proof = (self.root / 'etc/hive/enrollment-token').read_text().strip()
+        self.assertFalse((self.root / 'etc/hive/device-token').exists())
+        (self.root / 'fail-persist').unlink()
+        self.run_script(source)
+        self.assertEqual((self.root / 'etc/hive/device-token').read_text().strip(), proof)
+        self.assertEqual((self.root / 'etc/hive/claim-code').read_text().strip(), 'ABCD-1234')
+
+    def test_enrollment_conflict_stops_without_publishing_device_token(self):
+        source = self.enrollment_fixture('conflict')
+        self.run_script(source)
+        self.assertTrue((self.root / 'etc/hive/provision-blocked').read_text().startswith('409 '))
+        self.assertTrue((self.root / 'etc/hive/enrollment-token').exists())
+        self.assertFalse((self.root / 'etc/hive/device-token').exists())
+        self.assertFalse((self.root / 'resumed-token').exists())
+        self.assertEqual(len([event for event in self.enrollment_events() if event['op'] == 'request']), 1)
+
+    def test_enrollment_rejects_wrong_token_and_unsuccessful_http_response(self):
+        source = self.enrollment_fixture('wrong-token')
+        for mode in ['wrong-token', 'error-with-token']:
+            with self.subTest(mode=mode):
+                (self.root / 'response-mode').write_text(mode)
+                self.run_script(source, 1)
+                self.assertFalse((self.root / 'etc/hive/device-token').exists())
+                self.assertFalse((self.root / 'etc/hive/claim-code').exists())
+
+    def test_enrollment_preserves_invalid_pending_proof_for_recovery(self):
+        source = self.enrollment_fixture()
+        proof = self.root / 'etc/hive/enrollment-token'
+        proof.write_text('interrupted-or-legacy-secret')
+        self.run_script(source, 1)
+        self.assertEqual(proof.read_text(), 'interrupted-or-legacy-secret')
+        self.assertFalse(any(event['op'] == 'request' for event in self.enrollment_events()))
 
     def test_fail2ban_logrotate_has_exactly_one_config(self):
         # Armbian 的 fail2ban 包自带 /etc/logrotate.d/fail2ban（同一个日志文件）。
@@ -516,15 +672,6 @@ exit 0
         image = (REPO / 'armbian-build/userpatches/customize-image.sh').read_text()
         self.assertIn('chmod 0644 /etc/logrotate.d/*', image)
         self.assertIn('chmod 0644 /etc/logrotate.d/fail2ban', script)
-
-    def test_provisioning_budget_ignores_inherited_seconds(self):
-        # SECONDS 会从环境继承：实测首启时带着 ~9112 进来，预算检查在开机 74s 就判
-        # "已用 9112s / 超出 600s"，第一次 provisioning 直接中止（靠新加的
-        # Restart=on-failure 才在 60s 后补上）。脚本必须在任何 budget_exceeded 之前
-        # 重置计时器。
-        script = (BIN / 'provision-node.sh').read_text()
-        self.assertIn('\nSECONDS=0\n', script)
-        self.assertLess(script.index('SECONDS=0'), script.index('budget_exceeded "$SECONDS"'))
 
     def test_units_with_provisioned_configs_skip_instead_of_timing_out(self):
         # 工厂镜像预启用 cloudflared/frpc，但它们的配置由 provisioning 生成；以前是
@@ -992,6 +1139,63 @@ sys.exit(1)
         self.assertFalse(stale.exists())
         self.assertNotIn('hive-lan-eth1',
                          json.loads((self.root / 'nm-state.json').read_text())['connections'])
+
+    def test_firewall_fails_when_a_concurrent_writer_dropped_rules(self):
+        # ufw rewrites /etc/ufw/user.rules on every command, so a second writer
+        # (hive-hotspot at first boot, live-verified on hardware) can drop rules
+        # that setup-firewall.sh already added. Leaving that state behind means
+        # SSH is open to the world and Prometheus cannot scrape 9100, so the unit
+        # must fail and let the next boot retry instead of reporting success.
+        (self.root / 'etc/hive').mkdir(parents=True)
+        (self.root / 'etc/hive/config.env').write_text('')
+        self.env['UFW_LOCK'] = str(self.root / 'ufw.lock')
+        for name in ['ip', 'iptables', 'ip6tables', 'sysctl', 'getent', 'curl',
+                     'logger', 'conntrack']:
+            self.mock(name, '#!/bin/sh\nexit 0\n')
+        self.mock('ufw', r'''#!/bin/sh
+case "$1 $2" in
+  "show added") printf '%s\n' "ufw allow in on lo";;
+esac
+exit 0
+''')
+        source = (BIN / 'setup-firewall.sh').read_text()
+        source = source.replace('/etc/hive/', str(self.root / 'etc/hive') + '/')
+
+        result = self.run_script(source, 1)
+
+        self.assertIn('Node Exporter - EasyTier', result.stderr)
+        self.assertIn('关键防火墙规则仍未生效', result.stderr)
+
+    def test_provisioning_budget_uses_monotonic_uptime_not_wall_clock(self):
+        # First boot on hardware: the RTC is unreadable and NTP jumps the clock from
+        # the image build time to now after enrollment. bash's SECONDS then reports
+        # 5666s for a couple of minutes of work and aborts provisioning. The budget
+        # must be a /proc/uptime delta, independent of SECONDS and of clock jumps.
+        text = (BIN / 'provision-node.sh').read_text()
+        snippet = ('PROVISION_START_UPTIME=1000\n'
+                   + text[text.index('PROVISION_BUDGET='):text.index('# 等待网络就绪')])
+        uptime = self.root / 'uptime'
+        uptime.write_text('1005.00 2000.00\n')
+        snippet = snippet.replace('/proc/uptime', str(uptime))
+
+        still_running = snippet + '''
+export SECONDS=999999
+PROVISION_BUDGET=600
+budget_exceeded "cloudflare"
+echo "still-running"
+'''
+        self.assertEqual(self.run_script(still_running).stdout.strip(), 'still-running')
+
+        uptime.write_text('1700.00 2700.00\n')
+        expired = snippet + '''
+export SECONDS=5
+PROVISION_BUDGET=600
+budget_exceeded "cloudflare"
+echo "must-not-continue"
+'''
+        result = self.run_script(expired, 1)
+        self.assertIn('超出时间预算', result.stdout)
+        self.assertNotIn('must-not-continue', result.stdout)
 
 
 if __name__ == '__main__':

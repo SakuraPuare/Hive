@@ -17,6 +17,19 @@
 #         hive-mihomo.service 的 ExecStartPost/ExecStopPost、hive-subscription-state。
 set -o pipefail
 
+# ufw 的每条命令都会整份重写 /etc/ufw/user.rules：与 setup-firewall.sh 并发时，
+# 后写的一方会覆盖对方刚加入的规则（首启实测把 SSH 源限制、9100 放行整段冲掉）。
+# 与 setup-firewall.sh 共用 /run/hive-ufw.lock；被它调用时它已持锁并通过
+# HIVE_UFW_LOCK_HELD 告知，不再二次加锁（同一进程重复 flock 会自锁）。
+if command -v ufw >/dev/null 2>&1 && [ "${HIVE_UFW_LOCK_HELD:-}" != 1 ]; then
+    exec 8>"${UFW_LOCK:-/run/hive-ufw.lock}"
+    if ! flock -w 120 8; then
+        echo "[hive-hotspot-firewall] 等待 ufw 变更锁超时" >&2
+        exit 1
+    fi
+    export HIVE_UFW_LOCK_HELD=1
+fi
+
 LOG_TAG="hive-hotspot-firewall"
 ENV_FILE="/etc/hive/hotspot-5g.env"
 CONF_ENV="/etc/hive/config.env"

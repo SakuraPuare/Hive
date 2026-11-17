@@ -15,6 +15,22 @@ set -e
 # 加载节点配置（EASYTIER_PEERS、FRP_SERVER_PORT 等）
 [ -f /etc/hive/config.env ] && source /etc/hive/config.env
 
+# ufw 的每条命令都会整份重写 /etc/ufw/user.rules：两个进程并发改规则时，后写的一方
+# 会把对方刚加入的条目覆盖掉。首启实测：hive-hotspot.service 与本单元同时启动，
+# 热点脚本用旧快照重写，使 SSH 源限制、Node Exporter 9100 等前段规则整段消失，
+# 结果 SSH 变成对全网限速放行、Prometheus 抓不到本机指标。
+# 所有 ufw 变更必须持有同一把锁；本脚本内部再调 hive-hotspot-firewall.sh 时，
+# 用环境变量告知"锁已在手"，避免同一进程二次 flock 自锁。
+UFW_LOCK="${UFW_LOCK:-/run/hive-ufw.lock}"
+if [ "${HIVE_UFW_LOCK_HELD:-}" != 1 ]; then
+    exec 8>"$UFW_LOCK"
+    if ! flock -w 180 8; then
+        echo "ERROR: 等待 ufw 变更锁超时（其他进程正在改防火墙）" >&2
+        exit 1
+    fi
+    export HIVE_UFW_LOCK_HELD=1
+fi
+
 echo ">>> 配置 Hive Node 防火墙..."
 
 # 检查是否已安装 ufw
@@ -239,6 +255,41 @@ ufw logging medium
 # 设置速率限制防止 SSH 爆破攻击
 ufw limit ssh comment 'SSH Rate Limiting'
 
+# ──────────────────────────────────────────────────────────────────────────
+# 规则复核
+# ──────────────────────────────────────────────────────────────────────────
+# 上面的写入仍可能被并发的 ufw 使用者覆盖（见文件开头的锁说明）。这里逐条确认
+# 关键放行是否真的落盘：缺失就重放一次，仍缺失则让本单元失败。单元失败时
+# ExecStartPost 不会创建 firewall-configured 标记，下次开机整段重跑，
+# 不会静默留下"SSH 对全网放行、监控抓不到本机"的状态。
+echo "复核关键规则..."
+ensure_added() {
+    local rule="$1"
+    ufw show added | grep -Fq "$rule" && return 0
+    echo "WARN: 防火墙规则缺失，重新应用：$rule" >&2
+    eval "ufw $rule" >/dev/null 2>&1 || true
+    ufw show added | grep -Fq "$rule"
+}
+
+missing=0
+for rule in \
+    "allow in on lo" \
+    "allow from 192.168.0.0/16 to any port 22 comment 'SSH - Local Network'" \
+    "allow from 10.0.0.0/8 to any port 22 comment 'SSH - Private Network'" \
+    "allow from 172.16.0.0/12 to any port 22 comment 'SSH - Private Network'" \
+    "allow from 100.64.0.0/10 to any port 22 comment 'SSH - Tailscale'" \
+    "allow from 100.64.0.0/10 to any port 9100 comment 'Node Exporter - Tailscale'" \
+    "allow from 172.20.0.0/16 to any port 9100 comment 'Node Exporter - EasyTier'" \
+    "allow from 100.64.0.0/10 to any port 9550 comment 'Xray Exporter - Tailscale'" \
+    "allow from 172.20.0.0/16 to any port 9550 comment 'Xray Exporter - EasyTier'" \
+    "allow from 100.64.0.0/10 to any port 9090 comment 'Mihomo dashboard - Tailscale'"; do
+    ensure_added "$rule" || missing=1
+done
+if [ "$missing" -ne 0 ]; then
+    echo "ERROR: 关键防火墙规则仍未生效；本次不落 firewall-configured，下次开机重试" >&2
+    exit 1
+fi
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 显示配置结果
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -251,7 +302,7 @@ ufw status verbose
 echo ""
 echo "📋 开放的端口："
 echo "  - SSH (22): 本地网络 + Tailscale"
-echo "  - Node Exporter (9100): 仅 Tailscale"
+echo "  - Node Exporter (9100): Tailscale + EasyTier"
 echo "  - EasyTier P2P (11010-11012 tcp, 11010-11011 udp): 全网段直连"
 echo "  - 透明网关 TUN 口 (Meta): in/out/forward 放行（system 栈转发投递）"
 echo "  - 出站: DNS, NTP, HTTPS, CF Tunnel(7844,443), CF WARP(2408,1701), Tailscale, FRP($FRP_PORT)"
