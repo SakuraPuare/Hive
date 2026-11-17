@@ -29,6 +29,9 @@ armbian-build/userpatches/overlay/usr/local/bin/mihomo
 # metacubexd Web 面板静态资源（由 scripts/download-binaries.sh 下载，不入库）
 armbian-build/userpatches/overlay/var/www/metacubexd/
 
+# cloudflare-warp deb（由 scripts/download-binaries.sh 预取，不入库）
+armbian-build/userpatches/overlay/var/cache/hive-debs/
+
 # 镜像文件
 *.img
 *.img.xz

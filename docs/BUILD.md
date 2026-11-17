@@ -137,8 +137,10 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 | u-boot / kernel 裸树包 | `ghcr.io`（411 MiB / 331 MiB，full 3.7 GiB） | `scripts/fetch-gitballs.sh` 预取，走 `ghcr.nju.edu.cn` |
 | rootfs 缓存包 | `ghcr.io/armbian/os/rootfs-arm64-trixie-cli`（约 252 MiB） | 同上，按框架打印的 tag 预取 |
 | GitHub Releases 二进制、厂商内核分支、rkbin | `github.com` | 直连；`download-binaries.sh` 用 `~/.cache/hive-binaries` 持久缓存 |
+| Tailscale apt 源 | `pkgs.tailscale.com`（13 MiB） | `customize-image.sh` 改用 `mirrors.ustc.edu.cn/tailscale/debian`（备 `mirror.nju.edu.cn`），签名 keyring 仍取官方 3 KB |
+| Cloudflare WARP | `pkg.cloudflareclient.com`（77 MiB，**没有任何国内镜像**） | `download-binaries.sh` 预取 deb 到 overlay，构建时本地安装 |
 
-实测（构建机 192.168.100.162）：`ghcr.io` 约 150 KB/s，u-boot 包要 45 min；`ghcr.nju.edu.cn` 同一个 blob 50 MB/s，约 8 s；TUNA apt 20 MB/s；GitHub Releases 约 0.4 MB/s。
+实测（构建机 192.168.100.162）：`ghcr.io` 约 150 KB/s，u-boot 包要 45 min；`ghcr.nju.edu.cn` 同一个 blob 50 MB/s，约 8 s；TUNA apt 20 MB/s；GitHub Releases 约 0.4 MB/s。Tailscale 的 13 MiB deb：官方 457 KB/s（29 s）、USTC 3.2 MB/s（4 s）、NJU 19 MB/s（0.7 s）；Cloudflare WARP 77 MiB：官方约 478 KB/s（≈2.7 min），无镜像可换。
 
 如果构建机 IP 被 TUNA 封禁（表现为 apt 与 git 来源全部 `403 Forbidden`，本机正常），在 `.env` 里设 `REGIONAL_MIRROR=aliyun`：`build.sh` 会用 `scripts/armbian-mirror-preset.py` 幂等补一份 aliyun 预设进框架（Armbian 只内置 china/bfsu，框架重装后会自动补回），apt 走 `mirrors.aliyun.com`（实测 10 MB/s），mainline 内核 git 回落 `kernel.org`。
 
@@ -165,6 +167,8 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 - 镜像默认 `ghcr.nju.edu.cn`；换镜像或强制直连用 `HIVE_GHCR_MIRROR=<host>|direct`。
 - rootfs 缓存包也是 ghcr.io 上的 OCI 工件，走 oras，失败会直接让构建以 `ERROR 43` 中止（`ARTIFACT_IGNORE_CACHE=yes` 能绕过，但会把内核一起重编）。框架的本地缓存判定只看 `cache/rootfs/rootfs-<arch>-<release>-<type>_<tag>.tar.zst` 是否存在，所以脚本按同样方式预取；tag 由框架的 `rootfs_cache_id` + `yyyymm` 决定，框架升级会变（26.08→26.11 时 `…-Bc08fea` 变成 `…-B5416c2`），默认从框架自己打印的日志里取（顶层日志没有就扫最近的归档），全新机器没有历史日志时用 `--rootfs-ref` 显式给 tag（`./compile.sh rootfs` 或 registry 的 tags 列表都能看到）。
 - 预取失败不会让构建失败，只是回落到 ghcr.io 慢速直连。
+- Tailscale 源由 `customize-image.sh` 现场探测：USTC → NJU → 官方，取第一个能拉到 `dists/${RELEASE}/Release` 的；两个镜像的 `Packages.gz` 与官方逐字节一致（USTC 最新、NJU 快但滞后约两周），所以 apt 的签名校验不受影响。
+- Cloudflare WARP 没有镜像：实测 TUNA / USTC / NJU / ZJU / CERNET / PKU / SJTU / SUSTech / aliyun / tencent / huawei 全 404。`./scripts/download-binaries.sh` 按官方 `Packages.gz` 解析当前 arm64 版本、校验 sha256 后放进 `userpatches/overlay/var/cache/hive-debs/`（已 gitignore），`customize-image.sh` 命中本地 deb 就不走官方源、装完删除；预取失败自动回落到官方源。
 - 境内/境外的判断看 `GITHUB_SERVER_URL`（只有 GitHub 官方 runner 是 `https://github.com`），不看 `GITHUB_ACTIONS`：自托管 `develop` runner 同样会导出 `GITHUB_ACTIONS=true`，按它判断会让境内 CI 走官方源。
 
 仍直连的部分：Docker 基础镜像 `ghcr.io/armbian/docker-armbian-build:*`（仅首次）、GitHub Releases 上的 xray/mihomo/frp 等（有持久缓存）、`rockchip-linux/rkbin`、R28S 的厂商内核分支 `github.com/armbian/linux-rockchip`。确实慢时给 `git`/`curl` 设 `https_proxy`（框架用 `env -i` 跑 oras 时也会透传 `http_proxy`/`https_proxy`/`HTTP_PROXY`/`HTTPS_PROXY`）；Docker 守护进程拉镜像要另外在 `/etc/docker/daemon.json` 或 systemd drop-in 里配代理。

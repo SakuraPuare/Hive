@@ -86,10 +86,15 @@ EOF
 # 2. 添加第三方 apt 源（先加源，再统一 update + install）
 # ─────────────────────────────────────────────
 
-# Tailscale 官方 apt 源
+# Tailscale 官方 apt 源（优先国内镜像）
 # 不能接 `| tee`：管道退出码取 tee 的成功，curl 被 RST（实测 "curl: (35) Recv
 # failure: Connection reset by peer"）会留下空 keyring，apt 只在后面报
 # "Missing key <id>"，10 分钟后才在 install tailscale 处失败。直接落盘 + 校验。
+#
+# 镜像实测（2026-11）：USTC https://mirrors.ustc.edu.cn/tailscale/debian 是最新的一份
+# （Packages.gz 与官方逐字节相同），13 MB 的 tailscale deb 3.2 MB/s；NJU
+# https://mirror.nju.edu.cn/tailscale/debian 更快（19 MB/s）但滞后约两周；两者都只镜像
+# pool/dists，不镜像 <release>.noarmor.gpg（404），所以 keyring 仍从官方取（3 KB）。
 echo ">>> Adding Tailscale apt repo..."
 tailscale_keyring=/usr/share/keyrings/tailscale-archive-keyring.gpg
 curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --max-time 120 \
@@ -99,8 +104,24 @@ if ! gpg --show-keys "${tailscale_keyring}" > /dev/null 2>&1; then
     echo ">>> ERROR: Tailscale 仓库密钥下载无效（${tailscale_keyring}）" >&2
     exit 1
 fi
+tailscale_repo=""
+for candidate in \
+    "https://mirrors.ustc.edu.cn/tailscale/debian" \
+    "https://mirror.nju.edu.cn/tailscale/debian" \
+    "https://pkgs.tailscale.com/stable/debian"; do
+    if curl -fsSL --retry 2 --retry-all-errors --max-time 30 -o /dev/null \
+            "${candidate}/dists/${RELEASE}/Release"; then
+        tailscale_repo="${candidate}"
+        break
+    fi
+done
+if [ -z "${tailscale_repo}" ]; then
+    echo ">>> ERROR: 所有 Tailscale apt 源都拉不到 ${RELEASE} 的 Release" >&2
+    exit 1
+fi
+echo ">>> Tailscale apt source: ${tailscale_repo}"
 echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] \
-https://pkgs.tailscale.com/stable/debian ${RELEASE} main" \
+${tailscale_repo} ${RELEASE} main" \
     | tee /etc/apt/sources.list.d/tailscale.list
 
 # Cloudflare WARP 官方 apt 源（Mesh 节点需要 warp-cli）
@@ -146,8 +167,33 @@ apt-get install -y --no-install-recommends \
     dnsmasq-base \
     iw \
     nftables \
-    tailscale \
-    cloudflare-warp
+    tailscale
+
+# cloudflare-warp 没有任何国内镜像：实测 TUNA / USTC / NJU / ZJU / CERNET / PKU / SJTU /
+# SUSTech / aliyun / tencent / huawei 全 404，77 MB 只能从 pkg.cloudflareclient.com 拉
+# （实测 ≈478 KB/s，单次约 2.7 min，而且走的是 chroot 里逐次重下，aptcache 不收第三方源）。
+# scripts/download-binaries.sh 会把它预取到 overlay 的 /var/cache/hive-debs/；命中就本地
+# 安装（依赖仍由 Debian 镜像解析），没命中退回官方源，行为与以前一致。
+warp_local_debs=()
+for deb in /var/cache/hive-debs/cloudflare-warp_*_arm64.deb; do
+    if [ -f "${deb}" ]; then
+        warp_local_debs+=("${deb}")
+    fi
+done
+if [ "${#warp_local_debs[@]}" -gt 0 ]; then
+    echo ">>> Installing cloudflare-warp from pre-fetched deb: ${warp_local_debs[*]}"
+    apt-get install -y --no-install-recommends \
+        -o Dpkg::Options::=--force-confdef \
+        -o Dpkg::Options::=--force-confold \
+        "${warp_local_debs[@]}"
+else
+    echo ">>> Installing cloudflare-warp from pkg.cloudflareclient.com (no pre-fetched deb)"
+    apt-get install -y --no-install-recommends \
+        -o Dpkg::Options::=--force-confdef \
+        -o Dpkg::Options::=--force-confold \
+        cloudflare-warp
+fi
+rm -rf /var/cache/hive-debs   # 77 MB，装完就不该留在镜像里
 
 # hostapd：5G 热点用独立 hostapd 托管（NM 内建 wpa_supplicant 在 MT7922 上开 80MHz 会失败）。
 #   屏蔽发行版自带的 hostapd.service（读 /etc/default/hostapd、DAEMON_CONF 空会空跑/报错）——
