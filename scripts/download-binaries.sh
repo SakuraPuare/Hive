@@ -59,11 +59,16 @@ resolve_latest_tag() {
 }
 
 # ── xray-core ──────────────────────────────────────────────────────────
-echo ">>> xray latest..."
-f=$(fetch_raw "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-arm64-v8a.zip" "xray-latest.zip")
+# Resolve the tag so the cache key changes with the version. A plain
+# "xray-latest.zip" cache key silently kept an old July 2026 Xray on the build
+# host; that binary lacks `statsonlineiplist -all`, which the exit-side device
+# limit needs (Xray >= 26.11.9).
+XRAY_VER=$(resolve_latest_tag "XTLS/Xray-core" "xray")
+echo ">>> xray ${XRAY_VER}..."
+f=$(fetch_raw "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VER}/Xray-linux-arm64-v8a.zip" "xray-${XRAY_VER}.zip")
 unzip -jo "$f" "xray" -d "${DEST}"
 chmod +x "${DEST}/xray"
-echo "    xray: OK"
+echo "    xray: OK (${XRAY_VER})"
 
 # ── cloudflared ────────────────────────────────────────────────────────
 echo ">>> cloudflared latest..."
