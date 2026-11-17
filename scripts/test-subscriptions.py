@@ -11,6 +11,7 @@ import unittest
 REPO = Path(__file__).resolve().parents[1]
 OVERLAY = REPO / 'armbian-build/userpatches/overlay'
 UUID = '11111111-2222-4333-8444-555555555555'
+UUID2 = '66666666-7777-4888-8999-aaaaaaaaaaaa'
 
 MOCK = r'''#!/usr/bin/env python3
 import json,os,shlex,subprocess,sys
@@ -53,8 +54,15 @@ elif name=='xray':
     if action=='statsquery':print(json.dumps({'stat':state['stats']}))
     elif action=='adu':
         if not args[-1].endswith('.json'):sys.exit(23)
-        clients=json.loads(Path(args[-1]).read_text())['inbounds'][0]['settings']['clients']
+        inbound=json.loads(Path(args[-1]).read_text())['inbounds'][0]
+        if not inbound.get('port'):
+            # Xray 26.3.27 refuses an inbound without a port but still exits 0.
+            print('Added 0 user(s) in total.')
+            sys.exit(0)
+        clients=inbound['settings']['clients']
+        if (root/'partial-adu').exists():clients=clients[:1]
         state['clients']+=clients;save()
+        print(f'Added {len(clients)} user(s) in total.')
 elif name=='curl':
     if (root/'fail-network').exists():sys.exit(22)
     if args[-1].endswith(('/accounting/state','/accounting','/xray-users')):
@@ -453,6 +461,20 @@ class SubscriptionScripts(unittest.TestCase):
         (self.root/'fail-adu').unlink()
         self.run_agent('hive-xray-sync')
         self.assertEqual(len(self.state()['clients']),1)
+
+    def test_authorization_requires_the_users_xray_actually_accepted(self):
+        # Xray 26.3.27 rejects an inbound without a port while exiting 0, so a
+        # sync that trusted the exit code left every subscription unauthorized.
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['clients'],[{'email':'sub-1','id':UUID,'level':0}])
+        self.assertEqual((self.root/'run/hive-subscriptions/xray.users').read_text(),f'sub-1\t{UUID}\n')
+
+    def test_partially_applied_users_stop_the_agent(self):
+        self.desired([{'email':'sub-1','uuid':UUID},{'email':'sub-2','uuid':UUID2}])
+        (self.root/'partial-adu').touch()
+        self.run_agent('hive-xray-sync',expected=1)
+        self.assertFalse(self.state()['xray'])
+        self.assertFalse((self.root/'run/hive-subscriptions/xray.lease').exists())
 
     def test_static_public_credentials_removed_on_startup(self):
         p=self.root/'etc/xray/config.json';config=json.loads(p.read_text())
