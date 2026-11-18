@@ -87,11 +87,12 @@ http://<tailscale_ip>:9090/ui   # 100.64.x（tailnet 内）
 
 ## 防回环（重要）
 
-出口节点上同时跑着 Xray 出口（freedom 直连出网）和 Mihomo 网关。为防止 Xray 的出站流量被本机 Mihomo 二次代理成死循环，做了三重隔离：
+出口节点上同时跑着 Xray 出口（freedom 直连出网）和 Mihomo 网关。Xray 以专用 `xray` 用户/组运行（官方 Xray-install 的服务模型：`User=xray`、`Group=xray`、`CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW`、`NoNewPrivileges=yes`），出站流量用 **socket GID + nft mark + fwmark ip rule** 直接走主路由表，不依赖 Mihomo 的规则顺序：
 
 1. **不启用 auto-redirect**（避免 DNAT 到 loopback 在 RK vendor 内核上撞出 martian）；但 `auto-route: true` 会把**本机自身出站也送进 TUN**——`ip route get 1.1.1.1` 会返回 `via 198.18.0.2 dev Meta`。所以"本机流量不进 TUN"这个前提不成立。
-2. 规则顶部 `PROCESS-NAME,xray/cloudflared/warp-svc/easytier-core/frpc/tailscaled,DIRECT` —— 意图是本机守护进程一律直连。**实测该规则在节点上匹配不到进程**（`find-process-mode: always` 亦然），不能作为唯一防线。
-3. 上游 VLESS 出口节点地址 Mihomo 内置永远直连。
+2. **Xray 专用组 + nft 标记**：`hive-xray-route.service` 在 `output` hook（`priority mangle`）里对 `meta skgid <xray gid>` 的包设置 `meta mark 0x1`；`ip rule fwmark 0x1/0x1 lookup main pref 100`（v4/v6）位于 Mihomo 的 9000/9001/9002 之前，把 Xray 出站包直接送进 `main` 表，完全绕开 TUN/table 2022。`xray.service` 通过 `Requires=hive-xray-route.service` 保证标记规则先就位。
+3. **fake-ip 仍要单独处理**：Mihomo 接管系统解析并返回 `198.18.x`；Xray freedom 的 `UseIP` 会直接拨 fake-ip。`hive-xray-prepare` 给 Xray 加自己的 DoH（`223.5.5.5` / `1.1.1.1`），出口目标解析成真实地址。mark 旁路和 DoH 互补，缺一不可。
+4. **兜底**：Mihomo 规则顶部仍保留 `SRC-IP-CIDR,<tun 地址>/32,DIRECT` 和 v6；`PROCESS-NAME` 保留但**实测在这块板子上匹配不到进程**，不能作为唯一防线。上游 VLESS 出口节点地址 Mihomo 内置永远直连。
 
 ## fail-closed（无有效订阅时）
 
@@ -110,7 +111,7 @@ rules:
   - MATCH,REJECT
 ```
 
-前两条不可省。删掉它们就只剩进程名白名单，而进程名匹配在本机不可靠：节点自己到 registry 的 TLS 会落到 `MATCH,REJECT`（现象是 `SSL ... unexpected eof while reading`、`allocate-easytier` 六连败），拿不到配置又连不上 registry——fail-closed 变成自锁，节点永远无法恢复。v4 地址从 `tun.inet4-address` 推导、缺省 `198.18.0.1`，v6 从 `tun.inet6-address` 推导、缺省 `fdfe:dcba:9876::1`（`hive-subscription-state` 的 `hive_tun_ipv4`/`hive_tun_ipv6`）。
+前两条不可省。Xray 自身出口已由 `hive-xray-route` 的 skgid/fwmark 旁路，但 registry、cloudflared、frpc、tailscaled 等控制面仍依赖这两条源地址规则；删掉它们就只剩进程名白名单，而进程名匹配在本机不可靠：节点自己到 registry 的 TLS 会落到 `MATCH,REJECT`（现象是 `SSL ... unexpected eof while reading`、`allocate-easytier` 六连败），拿不到配置又连不上 registry——fail-closed 变成自锁，节点永远无法恢复。v4 地址从 `tun.inet4-address` 推导、缺省 `198.18.0.1`，v6 从 `tun.inet6-address` 推导、缺省 `fdfe:dcba:9876::1`（`hive-subscription-state` 的 `hive_tun_ipv4`/`hive_tun_ipv6`）。
 
 **WiFi 热点不受这套门禁约束**：AP 是与代理网关独立的共享上网功能，没有订阅配置时连上热点也要有网。所以（1）门禁在（或没有 `config.yaml`、mihomo 没跑）时，热点网段被策略路由摘出 TUN 直连（`ip rule … lookup main pref 8000`），同时 dnsmasq 改用公共 DNS，并给这些解析器插 `pref 7000` 的直连规则绕开 `dns-hijack`（否则客户端拿到 fake-IP 却在主表里路由不到）；（2）`FORWARD` 上门禁 DROP 之上有双向放行（入向 AP 接口+热点网段，回程 `--ctorigsrc` 热点网段），每轮重落 DROP 都会重插；（3）上面两条 `SRC-IP-CIDR` DIRECT 是兜底：万一策略路由缺失，热点流量进 TUN 也仍能直连。实测症状链就是这套规则的来源：只有 DHCP/DNS 正常 + HTTPS 全超时，然后 TCP SYN 出得去但回包被 DROP。细节见 [HOTSPOT.md](HOTSPOT.md)。
 
@@ -150,6 +151,9 @@ LAN/WiFi 设备
 | 组件 | 作用 |
 |------|------|
 | `hive-gateway.sh` + `hive-gateway.service` | 开机探测有线拓扑，配 WAN/LAN |
+| `xray.service` | Xray 出口，以专用 `xray` 用户/组运行（非 root） |
+| `hive-xray-prepare.service` | root oneshot：生成 Xray 配置并设成 `root:xray 640` |
+| `hive-xray-route.service` | nft `skgid` mark + `fwmark` ip rule，Xray 出站绕开 Mihomo TUN |
 | `hive-mihomo.service` | 跑 Mihomo（`/etc/mihomo/config.yaml`） |
 | `hive-clash-sync` + `.timer` | 每 ~1 分钟从 registry 拉配置并热重载 |
 | `/etc/mihomo/config.yaml` | Mihomo 运行配置（首启用内置兜底，sync 后被 registry 下发覆盖） |
@@ -165,6 +169,9 @@ cat /etc/mihomo/config.yaml           # 当前生效配置（含上游节点/规
 ip link show | grep -i meta           # TUN 设备是否存在
 curl -s http://127.0.0.1:9090/version # Clash API 是否响应
 nft list ruleset | grep -i mihomo     # auto-redirect 的 nft 规则
+nft list table inet hive_xray_egress  # Xray skgid mark 计数器
+ip rule show | grep 0x1/0x1          # Xray fwmark 旁路规则（pref 100）
+ps -o user= -C xray                  # 必须是 xray，不是 root
 ```
 
 - **下游设备拿不到 IP**：检查 LAN 口 NM 连接 `nmcli connection show | grep hive-lan`，及 `method=shared` 是否激活。接口角色变化后旧 `hive-lan-*` 连接会被 `hive-gateway.sh` 删除；若手动改过接口用途，确认 WAN 口上没有任何 `method=shared` 的连接。

@@ -1,0 +1,14 @@
+[Unit]
+Description=Mark Xray egress by socket GID and bypass the Mihomo TUN
+Documentation=https://github.com/SakuraPuare/hive
+After=local-fs.target
+Before=xray.service hive-mihomo.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/hive-xray-route start
+ExecStop=/usr/local/bin/hive-xray-route stop
+
+[Install]
+WantedBy=multi-user.target

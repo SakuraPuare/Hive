@@ -45,6 +45,20 @@ else
     fail "xray" "service not active"
 fi
 
+# Xray must run as the dedicated user, with its egress marked outside the TUN.
+XRAY_USER=$(ps -o user= -C xray 2>/dev/null | head -1 | tr -d ' ')
+if [ "$XRAY_USER" = "xray" ] && runuser -u xray -- test -r /etc/xray/config.json 2>/dev/null; then
+    pass "xray-user" "running as xray, config readable"
+else
+    fail "xray-user" "user=${XRAY_USER:-none}, config not readable by xray"
+fi
+if nft list table inet hive_xray_egress >/dev/null 2>&1 &&
+   ip rule show 2>/dev/null | grep -q 'fwmark 0x1/0x1 lookup main'; then
+    pass "xray-egress" "nft skgid mark + ip rule pref 100"
+else
+    fail "xray-egress" "nft skgid mark or ip rule missing"
+fi
+
 # ── 3. Cloudflare Tunnel ──────────────────────────────────────────────────────
 if svc_active cloudflared; then
     if [ -n "${CF_URL}" ]; then

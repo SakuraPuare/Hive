@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Xray runs as the dedicated `xray` user/group. Mihomo's TUN auto-route puts
+# the node's own egress into table 2022; nft marks every socket owned by the
+# xray group, and the fwmark ip rule sends those packets through the main table
+# instead. The proxy therefore never depends on Mihomo's rule order and never
+# needs PROCESS-NAME (which does not match on this board).
+set -euo pipefail
+
+TABLE=hive_xray_egress
+MARK=${XRAY_EGRESS_MARK:-0x1}
+PREF=${XRAY_EGRESS_RULE_PREF:-100}
+
+gid=${XRAY_GID:-$(getent group xray 2>/dev/null | cut -d: -f3)}
+[ -n "$gid" ] || { echo '[hive-xray-route] xray group is missing' >&2; exit 1; }
+
+start() {
+    command -v nft >/dev/null 2>&1 || { echo '[hive-xray-route] nft is missing' >&2; exit 1; }
+    command -v ip >/dev/null 2>&1 || { echo '[hive-xray-route] ip is missing' >&2; exit 1; }
+    nft delete table inet "$TABLE" 2>/dev/null || true
+    nft -f - <<EOF
+table inet $TABLE {
+    chain output {
+        type route hook output priority mangle; policy accept;
+        meta skgid $gid counter meta mark set $MARK
+    }
+}
+EOF
+    ip rule del fwmark "$MARK/$MARK" lookup main pref "$PREF" 2>/dev/null || true
+    ip rule add fwmark "$MARK/$MARK" lookup main pref "$PREF"
+    if [ -d /proc/sys/net/ipv6 ]; then
+        ip -6 rule del fwmark "$MARK/$MARK" lookup main pref "$PREF" 2>/dev/null || true
+        ip -6 rule add fwmark "$MARK/$MARK" lookup main pref "$PREF" 2>/dev/null || true
+    fi
+    echo "[hive-xray-route] gid=$gid mark=$MARK pref=$PREF"
+}
+
+stop() {
+    nft delete table inet "$TABLE" 2>/dev/null || true
+    ip rule del fwmark "$MARK/$MARK" lookup main pref "$PREF" 2>/dev/null || true
+    ip -6 rule del fwmark "$MARK/$MARK" lookup main pref "$PREF" 2>/dev/null || true
+}
+
+case "${1:-}" in
+    start) start ;;
+    stop) stop ;;
+    *) echo "usage: $0 start|stop" >&2; exit 2 ;;
+esac

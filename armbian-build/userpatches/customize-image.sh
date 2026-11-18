@@ -221,7 +221,7 @@ for bin in xray cloudflared frpc easytier-core xray-exporter; do
 done
 
 # Hive subscription enforcement and startup hooks
-for helper in hive-subscription-state hive-subscription-guard hive-xray-prepare hive-gateway-prepare; do
+for helper in hive-subscription-state hive-subscription-guard hive-xray-prepare hive-xray-route hive-gateway-prepare; do
     chmod +x "/usr/local/bin/$helper"
 done
 chmod +x /usr/local/bin/hive-ota-transaction /usr/local/bin/hive-firmware /usr/local/bin/hive-data /usr/local/bin/hive-data-grow /usr/local/bin/hive-board
@@ -311,6 +311,18 @@ fi
 # 5. 创建目录和权限
 # ─────────────────────────────────────────────
 mkdir -p /etc/hive /etc/cloudflared /etc/xray /etc/frp
+# The public Xray proxy runs as a dedicated system user (official Xray-install
+# model), never as root. The nft egress rule selects sockets by this GID.
+if ! getent group xray >/dev/null 2>&1; then
+    groupadd --system xray
+fi
+if ! getent passwd xray >/dev/null 2>&1; then
+    useradd --system --gid xray --home-dir /var/lib/xray --no-create-home --shell /usr/sbin/nologin xray
+fi
+install -d -m 0750 -o root -g xray /etc/xray
+install -d -m 0750 -o xray -g xray /var/lib/xray
+chown root:xray /etc/xray/config.json 2>/dev/null || true
+chmod 640 /etc/xray/config.json 2>/dev/null || true
 # config.env 由 build.sh 渲染后放入 overlay，此处确保权限
 chmod 600 /etc/hive/config.env 2>/dev/null || true
 # OTA 公钥：设备端验证 bundle 签名用，所有人可读
@@ -402,6 +414,7 @@ systemctl enable tailscaled.service   # daemon 预启动，tailscale up 由 prov
 systemctl enable NetworkManager-wait-online.service
 systemctl enable warp-svc.service    # WARP daemon 预启动，warp-cli 注册由 provision 执行
 systemctl enable prometheus-node-exporter.service
+systemctl enable xray.service hive-xray-route.service hive-xray-prepare.service
 # nginx：禁用默认站点，启用 hive 站点
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/hive /etc/nginx/sites-enabled/hive

@@ -31,3 +31,9 @@ jq '
 ' /etc/xray/config.json > "$tmp"
 xray run -test -config "$tmp" >/dev/null 2>&1
 mv -f "$tmp" /etc/xray/config.json
+# The service drops to the dedicated xray user; keep the config root-owned but
+# group-readable so that user can read it without owning the file.
+if [ "$(id -u)" -eq 0 ] && getent group xray >/dev/null 2>&1; then
+    chown root:xray /etc/xray/config.json
+fi
+chmod 640 /etc/xray/config.json 2>/dev/null || true

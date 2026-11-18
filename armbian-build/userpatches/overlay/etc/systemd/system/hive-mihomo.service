@@ -1,7 +1,7 @@
 [Unit]
 Description=Hive Mihomo (Clash.Meta) transparent proxy gateway
 Documentation=https://github.com/SakuraPuare/hive
-After=network-online.target NetworkManager.service
+After=network-online.target NetworkManager.service hive-xray-route.service
 Wants=network-online.target
 
 [Service]

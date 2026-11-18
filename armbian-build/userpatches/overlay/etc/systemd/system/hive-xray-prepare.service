@@ -1,0 +1,12 @@
+[Unit]
+Description=Prepare Xray config before the non-root service starts
+Documentation=https://github.com/SakuraPuare/hive
+After=local-fs.target
+Before=xray.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hive-xray-prepare
+
+[Install]
+WantedBy=multi-user.target
