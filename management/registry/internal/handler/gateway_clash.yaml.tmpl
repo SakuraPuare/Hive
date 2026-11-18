@@ -30,7 +30,7 @@ profile:
 # TPROXY（只接管 LAN/AP 转发流量）：
 # 本机自身出站不进 tproxy，Xray 出口/registry/cloudflared 等控制面天然直连。
 # nft 规则与 fwmark ip rule 由 hive-gateway-route.service 安装；
-# 客户端 DNS 由同一 nft 链 redirect 到 dns.listen。
+# 客户端 DNS 由 dnsmasq 在网关地址上应答（fib daddr type local return 不进 tproxy）。
 tproxy-port: 7893
 
 sniffer:
