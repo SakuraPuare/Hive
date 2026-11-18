@@ -529,9 +529,14 @@ function GatewayTable({
                   </div>
                 </TableCell>
 
-                {/* Location */}
+                {/* Location: 心跳上报的国家 + 管理员备注的位置 */}
                 <TableCell className="py-3">
-                  <span className="text-sm text-muted-foreground">{n.location || '—'}</span>
+                  <div className="flex flex-col">
+                    <span className="text-sm text-muted-foreground">{n.country || '—'}</span>
+                    {n.location ? (
+                      <span className="text-xs text-muted-foreground/70">{n.location}</span>
+                    ) : null}
+                  </div>
                 </TableCell>
 
                 {/* Enabled toggle */}

@@ -140,6 +140,7 @@ export default function NodeDetail() {
             <FieldRow label={t('macIpv6')} value={node.mac6} mono noData={noData} />
             <FieldRow label={t('hostname')} value={node.hostname} noData={noData} />
             <FieldRow label={t('location')} value={node.location} noData={noData} />
+            <FieldRow label={t('country')} value={node.country} noData={noData} />
             <FieldRow label={t('note')} value={node.note} noData={noData} />
           </CardContent>
         </Card>

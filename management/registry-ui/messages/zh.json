@@ -238,6 +238,7 @@
     "macIpv6": "MAC (IPv6)",
     "hostname": "主机名",
     "location": "位置",
+    "country": "上报国家",
     "note": "备注",
     "network": "网络",
     "tailscaleIp": "Tailscale IP",

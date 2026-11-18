@@ -238,6 +238,7 @@
     "macIpv6": "MAC (IPv6)",
     "hostname": "Hostname",
     "location": "Location",
+    "country": "Reported country",
     "note": "Note",
     "network": "Network",
     "tailscaleIp": "Tailscale IP",
