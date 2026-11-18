@@ -16,19 +16,32 @@ NODE_INFO=/etc/hive/node-info
 [ -f /etc/hive/config.env ] && source /etc/hive/config.env 2>/dev/null || true
 enabled=${GATEWAY_ENABLED:-on}
 
-read_field() { sed -n "s/^$1=//p" "$NODE_INFO" 2>/dev/null | head -1; }
+read_field() { { sed -n "s/^$1=//p" "$NODE_INFO" 2>/dev/null || true; } | head -1; }
 
 interfaces() {
-    local lan one wifi5 wifi i
+    local lan one wan wifi5 wifi i d
     lan=$(read_field GATEWAY_LAN_IFACES)
     one=$(read_field GATEWAY_ONE_ARM_IFACE)
+    wan=$(read_field GATEWAY_WAN_IFACE)
     wifi5=$(read_field WIFI_IFACE_5G)
     wifi=$(read_field WIFI_IFACE)
-    for i in $lan $one $wifi5 $wifi; do
-        [ -n "$i" ] || continue
-        case "$i" in *[!a-zA-Z0-9_.:-]*) continue ;; esac
-        case " $IFS_OUT " in *" $i "*) continue ;; esac
+    add_interface() {
+        local i=$1
+        [ -n "$i" ] || return 0
+        case "$i" in *[!a-zA-Z0-9_.:-]*) return 0 ;; esac
+        [ "$i" = "$wan" ] && [ "$i" != "$one" ] && return 0
+        case " $IFS_OUT " in *" $i "*) return 0 ;; esac
         IFS_OUT="${IFS_OUT:+$IFS_OUT }$i"
+    }
+    for i in $lan $one $wifi5 $wifi; do add_interface "$i"; done
+    # A wireless AP interface can exist before provision/hotspot has written
+    # WIFI_IFACE* into node-info. Detect it directly so the first boot (and a
+    # failed route start) still installs TPROXY on the AP.
+    for d in /sys/class/net/*/phy80211; do
+        [ -e "$d" ] || continue
+        i=${d#/sys/class/net/}
+        i=${i%/phy80211}
+        add_interface "$i"
     done
 }
 
@@ -45,9 +58,23 @@ start() {
     command -v ip >/dev/null 2>&1 || { echo '[hive-gateway-route] ip is missing' >&2; exit 1; }
     IFS_OUT=""
     interfaces
-    if [ "$enabled" != on ] || [ -z "$IFS_OUT" ] || [ ! -s /etc/mihomo/config.yaml ]; then
+    if [ "$enabled" != on ]; then
         stop
-        echo "[hive-gateway-route] disabled, no LAN/AP interface, or no mihomo config; no TPROXY rules"
+        echo "[hive-gateway-route] gateway disabled; no TPROXY rules"
+        return 0
+    fi
+    # First boot: node-info/hotspot and the mihomo config can appear after this
+    # unit. Wait briefly so the AP interface and config are both available
+    # before installing rules; the mihomo unit Requires= this unit.
+    for _ in $(seq 1 30); do
+        [ -n "$IFS_OUT" ] && [ -s /etc/mihomo/config.yaml ] && break
+        sleep 2
+        IFS_OUT=""
+        interfaces
+    done
+    if [ -z "$IFS_OUT" ] || [ ! -s /etc/mihomo/config.yaml ]; then
+        stop
+        echo "[hive-gateway-route] no LAN/AP interface or no mihomo config; no TPROXY rules"
         return 0
     fi
     local ifset
