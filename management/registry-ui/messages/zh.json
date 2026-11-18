@@ -1274,7 +1274,9 @@
     "upstreamSelected": "已选择",
     "upstreamNotSelected": "未选择",
     "collapseIntro": "收起说明",
-    "expandIntro": "展开说明"
+    "expandIntro": "展开说明",
+    "countryAuto": "自动（跟随上报）",
+    "countryLabel": "位置（国家代码）"
   },
   "theme": {
     "pickerLabel": "选择主题色",

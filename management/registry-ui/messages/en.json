@@ -1274,7 +1274,9 @@
     "upstreamSelected": "Selected",
     "upstreamNotSelected": "Not selected",
     "collapseIntro": "Collapse intro",
-    "expandIntro": "Expand intro"
+    "expandIntro": "Expand intro",
+    "countryAuto": "Auto (reported)",
+    "countryLabel": "Location (country)"
   },
   "theme": {
     "pickerLabel": "Select theme color",

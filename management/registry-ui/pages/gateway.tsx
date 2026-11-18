@@ -35,13 +35,16 @@ import { Collapsible } from 'radix-ui';
 
 const DIRECTIONS = ['auto', 'domestic', 'overseas', 'global', 'direct'] as const;
 const UPSTREAM_MODES = ['auto', 'manual'] as const;
+// 位置可手工指定：空值=跟随心跳上报；否则用这个国家判定 auto 分流。
+const COUNTRY_OPTIONS = ['CN', 'HK', 'TW', 'MO', 'JP', 'KR', 'SG', 'US', 'GB', 'DE', 'FR', 'NL', 'CA', 'AU', 'RU', 'BR', 'IN', 'AE', 'TR'] as const;
 
 type GatewayField =
   | 'gateway_enabled'
   | 'gateway_direction'
   | 'gateway_upstream_mode'
   | 'gateway_upstream_nodes'
-  | 'bound_subscription_id';
+  | 'bound_subscription_id'
+  | 'country_override';
 
 type GatewayPatch = Partial<Pick<model_Node, GatewayField>>;
 
@@ -529,13 +532,31 @@ function GatewayTable({
                   </div>
                 </TableCell>
 
-                {/* Location: 心跳上报的国家 + 管理员备注的位置 */}
+                {/* Location: 心跳上报的国家，可手工指定覆盖（auto 分流据此判定） */}
                 <TableCell className="py-3">
-                  <div className="flex flex-col">
-                    <span className="text-sm text-muted-foreground">{n.country || '—'}</span>
-                    {n.location ? (
-                      <span className="text-xs text-muted-foreground/70">{n.location}</span>
-                    ) : null}
+                  <div className="flex flex-col gap-1">
+                    <Select
+                      value={n.country_override || 'auto'}
+                      disabled={savingMacs.has(mac)}
+                      onValueChange={(v) => onPatch(mac, { country_override: v === 'auto' ? '' : v })}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        className="w-[120px] rounded-lg border-border bg-md-surface-container text-sm"
+                        aria-label={t('countryLabel')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl border-border bg-popover elevation-2">
+                        <SelectItem value="auto">{t('countryAuto')}</SelectItem>
+                        {COUNTRY_OPTIONS.map((c) => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground/70">
+                      {`上报 ${n.country || '—'}${n.location ? ` · ${n.location}` : ''}`}
+                    </span>
                   </div>
                 </TableCell>
 
