@@ -5,8 +5,9 @@
 #   LAN 口  给下游设备发 DHCP + NAT（NM method=shared 自带 dnsmasq），静态网关 10.42.2.1/24
 #
 # 透明代理由 Mihomo(hive-mihomo.service)接管，本脚本只负责把"物理拓扑"配好：
-#   - 单网口设备（如 Zero2）：无 WAN/LAN 之分，干净退出 0；Mihomo 透明代理对 WiFi 热点下游仍有效。
-#     单臂（旁路）网关仍是 WIP，未实现（见 cleanup_one_arm 的历史清理）。
+#   - 单网口且无无线（如 Zero2 无 USB 无线卡）：单臂（旁路）网关是 WIP，暂不配置，
+#     干净退出 0，节点保持普通角色。
+#   - 单网口但有无线：交给 WiFi 热点路径，本脚本不配 WAN/LAN（Mihomo 仍接管热点转发）。
 #   - 双/多网口设备：第一个口作 WAN，其余口作 LAN（10.42.2.1 / .3.1 / .4.1 递增，避开热点的 .0.1/.1.1）。
 #
 # 设计与 hive-hotspot.sh 一致：一切从 MAC 确定性派生、NM keyfile、flock 单实例锁、幂等可反复调用。
@@ -142,13 +143,20 @@ for _wl in /sys/class/net/*/phy80211; do
 done
 log "发现 ${NWIRED} 个物理有线口: [${WIRED[*]:-none}]，无线网卡 ${WIRELESS} 个"
 
-# One-arm (bypass) gateway: WIP, not implemented. A single wired NIC stays a
-# plain node; only a previous WIP firmware's leftovers are cleaned up.
+# One-arm (bypass) gateway: WIP, not implemented. Only the single wired NIC
+# *without* wireless case was ever meant to become an L2 default gateway; a
+# single-NIC device with a wireless card keeps using the WiFi hotspot path, so
+# it exits for the same reason it always did. Both branches clean up leftovers
+# from a firmware that shipped the WIP implementation.
 if [ "$NWIRED" -lt 2 ]; then
     cleanup_one_arm
-    log "仅 ${NWIRED} 个有线口、无线 ${WIRELESS} 个，不配置 WAN/LAN（非路由器场景；网关仍由 Mihomo 接管本机转发）"
     # 网口减少（拔掉 USB 网卡/改单口）后这些连接已无对应 LAN，留着会被 NM 激活。
     prune_lan_profiles
+    if [ "$WIRELESS" -eq 0 ]; then
+        log "仅 ${NWIRED} 个有线口、无无线网卡：单臂（旁路）网关是 WIP，暂不配置；节点保持普通角色"
+    else
+        log "仅 ${NWIRED} 个有线口、无线 ${WIRELESS} 个，不配置 WAN/LAN（WiFi 热点下游走原有网关路径）"
+    fi
     exit 0
 fi
 

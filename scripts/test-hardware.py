@@ -1139,8 +1139,9 @@ esac
 exit 0
 ''')
 
-        self.run_script(source)
+        result = self.run_script(source)
 
+        self.assertIn('WIP', result.stdout)
         info = (self.root / 'etc/hive/node-info').read_text()
         self.assertNotIn('GATEWAY_ONE_ARM_', info)
         self.assertNotIn('GATEWAY_LAN_IFACES=', info)
@@ -1152,6 +1153,30 @@ exit 0
         self.assertIn('-D FORWARD -o eth0 -m comment --comment hive-one-arm-out -j ACCEPT', calls)
         self.assertIn('-t nat -D POSTROUTING -s 192.168.5.0/24 -o eth0 '
                       '-m comment --comment hive-one-arm-nat -j MASQUERADE', calls)
+        self.assertNotIn('-I FORWARD', calls)
+        self.assertNotIn('-A POSTROUTING', calls)
+
+    def test_single_wired_node_with_wireless_keeps_the_hotspot_path(self):
+        # One wired NIC *plus* a wireless card is not the WIP bypass case: it is
+        # the normal WiFi hotspot topology and must not be reported as one.
+        source = self.gateway_fixture()
+        shutil.rmtree(self.root / 'sys/class/net/eth1')
+        wlan = self.root / 'sys/class/net/wlan0'
+        (wlan / 'phy80211').mkdir(parents=True)
+        (wlan / 'device').mkdir(parents=True)
+        (wlan / 'address').write_text('02:00:00:00:00:01\n')
+        (wlan / 'operstate').write_text('up\n')
+        (self.root / 'nm-state.json').write_text(json.dumps({
+            'connections': {}, 'active': [], 'interfaces': ['eth0', 'wlan0']}))
+
+        result = self.run_script(source)
+
+        self.assertIn('WiFi 热点下游走原有网关路径', result.stdout)
+        self.assertNotIn('WIP', result.stdout)
+        info = (self.root / 'etc/hive/node-info').read_text()
+        self.assertNotIn('GATEWAY_', info)
+        self.assertFalse((self.root / 'etc/sysctl.d/99-hive-one-arm.conf').exists())
+        calls = (self.root / 'iptables-calls').read_text() if (self.root / 'iptables-calls').exists() else ''
         self.assertNotIn('-I FORWARD', calls)
         self.assertNotIn('-A POSTROUTING', calls)
 
