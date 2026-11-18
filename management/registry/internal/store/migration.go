@@ -679,6 +679,17 @@ UPDATE nodes SET subscription_sync = 1
  WHERE mac IN (SELECT DISTINCT node_mac FROM node_traffic_counters);
 `,
 	},
+	{
+		version: 35,
+		desc:    "nodes: country reported by the heartbeat drives gateway_direction=auto",
+		// 网关分流方向要能自动判定：节点在大陆 → domestic（CN 直连、其余出海）；
+		// 不在大陆 → overseas（CN 走回国节点、其余直连）。国家由节点心跳上报
+		// （hive-command-agent 读 cloudflare trace 的 loc），旧镜像不上报则留空，
+		// auto 会退回 domestic（安全默认：不要把国内流量绕到境外）。
+		up: `
+ALTER TABLE nodes ADD COLUMN country VARCHAR(2) NOT NULL DEFAULT '' COMMENT '节点出口所在国家（ISO-3166 alpha-2，心跳上报）';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

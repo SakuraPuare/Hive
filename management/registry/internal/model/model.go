@@ -42,6 +42,10 @@ type Node struct {
 	// 两类订阅使用不同的分流规则，因此不能混在同一份客户端配置里。
 	ExitDirection string `json:"exit_direction"`
 
+	// Country 是节点出口所在国家（ISO-3166 alpha-2），由心跳上报；用于
+	// gateway_direction=auto 时判定"在大陆就出海、不在大陆就回国"。
+	Country string `json:"country"`
+
 	// SubscriptionSync 表示该节点的 Xray 会不会接受"订阅用户"的 UUID。
 	// 新镜像由 hive-xray-sync 从 /nodes/{mac}/xray-users 拉取并写入 clients；
 	// 旧镜像只有一个静态 client（节点自身 UUID），网关必须改用节点自身 UUID。
@@ -81,10 +85,10 @@ type DeviceCommand struct {
 }
 
 // NodeCols SELECT 列顺序，用于 LEFT JOIN 查询
-const NodeCols = "n.mac, n.mac6, n.hostname, n.cf_url, n.tunnel_id, n.tailscale_ip, n.easytier_ip, n.frp_port, n.xray_uuid, n.mesh_tunnel_id, n.mesh_ip, n.location, n.note, n.registered_at, n.last_seen, n.server_enabled, n.exit_enabled, n.owner_exit_enabled, n.exit_direction, n.subscription_sync, n.enabled, n.status, n.weight, n.region, n.gateway_enabled, n.gateway_direction, n.gateway_upstream_mode, n.gateway_upstream_nodes, n.bound_subscription_id, n.owner_customer_id, n.claimed_at, COALESCE(nsc.status, 'unknown') AS probe_status"
+const NodeCols = "n.mac, n.mac6, n.hostname, n.cf_url, n.tunnel_id, n.tailscale_ip, n.easytier_ip, n.frp_port, n.xray_uuid, n.mesh_tunnel_id, n.mesh_ip, n.location, n.note, n.registered_at, n.last_seen, n.server_enabled, n.exit_enabled, n.owner_exit_enabled, n.exit_direction, n.subscription_sync, n.country, n.enabled, n.status, n.weight, n.region, n.gateway_enabled, n.gateway_direction, n.gateway_upstream_mode, n.gateway_upstream_nodes, n.bound_subscription_id, n.owner_customer_id, n.claimed_at, COALESCE(nsc.status, 'unknown') AS probe_status"
 
 // NodeColsPlain 用于不需要 JOIN 的场景
-const NodeColsPlain = "mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, mesh_tunnel_id, mesh_ip, location, note, registered_at, last_seen, server_enabled, exit_enabled, owner_exit_enabled, exit_direction, subscription_sync, enabled, status, weight, region, gateway_enabled, gateway_direction, gateway_upstream_mode, gateway_upstream_nodes, bound_subscription_id, owner_customer_id, claimed_at"
+const NodeColsPlain = "mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, mesh_tunnel_id, mesh_ip, location, note, registered_at, last_seen, server_enabled, exit_enabled, owner_exit_enabled, exit_direction, subscription_sync, country, enabled, status, weight, region, gateway_enabled, gateway_direction, gateway_upstream_mode, gateway_upstream_nodes, bound_subscription_id, owner_customer_id, claimed_at"
 
 // ── User & Auth ──────────────────────────────────────────────────────────────
 
@@ -385,4 +389,7 @@ type HeartbeatRequest struct {
 	MemPct    float64 `json:"mem_pct"`
 	DiskPct   float64 `json:"disk_pct"`
 	UptimeSec int64   `json:"uptime_sec"`
+	// Country is the node's egress country (ISO-3166 alpha-2). Empty on legacy
+	// agents; the registry keeps the last known value.
+	Country string `json:"country"`
 }

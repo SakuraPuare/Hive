@@ -82,7 +82,6 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 	// 方向必须归一化后再参与判定：旧面板/API 写入的大小写或空白（如 "Overseas"）
 	// 会让下面两个 switch 同时落到默认分支，产出"分流规则=境内、上游池=境内节点"
 	// 这种自相矛盾的配置（实测）。
-	direction := gatewayDirectionOrDefault(self.GatewayDirection)
 	direction := resolveGatewayDirection(self.GatewayDirection, self.Country)
 	upstreamMode := self.GatewayUpstreamMode
 	if upstreamMode == "" {

@@ -65,6 +65,15 @@
 
 两类节点不会混进同一个上游池：把境外网关代理到另一个境外节点拿不到国内 IP，反之亦然。方向不匹配导致上游为空时同样 fail-closed。
 
+### 分流方向：`auto` 自动识别
+
+`gateway_direction` 除 `domestic|overseas|global|direct` 外还支持 **`auto`**（推荐）：
+
+- 节点心跳会带上出口所在国家（agent 读 Cloudflare trace 的 `loc`，失败退回 ipinfo，结果按天缓存），registry 存进 `nodes.country`；
+- `auto` 时按国家判定：**CN → `domestic`（出海：CN 直连、其余走境外出口）**，**非 CN → `overseas`（回国：CN 走回国节点、其余直连）**；
+- 国家未知（旧镜像不上报）时回退 `domestic`，避免把国内流量绕到境外；
+- 客户门户（`/portal/devices`）和管理端网关页都能改，客户只能改自己名下、`gateway_enabled=1` 的设备；管理端写入非法值 400。
+
 `gateway_direction` 在读取时先归一化（trim + 小写，非 `domestic|overseas|global|direct` 一律按 `domestic`），管理端写入非法值直接 400。否则 `Overseas` 这类非规范值会让"分流规则"和"上游池"各自落到默认分支，产出规则=境内、上游=境内节点的自相矛盾配置。
 
 面板里每个节点可配 `gateway_upstream_mode`：

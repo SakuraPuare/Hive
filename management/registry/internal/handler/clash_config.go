@@ -43,7 +43,7 @@ func normalizeDirection(raw string) (string, bool) {
 // domestic nodes. Canonicalise once and default to domestic.
 func normalizeGatewayDirection(raw string) (string, bool) {
 	switch v := strings.ToLower(strings.TrimSpace(raw)); v {
-	case DirectionDomestic, DirectionOverseas, "global", "direct":
+	case DirectionDomestic, DirectionOverseas, "global", "direct", "auto":
 		return v, true
 	}
 	return "", false
@@ -56,6 +56,35 @@ func gatewayDirectionOrDefault(raw string) string {
 		return v
 	}
 	return DirectionDomestic
+}
+
+// resolveGatewayDirection turns the stored mode into a concrete split-routing
+// direction. "auto" follows the node's reported country: in mainland China the
+// node is a 出海 gateway (CN direct, everything else proxied); anywhere else it
+// is a 回国 gateway (CN proxied through domestic exits, everything else direct).
+// An unknown country falls back to domestic so CN traffic is never routed out
+// through a foreign exit just because detection failed.
+func resolveGatewayDirection(raw, country string) string {
+	switch v := strings.ToLower(strings.TrimSpace(raw)); v {
+	case DirectionDomestic, DirectionOverseas, "global", "direct":
+		return v
+	case "auto":
+		if normalizeCountry(country) == "CN" || normalizeCountry(country) == "" {
+			return DirectionDomestic
+		}
+		return DirectionOverseas
+	}
+	return DirectionDomestic
+}
+
+// normalizeCountry returns an upper-case two-letter ISO code, or "" when the
+// value does not look like one.
+func normalizeCountry(raw string) string {
+	c := strings.ToUpper(strings.TrimSpace(raw))
+	if len(c) != 2 || c[0] < 'A' || c[0] > 'Z' || c[1] < 'A' || c[1] > 'Z' {
+		return ""
+	}
+	return c
 }
 
 // nodeDirection normalizes a node's stored direction. Rows predating migration
