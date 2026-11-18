@@ -82,11 +82,6 @@ start() {
     nft delete table inet "$NFT_TABLE" 2>/dev/null || true
     nft -f - <<EOF
 table inet $NFT_TABLE {
-    chain dns_redirect {
-        type nat hook prerouting priority dstnat; policy accept;
-        iifname { $ifset } udp dport 53 redirect to :$DNS_PORT
-        iifname { $ifset } tcp dport 53 redirect to :$DNS_PORT
-    }
     chain prerouting {
         type filter hook prerouting priority 0; policy accept;
         fib daddr type local return
