@@ -63,6 +63,7 @@ export type { handler_PortalCreateOrderResponse } from './models/handler_PortalC
 export type { handler_PortalCreateTicketRequest } from './models/handler_PortalCreateTicketRequest';
 export type { handler_PortalCreateTicketResponse } from './models/handler_PortalCreateTicketResponse';
 export type { handler_PortalDeviceExitRequest } from './models/handler_PortalDeviceExitRequest';
+export type { handler_PortalDeviceGatewayRequest } from './models/handler_PortalDeviceGatewayRequest';
 export type { handler_PortalLoginRequest } from './models/handler_PortalLoginRequest';
 export type { handler_PortalMeResponse } from './models/handler_PortalMeResponse';
 export type { handler_PortalOrderListResponse } from './models/handler_PortalOrderListResponse';

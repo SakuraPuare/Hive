@@ -45,6 +45,14 @@ func (h *Handler) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		log.Printf("heartbeat: update last_seen for mac=%s: %v", req.MAC, err)
 	}
 
+	// 出口所在国家由 agent 上报（cloudflare trace 的 loc）；旧 agent 不发该字段，
+	// 空值不能覆盖已有值，否则 auto 分流会在旧节点升级后被误判成"未知"。
+	if country := normalizeCountry(req.Country); country != "" {
+		if err := h.DB.Model(&model.Node{}).Where("mac = ?", req.MAC).Update("country", country).Error; err != nil {
+			log.Printf("heartbeat: update country for mac=%s: %v", req.MAC, err)
+		}
+	}
+
 	if err := h.DB.Exec(`
 		INSERT INTO node_status_checks (mac, status, latency_ms, cpu_pct, mem_pct, disk_pct, uptime_sec, checked_at)
 		VALUES (?, 'online', NULL, ?, ?, ?, ?, ?)

@@ -540,6 +540,12 @@ definitions:
         example: false
         type: boolean
     type: object
+  handler.PortalDeviceGatewayRequest:
+    properties:
+      gateway_direction:
+        example: auto
+        type: string
+    type: object
   handler.PortalLoginRequest:
     properties:
       email:
@@ -1270,6 +1276,11 @@ definitions:
     type: object
   model.HeartbeatRequest:
     properties:
+      country:
+        description: |-
+          Country is the node's egress country (ISO-3166 alpha-2). Empty on legacy
+          agents; the registry keeps the last known value.
+        type: string
       cpu_pct:
         type: number
       disk_pct:
@@ -1314,6 +1325,11 @@ definitions:
       cf_url:
         type: string
       claimed_at:
+        type: string
+      country:
+        description: |-
+          Country 是节点出口所在国家（ISO-3166 alpha-2），由心跳上报；用于
+          gateway_direction=auto 时判定"在大陆就出海、不在大陆就回国"。
         type: string
       easytier_ip:
         type: string
@@ -1383,6 +1399,13 @@ definitions:
         type: boolean
       status:
         type: string
+      subscription_sync:
+        description: |-
+          SubscriptionSync 表示该节点的 Xray 会不会接受"订阅用户"的 UUID。
+          新镜像由 hive-xray-sync 从 /nodes/{mac}/xray-users 拉取并写入 clients；
+          旧镜像只有一个静态 client（节点自身 UUID），网关必须改用节点自身 UUID。
+          节点首次 POST 计费快照时自动置 1，因此旧节点升级后无需人工干预。
+        type: boolean
       tailscale_ip:
         type: string
       tunnel_id:
@@ -5263,6 +5286,44 @@ paths:
       security:
       - CustomerSessionCookie: []
       summary: 设置我的设备是否作为 Xray 出口
+      tags:
+      - portal
+  /portal/devices/{mac}/gateway:
+    put:
+      consumes:
+      - application/json
+      description: auto 会按节点上报的国家自动判定：在大陆 → 出海（CN 直连、其余代理）；不在大陆 → 回国（CN 走回国节点、其余直连）。
+      operationId: PortalSetDeviceGateway
+      parameters:
+      - description: 设备 MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      - description: 分流方向
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.PortalDeviceGatewayRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 设置我的网关设备的分流方向
       tags:
       - portal
   /portal/devices/{mac}/mihomo/{path}:

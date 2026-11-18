@@ -100,6 +100,7 @@ export default function PortalDevicesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exitBusy, setExitBusy] = useState('');
+  const [dirBusy, setDirBusy] = useState('');
 
   // 认领对话框
   const [claimOpen, setClaimOpen] = useState(false);
@@ -165,6 +166,24 @@ export default function PortalDevicesPage() {
       toast.error(getErrorMessage(e, t('exitToggleFailed')));
     } finally {
       setExitBusy('');
+    }
+  }, [t, toast]);
+
+  // 分流方向：auto 由节点上报的国家决定（大陆 → 出海，境外 → 回国）。
+  const changeDirection = useCallback(async (device: model_Node, direction: string) => {
+    if (!device.mac) return;
+    setDirBusy(device.mac);
+    try {
+      await portalSessionApi(PortalService.portalSetDeviceGateway({
+        mac: device.mac,
+        requestBody: { gateway_direction: direction },
+      }));
+      setDevices((prev) => prev.map((d) => d.mac === device.mac ? { ...d, gateway_direction: direction } : d));
+      toast.success(t('directionChangeSuccess'));
+    } catch (e) {
+      toast.error(getErrorMessage(e, t('directionChangeFailed')));
+    } finally {
+      setDirBusy('');
     }
   }, [t, toast]);
 
@@ -427,6 +446,7 @@ export default function PortalDevicesPage() {
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colStatus')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colExit')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colSubscription')}</TableHead>
+                  <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colDirection')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colAddress')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colLastSeen')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colClaimedAt')}</TableHead>
@@ -465,6 +485,31 @@ export default function PortalDevicesPage() {
                       {d.gateway_enabled
                         ? (d.bound_subscription_id ? `#${d.bound_subscription_id}` : t('subscriptionUnbound'))
                         : '—'}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {d.gateway_enabled ? (
+                        <div className="flex flex-col gap-1">
+                          <select
+                            className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
+                            value={d.gateway_direction || 'domestic'}
+                            disabled={dirBusy === d.mac}
+                            onChange={(e) => void changeDirection(d, e.target.value)}
+                            aria-label={t('colDirection')}
+                          >
+                            <option value="auto">{t('directionAuto')}</option>
+                            <option value="domestic">{t('directionDomestic')}</option>
+                            <option value="overseas">{t('directionOverseas')}</option>
+                            <option value="global">{t('directionGlobal')}</option>
+                            <option value="direct">{t('directionDirect')}</option>
+                          </select>
+                          <span className="text-xs text-muted-foreground">
+                            {t('directionCountryHint')}: {d.country || '—'}
+                            {d.gateway_direction === 'auto'
+                              ? ` → ${(d.country || 'CN') === 'CN' ? t('directionDomestic') : t('directionOverseas')}`
+                              : ''}
+                          </span>
+                        </div>
+                      ) : '—'}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{d.easytier_ip || d.tailscale_ip || '—'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{d.last_seen ? fmt.dateTime(d.last_seen) : '—'}</TableCell>

@@ -235,6 +235,58 @@ func (h *Handler) HandlePortalUnbindDeviceSubscription(w http.ResponseWriter, r 
 	h.jsonOK(w, map[string]string{"status": "ok"})
 }
 
+// PortalDeviceGatewayRequest is the body for PUT /portal/devices/{mac}/gateway.
+type PortalDeviceGatewayRequest struct {
+	GatewayDirection string `json:"gateway_direction" example:"auto"`
+}
+
+// HandlePortalSetDeviceGateway godoc
+// @Summary      设置我的网关设备的分流方向
+// @ID           PortalSetDeviceGateway
+// @Description  auto 会按节点上报的国家自动判定：在大陆 → 出海（CN 直连、其余代理）；不在大陆 → 回国（CN 走回国节点、其余直连）。
+// @Tags         portal
+// @Security     CustomerSessionCookie
+// @Accept       json
+// @Produce      json
+// @Param        mac path string true "设备 MAC"
+// @Param        body body PortalDeviceGatewayRequest true "分流方向"
+// @Success      200 {object} StatusResponse
+// @Failure      400 {object} ErrorResponse
+// @Failure      404 {object} ErrorResponse
+// @Router       /portal/devices/{mac}/gateway [put]
+func (h *Handler) HandlePortalSetDeviceGateway(w http.ResponseWriter, r *http.Request) {
+	cid := customerID(r)
+	mac := r.PathValue("mac")
+	node, ok := h.ownedNode(w, mac, cid)
+	if !ok {
+		return
+	}
+	if !node.GatewayEnabled {
+		h.jsonErr(w, http.StatusBadRequest, "device is not a gateway")
+		return
+	}
+	var req PortalDeviceGatewayRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.jsonErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	dir, valid := normalizeGatewayDirection(req.GatewayDirection)
+	if !valid {
+		h.jsonErr(w, http.StatusBadRequest, "gateway_direction must be auto, domestic, overseas, global or direct")
+		return
+	}
+	if err := h.DB.Exec(
+		"UPDATE nodes SET gateway_direction = ? WHERE mac = ? AND owner_customer_id = ?",
+		dir, mac, cid,
+	).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	store.WriteAuditLog(h.DB, customerActor(cid), "device_gateway_direction",
+		"mac="+mac+" direction="+dir, getClientIP(r))
+	h.jsonOK(w, map[string]string{"status": "ok", "gateway_direction": dir})
+}
+
 // PortalDeviceExitRequest is the body for PUT /portal/devices/{mac}/exit.
 type PortalDeviceExitRequest struct {
 	Enabled *bool `json:"enabled" example:"false"`

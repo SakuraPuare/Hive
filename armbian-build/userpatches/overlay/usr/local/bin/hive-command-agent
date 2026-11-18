@@ -33,9 +33,33 @@ BASE="${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/commands"
 # ── 心跳 ───────────────────────────────────────────────────────────────
 # 面板上的"在线"和 CPU/内存/磁盘曲线全靠它（registry 写 last_seen + node_status_checks）。
 # 放在拉命令之前：命令通道故障不应让节点显示离线。所有取数失败都退化成 0，绝不致命。
+# registry 用这个国家判断 gateway_direction=auto（大陆 → 出海，境外 → 回国）。
+# cloudflare trace 的 loc 反映节点真实出口；被墙时退回 ipinfo。一天最多查一次，
+# 结果落盘，心跳周期内只读缓存。
+COUNTRY_CACHE="/var/lib/hive/country"
+country_code() {
+    local now mtime c
+    now=$(date +%s)
+    mtime=$(stat -c %Y "${COUNTRY_CACHE}" 2>/dev/null || echo 0)
+    if [ -s "${COUNTRY_CACHE}" ] && [ $(( now - mtime )) -lt 86400 ]; then
+        tr -d '\r\n' < "${COUNTRY_CACHE}"; return 0
+    fi
+    c=$(curl -4 -s --max-time 4 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | sed -n 's/^loc=//p' | head -1)
+    case "${c}" in
+        [A-Z][A-Z]) ;;
+        *) c=$(curl -4 -s --max-time 4 https://ipinfo.io/country 2>/dev/null | tr -d '\r\n') ;;
+    esac
+    case "${c}" in
+        [A-Z][A-Z]) mkdir -p "$(dirname "${COUNTRY_CACHE}")" 2>/dev/null
+                    printf '%s' "${c}" > "${COUNTRY_CACHE}" 2>/dev/null
+                    printf '%s' "${c}" ;;
+        *) : ;;
+    esac
+}
+
 heartbeat() {
     [ -r /proc/uptime ] || return 0
-    local up cpu=0 mem=0 disk=0 total avail
+    local up cpu=0 mem=0 disk=0 total avail country
     read -r up _ < /proc/uptime || up=0
     up=${up%.*}
     total=$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
@@ -53,10 +77,11 @@ heartbeat() {
             [ "$dtotal" -gt 0 ] && cpu=$(( (dtotal - didle) * 100 / dtotal ))
         fi
     fi
+    country=$(country_code)
     curl -4 -sf --max-time 10 -H "${AUTH}" -H 'Content-Type: application/json' \
         -d "$(jq -nc --arg mac "${MAC_NORM}" --argjson cpu "${cpu:-0}" --argjson mem "${mem:-0}" \
-              --argjson disk "${disk:-0}" --argjson up "${up:-0}" \
-              '{mac:$mac,cpu_pct:$cpu,mem_pct:$mem,disk_pct:$disk,uptime_sec:$up}')" \
+              --argjson disk "${disk:-0}" --argjson up "${up:-0}" --arg country "${country:-}" \
+              '{mac:$mac,cpu_pct:$cpu,mem_pct:$mem,disk_pct:$disk,uptime_sec:$up} + (if $country == "" then {} else {country:$country} end)')" \
         "${NODE_REGISTRY_URL}/nodes/heartbeat" >/dev/null 2>&1 \
         && log "heartbeat ok (cpu=${cpu}% mem=${mem}% disk=${disk}%)" \
         || log "heartbeat failed（registry 不可达，下轮重试）"

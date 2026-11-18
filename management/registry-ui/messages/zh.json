@@ -871,6 +871,15 @@
     "statusOffline": "离线",
     "statusUnknown": "未知",
     "colExit": "作为出口",
+    "colDirection": "分流方向",
+    "directionAuto": "自动（按位置）",
+    "directionDomestic": "境内分流（出海）",
+    "directionOverseas": "境外分流（回国）",
+    "directionGlobal": "全局代理",
+    "directionDirect": "全部直连",
+    "directionChangeFailed": "切换分流方向失败",
+    "directionChangeSuccess": "分流方向已更新",
+    "directionCountryHint": "节点位置",
     "exitToggleSuccess": "出口设置已更新",
     "exitToggleFailed": "出口设置更新失败",
     "exitAdminDisabled": "管理员已关闭出口",
@@ -1245,6 +1254,7 @@
     "subUnbind": "解除绑定（不计费）",
     "direction": {
       "domestic": "境内分流",
+      "auto": "自动（按位置）",
       "overseas": "境外分流",
       "global": "全局代理",
       "direct": "全部直连"

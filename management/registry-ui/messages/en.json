@@ -871,6 +871,15 @@
     "statusOffline": "Offline",
     "statusUnknown": "Unknown",
     "colExit": "Act as exit",
+    "colDirection": "Split routing",
+    "directionAuto": "Auto (by location)",
+    "directionDomestic": "Domestic split",
+    "directionOverseas": "Overseas split",
+    "directionGlobal": "Global proxy",
+    "directionDirect": "All direct",
+    "directionChangeFailed": "Failed to change split routing",
+    "directionChangeSuccess": "Split routing updated",
+    "directionCountryHint": "Node location",
     "exitToggleSuccess": "Exit setting updated",
     "exitToggleFailed": "Failed to update exit setting",
     "exitAdminDisabled": "Exit disabled by admin",
@@ -1245,6 +1254,7 @@
     "subUnbind": "Unbind (not billed)",
     "direction": {
       "domestic": "Domestic",
+      "auto": "Auto (by location)",
       "overseas": "Overseas",
       "global": "Global proxy",
       "direct": "All direct"

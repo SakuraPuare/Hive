@@ -11,6 +11,7 @@ import type { handler_PortalCreateOrderResponse } from '../models/handler_Portal
 import type { handler_PortalCreateTicketRequest } from '../models/handler_PortalCreateTicketRequest';
 import type { handler_PortalCreateTicketResponse } from '../models/handler_PortalCreateTicketResponse';
 import type { handler_PortalDeviceExitRequest } from '../models/handler_PortalDeviceExitRequest';
+import type { handler_PortalDeviceGatewayRequest } from '../models/handler_PortalDeviceGatewayRequest';
 import type { handler_PortalMeResponse } from '../models/handler_PortalMeResponse';
 import type { handler_PortalOrderListResponse } from '../models/handler_PortalOrderListResponse';
 import type { handler_PortalReferralRecordsResponse } from '../models/handler_PortalReferralRecordsResponse';
@@ -171,6 +172,39 @@ export class PortalService {
         return __request(OpenAPI, {
             method: 'PUT',
             url: '/portal/devices/{mac}/exit',
+            path: {
+                'mac': mac,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 设置我的网关设备的分流方向
+     * auto 会按节点上报的国家自动判定：在大陆 → 出海（CN 直连、其余代理）；不在大陆 → 回国（CN 走回国节点、其余直连）。
+     * @returns handler_StatusResponse OK
+     * @throws ApiError
+     */
+    public static portalSetDeviceGateway({
+        mac,
+        requestBody,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+        /**
+         * 分流方向
+         */
+        requestBody: handler_PortalDeviceGatewayRequest,
+    }): CancelablePromise<handler_StatusResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/portal/devices/{mac}/gateway',
             path: {
                 'mac': mac,
             },

@@ -33,7 +33,7 @@ import { Collapsible } from 'radix-ui';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const DIRECTIONS = ['domestic', 'overseas', 'global', 'direct'] as const;
+const DIRECTIONS = ['auto', 'domestic', 'overseas', 'global', 'direct'] as const;
 const UPSTREAM_MODES = ['auto', 'manual'] as const;
 
 type GatewayField =

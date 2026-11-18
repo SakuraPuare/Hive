@@ -10,6 +10,11 @@ export type model_Node = {
     bound_subscription_id?: number;
     cf_url?: string;
     claimed_at?: string;
+    /**
+     * Country 是节点出口所在国家（ISO-3166 alpha-2），由心跳上报；用于
+     * gateway_direction=auto 时判定"在大陆就出海、不在大陆就回国"。
+     */
+    country?: string;
     easytier_ip?: string;
     enabled?: boolean;
     /**
@@ -65,6 +70,13 @@ export type model_Node = {
      */
     server_enabled?: boolean;
     status?: string;
+    /**
+     * SubscriptionSync 表示该节点的 Xray 会不会接受"订阅用户"的 UUID。
+     * 新镜像由 hive-xray-sync 从 /nodes/{mac}/xray-users 拉取并写入 clients；
+     * 旧镜像只有一个静态 client（节点自身 UUID），网关必须改用节点自身 UUID。
+     * 节点首次 POST 计费快照时自动置 1，因此旧节点升级后无需人工干预。
+     */
+    subscription_sync?: boolean;
     tailscale_ip?: string;
     tunnel_id?: string;
     weight?: number;

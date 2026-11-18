@@ -307,7 +307,7 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		}
 		dir, valid := normalizeGatewayDirection(rawDir)
 		if !valid {
-			h.jsonErr(w, http.StatusBadRequest, "gateway_direction must be domestic, overseas, global or direct")
+			h.jsonErr(w, http.StatusBadRequest, "gateway_direction must be auto, domestic, overseas, global or direct")
 			return
 		}
 		updates["gateway_direction"] = dir
