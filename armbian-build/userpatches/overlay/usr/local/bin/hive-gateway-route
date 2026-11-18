@@ -90,6 +90,10 @@ table inet $NFT_TABLE {
     chain prerouting {
         type filter hook prerouting priority 0; policy accept;
         fib daddr type local return
+        # DHCP/RA/ND/mDNS are link-local control traffic. TPROXY-ing them
+        # starves dnsmasq of DHCP and breaks AP clients before they get an IP.
+        meta pkttype { broadcast, multicast } return
+        udp dport { 67, 68, 546, 547 } return
         meta nfproto ipv4 iifname { $ifset } meta l4proto { tcp, udp } tproxy ip to :$PORT meta mark set $MARK accept
         meta nfproto ipv6 iifname { $ifset } meta l4proto { tcp, udp } tproxy ip6 to :$PORT meta mark set $MARK accept
     }
