@@ -273,7 +273,7 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		"gateway_enabled": true, "gateway_direction": true,
 		"gateway_upstream_mode": true, "gateway_upstream_nodes": true,
 		"bound_subscription_id": true, "exit_enabled": true, "exit_direction": true,
-		"subscription_sync": true,
+		"subscription_sync": true, "country_override": true,
 	}
 	updates := make(map[string]any)
 	for k, v := range body {
@@ -311,6 +311,22 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		updates["gateway_direction"] = dir
+	}
+
+	if raw, ok := updates["country_override"]; ok {
+		rawCountry, isString := raw.(string)
+		if !isString {
+			h.jsonErr(w, http.StatusBadRequest, "country_override must be an ISO-3166 alpha-2 code or empty")
+			return
+		}
+		if strings.TrimSpace(rawCountry) == "" {
+			updates["country_override"] = ""
+		} else if c := normalizeCountry(rawCountry); c != "" {
+			updates["country_override"] = c
+		} else {
+			h.jsonErr(w, http.StatusBadRequest, "country_override must be an ISO-3166 alpha-2 code or empty")
+			return
+		}
 	}
 
 	if err := h.DB.Model(&model.Node{}).Where("mac = ?", mac).Updates(updates).Error; err != nil {

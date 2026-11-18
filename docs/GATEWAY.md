@@ -67,7 +67,8 @@
 
 - 节点心跳会带上出口所在国家（agent 读 Cloudflare trace 的 `loc`，失败退回 ipinfo，结果按天缓存），registry 存进 `nodes.country`；
 - `auto` 时按国家判定：**CN → `domestic`（出海：CN 直连、其余走境外出口）**，**非 CN → `overseas`（回国：CN 走回国节点、其余直连）**；
-- 国家未知（旧镜像不上报）时回退 `domestic`，避免把国内流量绕到境外；
+- **位置可人工指定**：节点编辑里的「位置（国家代码）」写入 `nodes.country_override`，非空时优先于心跳上报（留空=跟随上报）；旧镜像不上报、或上报值与实际不符（例如经境外中转）时用它兜住；
+- 国家未知（旧镜像不上报且未指定）时回退 `domestic`，避免把国内流量绕到境外；
 - 客户门户（`/portal/devices`）和管理端网关页都能改，客户只能改自己名下、`gateway_enabled=1` 的设备；管理端写入非法值 400。
 
 `gateway_direction` 在读取时先归一化（trim + 小写，非 `domestic|overseas|global|direct` 一律按 `domestic`），管理端写入非法值直接 400。否则 `Overseas` 这类非规范值会让"分流规则"和"上游池"各自落到默认分支，产出规则=境内、上游=境内节点的自相矛盾配置。

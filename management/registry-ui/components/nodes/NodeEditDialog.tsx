@@ -82,6 +82,8 @@ export function NodeEditDialog({
   const [weight, setWeight] = useState(String(node?.weight ?? 100));
   const [region, setRegion] = useState(node?.region ?? '');
   const [exitDirection, setExitDirection] = useState(node?.exit_direction || 'overseas');
+  // 位置：空=跟随心跳上报；填了国家代码就固定用它（auto 分流据此判定）。
+  const [countryOverride, setCountryOverride] = useState(node?.country_override ?? '');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [weightError, setWeightError] = useState('');
@@ -110,7 +112,7 @@ export function NodeEditDialog({
       await sessionApi(
         AdminService.nodeUpdate({
           mac: node.mac,
-          requestBody: { location, note, enabled, exit_enabled: exitEnabled, exit_direction: exitDirection, status, weight: weightValue, region } as handler_NodeUpdateRequest,
+          requestBody: { location, note, enabled, exit_enabled: exitEnabled, exit_direction: exitDirection, status, weight: weightValue, region, country_override: countryOverride.trim().toUpperCase() } as handler_NodeUpdateRequest,
         }),
       );
       toast.success(t('saved'));
@@ -197,6 +199,17 @@ export function NodeEditDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">{t('exitDirectionHelper')}</p>
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="node-edit-country" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('countryOverride')}</Label>
+              <Input
+                id="node-edit-country"
+                value={countryOverride}
+                onChange={(e) => setCountryOverride(e.target.value.toUpperCase().slice(0, 2))}
+                placeholder="CN / US / JP"
+                maxLength={2}
+                helperText={t('countryOverrideHelper', { reported: node?.country || t('countryUnknown') })}
+              />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="node-edit-note" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('note')}</Label>

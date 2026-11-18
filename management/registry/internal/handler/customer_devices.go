@@ -278,7 +278,7 @@ func (h *Handler) HandlePortalSetDeviceGateway(w http.ResponseWriter, r *http.Re
 	// 方向与已绑定订阅的线路必须能配出一台上游：境内网关要境外节点、境外网关要
 	// 回国节点。配不出来时切换方向等于让网关 fail-closed（客户端断网），先拦下并
 	// 说明要先换订阅，而不是让用户在面板上把设备点成砖。
-	if node.BoundSubscriptionID != nil && *node.BoundSubscriptionID != 0 && !h.gatewayDirectionHasUpstream(node, directionForNode(dir, node.Country)) {
+	if node.BoundSubscriptionID != nil && *node.BoundSubscriptionID != 0 && !h.gatewayDirectionHasUpstream(node, directionForNode(dir, effectiveNodeCountry(node))) {
 		h.jsonErr(w, http.StatusConflict, "当前订阅的线路里没有该分流方向可用的上游节点，请先改绑对应方向的订阅")
 		return
 	}
@@ -364,9 +364,18 @@ func (h *Handler) HandlePortalUnbindDevice(w http.ResponseWriter, r *http.Reques
 }
 
 // directionForNode resolves the stored mode to a concrete direction, using the
-// node's reported country for "auto".
+// node's effective country for "auto".
 func directionForNode(mode, country string) string {
 	return resolveGatewayDirection(mode, country)
+}
+
+// effectiveNodeCountry is the country auto should use: the operator override
+// when set, otherwise the heartbeat-reported value.
+func effectiveNodeCountry(n model.Node) string {
+	if c := normalizeCountry(n.CountryOverride); c != "" {
+		return c
+	}
+	return normalizeCountry(n.Country)
 }
 
 // gatewayDirectionHasUpstream reports whether the node's bound subscription

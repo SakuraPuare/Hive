@@ -8,7 +8,7 @@
 //   Circular references: 0
 //   Discriminated unions: 0
 //   With constraints: 1
-//   Generated at: 2026-11-18T13:39:36.075Z
+//   Generated at: 2026-11-18T16:25:15.087Z
 
 import { z } from "zod";
 
@@ -1005,6 +1005,9 @@ UUID 下发（email sub-<id>），由可信出口计入该订阅；未绑定或�
 /** Country 是节点出口所在国家（ISO-3166 alpha-2），由心跳上报；用于
 gateway_direction=auto 时判定"在大陆就出海、不在大陆就回国"。 */
   country: z.string().optional(),
+/** CountryOverride 非空时覆盖心跳上报的 Country（人工指定位置），
+gateway_direction=auto 用它判定分流方向。空串表示跟随上报。 */
+  country_override: z.string().optional(),
   easytier_ip: z.string().optional(),
   enabled: z.boolean().optional(),
 /** ExitDirection 决定节点服务哪一类订阅，不参与"是否出口"的判定：

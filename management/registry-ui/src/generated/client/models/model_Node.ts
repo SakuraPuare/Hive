@@ -15,6 +15,11 @@ export type model_Node = {
      * gateway_direction=auto 时判定"在大陆就出海、不在大陆就回国"。
      */
     country?: string;
+    /**
+     * CountryOverride 非空时覆盖心跳上报的 Country（人工指定位置），
+     * gateway_direction=auto 用它判定分流方向。空串表示跟随上报。
+     */
+    country_override?: string;
     easytier_ip?: string;
     enabled?: boolean;
     /**

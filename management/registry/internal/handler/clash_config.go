@@ -69,10 +69,12 @@ func resolveGatewayDirection(raw, country string) string {
 	case DirectionDomestic, DirectionOverseas, "global", "direct":
 		return v
 	case "auto":
-		if normalizeCountry(country) == "CN" || normalizeCountry(country) == "" {
-			return DirectionDomestic
+		// country is already the effective one (operator override wins, see
+		// nodeCountry in the gateway handler).
+		if c := normalizeCountry(country); c != "" && c != "CN" {
+			return DirectionOverseas
 		}
-		return DirectionOverseas
+		return DirectionDomestic
 	}
 	return DirectionDomestic
 }

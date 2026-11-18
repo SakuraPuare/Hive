@@ -238,7 +238,7 @@
     "macIpv6": "MAC (IPv6)",
     "hostname": "Hostname",
     "location": "Location",
-    "country": "Reported country",
+    "country": "Country",
     "note": "Note",
     "network": "Network",
     "tailscaleIp": "Tailscale IP",
@@ -263,7 +263,6 @@
     "nodeStatus": "Status",
     "weight": "Weight",
     "region": "Region",
-    "country": "Country",
     "city": "City",
     "tags": "Tags",
     "offlineReason": "Offline Reason",
@@ -308,7 +307,10 @@
     "retireConfirm": "Mark as retired",
     "probeFetchFailed": "Unable to fetch probe status",
     "refreshProbe": "Refresh probe status",
-    "editNodeDescription": "Edit this node’s location, region, note, status, weight and enabled toggle."
+    "editNodeDescription": "Edit this node’s location, region, note, status, weight and enabled toggle.",
+    "countryOverride": "Location (country code)",
+    "countryOverrideHelper": "Empty = use the reported country (now: {reported}). Set a 2-letter ISO code to pin it; auto split uses it: CN = domestic split, anything else = overseas split.",
+    "countryUnknown": "not reported"
   },
   "subscriptions": {
     "vless": "VLESS",
@@ -1123,7 +1125,6 @@
     "statusExpired": "Expired",
     "statusRefunded": "Refunded",
     "statusFailed": "Failed",
-    "statusUnknown": "Unknown",
     "bannedContactSupport": "Why am I banned? Contact support",
     "avatarFor": "Avatar for {name}",
     "linkCopied": "Invite link copied",

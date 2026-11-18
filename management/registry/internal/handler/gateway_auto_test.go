@@ -133,3 +133,49 @@ func TestPortalGatewayDirectionRequiresMatchingUpstream(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 }
+
+func TestCountryOverrideBeatsReportedCountry(t *testing.T) {
+	mac, _, _, credential := boundGatewayFixture(t)
+	// Reported CN would pick the domestic split; the override must win.
+	mustExec(t, "UPDATE nodes SET exit_direction = 'domestic' WHERE mac = 'aabbccddeeff'")
+	mustExec(t, "UPDATE nodes SET gateway_direction = 'auto', country = 'CN', country_override = 'US' WHERE mac = ?", mac)
+	resp := doBearer("GET", "/nodes/"+mac+"/clash-config", nil, credential)
+	assertStatus(t, resp, http.StatusOK)
+	body := readBody(resp)
+	if !strings.Contains(body, "- RULE-SET,cn_domain,代理") || !strings.Contains(body, "- MATCH,直连") {
+		t.Fatalf("override US did not produce the overseas split")
+	}
+	// Clearing the override falls back to the reported country (CN → domestic
+	// split, which needs an 出海 upstream to be non-empty).
+	mustExec(t, "UPDATE nodes SET country_override = '' WHERE mac = ?", mac)
+	mustExec(t, "UPDATE nodes SET exit_direction = 'overseas' WHERE mac = 'aabbccddeeff'")
+	resp = doBearer("GET", "/nodes/"+mac+"/clash-config", nil, credential)
+	assertStatus(t, resp, http.StatusOK)
+	body = readBody(resp)
+	if !strings.Contains(body, "- RULE-SET,cn_domain,直连") || !strings.Contains(body, "- MATCH,代理") {
+		t.Fatalf("cleared override did not fall back to the reported CN split: %s", body)
+	}
+}
+
+func TestAdminSetsCountryOverride(t *testing.T) {
+	resetDB(t)
+	insertTestNode(t, "aabbccddeeff")
+	resp := doJSON("PATCH", "/nodes/aabbccddeeff", map[string]any{"country_override": "jp"}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	var got string
+	testDB.Raw("SELECT country_override FROM nodes WHERE mac = 'aabbccddeeff'").Scan(&got)
+	if got != "JP" {
+		t.Fatalf("country_override = %q, want JP", got)
+	}
+	resp = doJSON("PATCH", "/nodes/aabbccddeeff", map[string]any{"country_override": "nowhere"}, adminCookie())
+	assertStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+	resp = doJSON("PATCH", "/nodes/aabbccddeeff", map[string]any{"country_override": ""}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	testDB.Raw("SELECT country_override FROM nodes WHERE mac = 'aabbccddeeff'").Scan(&got)
+	if got != "" {
+		t.Fatalf("country_override = %q after clearing, want empty", got)
+	}
+}

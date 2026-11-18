@@ -1331,6 +1331,11 @@ definitions:
           Country 是节点出口所在国家（ISO-3166 alpha-2），由心跳上报；用于
           gateway_direction=auto 时判定"在大陆就出海、不在大陆就回国"。
         type: string
+      country_override:
+        description: |-
+          CountryOverride 非空时覆盖心跳上报的 Country（人工指定位置），
+          gateway_direction=auto 用它判定分流方向。空串表示跟随上报。
+        type: string
       easytier_ip:
         type: string
       enabled:

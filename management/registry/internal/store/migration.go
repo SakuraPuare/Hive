@@ -690,6 +690,16 @@ UPDATE nodes SET subscription_sync = 1
 ALTER TABLE nodes ADD COLUMN country VARCHAR(2) NOT NULL DEFAULT '' COMMENT '节点出口所在国家（ISO-3166 alpha-2，心跳上报）';
 `,
 	},
+	{
+		version: 36,
+		desc:    "nodes: country_override lets an operator pin the location by hand",
+		// 心跳上报的国家可能缺失（旧镜像、被墙解析不到），也可能判断错（例如经
+		// 中转出口的机器）。country_override 非空时优先于上报值，直接决定
+		// gateway_direction=auto 的分流方向；空串表示"跟随心跳上报"。
+		up: `
+ALTER TABLE nodes ADD COLUMN country_override VARCHAR(2) NOT NULL DEFAULT '' COMMENT '人工指定的国家（优先于心跳上报；空=自动）';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.
