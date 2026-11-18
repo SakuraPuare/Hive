@@ -166,6 +166,13 @@ func (h *Handler) handleAccounting(w http.ResponseWriter, r *http.Request, requi
 		if err := advanceAccountingGeneration(tx, mac, report); err != nil {
 			return err
 		}
+		// Only the metering agent posts cumulative counters, and that same agent
+		// pulls subscription users from /nodes/{mac}/xray-users. Promote the node
+		// so an upgraded legacy node switches back to subscription UUIDs (billable)
+		// on its first report, without an operator touching the flag.
+		if err := tx.Exec("UPDATE nodes SET subscription_sync = 1 WHERE mac = ? AND subscription_sync = 0", mac).Error; err != nil {
+			return err
+		}
 		for _, c := range report.Counters {
 			id, err := strconv.ParseUint(counterName.FindStringSubmatch(c.Name)[1], 10, 32)
 			if err != nil {

@@ -168,6 +168,12 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 		all = nil
 		direction = "blocked"
 	}
+	legacyUUIDs := make(map[string]string)
+	for _, n := range all {
+		if !n.SubscriptionSync && n.XrayUUID != "" {
+			legacyUUIDs[strings.ToLower(n.MAC)] = n.XrayUUID
+		}
+	}
 	yaml := buildGatewayClashYAML(gatewayClashArgs{
 		Title:         fmt.Sprintf("gateway %s", self.Hostname),
 		XrayPath:      h.Config.XrayPath,
@@ -179,6 +185,7 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 		UpstreamMACs:  upstreamMACs,
 		AllNodes:      all,
 		OverrideUUID:  overrideUUID,
+		LegacyUUIDs:   legacyUUIDs,
 		PreferredHost: h.Config.CFPreferredHost,
 	})
 

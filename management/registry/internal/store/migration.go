@@ -666,6 +666,19 @@ ALTER TABLE nodes ADD COLUMN exit_direction VARCHAR(16) NOT NULL DEFAULT 'overse
 CREATE INDEX idx_nodes_exit_direction ON nodes (exit_direction);
 `,
 	},
+	{
+		version: 34,
+		desc:    "nodes: subscription_sync tells whether the node accepts subscription UUIDs",
+		// 旧镜像的出口节点只有一个静态 client（节点自身 uuid，hive-xray-prepare 会清空并
+		// 拒绝订阅用户），网关拿订阅 uuid 连它必然 invalid request user id。默认 0 表示
+		// "只认自身 uuid"；节点首次向 /nodes/{mac}/xray-users POST 计费快照时自动置 1
+		// （只有新 agent 会 POST，见 HandleNodeAccounting），升级后的旧节点也会自愈。
+		up: `
+ALTER TABLE nodes ADD COLUMN subscription_sync TINYINT(1) NOT NULL DEFAULT 0 COMMENT '节点是否同步订阅用户：1 用订阅 uuid，0 用节点自身 xray_uuid';
+UPDATE nodes SET subscription_sync = 1
+ WHERE mac IN (SELECT DISTINCT node_mac FROM node_traffic_counters);
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

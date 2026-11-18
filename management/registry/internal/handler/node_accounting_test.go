@@ -247,3 +247,18 @@ func TestNodeAccountingSumsAuthorizedNodesAndDirections(t *testing.T) {
 		t.Fatalf("multi-node used=%d, want 100", used)
 	}
 }
+
+func TestAccountingReportPromotesLegacyNodeToSubscriptionSync(t *testing.T) {
+	_, id, _ := accountingFixture(t)
+	mustExec(t, "UPDATE nodes SET server_enabled = 0, owner_customer_id = NULL, subscription_sync = 0")
+	report := NodeAccountingRequest{Epoch: "promote-runtime", Counters: []NodeTrafficCounter{{
+		Name:  fmt.Sprintf("user>>>sub-%d>>>traffic>>>uplink", id),
+		Value: 1,
+	}}}
+	resp := doBearer("POST", "/nodes/aabbccddeeff/xray-users", report, deviceToken(t, "aabbccddeeff"))
+	assertStatus(t, resp, 200)
+	resp.Body.Close()
+	if got := scalar(t, "SELECT subscription_sync FROM nodes WHERE mac = 'aabbccddeeff'"); got != 1 {
+		t.Fatalf("subscription_sync = %d after a metered report, want 1", got)
+	}
+}

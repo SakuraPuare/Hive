@@ -170,3 +170,24 @@ func TestGatewayRendererRejectsEmptyEffectiveUpstream(t *testing.T) {
 		}
 	}
 }
+
+func TestGatewayAddressesLegacyExitNodesWithTheirOwnUUID(t *testing.T) {
+	mac, _, _, credential := boundGatewayFixture(t)
+	const (
+		subscriptionUUID = "11111111-2222-4333-8444-555555555555"
+		nodeUUID         = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	)
+	assertGatewayAccess(t, mac, credential, "active")
+	// Legacy images keep one static client (their own UUID) and clear subscription
+	// clients, so the subscription UUID is rejected as an invalid user id.
+	mustExec(t, "UPDATE nodes SET subscription_sync = 0 WHERE mac = 'aabbccddeeff'")
+	resp := doBearer("GET", "/nodes/"+mac+"/clash-config", nil, credential)
+	assertStatus(t, resp, http.StatusOK)
+	body := readBody(resp)
+	if !strings.Contains(body, nodeUUID) {
+		t.Fatalf("legacy exit node not addressed with its own UUID: %s", body)
+	}
+	if strings.Contains(body, subscriptionUUID) {
+		t.Fatalf("legacy exit node still received the subscription UUID: %s", body)
+	}
+}

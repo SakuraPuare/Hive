@@ -21,8 +21,10 @@ func insertSubTestNode(t *testing.T, mac string) {
 	if len(mac) > 6 {
 		mac6 = mac[len(mac)-6:]
 	}
-	err := testDB.Exec(`INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, location, note, registered_at, last_seen, enabled, status, weight, region)
-		VALUES (?, ?, ?, 'https://test.example.com', '', '', '', 0, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'JP', 'test', ?, ?, 1, 'active', 100, 'Asia')`,
+	// Test nodes model a current image: they post accounting, so they accept
+	// subscription UUIDs. Legacy-node tests flip this back to 0 explicitly.
+	err := testDB.Exec(`INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, tailscale_ip, easytier_ip, frp_port, xray_uuid, location, note, registered_at, last_seen, enabled, status, weight, region, subscription_sync)
+		VALUES (?, ?, ?, 'https://test.example.com', '', '', '', 0, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'JP', 'test', ?, ?, 1, 'active', 100, 'Asia', 1)`,
 		mac, mac6, "test-"+mac, now, now).Error
 	if err != nil {
 		t.Fatalf("insertSubTestNode %s: %v", mac, err)

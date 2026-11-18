@@ -57,6 +57,11 @@ type gatewayClashArgs struct {
 	// bound customer subscription's Xray identity (gateway egress is metered there).
 	OverrideUUID string
 
+	// LegacyUUIDs maps lowercase MAC → the node's own static Xray UUID. Nodes in
+	// this map predate subscription sync and only accept that UUID; they cannot
+	// meter, so the gateway uses it instead of OverrideUUID.
+	LegacyUUIDs map[string]string
+
 	// PreferredHost, when non-empty, is the Cloudflare 优选 host clients dial;
 	// SNI and WebSocket Host stay on the node's own tunnel hostname.
 	PreferredHost string
@@ -86,12 +91,20 @@ func buildGatewayClashYAML(args gatewayClashArgs) string {
 		if host == "" || args.OverrideUUID == "" {
 			continue
 		}
+		// 旧镜像的出口节点只接受自身的静态 UUID（hive-xray-prepare 会清空订阅
+		// clients），拿订阅 UUID 去连只会收到 invalid request user id。这类节点的
+		// meters 也拿不到，因此直接用节点 UUID；升级后的节点首次 POST 计费后
+		// subscription_sync 会被置 1，自动切回订阅 UUID（可计费）。
+		uuid := args.OverrideUUID
+		if legacy, ok := args.LegacyUUIDs[strings.ToLower(n.MAC)]; ok && legacy != "" {
+			uuid = legacy
+		}
 		name := buildNodeName(n)
 		proxies = append(proxies, clashProxy{
 			Name:   yamlStr(name),
 			Server: dialHost(host, args.PreferredHost),
 			Host:   host,
-			UUID:   args.OverrideUUID,
+			UUID:   uuid,
 		})
 		// manual mode: only the selected MACs populate the 手动选择 group;
 		// auto mode: all candidates are eligible (url-test picks the fastest).

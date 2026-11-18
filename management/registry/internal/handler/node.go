@@ -273,6 +273,7 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		"gateway_enabled": true, "gateway_direction": true,
 		"gateway_upstream_mode": true, "gateway_upstream_nodes": true,
 		"bound_subscription_id": true, "exit_enabled": true, "exit_direction": true,
+		"subscription_sync": true,
 	}
 	updates := make(map[string]any)
 	for k, v := range body {

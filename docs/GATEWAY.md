@@ -72,6 +72,16 @@
 
 两个组都在下发的 Mihomo 配置里，面板上还能在 `:9090/ui` 实时手动切换。
 
+### 旧镜像出口节点（`subscription_sync=0`）
+
+早期镜像的出口节点只有一个静态 Xray client（节点自身 uuid），`hive-xray-prepare` 会把订阅 users 清空，用订阅 uuid 连它会直接 `invalid request user id`（现象：网关 tproxy 计数正常、mihomo 有匹配日志，但所有境外站点超时）。
+
+registry 的 `nodes.subscription_sync` 记录节点是否接受订阅 uuid：
+
+- 默认 `0`（旧镜像）；这类节点在网关配置里改用**节点自身 `xray_uuid`**，链路可用但不计费（旧节点本来也不上报计费）。
+- 节点只要向 `/nodes/{mac}/xray-users` **POST** 过计费快照（只有新 agent 会 POST），就会被自动置 `1`，网关随即切回订阅 uuid 并按订阅计费——旧节点升级镜像后无需人工改标志。
+- 管理员也可通过 `PATCH /admin/nodes/{mac}` 显式设置 `subscription_sync`。
+
 ## 可视化面板（MetaCubeXD）
 
 Mihomo 内置 `external-controller`（Clash API）+ `external-ui` 托管 MetaCubeXD 面板：
