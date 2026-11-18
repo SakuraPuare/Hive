@@ -2,7 +2,7 @@
 
 节点不仅是"梯子的出口"（远端客户端经 CF Tunnel/VLESS 连进来从本节点出网），还可以同时充当"梯子的入口"：**任何设备只要连上本节点、流量经过本节点，就自动获得透明代理服务**，无需在客户端装任何软件。
 
-实现核心是 **Mihomo（Clash.Meta）** 跑在节点上，用 **TUN + auto-redirect** 接管转发流量，按分流规则决定直连还是经上游出口节点代理。配置由 registry 面板动态下发。
+实现核心是 **Mihomo（Clash.Meta）** 跑在节点上，用 **TUN + auto-route** 接管转发流量（`auto-redirect: false`，见下方防回环），按分流规则决定直连还是经上游出口节点代理。配置由 registry 面板动态下发。
 
 ## 适用场景
 
@@ -136,7 +136,7 @@ GATEWAY_DASHBOARD_PORT=9090     # 面板端口，默认 9090
 LAN/WiFi 设备
    │ (网关 = 本节点，DHCP 自动下发)
    ▼
-[本节点] Mihomo (TUN + auto-redirect，只接管转发流量)
+[本节点] Mihomo (TUN + auto-route，只接管转发流量)
    │   ├─ 命中"直连"规则 ───────────────► 本机 WAN 直接出
    │   └─ 命中"代理"规则 ─► VLESS-WS ─► [其它 Hive 节点] Xray 出口 ─► 出网
    │
@@ -168,7 +168,7 @@ journalctl -u hive-clash-sync -f      # 配置同步日志
 cat /etc/mihomo/config.yaml           # 当前生效配置（含上游节点/规则）
 ip link show | grep -i meta           # TUN 设备是否存在
 curl -s http://127.0.0.1:9090/version # Clash API 是否响应
-nft list ruleset | grep -i mihomo     # auto-redirect 的 nft 规则
+nft list ruleset | grep -i mihomo     # 仅启用 auto-redirect 时存在（本镜像关闭）
 nft list table inet hive_xray_egress  # Xray skgid mark 计数器
 ip rule show | grep 0x1/0x1          # Xray fwmark 旁路规则（pref 100）
 ps -o user= -C xray                  # 必须是 xray，不是 root
