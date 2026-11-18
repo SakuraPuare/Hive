@@ -1,0 +1,15 @@
+[Unit]
+Description=Gateway TPROXY routing (LAN/AP forwarded traffic only)
+Documentation=https://github.com/SakuraPuare/hive
+After=local-fs.target hive-gateway.service
+Before=hive-mihomo.service
+PartOf=hive-mihomo.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/hive-gateway-route start
+ExecStop=/usr/local/bin/hive-gateway-route stop
+
+[Install]
+WantedBy=multi-user.target

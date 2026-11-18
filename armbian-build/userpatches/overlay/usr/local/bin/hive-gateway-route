@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Gateway TPROXY data path. Only forwarded client traffic on the LAN/AP
+# interfaces enters Mihomo; the node's own output never does, so the exit
+# Xray, registry, cloudflared and Tailscale stay direct without any self-direct
+# hacks. DNS from clients is redirected to the Mihomo resolver for fake-IP.
+set -euo pipefail
+
+NFT_TABLE=hive_gateway
+MARK=${HIVE_GATEWAY_TPROXY_MARK:-0x2}
+TABLE=${HIVE_GATEWAY_TPROXY_TABLE:-100}
+PREF=100
+PORT=7893
+DNS_PORT=1053
+NODE_INFO=/etc/hive/node-info
+
+[ -f /etc/hive/config.env ] && source /etc/hive/config.env 2>/dev/null || true
+enabled=${GATEWAY_ENABLED:-on}
+
+read_field() { sed -n "s/^$1=//p" "$NODE_INFO" 2>/dev/null | head -1; }
+
+interfaces() {
+    local lan one wifi5 wifi i
+    lan=$(read_field GATEWAY_LAN_IFACES)
+    one=$(read_field GATEWAY_ONE_ARM_IFACE)
+    wifi5=$(read_field WIFI_IFACE_5G)
+    wifi=$(read_field WIFI_IFACE)
+    for i in $lan $one $wifi5 $wifi; do
+        [ -n "$i" ] || continue
+        case "$i" in *[!a-zA-Z0-9_.:-]*) continue ;; esac
+        case " $IFS_OUT " in *" $i "*) continue ;; esac
+        IFS_OUT="${IFS_OUT:+$IFS_OUT }$i"
+    done
+}
+
+stop() {
+    nft delete table inet "$NFT_TABLE" 2>/dev/null || true
+    ip rule del fwmark "$MARK" lookup "$TABLE" pref "$PREF" 2>/dev/null || true
+    ip -6 rule del fwmark "$MARK" lookup "$TABLE" pref "$PREF" 2>/dev/null || true
+    ip route flush table "$TABLE" 2>/dev/null || true
+    ip -6 route flush table "$TABLE" 2>/dev/null || true
+}
+
+start() {
+    command -v nft >/dev/null 2>&1 || { echo '[hive-gateway-route] nft is missing' >&2; exit 1; }
+    command -v ip >/dev/null 2>&1 || { echo '[hive-gateway-route] ip is missing' >&2; exit 1; }
+    IFS_OUT=""
+    interfaces
+    if [ "$enabled" != on ] || [ -z "$IFS_OUT" ] || [ ! -s /etc/mihomo/config.yaml ]; then
+        stop
+        echo "[hive-gateway-route] disabled, no LAN/AP interface, or no mihomo config; no TPROXY rules"
+        return 0
+    fi
+    local ifset
+    ifset=$(printf '%s\n' $IFS_OUT | sed 's/^/"/; s/$/"/' | paste -sd, -)
+    nft delete table inet "$NFT_TABLE" 2>/dev/null || true
+    nft -f - <<EOF
+table inet $NFT_TABLE {
+    chain dns_redirect {
+        type nat hook prerouting priority dstnat; policy accept;
+        iifname { $ifset } udp dport 53 redirect to :$DNS_PORT
+        iifname { $ifset } tcp dport 53 redirect to :$DNS_PORT
+    }
+    chain prerouting {
+        type filter hook prerouting priority 0; policy accept;
+        fib daddr type local return
+        meta nfproto ipv4 iifname { $ifset } meta l4proto { tcp, udp } tproxy ip to :$PORT meta mark set $MARK accept
+        meta nfproto ipv6 iifname { $ifset } meta l4proto { tcp, udp } tproxy ip6 to :$PORT meta mark set $MARK accept
+    }
+    chain input {
+        type filter hook input priority -10; policy accept;
+        meta mark $MARK accept
+        iifname { $ifset } udp dport $DNS_PORT accept
+        iifname { $ifset } tcp dport $DNS_PORT accept
+    }
+}
+EOF
+    ip rule del fwmark "$MARK" lookup "$TABLE" pref "$PREF" 2>/dev/null || true
+    ip rule add fwmark "$MARK" lookup "$TABLE" pref "$PREF"
+    ip route replace local 0.0.0.0/0 dev lo table "$TABLE"
+    ip -6 rule del fwmark "$MARK" lookup "$TABLE" pref "$PREF" 2>/dev/null || true
+    ip -6 rule add fwmark "$MARK" lookup "$TABLE" pref "$PREF" 2>/dev/null || true
+    ip -6 route replace local ::/0 dev lo table "$TABLE" 2>/dev/null || true
+    echo "[hive-gateway-route] tproxy ifaces=$IFS_OUT port=$PORT mark=$MARK table=$TABLE"
+}
+
+case "${1:-}" in
+    start) start ;;
+    stop) stop ;;
+    *) echo "usage: $0 start|stop" >&2; exit 2 ;;
+esac

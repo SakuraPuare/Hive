@@ -1,8 +1,8 @@
 [Unit]
 Description=Xray Service (VLESS+WebSocket proxy)
 Documentation=https://xtls.github.io
-After=network.target hive-xray-route.service hive-xray-prepare.service
-Requires=hive-xray-route.service hive-xray-prepare.service
+After=network.target hive-xray-prepare.service
+Requires=hive-xray-prepare.service
 
 [Service]
 Type=simple

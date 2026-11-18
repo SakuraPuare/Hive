@@ -198,6 +198,32 @@ else:
 path.write_text("\n".join(lines) + "\n")
 PYEOF
 }
+# The gateway runs TPROXY, not TUN. Registry templates (and configs pulled from
+# an older registry) still carry a tun: block; rewrite it on the node so the
+# image does not depend on a server deployment to leave TUN mode.
+hive_gateway_tproxy_config() {
+    local file=${1:-} tmp has=0 inserted=0
+    [ -n "$file" ] && [ -s "$file" ] || return 1
+    grep -q '^tproxy-port:' "$file" && has=1
+    tmp=$(mktemp "$(dirname "$file")/.tproxy.XXXXXX") || return 1
+    if ! awk -v has="$has" '
+        /^tun:/ { skip=1; next }
+        skip && /^[^[:space:]#]/ { skip=0 }
+        skip { next }
+        /^mixed-port:/ {
+            print
+            if (!has) { print "tproxy-port: 7893"; inserted=1 }
+            next
+        }
+        { print }
+        END { if (!has && !inserted) print "tproxy-port: 7893" }
+    ' "$file" > "$tmp"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    chmod 600 "$tmp"
+    mv -f "$tmp" "$file"
+}
 hive_gateway_self_direct() {
     local file=${1:-} r4 r6 need4=0 need6=0 tmp
     [ -n "$file" ] && [ -s "$file" ] || return 1

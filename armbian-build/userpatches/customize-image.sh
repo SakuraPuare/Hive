@@ -221,7 +221,7 @@ for bin in xray cloudflared frpc easytier-core xray-exporter; do
 done
 
 # Hive subscription enforcement and startup hooks
-for helper in hive-subscription-state hive-subscription-guard hive-xray-prepare hive-xray-route hive-gateway-prepare; do
+for helper in hive-subscription-state hive-subscription-guard hive-xray-prepare hive-gateway-route hive-gateway-prepare; do
     chmod +x "/usr/local/bin/$helper"
 done
 chmod +x /usr/local/bin/hive-ota-transaction /usr/local/bin/hive-firmware /usr/local/bin/hive-data /usr/local/bin/hive-data-grow /usr/local/bin/hive-board
@@ -414,7 +414,7 @@ systemctl enable tailscaled.service   # daemon 预启动，tailscale up 由 prov
 systemctl enable NetworkManager-wait-online.service
 systemctl enable warp-svc.service    # WARP daemon 预启动，warp-cli 注册由 provision 执行
 systemctl enable prometheus-node-exporter.service
-systemctl enable xray.service hive-xray-route.service hive-xray-prepare.service
+systemctl enable xray.service hive-xray-prepare.service hive-gateway-route.service
 # nginx：禁用默认站点，启用 hive 站点
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/hive /etc/nginx/sites-enabled/hive

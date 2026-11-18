@@ -17,6 +17,7 @@ if [ ! -s /etc/mihomo/config.yaml ]; then
     hive_gateway_clear_access || fail 'cannot clear the forwarding block without a configuration'
     exit 1
 fi
+hive_gateway_tproxy_config /etc/mihomo/config.yaml || fail 'cannot switch gateway config to tproxy'
 hive_gateway_block_forward || fail 'cannot install the forwarding block'
 if ! hive_lease_valid gateway; then
     hive_gateway_block_config || fail 'cannot replace the gateway rules with the blocked policy'

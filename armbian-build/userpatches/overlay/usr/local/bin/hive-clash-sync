@@ -29,6 +29,7 @@ lease=$(awk 'tolower($1)=="x-hive-lease-seconds:" {gsub("\r", "", $2); print $2}
 access=$(awk 'tolower($1)=="x-hive-access:" {gsub("\r", "", $2); print $2}' "$headers")
 [[ "$access" = active || "$access" = blocked ]] || fail 'missing access decision'
 hive_gateway_self_direct "$tmp" || fail 'cannot derive the node self-direct rule'
+hive_gateway_tproxy_config "$tmp" || fail 'cannot switch gateway config to tproxy'
 SAFE_PATHS=/var/www/metacubexd mihomo -t -d /etc/mihomo -f "$tmp" >/dev/null 2>&1 || fail 'invalid gateway configuration'
 hive_lease_write gateway "$request_started" "$lease" || fail 'invalid or expired authorization'
 if ! cmp -s "$tmp" /etc/mihomo/config.yaml || ! systemctl is-active --quiet hive-mihomo; then

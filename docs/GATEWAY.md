@@ -2,7 +2,7 @@
 
 节点不仅是"梯子的出口"（远端客户端经 CF Tunnel/VLESS 连进来从本节点出网），还可以同时充当"梯子的入口"：**任何设备只要连上本节点、流量经过本节点，就自动获得透明代理服务**，无需在客户端装任何软件。
 
-实现核心是 **Mihomo（Clash.Meta）** 跑在节点上，用 **TUN + auto-route** 接管转发流量（`auto-redirect: false`，见下方防回环），按分流规则决定直连还是经上游出口节点代理。配置由 registry 面板动态下发。
+实现核心是 **Mihomo（Clash.Meta）** 跑在节点上，用 **TPROXY** 只接管 LAN/AP 的转发流量（本机自身出站不进代理），按分流规则决定直连还是经上游出口节点代理。配置由 registry 面板动态下发，节点侧还会把旧模板里的 `tun:` 幂等改写成 `tproxy-port`。
 
 ## 适用场景
 
@@ -87,12 +87,14 @@ http://<tailscale_ip>:9090/ui   # 100.64.x（tailnet 内）
 
 ## 防回环（重要）
 
-出口节点上同时跑着 Xray 出口（freedom 直连出网）和 Mihomo 网关。Xray 以专用 `xray` 用户/组运行（官方 Xray-install 的服务模型：`User=xray`、`Group=xray`、`CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW`、`NoNewPrivileges=yes`），出站流量用 **socket GID + nft mark + fwmark ip rule** 直接走主路由表，不依赖 Mihomo 的规则顺序：
+Mihomo 只接管 **LAN/AP 的转发流量**（`prerouting`），本机自身出站不进入 tproxy。Xray（以专用 `xray` 用户/组运行）、registry、cloudflared、tailscaled 都是真正的直连，不再需要 TUN 时代的 `SRC-IP-CIDR`/`PROCESS-NAME` 自直连规则，也不再需要 Xray 的 skgid mark/fwmark 旁路。
 
-1. **不启用 auto-redirect**（避免 DNAT 到 loopback 在 RK vendor 内核上撞出 martian）；但 `auto-route: true` 会把**本机自身出站也送进 TUN**——`ip route get 1.1.1.1` 会返回 `via 198.18.0.2 dev Meta`。所以"本机流量不进 TUN"这个前提不成立。
-2. **Xray 专用组 + nft 标记**：`hive-xray-route.service` 在 `output` hook（`priority mangle`）里对 `meta skgid <xray gid>` 的包设置 `meta mark 0x1`；`ip rule fwmark 0x1/0x1 lookup main pref 100`（v4/v6）位于 Mihomo 的 9000/9001/9002 之前，把 Xray 出站包直接送进 `main` 表，完全绕开 TUN/table 2022。`xray.service` 通过 `Requires=hive-xray-route.service` 保证标记规则先就位。
-3. **fake-ip 仍要单独处理**：Mihomo 接管系统解析并返回 `198.18.x`；Xray freedom 的 `UseIP` 会直接拨 fake-ip。`hive-xray-prepare` 给 Xray 加自己的 DoH（`223.5.5.5` / `1.1.1.1`），出口目标解析成真实地址。mark 旁路和 DoH 互补，缺一不可。
-4. **兜底**：Mihomo 规则顶部仍保留 `SRC-IP-CIDR,<tun 地址>/32,DIRECT` 和 v6；`PROCESS-NAME` 保留但**实测在这块板子上匹配不到进程**，不能作为唯一防线。上游 VLESS 出口节点地址 Mihomo 内置永远直连。
+数据面：
+
+1. `hive-gateway-route.service` 只在 LAN/AP `iifname` 上安装 tproxy：`fib daddr type local return`，TCP/UDP `tproxy to :7893` + `meta mark 0x2`；配套 `ip rule fwmark 0x2 lookup 100` 和 table 100 的 `local 0.0.0.0/0 dev lo`（v4/v6）。
+2. 客户端 DNS 由独立 `nat` 链 `redirect to :1053` 到 mihomo `dns.listen`；`input` 链放行 marked/DNS 包，避免被 ufw 的默认拒绝规则丢掉。
+3. fake-IP 只服务客户端；本机解析器不再被 mihomo 接管。Xray 出口仍保留自己的 DoH，域名解析不依赖宿主 resolver。
+4. fail-closed：blocked 配置对热点源网段 `DIRECT`、其余 `MATCH,REJECT`；mihomo 停止时 `hive-gateway-route` 通过 `PartOf` 一并停止，规则撤掉后客户端直连。TUN 时代的源/进程白名单仍由 blocked 配置生成，但 tproxy 下不会命中，属于历史兜底。
 
 ## fail-closed（无有效订阅时）
 
@@ -111,9 +113,9 @@ rules:
   - MATCH,REJECT
 ```
 
-前两条不可省。Xray 自身出口已由 `hive-xray-route` 的 skgid/fwmark 旁路，但 registry、cloudflared、frpc、tailscaled 等控制面仍依赖这两条源地址规则；删掉它们就只剩进程名白名单，而进程名匹配在本机不可靠：节点自己到 registry 的 TLS 会落到 `MATCH,REJECT`（现象是 `SSL ... unexpected eof while reading`、`allocate-easytier` 六连败），拿不到配置又连不上 registry——fail-closed 变成自锁，节点永远无法恢复。v4 地址从 `tun.inet4-address` 推导、缺省 `198.18.0.1`，v6 从 `tun.inet6-address` 推导、缺省 `fdfe:dcba:9876::1`（`hive-subscription-state` 的 `hive_tun_ipv4`/`hive_tun_ipv6`）。
+tproxy 下这些 TUN 时代的源/进程规则由 blocked 配置继续生成，但本机出站根本不进 mihomo，不会命中，属于历史兜底；真正生效的是热点源网段 `DIRECT` 和其余 `MATCH,REJECT`。`hive_gateway_block_config` 仍强制 `respect-rules: false`：否则 mihomo 自己的解析请求会被 `MATCH,REJECT` 拒掉，节点拿不到订阅、fail-closed 变自锁。v4/v6 地址推导函数仍保留给旧 TUN 配置兜底。
 
-**WiFi 热点不受这套门禁约束**：AP 是与代理网关独立的共享上网功能，没有订阅配置时连上热点也要有网。所以（1）门禁在（或没有 `config.yaml`、mihomo 没跑）时，热点网段被策略路由摘出 TUN 直连（`ip rule … lookup main pref 8000`），同时 dnsmasq 改用公共 DNS，并给这些解析器插 `pref 7000` 的直连规则绕开 `dns-hijack`（否则客户端拿到 fake-IP 却在主表里路由不到）；（2）`FORWARD` 上门禁 DROP 之上有双向放行（入向 AP 接口+热点网段，回程 `--ctorigsrc` 热点网段），每轮重落 DROP 都会重插；（3）上面两条 `SRC-IP-CIDR` DIRECT 是兜底：万一策略路由缺失，热点流量进 TUN 也仍能直连。实测症状链就是这套规则的来源：只有 DHCP/DNS 正常 + HTTPS 全超时，然后 TCP SYN 出得去但回包被 DROP。细节见 [HOTSPOT.md](HOTSPOT.md)。
+**WiFi 热点不受这套门禁约束**：AP 是与代理网关独立的共享上网功能，没有订阅配置时连上热点也要有网。mihomo 不运行/无配置时 `hive-gateway-route` 不安装 tproxy 规则，热点客户端直连；dnsmasq 在 1053 不在听时改用公共 DNS（`hive-hotspot-dns`）。mihomo 正常时 dnsmasq 转发到 1053，客户端拿 fake-IP，连接被 tproxy 接管；blocked 配置里的 `SRC-IP-CIDR,10.42.0.0/24`、`10.42.1.0/24,DIRECT` 让热点在 fail-closed 时仍直连。`FORWARD` 门禁 DROP 之上有双向放行（入向 AP 接口+热点网段，回程 `--ctorigsrc` 热点网段），每轮重落 DROP 都会重插。细节见 [HOTSPOT.md](HOTSPOT.md)。
 
 **Tailscale 域名必须排除出 fake-IP**：`tailscaled` 的控制面连接绑定在物理网卡地址上（`--accept-dns=false` 也一样），实测 `SYN-SENT 192.168.5.222:36686 -> 198.18.0.20:443`——fake-IP 只有"源地址 198.18.0.1、走 TUN"的流量才有反向映射，绑定端0 的 SYN 直接出公网，于是注册 10s 超时、节点永远进不了 tailnet。安装配置时会向 `dns.fake-ip-filter` 补 `'+.tailscale.com'`/`'+.tailscale.io'`（真实地址仍按域名走规则分流）。
 
@@ -153,25 +155,25 @@ LAN/WiFi 设备
 | `hive-gateway.sh` + `hive-gateway.service` | 开机探测有线拓扑，配 WAN/LAN |
 | `xray.service` | Xray 出口，以专用 `xray` 用户/组运行（非 root） |
 | `hive-xray-prepare.service` | root oneshot：生成 Xray 配置并设成 `root:xray 640` |
-| `hive-xray-route.service` | nft `skgid` mark + `fwmark` ip rule，Xray 出站绕开 Mihomo TUN |
-| `hive-mihomo.service` | 跑 Mihomo（`/etc/mihomo/config.yaml`） |
+| `hive-gateway-route.service` | nft tproxy（仅 LAN/AP）+ fwmark 0x2 ip rule；随 mihomo 停止 |
+| `hive-mihomo.service` | 跑 Mihomo（`tproxy-port: 7893`，无 TUN） |
 | `hive-clash-sync` + `.timer` | 每 ~1 分钟从 registry 拉配置并热重载 |
 | `/etc/mihomo/config.yaml` | Mihomo 运行配置（首启用内置兜底，sync 后被 registry 下发覆盖） |
 
 ## 故障排查
 
 ```bash
-hive-test.sh                          # 含网关自检项（mihomo/TUN/面板/拓扑）
+hive-test.sh                          # 含网关自检项（mihomo/tproxy/面板/拓扑）
 systemctl status hive-mihomo          # Mihomo 是否在跑
+systemctl status hive-gateway-route   # tproxy nft/ip rule 是否就位
 journalctl -u hive-mihomo -f          # Mihomo 日志
 journalctl -u hive-clash-sync -f      # 配置同步日志
 cat /etc/mihomo/config.yaml           # 当前生效配置（含上游节点/规则）
-ip link show | grep -i meta           # TUN 设备是否存在
+grep -E '^(tun|tproxy-port):' /etc/mihomo/config.yaml
 curl -s http://127.0.0.1:9090/version # Clash API 是否响应
-nft list ruleset | grep -i mihomo     # 仅启用 auto-redirect 时存在（本镜像关闭）
-nft list table inet hive_xray_egress  # Xray skgid mark 计数器
-ip rule show | grep 0x1/0x1          # Xray fwmark 旁路规则（pref 100）
-ps -o user= -C xray                  # 必须是 xray，不是 root
+nft list table inet hive_gateway      # TPROXY/DNS redirect 规则
+ip rule show | grep 'fwmark 0x2 lookup 100'
+ps -o user= -C xray                   # 必须是 xray，不是 root
 ```
 
 - **下游设备拿不到 IP**：检查 LAN 口 NM 连接 `nmcli connection show | grep hive-lan`，及 `method=shared` 是否激活。接口角色变化后旧 `hive-lan-*` 连接会被 `hive-gateway.sh` 删除；若手动改过接口用途，确认 WAN 口上没有任何 `method=shared` 的连接。
