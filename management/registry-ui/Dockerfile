@@ -11,7 +11,7 @@ COPY . .
 # next.config.js has output:'export' -> emits ./out
 RUN npm run build
 
-FROM nginx:1.31.8-alpine
+FROM nginx:1.31.9-alpine-slim
 COPY --from=build /app/out /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
