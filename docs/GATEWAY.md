@@ -65,6 +65,8 @@
 
 两类节点不会混进同一个上游池：把境外网关代理到另一个境外节点拿不到国内 IP，反之亦然。方向不匹配导致上游为空时同样 fail-closed。
 
+`gateway_direction` 在读取时先归一化（trim + 小写，非 `domestic|overseas|global|direct` 一律按 `domestic`），管理端写入非法值直接 400。否则 `Overseas` 这类非规范值会让"分流规则"和"上游池"各自落到默认分支，产出规则=境内、上游=境内节点的自相矛盾配置。
+
 面板里每个节点可配 `gateway_upstream_mode`：
 
 - **`auto`（自动，默认）**：Mihomo 的 `url-test` 组在全部上游里自动选**延迟最低**的，单点故障自动切换。
