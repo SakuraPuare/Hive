@@ -1,8 +1,9 @@
 [Unit]
 Description=Hive Mihomo (Clash.Meta) transparent proxy gateway
 Documentation=https://github.com/SakuraPuare/hive
-After=network-online.target NetworkManager.service
+After=network-online.target NetworkManager.service hive-gateway-route.service
 Wants=network-online.target
+Requires=hive-gateway-route.service
 
 [Service]
 Type=simple
@@ -22,7 +23,7 @@ LogRateLimitIntervalSec=30
 LogRateLimitBurst=500
 TimeoutStopSec=3
 TimeoutStartSec=10
-# TUN + nft auto-redirect 需要网络管理能力（以 root 运行，限定能力边界）
+# TPROXY needs CAP_NET_ADMIN for transparent sockets (root runtime, bounded caps)
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
 LimitNOFILE=65535

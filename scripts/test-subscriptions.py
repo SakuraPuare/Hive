@@ -504,11 +504,24 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertIn('proxy_set_header X-Forwarded-For $http_cf_connecting_ip;',config)
         self.assertIn('proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;',config)
 
+    def test_xray_exit_dns_bypasses_gateway_fake_ip(self):
+        # The gateway mihomo owns the system resolver and returns fake-ip
+        # addresses. Freedom's UseIP would dial those fake addresses directly
+        # and the TUN final rule blackholes them. Xray must use its own DoH.
+        config=json.loads((OVERLAY/'etc/xray/config.json').read_text())
+        self.assertIn('https://223.5.5.5/dns-query',config['dns']['servers'])
+        p=self.root/'etc/xray/config.json'
+        cfg=json.loads(p.read_text())
+        cfg.pop('dns',None)
+        p.write_text(json.dumps(cfg))
+        self.run_agent('hive-xray-prepare')
+        self.assertIn('dns',json.loads(p.read_text()))
+
     def test_device_limit_blocks_new_ip_and_reports_online(self):
         self.state_update(online=[{'email':'sub-1','ips':[{'ip':'203.0.113.7','lastSeen':1},{'ip':'203.0.113.8','lastSeen':1}]}])
         self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'used':2,'allowed_ips':['203.0.113.7']}])
         self.run_agent('hive-xray-sync')
-        self.assertEqual(self.state()['routing_rules'],[{'ruleTag':'hive-devlimit-1','user':['sub-1'],'source':['203.0.113.8/32'],'outboundTag':'block'}])
+        self.assertEqual(self.state()['routing_rules'],[{'type':'field','ruleTag':'hive-devlimit-1','user':['sub-1'],'source':['203.0.113.8/32'],'outboundTag':'block'}])
         report=json.loads((self.root/'reports').read_text().splitlines()[-1])
         self.assertEqual(report['online'],[{'subscription_id':1,'ips':['203.0.113.7','203.0.113.8']}])
 
@@ -544,7 +557,7 @@ class SubscriptionScripts(unittest.TestCase):
         self.state_update(online=[{'email':'sub-1','ips':[{'ip':'2001:db8::1','lastSeen':1},{'ip':'2001:db8::2','lastSeen':1}]}])
         self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'used':2,'allowed_ips':['2001:db8::1']}])
         self.run_agent('hive-xray-sync')
-        self.assertEqual(self.state()['routing_rules'],[{'ruleTag':'hive-devlimit-1','user':['sub-1'],'source':['2001:db8::2/128'],'outboundTag':'block'}])
+        self.assertEqual(self.state()['routing_rules'],[{'type':'field','ruleTag':'hive-devlimit-1','user':['sub-1'],'source':['2001:db8::2/128'],'outboundTag':'block'}])
 
     def test_outage_retries_do_not_restart_mihomo_once_fail_closed(self):
         # 断网且已经 fail-closed 之后，clash-sync 每 15s 还会失败一次；此时不能重写
@@ -857,16 +870,19 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertIn('respect-rules: false',dns_part)
         self.assertNotIn('respect-rules: true',text)
 
-    def test_blocked_gateway_follows_a_configured_tun_address(self):
+    def test_blocked_gateway_switches_to_tproxy_and_keeps_hotspot_direct(self):
         self.set_gateway_enabled('on')
         self.seed_gateway_firewall()
         access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
         self.expire('gateway')
         config=self.root/'etc/mihomo/config.yaml'
-        config.write_text(config.read_text().replace('tun:\n  enable: true',
-                                                     'tun:\n  inet4-address: 172.19.0.1/30\n  enable: true'))
+        config.write_text(config.read_text()+'\ntun:\n  enable: true\n  auto-route: true\n')
         self.run_agent('hive-gateway-prepare')
-        self.assertIn('- SRC-IP-CIDR,172.19.0.1/32,DIRECT',config.read_text())
+        text=config.read_text()
+        self.assertIn('tproxy-port: 7893',text)
+        self.assertNotIn('\ntun:\n',text)
+        self.assertIn('- SRC-IP-CIDR,10.42.1.0/24,DIRECT',text)
+        self.assertIn('- MATCH,REJECT',text)
 
     def test_gateway_rejects_missing_lease_and_blocks_boot_fallback(self):
         (self.root/'headers').write_text('HTTP/1.1 200 OK\r\n\r\n')

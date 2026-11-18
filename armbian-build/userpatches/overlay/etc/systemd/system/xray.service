@@ -1,21 +1,30 @@
 [Unit]
 Description=Xray Service (VLESS+WebSocket proxy)
-After=network.target
 Documentation=https://xtls.github.io
+After=network.target hive-xray-prepare.service
+Requires=hive-xray-prepare.service
 
 [Service]
 Type=simple
-User=root
-ExecStartPre=/usr/local/bin/hive-xray-prepare
+# Official Xray-install unit model: dedicated xray user/group, no root proxy.
+User=xray
+Group=xray
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+NoNewPrivileges=yes
+UMask=0077
 ExecStart=/usr/local/bin/xray run -c /etc/xray/config.json
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=3
 TimeoutStartSec=10
 Environment="GOGC=20"
+LimitNPROC=10000
 LimitNOFILE=65535
 MemoryHigh=200M
 MemoryMax=300M
+RuntimeDirectory=xray
+RuntimeDirectoryMode=0755
 
 [Install]
 WantedBy=multi-user.target

@@ -15,7 +15,7 @@ var gatewayClashTemplate string
 var gatewayClashTmpl = template.Must(template.New("gateway-clash").Parse(gatewayClashTemplate))
 
 // gatewayClashData drives gateway_clash.yaml.tmpl — a node-side Mihomo config
-// for the transparent-proxy gateway role (TUN + auto-redirect). Unlike the
+// for the transparent-proxy gateway role (TPROXY, no TUN). Unlike the
 // customer subscription config, this one runs ON a node: it exposes an
 // external-controller for the LAN dashboard, excludes the node itself from the
 // upstream pool (no self-routing loop), and flips the CN routing rule by the

@@ -21,18 +21,10 @@ profile:
   store-selected: true
   store-fake-ip: true
 
-# TUN（system 内核栈 + auto-route，不开 auto-redirect）：
-# system 栈转发 TCP 走内核零拷贝、吞吐最高；需防火墙放行 TUN 口 Meta（见 setup-firewall.sh）。
-# 不开 auto-redirect：DNAT 到 loopback 在 RK vendor 内核致 martian。
-tun:
-  enable: true
-  stack: system
-  auto-route: true
-  auto-redirect: false
-  auto-detect-interface: true
-  dns-hijack:
-    - any:53
-    - tcp://any:53
+# TPROXY（只接管 LAN/AP 转发流量）：
+# 本机自身出站不进 tproxy，Xray 出口/registry/cloudflared 等控制面天然直连。
+# nft 规则与 fwmark ip rule 由 hive-gateway-route.service 安装。
+tproxy-port: 7893
 
 dns:
   enable: true

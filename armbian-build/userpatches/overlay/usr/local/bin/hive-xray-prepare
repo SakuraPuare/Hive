@@ -11,6 +11,14 @@ jq '
   .policy.levels["0"] = ((.policy.levels["0"] // {}) + {statsUserOnline: true}) |
   .api = (.api // {}) |
   .api.services = (((.api.services // []) + ["HandlerService", "StatsService", "RoutingService"]) | unique) |
+  # The gateway mihomo owns the system resolver and answers with fake-ip
+  # (198.18.0.0/16). The freedom outbound with UseIP would dial those fake
+  # addresses directly and the TUN final rule blackholes them. Resolve exit
+  # targets with the Xray built-in DoH instead; :443 from the node matches the
+  # TUN DIRECT rule.
+  .dns = (.dns // {}) |
+  .dns.servers = (((.dns.servers // []) + ["https://223.5.5.5/dns-query", "https://1.1.1.1/dns-query"]) | unique) |
+  .dns.queryStrategy = (.dns.queryStrategy // "UseIPv4") |
   .routing = (.routing // {}) |
   .routing.domainStrategy = (.routing.domainStrategy // "IPIfNonMatch") |
   .inbounds |= map(
@@ -23,3 +31,9 @@ jq '
 ' /etc/xray/config.json > "$tmp"
 xray run -test -config "$tmp" >/dev/null 2>&1
 mv -f "$tmp" /etc/xray/config.json
+# The service drops to the dedicated xray user; keep the config root-owned but
+# group-readable so that user can read it without owning the file.
+if [ "$(id -u)" -eq 0 ] && getent group xray >/dev/null 2>&1; then
+    chown root:xray /etc/xray/config.json
+fi
+chmod 640 /etc/xray/config.json 2>/dev/null || true

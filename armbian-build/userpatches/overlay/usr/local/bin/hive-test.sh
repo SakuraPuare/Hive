@@ -45,6 +45,15 @@ else
     fail "xray" "service not active"
 fi
 
+# Xray must run as the dedicated user; TPROXY only sees forwarded traffic,
+# so the Xray exit needs no mark/bypass rules.
+XRAY_USER=$(ps -o user= -C xray 2>/dev/null | head -1 | tr -d ' ')
+if [ "$XRAY_USER" = "xray" ] && runuser -u xray -- test -r /etc/xray/config.json 2>/dev/null; then
+    pass "xray-user" "running as xray, config readable"
+else
+    fail "xray-user" "user=${XRAY_USER:-none}, config not readable by xray"
+fi
+
 # ── 3. Cloudflare Tunnel ──────────────────────────────────────────────────────
 if svc_active cloudflared; then
     if [ -n "${CF_URL}" ]; then
@@ -217,11 +226,28 @@ else
     else
         warn "gateway-mihomo" "hive-mihomo not active (try: systemctl status hive-mihomo)"
     fi
-    # TUN 设备（auto-route 接管转发流量的核心）
-    if ip link show 2>/dev/null | grep -qiE 'Meta|utun|tun[0-9]'; then
-        pass "gateway-tun" "TUN device present"
+    # TPROXY config + nft/ip rule (no TUN)
+    if grep -q '^tproxy-port: 7893' /etc/mihomo/config.yaml 2>/dev/null &&
+       ! grep -q '^tun:' /etc/mihomo/config.yaml 2>/dev/null; then
+        pass "gateway-tproxy" "mihomo tproxy-port=7893, no TUN"
     else
-        warn "gateway-tun" "no TUN device (mihomo TUN 未起？)"
+        fail "gateway-tproxy" "mihomo config is not tproxy/7893"
+    fi
+    if nft list table inet hive_gateway >/dev/null 2>&1 &&
+       ip rule show 2>/dev/null | grep -q 'fwmark 0x2 lookup 100' &&
+       ip rule show 2>/dev/null | grep -q 'fwmark 0x2 iif lo lookup main'; then
+        pass "gateway-tproxy-route" "nft hive_gateway + fwmark 0x2 ip rule + source-validation exception"
+    else
+        warn "gateway-tproxy-route" "nft/ip rule missing (no LAN/AP or route unit failed)"
+    fi
+    # tproxy 投递回来的客户端包走 LOCAL_IN，ufw 的 INPUT 默认 DROP；必须在
+    # before.rules 里按 mark 放行，nft base chain 的 accept 拦不住 ufw。
+    if [ -f /etc/ufw/before.rules ]; then
+        if grep -qx -- '-A ufw-before-input -m mark --mark 0x2 -j ACCEPT' /etc/ufw/before.rules; then
+            pass "gateway-tproxy-ufw" "ufw-before-input accepts tproxy-delivered packets (mark 0x2)"
+        else
+            fail "gateway-tproxy-ufw" "ufw drops tproxy-delivered packets: clients timeout while nft counters climb"
+        fi
     fi
     # external-controller 面板可达
     SECRET=$(grep -E '^secret:' /etc/mihomo/config.yaml 2>/dev/null | head -1 | sed 's/^secret:[[:space:]]*//; s/^"//; s/"$//')
