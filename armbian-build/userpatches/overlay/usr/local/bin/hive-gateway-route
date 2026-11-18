@@ -9,8 +9,12 @@ NFT_TABLE=hive_gateway
 MARK=${HIVE_GATEWAY_TPROXY_MARK:-0x2}
 TABLE=${HIVE_GATEWAY_TPROXY_TABLE:-100}
 PREF=100
+# Source validation of a TPROXY-marked packet runs a second route lookup for the
+# *client* address with the packet mark (when src_valid_mark=1, which Tailscale
+# sets). That pseudo flow arrives with iif=lo; the exception rule at this pref
+# must therefore sort before PREF.
+RPF_PREF=$((PREF - 10))
 PORT=7893
-DNS_PORT=1053
 NODE_INFO=/etc/hive/node-info
 
 [ -f /etc/hive/config.env ] && source /etc/hive/config.env 2>/dev/null || true
@@ -48,9 +52,52 @@ interfaces() {
 stop() {
     nft delete table inet "$NFT_TABLE" 2>/dev/null || true
     ip rule del fwmark "$MARK" lookup "$TABLE" pref "$PREF" 2>/dev/null || true
+    ip rule del iif lo fwmark "$MARK" lookup main pref "$RPF_PREF" 2>/dev/null || true
     ip -6 rule del fwmark "$MARK" lookup "$TABLE" pref "$PREF" 2>/dev/null || true
+    ip -6 rule del iif lo fwmark "$MARK" lookup main pref "$RPF_PREF" 2>/dev/null || true
     ip route flush table "$TABLE" 2>/dev/null || true
     ip -6 route flush table "$TABLE" 2>/dev/null || true
+}
+
+# TPROXY delivers the client packet back through LOCAL_IN with the mark intact
+# and the original destination address. ufw's INPUT policy is DROP and accepts
+# nothing for those addresses, and an accept verdict in an nft base chain does
+# *not* bypass another base chain at the same hook — the packet still walks
+# ufw's INPUT chain. Observed on 1.1.0: nft counters climbed, mihomo logged
+# nothing, `[UFW BLOCK] ... DPT=443 MARK=0x2` in dmesg.
+# ufw rebuilds its chains on every reload (`ufw allow` from the hotspot helper
+# runs on each AP start), so the rule has to live in before.rules/before6.rules;
+# the live iptables insert only covers the window before the next ufw reload.
+ensure_ufw_accept() {
+    local spec file chain rule tmp
+    for spec in /etc/ufw/before.rules:ufw-before-input \
+                /etc/ufw/before6.rules:ufw6-before-input; do
+        file=${spec%%:*} chain=${spec##*:}
+        [ -f "$file" ] || continue
+        rule="-A $chain -m mark --mark $MARK -j ACCEPT"
+        if grep -qxF -- "$rule" "$file"; then
+            continue
+        fi
+        tmp=$(mktemp "${file}.XXXXXX") || return 1
+        if ! awk -v rule="$rule" -v chain="$chain" '
+            $0 ~ "^-[AI] " chain " -m mark --mark .* -j ACCEPT$" { next }
+            !done && /^COMMIT[[:space:]]*$/ { print rule; done = 1 }
+            { print }
+        ' "$file" > "$tmp"; then
+            rm -f "$tmp"
+            return 1
+        fi
+        chmod --reference="$file" "$tmp" 2>/dev/null || chmod 644 "$tmp"
+        mv -f "$tmp" "$file"
+    done
+    if command -v iptables >/dev/null 2>&1; then
+        iptables -C INPUT -m mark --mark "$MARK" -j ACCEPT 2>/dev/null ||
+            iptables -I INPUT 1 -m mark --mark "$MARK" -j ACCEPT 2>/dev/null || true
+    fi
+    if command -v ip6tables >/dev/null 2>&1; then
+        ip6tables -C INPUT -m mark --mark "$MARK" -j ACCEPT 2>/dev/null ||
+            ip6tables -I INPUT 1 -m mark --mark "$MARK" -j ACCEPT 2>/dev/null || true
+    fi
 }
 
 start() {
@@ -83,7 +130,7 @@ start() {
     nft -f - <<EOF
 table inet $NFT_TABLE {
     chain prerouting {
-        type filter hook prerouting priority 0; policy accept;
+        type filter hook prerouting priority mangle; policy accept;
         fib daddr type local return
         # DHCP/RA/ND/mDNS are link-local control traffic. TPROXY-ing them
         # starves dnsmasq of DHCP and breaks AP clients before they get an IP.
@@ -92,20 +139,26 @@ table inet $NFT_TABLE {
         meta nfproto ipv4 iifname { $ifset } meta l4proto { tcp, udp } tproxy ip to :$PORT meta mark set $MARK accept
         meta nfproto ipv6 iifname { $ifset } meta l4proto { tcp, udp } tproxy ip6 to :$PORT meta mark set $MARK accept
     }
-    chain input {
-        type filter hook input priority -10; policy accept;
-        meta mark $MARK accept
-        iifname { $ifset } udp dport $DNS_PORT accept
-        iifname { $ifset } tcp dport $DNS_PORT accept
-    }
 }
 EOF
+    # No nft input chain: accepting there cannot override ufw's INPUT policy, so
+    # the accept lives in ufw's before.rules (see ensure_ufw_accept).
+    ensure_ufw_accept
     ip rule del fwmark "$MARK" lookup "$TABLE" pref "$PREF" 2>/dev/null || true
     ip rule add fwmark "$MARK" lookup "$TABLE" pref "$PREF"
     ip route replace local 0.0.0.0/0 dev lo table "$TABLE"
+    # fib_validate_source() looks the client address up again with the packet
+    # mark; with src_valid_mark=1 (set by Tailscale) that lookup would hit the
+    # "local default" route above and drop the packet as IP_LOCAL_SOURCE before
+    # it reaches the mihomo listener. The pseudo flow carries iif=lo, so route
+    # it through main and let the real ingress interface answer the check.
+    ip rule del iif lo fwmark "$MARK" lookup main pref "$RPF_PREF" 2>/dev/null || true
+    ip rule add iif lo fwmark "$MARK" lookup main pref "$RPF_PREF"
     ip -6 rule del fwmark "$MARK" lookup "$TABLE" pref "$PREF" 2>/dev/null || true
     ip -6 rule add fwmark "$MARK" lookup "$TABLE" pref "$PREF" 2>/dev/null || true
     ip -6 route replace local ::/0 dev lo table "$TABLE" 2>/dev/null || true
+    ip -6 rule del iif lo fwmark "$MARK" lookup main pref "$RPF_PREF" 2>/dev/null || true
+    ip -6 rule add iif lo fwmark "$MARK" lookup main pref "$RPF_PREF" 2>/dev/null || true
     echo "[hive-gateway-route] tproxy ifaces=$IFS_OUT port=$PORT mark=$MARK table=$TABLE"
 }
 

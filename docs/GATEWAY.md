@@ -92,9 +92,11 @@ Mihomo 只接管 **LAN/AP 的转发流量**（`prerouting`），本机自身出�
 数据面：
 
 1. `hive-gateway-route.service` 只在 LAN/AP `iifname` 上安装 tproxy：`fib daddr type local return`，TCP/UDP `tproxy to :7893` + `meta mark 0x2`；配套 `ip rule fwmark 0x2 lookup 100` 和 table 100 的 `local 0.0.0.0/0 dev lo`（v4/v6）。
-2. 客户端 DNS 由独立 `nat` 链 `redirect to :1053` 到 mihomo `dns.listen`；`input` 链放行 marked/DNS 包，避免被 ufw 的默认拒绝规则丢掉。
-3. fake-IP 只服务客户端；本机解析器不再被 mihomo 接管。Xray 出口仍保留自己的 DoH，域名解析不依赖宿主 resolver。
-4. fail-closed：blocked 配置对热点源网段 `DIRECT`、其余 `MATCH,REJECT`；mihomo 停止时 `hive-gateway-route` 通过 `PartOf` 一并停止，规则撤掉后客户端直连。TUN 时代的源/进程白名单仍由 blocked 配置生成，但 tproxy 下不会命中，属于历史兜底。
+2. **源地址校验例外**：Tailscale 会把 `net.ipv4.conf.all.src_valid_mark` 置 1，内核 `fib_validate_source()` 于是用包上的 mark 再查一次客户端源地址；这条伪流带 `iif=lo`，会命中 table 100 的 `local default`，把包判成 `IP_LOCAL_SOURCE` 丢掉（现象：nft counter 一直涨，mihomo 一条日志都没有，客户端全超时）。脚本因此加 `ip rule iif lo fwmark 0x2 lookup main pref 90`（v4/v6），让校验走 main 表。
+3. **ufw 放行**：tproxy 投递回来的客户端包带着原目的地址走 `LOCAL_IN`，而 ufw 的 INPUT 策略是 DROP；在一个 nft base chain 里 `accept` 不会跳过同 hook 的另一条 base chain（实测 `[UFW BLOCK] ... DPT=443 MARK=0x2`）。脚本把 `-A ufw-before-input -m mark --mark 0x2 -j ACCEPT` 写进 `/etc/ufw/before.rules` 与 `before6.rules`（ufw 每次 reload、热点每次启停都会重建自己的链），并立即插一条同样的 INPUT 规则；`hive-test.sh` 的 `gateway-tproxy-ufw` 项检查它。
+4. 客户端 DNS 由 dnsmasq 在网关地址上应答：`fib daddr type local return` 保证发往网关自身的解析不进入 tproxy。
+5. fake-IP 只服务客户端；本机解析器不再被 mihomo 接管。Xray 出口仍保留自己的 DoH，域名解析不依赖宿主 resolver。
+6. fail-closed：blocked 配置对热点源网段 `DIRECT`、其余 `MATCH,REJECT`；mihomo 停止时 `hive-gateway-route` 通过 `PartOf` 一并停止，规则撤掉后客户端直连。TUN 时代的源/进程白名单仍由 blocked 配置生成，但 tproxy 下不会命中，属于历史兜底。
 
 ## fail-closed（无有效订阅时）
 

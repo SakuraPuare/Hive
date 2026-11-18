@@ -234,10 +234,20 @@ else
         fail "gateway-tproxy" "mihomo config is not tproxy/7893"
     fi
     if nft list table inet hive_gateway >/dev/null 2>&1 &&
-       ip rule show 2>/dev/null | grep -q 'fwmark 0x2 lookup 100'; then
-        pass "gateway-tproxy-route" "nft hive_gateway + fwmark 0x2 ip rule"
+       ip rule show 2>/dev/null | grep -q 'fwmark 0x2 lookup 100' &&
+       ip rule show 2>/dev/null | grep -q 'fwmark 0x2 iif lo lookup main'; then
+        pass "gateway-tproxy-route" "nft hive_gateway + fwmark 0x2 ip rule + source-validation exception"
     else
         warn "gateway-tproxy-route" "nft/ip rule missing (no LAN/AP or route unit failed)"
+    fi
+    # tproxy 投递回来的客户端包走 LOCAL_IN，ufw 的 INPUT 默认 DROP；必须在
+    # before.rules 里按 mark 放行，nft base chain 的 accept 拦不住 ufw。
+    if [ -f /etc/ufw/before.rules ]; then
+        if grep -qx -- '-A ufw-before-input -m mark --mark 0x2 -j ACCEPT' /etc/ufw/before.rules; then
+            pass "gateway-tproxy-ufw" "ufw-before-input accepts tproxy-delivered packets (mark 0x2)"
+        else
+            fail "gateway-tproxy-ufw" "ufw drops tproxy-delivered packets: clients timeout while nft counters climb"
+        fi
     fi
     # external-controller 面板可达
     SECRET=$(grep -E '^secret:' /etc/mihomo/config.yaml 2>/dev/null | head -1 | sed 's/^secret:[[:space:]]*//; s/^"//; s/"$//')
