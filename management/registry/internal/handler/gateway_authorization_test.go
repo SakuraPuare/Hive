@@ -191,3 +191,49 @@ func TestGatewayAddressesLegacyExitNodesWithTheirOwnUUID(t *testing.T) {
 		t.Fatalf("legacy exit node still received the subscription UUID: %s", body)
 	}
 }
+
+func TestGatewayNormalizesNonCanonicalDirection(t *testing.T) {
+	mac, _, _, credential := boundGatewayFixture(t)
+	const subscriptionUUID = "11111111-2222-4333-8444-555555555555"
+	// A stale panel/API write such as " Overseas " used to fall through both the
+	// upstream-direction and the rule-action switches, emitting domestic rules
+	// (CN direct, rest proxied) over a domestic upstream pool.
+	mustExec(t, "UPDATE nodes SET gateway_direction = ' Overseas ' WHERE mac = ?", mac)
+	resp := doBearer("GET", "/nodes/"+mac+"/clash-config", nil, credential)
+	assertStatus(t, resp, http.StatusOK)
+	body := readBody(resp)
+	var cnRule, matchRule string
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "- RULE-SET,cn_domain,") {
+			cnRule = line
+		}
+		if strings.HasPrefix(line, "- MATCH,") {
+			matchRule = line
+		}
+	}
+	if cnRule != "- RULE-SET,cn_domain,代理" || matchRule != "- MATCH,直连" {
+		t.Fatalf("non-canonical direction not normalized: cn=%q match=%q", cnRule, matchRule)
+	}
+	if !strings.Contains(body, subscriptionUUID) {
+		t.Fatalf("overseas gateway lost its domestic upstream: %s", body)
+	}
+}
+
+func TestAdminRejectsInvalidGatewayDirection(t *testing.T) {
+	resetDB(t)
+	insertSubTestNode(t, "aabbccddeeff")
+	resp := doJSON("PATCH", "/nodes/aabbccddeeff", map[string]any{"gateway_direction": "bogus"}, adminCookie())
+	assertStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+	resp = doJSON("PATCH", "/nodes/aabbccddeeff", map[string]any{"gateway_direction": " Overseas "}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	var got string
+	if err := testDB.Raw("SELECT gateway_direction FROM nodes WHERE mac = 'aabbccddeeff'").Scan(&got).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got != "overseas" {
+		t.Fatalf("gateway_direction = %q, want overseas", got)
+	}
+}

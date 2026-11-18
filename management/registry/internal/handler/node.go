@@ -299,6 +299,19 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		}
 		updates["exit_direction"] = dir
 	}
+	if raw, ok := updates["gateway_direction"]; ok {
+		rawDir, isString := raw.(string)
+		if !isString {
+			h.jsonErr(w, http.StatusBadRequest, "gateway_direction must be domestic, overseas, global or direct")
+			return
+		}
+		dir, valid := normalizeGatewayDirection(rawDir)
+		if !valid {
+			h.jsonErr(w, http.StatusBadRequest, "gateway_direction must be domestic, overseas, global or direct")
+			return
+		}
+		updates["gateway_direction"] = dir
+	}
 
 	if err := h.DB.Model(&model.Node{}).Where("mac = ?", mac).Updates(updates).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())

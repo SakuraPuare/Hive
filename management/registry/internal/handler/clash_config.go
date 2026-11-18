@@ -35,6 +35,29 @@ func normalizeDirection(raw string) (string, bool) {
 	return "", false
 }
 
+// normalizeGatewayDirection canonicalises a node's gateway split-routing mode.
+// The gateway renderer and the upstream-pool query both switch on this value;
+// if it is not canonical (older panel/API writes such as "Overseas" or a value
+// with trailing whitespace) both fall back independently, which used to emit a
+// config that routed CN traffic direct while sending everything else through
+// domestic nodes. Canonicalise once and default to domestic.
+func normalizeGatewayDirection(raw string) (string, bool) {
+	switch v := strings.ToLower(strings.TrimSpace(raw)); v {
+	case DirectionDomestic, DirectionOverseas, "global", "direct":
+		return v, true
+	}
+	return "", false
+}
+
+// gatewayDirectionOrDefault normalizes a stored value and defaults to domestic,
+// which is the safe split for a gateway that never declared a direction.
+func gatewayDirectionOrDefault(raw string) string {
+	if v, ok := normalizeGatewayDirection(raw); ok {
+		return v
+	}
+	return DirectionDomestic
+}
+
 // nodeDirection normalizes a node's stored direction. Rows predating migration
 // 33 (or written by an older agent) carry an empty value and default to overseas.
 func nodeDirection(n model.Node) string {
