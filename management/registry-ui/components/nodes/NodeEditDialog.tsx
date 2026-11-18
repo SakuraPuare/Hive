@@ -34,8 +34,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useTranslations } from 'next-intl';
-import { LOCATION_OPTIONS } from '@/lib/locations';
+import { useLocale, useTranslations } from 'next-intl';
+import { LOCATION_OPTIONS, countryCodeOptions, countryDisplay } from '@/lib/locations';
 
 const WEIGHT_MIN = 0;
 const WEIGHT_MAX = 10000;
@@ -84,6 +84,8 @@ export function NodeEditDialog({
   const [exitDirection, setExitDirection] = useState(node?.exit_direction || 'overseas');
   // 位置：空=跟随心跳上报；填了国家代码就固定用它（auto 分流据此判定）。
   const [countryOverride, setCountryOverride] = useState(node?.country_override ?? '');
+  const locale = useLocale();
+  const countryOptions = countryCodeOptions(locale);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [weightError, setWeightError] = useState('');
@@ -201,15 +203,23 @@ export function NodeEditDialog({
               <p className="text-xs text-muted-foreground">{t('exitDirectionHelper')}</p>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="node-edit-country" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('countryOverride')}</Label>
-              <Input
-                id="node-edit-country"
-                value={countryOverride}
-                onChange={(e) => setCountryOverride(e.target.value.toUpperCase().slice(0, 2))}
-                placeholder="CN / US / JP"
-                maxLength={2}
-                helperText={t('countryOverrideHelper', { reported: node?.country || t('countryUnknown') })}
-              />
+              <Label id="node-edit-country-label" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('countryOverride')}</Label>
+              <Select value={countryOverride || 'auto'} onValueChange={(v) => setCountryOverride(v === 'auto' ? '' : v)}>
+                <SelectTrigger aria-labelledby="node-edit-country-label">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">
+                    {`${t('countryAutoOption')}（${countryDisplay(node?.country, locale) || t('countryUnknown')}）`}
+                  </SelectItem>
+                  {countryOptions.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t('countryOverrideHelper', { reported: countryDisplay(node?.country, locale) || t('countryUnknown') })}
+              </p>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="node-edit-note" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('note')}</Label>

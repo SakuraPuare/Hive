@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
+import { countryDisplay } from '@/lib/locations';
 import { useCustomer } from '@/lib/portal-auth';
 import { apiPath, portalSessionApi } from '@/lib/openapi-session';
 import { useClipboard } from '@/lib/use-clipboard';
@@ -75,6 +76,7 @@ const DEFAULT_HOTSPOT_CONFIG: HotspotConfig = {
 // 命令状态 → chip 样式。pending/sent=进行中，done=成功，failed/expired=失败。
 function CommandStatusChip({ status }: { status?: string }) {
   const t = useTranslations('portal');
+  const locale = useLocale();
   const s = status || 'pending';
   const label = t(`cmdStatus_${s}` as 'cmdStatus_pending');
   const tone =
@@ -91,6 +93,7 @@ function CommandStatusChip({ status }: { status?: string }) {
 export default function PortalDevicesPage() {
   const t = useTranslations('portal');
   const tCommon = useTranslations('common');
+  const locale = useLocale();
   const router = useRouter();
   const { customer, subscriptions, loading: authLoading } = useCustomer();
   const fmt = useFormat();
@@ -503,9 +506,9 @@ export default function PortalDevicesPage() {
                             <option value="direct">{t('directionDirect')}</option>
                           </select>
                           <span className="text-xs text-muted-foreground">
-                            {t('directionCountryHint')}: {d.country || '—'}
+                            {t('directionCountryHint')}: {countryDisplay(d.country_override || d.country, locale) || '—'}
                             {d.gateway_direction === 'auto'
-                              ? ` → ${(d.country || 'CN') === 'CN' ? t('directionDomestic') : t('directionOverseas')}`
+                              ? ` → ${(d.country_override || d.country || 'CN') === 'CN' ? t('directionDomestic') : t('directionOverseas')}`
                               : ''}
                           </span>
                         </div>

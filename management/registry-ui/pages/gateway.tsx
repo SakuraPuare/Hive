@@ -28,15 +28,14 @@ import {
 } from '@/components/ui/tooltip';
 import { useToast } from '@/components/ui/toast';
 import { RefreshCw, Waypoints, ChevronDown } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Collapsible } from 'radix-ui';
+import { countryCodeOptions, countryDisplay } from '@/lib/locations';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const DIRECTIONS = ['auto', 'domestic', 'overseas', 'global', 'direct'] as const;
 const UPSTREAM_MODES = ['auto', 'manual'] as const;
-// 位置可手工指定：空值=跟随心跳上报；否则用这个国家判定 auto 分流。
-const COUNTRY_OPTIONS = ['CN', 'HK', 'TW', 'MO', 'JP', 'KR', 'SG', 'US', 'GB', 'DE', 'FR', 'NL', 'CA', 'AU', 'RU', 'BR', 'IN', 'AE', 'TR'] as const;
 
 type GatewayField =
   | 'gateway_enabled'
@@ -422,6 +421,8 @@ function GatewayTable({
   t: ReturnType<typeof useTranslations>;
   tCommon: ReturnType<typeof useTranslations>;
 }) {
+  const locale = useLocale();
+  const countryOptions = countryCodeOptions(locale);
   if (loading) {
     return (
       <div
@@ -548,14 +549,16 @@ function GatewayTable({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="rounded-xl border-border bg-popover elevation-2">
-                        <SelectItem value="auto">{t('countryAuto')}</SelectItem>
-                        {COUNTRY_OPTIONS.map((c) => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        <SelectItem value="auto">
+                          {`${t('countryAuto')}（${countryDisplay(n.country, locale) || '—'}）`}
+                        </SelectItem>
+                        {countryOptions.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     <span className="text-xs text-muted-foreground/70">
-                      {`上报 ${n.country || '—'}${n.location ? ` · ${n.location}` : ''}`}
+                      {`上报 ${countryDisplay(n.country, locale) || '—'}${n.location ? ` · ${n.location}` : ''}`}
                     </span>
                   </div>
                 </TableCell>

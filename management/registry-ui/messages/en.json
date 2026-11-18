@@ -310,7 +310,8 @@
     "editNodeDescription": "Edit this node’s location, region, note, status, weight and enabled toggle.",
     "countryOverride": "Location (country code)",
     "countryOverrideHelper": "Empty = use the reported country (now: {reported}). Set a 2-letter ISO code to pin it; auto split uses it: CN = domestic split, anything else = overseas split.",
-    "countryUnknown": "not reported"
+    "countryUnknown": "not reported",
+    "countryAutoOption": "Auto (reported)"
   },
   "subscriptions": {
     "vless": "VLESS",

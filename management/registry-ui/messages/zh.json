@@ -310,7 +310,8 @@
     "editNodeDescription": "编辑该节点的位置、区域、备注、状态、权重与启用开关。",
     "countryOverride": "位置（国家代码）",
     "countryOverrideHelper": "留空=按心跳上报（当前：{reported}）。填写 ISO 两位国家代码后固定用它，自动分流据此判定：CN 走境内分流（出海），其它走境外分流（回国）。",
-    "countryUnknown": "未上报"
+    "countryUnknown": "未上报",
+    "countryAutoOption": "自动（跟随上报）"
   },
   "subscriptions": {
     "vless": "VLESS",
