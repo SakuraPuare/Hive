@@ -110,3 +110,26 @@ func TestPortalSetDeviceGateway(t *testing.T) {
 	assertStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 }
+
+func TestPortalGatewayDirectionRequiresMatchingUpstream(t *testing.T) {
+	mac, owner, _, _ := boundGatewayFixture(t)
+	// The bound subscription's line contains a 回国 node, so only an overseas
+	// split has an upstream; the domestic split would fail closed.
+	resp := doJSON("PUT", "/portal/devices/"+mac+"/gateway", map[string]any{"gateway_direction": "domestic"}, customerCookie(owner))
+	assertStatus(t, resp, http.StatusConflict)
+	resp.Body.Close()
+	resp = doJSON("PUT", "/portal/devices/"+mac+"/gateway", map[string]any{"gateway_direction": "overseas"}, customerCookie(owner))
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	// auto follows the reported country: CN -> domestic (no upstream, rejected),
+	// US -> overseas (upstream present).
+	mustExec(t, "UPDATE nodes SET country = 'CN' WHERE mac = ?", mac)
+	resp = doJSON("PUT", "/portal/devices/"+mac+"/gateway", map[string]any{"gateway_direction": "auto"}, customerCookie(owner))
+	assertStatus(t, resp, http.StatusConflict)
+	resp.Body.Close()
+	mustExec(t, "UPDATE nodes SET country = 'US' WHERE mac = ?", mac)
+	resp = doJSON("PUT", "/portal/devices/"+mac+"/gateway", map[string]any{"gateway_direction": "auto"}, customerCookie(owner))
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+}

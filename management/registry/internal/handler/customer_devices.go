@@ -275,6 +275,13 @@ func (h *Handler) HandlePortalSetDeviceGateway(w http.ResponseWriter, r *http.Re
 		h.jsonErr(w, http.StatusBadRequest, "gateway_direction must be auto, domestic, overseas, global or direct")
 		return
 	}
+	// 方向与已绑定订阅的线路必须能配出一台上游：境内网关要境外节点、境外网关要
+	// 回国节点。配不出来时切换方向等于让网关 fail-closed（客户端断网），先拦下并
+	// 说明要先换订阅，而不是让用户在面板上把设备点成砖。
+	if node.BoundSubscriptionID != nil && *node.BoundSubscriptionID != 0 && !h.gatewayDirectionHasUpstream(node, directionForNode(dir, node.Country)) {
+		h.jsonErr(w, http.StatusConflict, "当前订阅的线路里没有该分流方向可用的上游节点，请先改绑对应方向的订阅")
+		return
+	}
 	if err := h.DB.Exec(
 		"UPDATE nodes SET gateway_direction = ? WHERE mac = ? AND owner_customer_id = ?",
 		dir, mac, cid,
@@ -354,4 +361,34 @@ func (h *Handler) HandlePortalUnbindDevice(w http.ResponseWriter, r *http.Reques
 	}
 	store.WriteAuditLog(h.DB, customerActor(cid), "device_unbind", "mac="+mac, getClientIP(r))
 	h.jsonOK(w, map[string]string{"status": "ok"})
+}
+
+// directionForNode resolves the stored mode to a concrete direction, using the
+// node's reported country for "auto".
+func directionForNode(mode, country string) string {
+	return resolveGatewayDirection(mode, country)
+}
+
+// gatewayDirectionHasUpstream reports whether the node's bound subscription
+// yields at least one eligible upstream in the complementary direction, the
+// same predicate the gateway renderer applies.
+func (h *Handler) gatewayDirectionHasUpstream(node model.Node, direction string) bool {
+	planID := uint(0)
+	if err := h.DB.Raw("SELECT plan_id FROM customer_subscriptions WHERE id = ?", *node.BoundSubscriptionID).Scan(&planID).Error; err != nil || planID == 0 {
+		return false
+	}
+	upstream := gatewayUpstreamDirection(direction, nodeDirection(node))
+	var count int64
+	if err := h.DB.Raw(
+		"SELECT COUNT(*) FROM nodes n "+
+			"JOIN line_nodes ln ON ln.node_mac = n.mac "+
+			"JOIN `lines` l ON l.id = ln.line_id AND l.enabled = 1 "+
+			"JOIN plan_lines pl ON pl.line_id = l.id AND pl.plan_id = ? "+
+			"WHERE n.mac <> ? AND n.enabled = 1 AND n.exit_enabled = 1 AND n.owner_exit_enabled = 1 "+
+			"AND n.status = 'active' AND n.cf_url <> '' AND n.xray_uuid <> '' AND n.exit_direction = ?",
+		planID, node.MAC, upstream,
+	).Scan(&count).Error; err != nil {
+		return false
+	}
+	return count > 0
 }
