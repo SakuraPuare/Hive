@@ -29,6 +29,7 @@ import {
 import { useToast } from '@/components/ui/toast';
 import { RefreshCw, Waypoints, ChevronDown } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
+import { LocationCombobox } from '@/components/ui/location-combobox';
 import { Collapsible } from 'radix-ui';
 import { countryCodeOptions, countryDisplay } from '@/lib/locations';
 
@@ -536,27 +537,16 @@ function GatewayTable({
                 {/* Location: 心跳上报的国家，可手工指定覆盖（auto 分流据此判定） */}
                 <TableCell className="py-3">
                   <div className="flex flex-col gap-1">
-                    <Select
-                      value={n.country_override || 'auto'}
+                    <LocationCombobox
+                      size="sm"
+                      aria-label={t('countryLabel')}
+                      options={[{ value: '', label: `${t('countryAuto')}（${countryDisplay(n.country, locale) || '—'}）` }, ...countryOptions]}
+                      value={n.country_override || ''}
+                      onChange={(v) => onPatch(mac, { country_override: v })}
                       disabled={savingMacs.has(mac)}
-                      onValueChange={(v) => onPatch(mac, { country_override: v === 'auto' ? '' : v })}
-                    >
-                      <SelectTrigger
-                        size="sm"
-                        className="w-[120px] rounded-lg border-border bg-md-surface-container text-sm"
-                        aria-label={t('countryLabel')}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-xl border-border bg-popover elevation-2">
-                        <SelectItem value="auto">
-                          {`${t('countryAuto')}（${countryDisplay(n.country, locale) || '—'}）`}
-                        </SelectItem>
-                        {countryOptions.map((c) => (
-                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      searchPlaceholder={t('countrySearchPlaceholder')}
+                      emptyText={t('countryNoMatch')}
+                    />
                     <span className="text-xs text-muted-foreground/70">
                       {`上报 ${countryDisplay(n.country, locale) || '—'}${n.location ? ` · ${n.location}` : ''}`}
                     </span>

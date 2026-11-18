@@ -17,15 +17,16 @@ export interface LocationOption {
   label: string;
 }
 
-/** 所有国家/地区，按中文名排序 */
+/** 所有国家/地区，按中文名排序（拼音序；不能按带国旗的 label 排，emoji 会盖过名字） */
 export const LOCATION_OPTIONS: LocationOption[] = [
   { value: '', label: '（不设置）' },
   ...Object.entries(countries.getNames('zh', { select: 'official' }))
-    .map(([code, name]) => ({
+    .map(([code, name]) => ({ code, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+    .map(({ code, name }) => ({
       value: `${isoToFlag(code)} ${name}`,
       label: `${isoToFlag(code)} ${name}`,
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN')),
+    })),
 ];
 
 /** ISO-3166-1 alpha-2 → 本地化的"🇨🇳 中国" */
@@ -44,7 +45,10 @@ export interface CountryOption {
 
 /** 国家代码下拉项（用于位置人工指定），与 location 的展示格式一致 */
 export function countryCodeOptions(locale = 'zh'): CountryOption[] {
-  return Object.keys(countries.getNames('zh', { select: 'official' }))
-    .map((code) => ({ value: code, label: countryDisplay(code, locale) }))
-    .sort((a, b) => a.label.localeCompare(b.label, locale === 'en' ? 'en' : 'zh-CN'));
+  const lang = locale === 'en' ? 'en' : 'zh';
+  // 中文界面按拼音排，英文界面按字母排；排序键必须是国名而不是带国旗的 label。
+  return Object.entries(countries.getNames(lang, { select: 'official' }))
+    .map(([code, name]) => ({ code, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, lang === 'en' ? 'en' : 'zh-CN'))
+    .map(({ code }) => ({ value: code, label: countryDisplay(code, locale) }));
 }

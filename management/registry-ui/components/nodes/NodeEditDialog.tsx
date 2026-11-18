@@ -204,19 +204,14 @@ export function NodeEditDialog({
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label id="node-edit-country-label" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('countryOverride')}</Label>
-              <Select value={countryOverride || 'auto'} onValueChange={(v) => setCountryOverride(v === 'auto' ? '' : v)}>
-                <SelectTrigger aria-labelledby="node-edit-country-label">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">
-                    {`${t('countryAutoOption')}（${countryDisplay(node?.country, locale) || t('countryUnknown')}）`}
-                  </SelectItem>
-                  {countryOptions.map((c) => (
-                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <LocationCombobox
+                ariaLabelledby="node-edit-country-label"
+                options={[{ value: '', label: `${t('countryAutoOption')}（${countryDisplay(node?.country, locale) || t('countryUnknown')}）` }, ...countryOptions]}
+                value={countryOverride}
+                onChange={setCountryOverride}
+                searchPlaceholder={t('countrySearchPlaceholder')}
+                emptyText={t('countryNoMatch')}
+              />
               <p className="text-xs text-muted-foreground">
                 {t('countryOverrideHelper', { reported: countryDisplay(node?.country, locale) || t('countryUnknown') })}
               </p>

@@ -28,9 +28,22 @@ describe('LOCATION_OPTIONS', () => {
     });
   });
 
-  it('options after first are sorted by Chinese locale', () => {
-    const labels = LOCATION_OPTIONS.slice(1).map((o) => o.label);
-    const sorted = [...labels].sort((a, b) => a.localeCompare(b, 'zh-CN'));
-    expect(labels).toEqual(sorted);
+  it('options after first are sorted by pinyin of the country name', () => {
+    // 国旗 emoji 排在名字前面，直接比较 label 会退化成按 emoji/ISO 码排序；
+    // 列表必须按国名（中文拼音）排序，否则找国家要靠猜。
+    const names = LOCATION_OPTIONS.slice(1).map((o) => o.label.replace(/^\S+\s/, ''));
+    const sorted = [...names].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    expect(names).toEqual(sorted);
+  });
+
+  it('country code options sort by pinyin in zh and alphabetically in en', async () => {
+    const { countryCodeOptions } = await import('@/lib/locations');
+    for (const [locale, collation] of [['zh', 'zh-CN'], ['en', 'en']] as const) {
+      const names = countryCodeOptions(locale).map((o) => o.label.replace(/^\S+\s/, ''));
+      const sorted = [...names].sort((a, b) => a.localeCompare(b, collation));
+      expect(names).toEqual(sorted);
+    }
+    const zh = countryCodeOptions('zh').map((o) => o.label);
+    expect(zh.find((l) => l.includes('中国'))).toMatch(/^🇨🇳/);
   });
 });

@@ -311,7 +311,9 @@
     "countryOverride": "Location (country code)",
     "countryOverrideHelper": "Empty = use the reported country (now: {reported}). Set a 2-letter ISO code to pin it; auto split uses it: CN = domestic split, anything else = overseas split.",
     "countryUnknown": "not reported",
-    "countryAutoOption": "Auto (reported)"
+    "countryAutoOption": "Auto (reported)",
+    "countrySearchPlaceholder": "Search countries…",
+    "countryNoMatch": "No matching country"
   },
   "subscriptions": {
     "vless": "VLESS",
@@ -1277,7 +1279,9 @@
     "collapseIntro": "Collapse intro",
     "expandIntro": "Expand intro",
     "countryAuto": "Auto (reported)",
-    "countryLabel": "Location (country)"
+    "countryLabel": "Location (country)",
+    "countrySearchPlaceholder": "Search countries…",
+    "countryNoMatch": "No matching country"
   },
   "theme": {
     "pickerLabel": "Select theme color",
