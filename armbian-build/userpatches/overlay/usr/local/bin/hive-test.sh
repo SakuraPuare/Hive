@@ -257,10 +257,8 @@ else
     else
         warn "gateway-panel" "Clash API :9090 unreachable"
     fi
-    # WAN/LAN 拓扑（双网口）或单臂网关（单网口无无线）
-    if [ -n "${GATEWAY_ONE_ARM_IFACE:-}" ]; then
-        pass "gateway-topo" "one-arm ${GATEWAY_ONE_ARM_IFACE} @ ${GATEWAY_ONE_ARM_IP:-?} (clients set default gateway)"
-    elif [ -n "${GATEWAY_LAN_IFACES:-}" ]; then
+    # WAN/LAN 拓扑（仅双网口设备配置；单口设备此处为空属正常）
+    if [ -n "${GATEWAY_LAN_IFACES:-}" ]; then
         pass "gateway-topo" "WAN=${GATEWAY_WAN_IFACE:-?} LAN=${GATEWAY_LAN_IFACES}"
     else
         pass "gateway-topo" "single-NIC device (no WAN/LAN split, expected)"

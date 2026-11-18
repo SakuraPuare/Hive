@@ -10,7 +10,7 @@ Wants=NetworkManager.service
 Type=oneshot
 RemainAfterExit=no
 ExecStart=/usr/local/bin/hive-gateway.sh
-# 单网口无无线时配置单臂网关；单网口有无线时 exit 0，不影响启动链
+# 单网口设备脚本 exit 0，不影响启动链
 StandardOutput=journal
 StandardError=journal
 TimeoutStartSec=120

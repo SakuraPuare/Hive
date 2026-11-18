@@ -23,9 +23,8 @@ enabled=${GATEWAY_ENABLED:-on}
 read_field() { { sed -n "s/^$1=//p" "$NODE_INFO" 2>/dev/null || true; } | head -1; }
 
 interfaces() {
-    local lan one wan wifi5 wifi i d
+    local lan wan wifi5 wifi i d
     lan=$(read_field GATEWAY_LAN_IFACES)
-    one=$(read_field GATEWAY_ONE_ARM_IFACE)
     wan=$(read_field GATEWAY_WAN_IFACE)
     wifi5=$(read_field WIFI_IFACE_5G)
     wifi=$(read_field WIFI_IFACE)
@@ -33,11 +32,11 @@ interfaces() {
         local i=$1
         [ -n "$i" ] || return 0
         case "$i" in *[!a-zA-Z0-9_.:-]*) return 0 ;; esac
-        [ "$i" = "$wan" ] && [ "$i" != "$one" ] && return 0
+        [ "$i" = "$wan" ] && return 0
         case " $IFS_OUT " in *" $i "*) return 0 ;; esac
         IFS_OUT="${IFS_OUT:+$IFS_OUT }$i"
     }
-    for i in $lan $one $wifi5 $wifi; do add_interface "$i"; done
+    for i in $lan $wifi5 $wifi; do add_interface "$i"; done
     # A wireless AP interface can exist before provision/hotspot has written
     # WIFI_IFACE* into node-info. Detect it directly so the first boot (and a
     # failed route start) still installs TPROXY on the AP.

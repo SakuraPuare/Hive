@@ -1107,26 +1107,53 @@ sys.exit(1)
         connections = json.loads((self.root / 'nm-state.json').read_text())['connections']
         self.assertEqual(connections['Wired connection 1']['method'], 'auto')
 
-    def test_single_wired_without_wifi_becomes_one_arm_gateway(self):
-        # No wireless and one wired NIC: clients on the same L2 set this node as
-        # their default gateway. No DHCP server or LAN keyfile is created.
+    def test_single_wired_node_is_not_turned_into_a_bypass_gateway(self):
+        # One-arm (bypass) gateway is WIP: a single wired NIC must stay a plain
+        # node, and leftovers from the withdrawn implementation must be removed
+        # so the node does not keep forwarding/NATing for its L2 peers.
         source = self.gateway_fixture()
         shutil.rmtree(self.root / 'sys/class/net/eth1')
         (self.root / 'nm-state.json').write_text(json.dumps({
             'connections': {}, 'active': [], 'interfaces': ['eth0']}))
+        (self.root / 'etc/sysctl.d/99-hive-one-arm.conf').write_text('net.ipv4.ip_forward=1\n')
+        (self.root / 'etc/hive/node-info').write_text(
+            'MAC=aabbccddeeff\n'
+            'GATEWAY_ONE_ARM_IFACE=eth0\n'
+            'GATEWAY_ONE_ARM_IP=192.168.5.226\n'
+            'GATEWAY_ONE_ARM_NET=192.168.5.0/24\n')
+        # The leftover rules exist: -C succeeds until the matching -D runs, so the
+        # cleanup loops terminate instead of spinning forever.
+        self.mock('iptables', r'''#!/bin/sh
+root="$HIVE_TEST_ROOT"
+echo "$@" >> "$root/iptables-calls"
+key=$(printf '%s' "$*" | sed 's/ -[CD] / /' | cksum | cut -d' ' -f1)
+case " $* " in
+  *" -C "*hive-one-arm*)
+    [ -e "$root/del.$key" ] && exit 1
+    exit 0 ;;
+  *" -D "*hive-one-arm*)
+    touch "$root/del.$key"
+    exit 0 ;;
+  *" -C "*) exit 1 ;;
+esac
+exit 0
+''')
 
         self.run_script(source)
 
         info = (self.root / 'etc/hive/node-info').read_text()
-        self.assertIn('GATEWAY_ONE_ARM_IFACE=eth0', info)
-        self.assertIn('GATEWAY_ONE_ARM_IP=192.168.5.226', info)
-        self.assertIn('GATEWAY_ONE_ARM_NET=192.168.5.0/24', info)
+        self.assertNotIn('GATEWAY_ONE_ARM_', info)
         self.assertNotIn('GATEWAY_LAN_IFACES=', info)
+        self.assertFalse((self.root / 'etc/sysctl.d/99-hive-one-arm.conf').exists())
+        self.assertFalse((self.root / 'etc/NetworkManager/system-connections/'
+                                     'hive-lan-eth0.nmconnection').exists())
         calls = (self.root / 'iptables-calls').read_text()
-        self.assertIn('-I FORWARD 2 -i eth0 -m comment --comment hive-one-arm-in -j ACCEPT', calls)
-        self.assertIn('-I FORWARD 2 -o eth0 -m comment --comment hive-one-arm-out -j ACCEPT', calls)
-        self.assertIn('-A POSTROUTING -s 192.168.5.0/24 -o eth0 -m comment --comment hive-one-arm-nat -j MASQUERADE', calls)
-        self.assertIn('net.ipv4.ip_forward=1', (self.root / 'etc/sysctl.d/99-hive-one-arm.conf').read_text())
+        self.assertIn('-D FORWARD -i eth0 -m comment --comment hive-one-arm-in -j ACCEPT', calls)
+        self.assertIn('-D FORWARD -o eth0 -m comment --comment hive-one-arm-out -j ACCEPT', calls)
+        self.assertIn('-t nat -D POSTROUTING -s 192.168.5.0/24 -o eth0 '
+                      '-m comment --comment hive-one-arm-nat -j MASQUERADE', calls)
+        self.assertNotIn('-I FORWARD', calls)
+        self.assertNotIn('-A POSTROUTING', calls)
 
     def test_gateway_prunes_lan_profiles_after_a_port_disappears(self):
         # A removed USB NIC or a switch back to a single port leaves keyfiles

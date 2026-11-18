@@ -5,9 +5,8 @@
 #   LAN 口  给下游设备发 DHCP + NAT（NM method=shared 自带 dnsmasq），静态网关 10.42.2.1/24
 #
 # 透明代理由 Mihomo(hive-mihomo.service)接管，本脚本只负责把"物理拓扑"配好：
-#   - 单网口且无无线：单臂网关。客户端手动把默认网关指向本机（不提供 DHCP），
-#     节点开启 IPv4 转发、直连路径 NAT 和防火墙放行。
-#   - 单网口但有无线：交给 WiFi 热点路径，本脚本不配 WAN/LAN。
+#   - 单网口设备（如 Zero2）：无 WAN/LAN 之分，干净退出 0；Mihomo 透明代理对 WiFi 热点下游仍有效。
+#     单臂（旁路）网关仍是 WIP，未实现（见 cleanup_one_arm 的历史清理）。
 #   - 双/多网口设备：第一个口作 WAN，其余口作 LAN（10.42.2.1 / .3.1 / .4.1 递增，避开热点的 .0.1/.1.1）。
 #
 # 设计与 hive-hotspot.sh 一致：一切从 MAC 确定性派生、NM keyfile、flock 单实例锁、幂等可反复调用。
@@ -22,14 +21,15 @@ KF_DIR="/etc/NetworkManager/system-connections"
 log() { echo "[$LOG_TAG] $*"; logger -t "$LOG_TAG" "$*" 2>/dev/null || true; }
 upper() { echo "$1" | tr 'a-f' 'A-F'; }
 
-# Remove the one-armed-gateway rules recorded in node-info. Called when the
-# topology changes (USB NIC added, WiFi appears, or gateway disabled).
+# One-arm (bypass) gateway is WIP: single-NIC nodes exit without WAN/LAN. This
+# removes the rules a firmware that shipped the WIP implementation left behind
+# (FORWARD accepts, NAT, ip_forward sysctl, GATEWAY_ONE_ARM_* in node-info), so
+# an upgraded node does not keep routing for its L2 peers.
 cleanup_one_arm() {
-    local ifc net ip
+    local ifc net
     [ -f "$NODE_INFO" ] || return 0
     ifc=$(sed -n 's/^GATEWAY_ONE_ARM_IFACE=//p' "$NODE_INFO" | head -1)
     net=$(sed -n 's/^GATEWAY_ONE_ARM_NET=//p' "$NODE_INFO" | head -1)
-    ip=$(sed -n 's/^GATEWAY_ONE_ARM_IP=//p' "$NODE_INFO" | head -1)
     if command -v iptables >/dev/null 2>&1 && [ -n "$ifc" ]; then
         while iptables -w 3 -C FORWARD -i "$ifc" -m comment --comment hive-one-arm-in -j ACCEPT 2>/dev/null; do
             iptables -w 3 -D FORWARD -i "$ifc" -m comment --comment hive-one-arm-in -j ACCEPT 2>/dev/null || break
@@ -45,6 +45,7 @@ cleanup_one_arm() {
             done
         fi
     fi
+    rm -f /etc/sysctl.d/99-hive-one-arm.conf
     sed -i '/^GATEWAY_ONE_ARM_/d' "$NODE_INFO" 2>/dev/null || true
 }
 
@@ -141,70 +142,11 @@ for _wl in /sys/class/net/*/phy80211; do
 done
 log "发现 ${NWIRED} 个物理有线口: [${WIRED[*]:-none}]，无线网卡 ${WIRELESS} 个"
 
-# Single wired NIC and no wireless: one-armed gateway. Clients on the same L2
-# use this node as their default gateway; no DHCP server is installed.
-setup_one_arm() {
-    local iface="$1" ip net
-    if ! command -v iptables >/dev/null 2>&1; then
-        log "单臂网关需要 iptables，未找到；跳过"
-        return 1
-    fi
-    ip=$(ip -4 -o addr show dev "$iface" 2>/dev/null | awk '$3=="inet"{split($4,a,"/"); print a[1]; exit}')
-    net=$(ip -4 route show dev "$iface" proto kernel scope link 2>/dev/null | awk 'NR==1{print $1}')
-    if [ -z "$ip" ] || [ -z "$net" ]; then
-        log "单臂网关需要 IPv4 地址：$iface 当前没有静态/DHCP 地址，跳过"
-        prune_lan_profiles
-        return 1
-    fi
-
-    cleanup_one_arm
-    prune_lan_profiles
-    sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || log "无法开启 ip_forward（继续尝试）"
-    printf '%s\n' 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-hive-one-arm.conf
-
-    # Keep the accepts after the subscription gate (which is inserted at
-    # FORWARD 1). When the gate is present it still drops first; when access is
-    # valid these rules let clients reach both the TUN and the direct path.
-    iptables -w 3 -C FORWARD -i "$iface" -m comment --comment hive-one-arm-in -j ACCEPT 2>/dev/null ||
-        iptables -w 3 -I FORWARD 2 -i "$iface" -m comment --comment hive-one-arm-in -j ACCEPT ||
-        iptables -w 3 -I FORWARD 1 -i "$iface" -m comment --comment hive-one-arm-in -j ACCEPT
-    iptables -w 3 -C FORWARD -o "$iface" -m comment --comment hive-one-arm-out -j ACCEPT 2>/dev/null ||
-        iptables -w 3 -I FORWARD 2 -o "$iface" -m comment --comment hive-one-arm-out -j ACCEPT ||
-        iptables -w 3 -I FORWARD 1 -o "$iface" -m comment --comment hive-one-arm-out -j ACCEPT
-
-    # NAT only the direct path (proxied traffic is consumed by the TUN). The
-    # node's own source is in the same subnet; masquerading it to the same
-    # interface address is a no-op, so no extra exclusion is needed.
-    if ! iptables -w 3 -t nat -C POSTROUTING -s "$net" -o "$iface" \
-            -m comment --comment hive-one-arm-nat -j MASQUERADE 2>/dev/null; then
-        iptables -w 3 -t nat -A POSTROUTING -s "$net" -o "$iface" \
-            -m comment --comment hive-one-arm-nat -j MASQUERADE
-    fi
-
-    mkdir -p /etc/hive
-    sed -i '/^GATEWAY_/d' "$NODE_INFO" 2>/dev/null || true
-    grep -q '^MAC=' "$NODE_INFO" 2>/dev/null || echo "MAC=${NODE_MAC}" >> "$NODE_INFO"
-    {
-        echo "GATEWAY_ONE_ARM_IFACE=${iface}"
-        echo "GATEWAY_ONE_ARM_IP=${ip}"
-        echo "GATEWAY_ONE_ARM_NET=${net}"
-    } >> "$NODE_INFO"
-    log "单臂网关已启用：$iface @ $ip；同网段客户端把默认网关设为 $ip（不提供 DHCP）"
-    return 0
-}
-
-if [ "$NWIRED" -eq 1 ] && [ "$WIRELESS" -eq 0 ]; then
-    ONE_IF="${WIRED[0]}"
-    for _w in "${WIRED[@]}"; do
-        [ -n "$WAN_PIN" ] && [ "$_w" = "$WAN_PIN" ] && ONE_IF="$WAN_PIN"
-    done
-    setup_one_arm "$ONE_IF" || exit 0
-    exit 0
-fi
-
+# One-arm (bypass) gateway: WIP, not implemented. A single wired NIC stays a
+# plain node; only a previous WIP firmware's leftovers are cleaned up.
 if [ "$NWIRED" -lt 2 ]; then
     cleanup_one_arm
-    log "仅 ${NWIRED} 个有线口、无线 ${WIRELESS} 个，不配置 WAN/LAN（WiFi 热点下游走原有网关路径）"
+    log "仅 ${NWIRED} 个有线口、无线 ${WIRELESS} 个，不配置 WAN/LAN（非路由器场景；网关仍由 Mihomo 接管本机转发）"
     # 网口减少（拔掉 USB 网卡/改单口）后这些连接已无对应 LAN，留着会被 NM 激活。
     prune_lan_profiles
     exit 0
