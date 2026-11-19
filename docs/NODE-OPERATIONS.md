@@ -427,3 +427,17 @@ fail2ban-client status sshd
 # 最近 SSH 登录记录
 journalctl _COMM=sshd --since "24 hours ago" | grep "Accepted\|Failed"
 ```
+
+## 十二、客户设备网络地址
+
+客户门户「我的设备」的独立地址页读取 `GET /api/portal/devices/{mac}/addresses`，仅设备所有者可访问；接口不返回设备凭证、订阅 token 或 Xray UUID，也不会下发命令、重启服务。
+
+- `hostname`、`mac`、`last_seen` 为节点身份和最后心跳；`tailscale_ip`、`easytier_ip`、`mesh_ip`、`cf_url` 取注册信息，尚未就绪的 `pending` 显示为空。`frp.host` 使用 registry 的 `FRP_SERVER_ADDR`，`frp.port` 为节点分配端口。
+- `lan` 为 `ip -j address` 中具有 `/sys/class/net/<接口>/device` 的物理网卡 IPv4/IPv6 地址（含前缀长度），最多 32 项；不包含回环、链路本地、虚拟隧道及 fake-IP 地址。
+- `sampled_at` 是 registry 收到网络快照的 RFC3339 时间，与 `last_seen` 独立。旧 agent 不上报时为 `null`、`lan: []`；旧心跳不会刷新已有网络样本。
+- `egress.ipv4` / `egress.ipv6` 为节点分别使用 IPv4/IPv6 HTTPS 请求 Cloudflare trace 的实际 `ip=`。探测禁用环境 HTTP 代理，但仍可能经过系统透明代理、隧道或上游 NAT：这是**节点请求路径所见出口，不保证直连 WAN 地址**。
+- 出口按地址族缓存并最多每小时重试一次，失败保留上次成功地址和原始时间；从未成功则为空及 `sampled_at: null`。当两族成功时间不同，`egress.sampled_at` 取较旧时间，避免把旧地址标成新采样。LAN 每次心跳重新采集，出口时间不能用于判断 LAN 新鲜度。
+- 物理接口采集失败时不提交网络快照，保留上次地址及采样时间；不会把采集失败误报为新鲜的空地址列表。页面分别在 LAN 样本超过 150 秒、出口观测超过两小时时提示陈旧。
+
+以上为新 agent 的心跳快照，不是实时查询。打开页面不会触发外网探测；已有节点需按正常固件/应用升级流程获得采集功能。
+

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 REPO = Path(__file__).resolve().parents[1]
@@ -36,6 +37,109 @@ class HardwareTests(unittest.TestCase):
         p = self.mockdir / name
         p.write_text(text)
         p.chmod(0o755)
+
+    def address_collector(self, rows, now, traces):
+        source = (BIN / 'hive-command-agent').read_text()
+        code = source.split("address_snapshot() {\n    python3 - <<'PY'\n", 1)[1].split('\nPY\n}', 1)[0]
+        code = code.replace('/var/lib/hive/egress-addresses.json', str(self.root / 'egress.json'))
+        code = code.replace('/sys/class/net', str(self.root / 'net'))
+        calls = []
+        def command(args, **kwargs):
+            calls.append(args)
+            if args[0] == 'ip':
+                self.assertEqual(args, ['ip', '-j', 'address', 'show'])
+                if isinstance(rows, Exception):
+                    raise rows
+                if isinstance(rows, str):
+                    return rows.encode()
+                return json.dumps(rows).encode()
+            family = 4 if '-4' in args else 6
+            self.assertIn('--noproxy', args)
+            self.assertIn('--max-time', args)
+            self.assertIn('--max-filesize', args)
+            self.assertEqual(args[-1], 'https://www.cloudflare.com/cdn-cgi/trace')
+            value = traces[family]
+            if isinstance(value, Exception):
+                raise value
+            return value.encode()
+        printed = []
+        with patch('time.time', return_value=now), patch('subprocess.check_output', side_effect=command), patch('builtins.print', side_effect=lambda value: printed.append(value)):
+            exec(compile(code, 'address-collector', 'exec'), {})
+        return json.loads(printed[0]), calls
+
+    def test_command_addresses_collect_physical_dual_stack_only(self):
+        for iface in ['eth0', 'wlan0']:
+            (self.root / 'net' / iface / 'device').mkdir(parents=True)
+        rows = [
+            {'ifname': 'eth0', 'addr_info': [{'local': '192.168.1.2', 'prefixlen': 24},
+                {'local': '2001:db8::2', 'prefixlen': 64}, {'local': 'fe80::1', 'prefixlen': 64},
+                {'local': '169.254.1.1', 'prefixlen': 16}, {'local': '198.18.1.1', 'prefixlen': 15}]},
+            {'ifname': 'wlan0', 'addr_info': [{'local': '10.42.2.1', 'prefixlen': 24},
+                {'local': 'not-an-ip', 'prefixlen': 24}, {'local': '1.1.1.1', 'prefixlen': 33}]},
+            {'ifname': 'tailscale0', 'addr_info': [{'local': '100.64.1.2', 'prefixlen': 32}]},
+            {'ifname': 'lo', 'addr_info': [{'local': '127.0.0.1', 'prefixlen': 8}]},
+            {'ifname': '../eth0', 'addr_info': [{'local': '1.1.1.1', 'prefixlen': 32}]},
+        ]
+        sample, calls = self.address_collector(rows, 1700000000,
+            {4: 'ip=1.1.1.1\nloc=US\n', 6: 'ip=2606:4700:4700::1111\nloc=US\n'})
+        self.assertEqual(sample['lan'], [
+            {'interface': 'eth0', 'address': '192.168.1.2', 'prefix_length': 24},
+            {'interface': 'eth0', 'address': '2001:db8::2', 'prefix_length': 64},
+            {'interface': 'wlan0', 'address': '10.42.2.1', 'prefix_length': 24}])
+        self.assertEqual(sample['egress'], {'ipv4': '1.1.1.1', 'ipv6': '2606:4700:4700::1111', 'sampled_at': '2023-11-14T22:13:20Z'})
+        self.assertEqual(sample['country'], 'US')
+        self.assertEqual(len(calls), 3)
+        sample, calls = self.address_collector(rows, 1700000060, {})
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(sample['egress']['sampled_at'], '2023-11-14T22:13:20Z')
+
+    def test_command_egress_failed_refresh_retains_original_samples(self):
+        first, _ = self.address_collector([], 1700000000,
+            {4: 'ip=1.1.1.1\n', 6: 'ip=2606:4700:4700::1111\n'})
+        failed, calls = self.address_collector([], 1700003601,
+            {4: subprocess.CalledProcessError(7, 'curl'), 6: 'ip=not-an-ip\n'})
+        self.assertEqual(failed['egress'], first['egress'])
+        self.assertEqual(len(calls), 3)
+        cached, calls = self.address_collector([], 1700003661, {})
+        self.assertEqual(cached['egress'], first['egress'])
+        self.assertEqual(len(calls), 1)
+        partial, _ = self.address_collector([], 1700007202,
+            {4: 'ip=8.8.8.8\n', 6: subprocess.CalledProcessError(7, 'curl')})
+        self.assertEqual(partial['egress']['ipv4'], '8.8.8.8')
+        self.assertEqual(partial['egress']['sampled_at'], first['egress']['sampled_at'])
+        (self.root / 'egress.json').unlink()
+        empty, _ = self.address_collector([], 1700010000,
+            {4: 'ip=192.168.1.1\n', 6: subprocess.CalledProcessError(7, 'curl')})
+        self.assertEqual(empty['egress'], {'ipv4': '', 'ipv6': '', 'sampled_at': None})
+
+    def test_command_lan_snapshot_is_bounded(self):
+        (self.root / 'net' / 'eth0' / 'device').mkdir(parents=True)
+        rows = [{'ifname': 'eth0', 'addr_info': [{'local': '192.168.1.'+str(i), 'prefixlen': 24} for i in range(1, 50)]}]
+        sample, _ = self.address_collector(rows, 1700000000,
+            {4: subprocess.CalledProcessError(7, 'curl'), 6: subprocess.CalledProcessError(7, 'curl')})
+        self.assertEqual(len(sample['lan']), 32)
+
+    def test_command_lan_collection_failure_omits_snapshot_but_refreshes_cache(self):
+        for index, failure in enumerate([subprocess.CalledProcessError(1, 'ip'),
+                                         '{invalid json', 'null', '{}', '[null]']):
+            with self.subTest(failure=str(failure)):
+                sample, calls = self.address_collector(failure, 1700000000 + index * 3601,
+                    {4: 'ip=1.1.1.1\nloc=US\n', 6: 'ip=2606:4700:4700::1111\n'})
+                self.assertFalse(sample['collection_ok'])
+                self.assertEqual(len(calls), 3)
+                cache = json.loads((self.root / 'egress.json').read_text())
+                self.assertEqual(cache['4']['success'], 1700000000 + index * 3601)
+                self.assertEqual(cache['6']['ip'], '2606:4700:4700::1111')
+
+    def test_command_heartbeat_omits_failed_lan_collection(self):
+        agent = self.service_agent_fixture()
+        self.mock('ip', '#!/bin/sh\nexit 1\n')
+        self.run_script(agent)
+        heartbeat = json.loads((self.root / 'heartbeat').read_text())
+        self.assertNotIn('addresses', heartbeat)
+        self.assertNotIn('collection_ok', heartbeat)
+        self.assertIn('services', heartbeat)
+
 
     def test_hardware_identity_uses_actual_device_tree(self):
         source = (BIN / 'hive-board').read_text().replace('/proc/device-tree/compatible', str(self.root / 'compatible'))
@@ -923,7 +1027,7 @@ elif args[:2] == ['rule', 'del']:
         for name in ['hive-command-agent', 'hive-hotspot.sh', 'hive-node-info',
                      'hive-hotspot-dns.sh', 'hive-hotspot-firewall.sh']:
             source = (BIN / name).read_text()
-            for path in ['/tmp/', '/etc/', '/run/', '/sys/class/net', '/usr/local/bin/']:
+            for path in ['/tmp/', '/etc/', '/run/', '/var/lib/hive/', '/sys/class/net', '/usr/local/bin/']:
                 source = source.replace(path, str(self.root) + path)
             target = self.root / 'usr/local/bin' / name
             target.write_text(source)

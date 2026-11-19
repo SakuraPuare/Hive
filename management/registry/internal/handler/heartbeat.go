@@ -47,6 +47,15 @@ func (h *Handler) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		}
 		serviceJSON, _ = json.Marshal(states)
 	}
+	var addressJSON []byte
+	if req.Addresses != nil {
+		snapshot, ok := normalizeDeviceAddresses(*req.Addresses)
+		if !ok {
+			h.jsonErr(w, http.StatusBadRequest, "invalid address snapshot")
+			return
+		}
+		addressJSON, _ = json.Marshal(snapshot)
+	}
 
 	now := time.Now().UTC().Format(model.TimeLayout)
 
@@ -65,6 +74,15 @@ func (h *Handler) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		if err := h.DB.Model(&model.Node{}).Where("mac = ?", req.MAC).Updates(map[string]any{
 			"service_states":      string(serviceJSON),
 			"services_sampled_at": time.Now().UTC().Format(time.RFC3339),
+		}).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
+	}
+	if addressJSON != nil {
+		if err := h.DB.Model(&model.Node{}).Where("mac = ?", req.MAC).Updates(map[string]any{
+			"address_snapshot":     string(addressJSON),
+			"addresses_sampled_at": time.Now().UTC().Format(time.RFC3339),
 		}).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return

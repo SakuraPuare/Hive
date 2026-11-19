@@ -72,6 +72,10 @@ type Node struct {
 	OwnerCustomerID *uint   `json:"owner_customer_id"`
 	ClaimedAt       *string `json:"claimed_at"`
 	ClaimCodeHash   string  `json:"-"`
+
+	// Private heartbeat snapshot; only the owned-device address endpoint exposes it.
+	AddressSnapshot    *string `json:"-"`
+	AddressesSampledAt *string `json:"-"`
 }
 
 // DeviceCommand 是设备远程命令队列的一行（node_commands 表）。
@@ -398,6 +402,8 @@ type HeartbeatRequest struct {
 	Country string `json:"country"`
 	// Services is omitted by legacy agents; nil must not invent a fresh sample.
 	Services []ServiceStatus `json:"services,omitempty"`
+	// Addresses is omitted by legacy agents; receipt time must remain unchanged.
+	Addresses *DeviceAddressSnapshot `json:"addresses,omitempty"`
 }
 
 // ServiceStatus is one allowlisted systemd unit's observed state.
@@ -412,4 +418,43 @@ type ServiceStatus struct {
 type DeviceServicesResponse struct {
 	SampledAt *string         `json:"sampled_at"`
 	Services  []ServiceStatus `json:"services"`
+}
+
+// LANAddress is an observed address on a physical network interface.
+type LANAddress struct {
+	Interface    string `json:"interface"`
+	Address      string `json:"address"`
+	PrefixLength int    `json:"prefix_length"`
+}
+
+// DeviceEgress is the observed node HTTPS request path, not guaranteed direct WAN.
+type DeviceEgress struct {
+	IPv4      string  `json:"ipv4"`
+	IPv6      string  `json:"ipv6"`
+	SampledAt *string `json:"sampled_at"`
+}
+
+type DeviceAddressSnapshot struct {
+	LAN    []LANAddress `json:"lan"`
+	Egress DeviceEgress `json:"egress"`
+}
+
+type DeviceFRPAddress struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
+// DeviceAddressesResponse contains addresses only, never node credentials.
+type DeviceAddressesResponse struct {
+	Hostname    string           `json:"hostname"`
+	MAC         string           `json:"mac"`
+	LastSeen    string           `json:"last_seen"`
+	SampledAt   *string          `json:"sampled_at"`
+	LAN         []LANAddress     `json:"lan"`
+	TailscaleIP string           `json:"tailscale_ip"`
+	EasytierIP  string           `json:"easytier_ip"`
+	MeshIP      string           `json:"mesh_ip"`
+	CFURL       string           `json:"cf_url"`
+	FRP         DeviceFRPAddress `json:"frp"`
+	Egress      DeviceEgress     `json:"egress"`
 }

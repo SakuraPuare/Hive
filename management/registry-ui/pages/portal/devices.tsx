@@ -591,6 +591,8 @@ export default function PortalDevicesPage() {
                     <TableCell className="text-sm text-muted-foreground">{d.claimed_at ? fmt.dateTime(d.claimed_at) : '—'}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="sm" disabled={!d.mac}
+                          onClick={() => router.push('/portal/devices/addresses?mac=' + encodeURIComponent(d.mac!))}>{t('deviceAddresses')}</Button>
                         <Button variant="ghost" size="sm" loading={freeSubBusy === d.mac} disabled={!!freeSubBusy}
                           onClick={() => openFreeSubscription(d)}>{t('freeSubscription')}</Button>
                         {d.gateway_enabled && (

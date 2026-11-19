@@ -715,6 +715,13 @@ ALTER TABLE nodes ADD COLUMN owner_xray_uuid CHAR(36) NULL DEFAULT NULL;
 ALTER TABLE nodes ADD COLUMN service_states TEXT NULL DEFAULT NULL, ADD COLUMN services_sampled_at VARCHAR(32) NULL DEFAULT NULL;
 `,
 	},
+	{
+		version: 39,
+		desc:    "nodes: physical LAN and observed egress heartbeat snapshot",
+		up: `
+ALTER TABLE nodes ADD COLUMN address_snapshot JSON NULL DEFAULT NULL, ADD COLUMN addresses_sampled_at VARCHAR(32) NULL DEFAULT NULL;
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

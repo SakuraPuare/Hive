@@ -1260,6 +1260,42 @@ definitions:
       xray_uuid:
         type: string
     type: object
+  model.DeviceAddressSnapshot:
+    properties:
+      egress:
+        $ref: '#/definitions/model.DeviceEgress'
+      lan:
+        items:
+          $ref: '#/definitions/model.LANAddress'
+        type: array
+    type: object
+  model.DeviceAddressesResponse:
+    properties:
+      cf_url:
+        type: string
+      easytier_ip:
+        type: string
+      egress:
+        $ref: '#/definitions/model.DeviceEgress'
+      frp:
+        $ref: '#/definitions/model.DeviceFRPAddress'
+      hostname:
+        type: string
+      lan:
+        items:
+          $ref: '#/definitions/model.LANAddress'
+        type: array
+      last_seen:
+        type: string
+      mac:
+        type: string
+      mesh_ip:
+        type: string
+      sampled_at:
+        type: string
+      tailscale_ip:
+        type: string
+    type: object
   model.DeviceCommand:
     properties:
       acked_at:
@@ -1283,6 +1319,22 @@ definitions:
       status:
         type: string
     type: object
+  model.DeviceEgress:
+    properties:
+      ipv4:
+        type: string
+      ipv6:
+        type: string
+      sampled_at:
+        type: string
+    type: object
+  model.DeviceFRPAddress:
+    properties:
+      host:
+        type: string
+      port:
+        type: integer
+    type: object
   model.DeviceServicesResponse:
     properties:
       sampled_at:
@@ -1294,6 +1346,11 @@ definitions:
     type: object
   model.HeartbeatRequest:
     properties:
+      addresses:
+        allOf:
+        - $ref: '#/definitions/model.DeviceAddressSnapshot'
+        description: Addresses is omitted by legacy agents; receipt time must remain
+          unchanged.
       country:
         description: |-
           Country is the node's egress country (ISO-3166 alpha-2). Empty on legacy
@@ -1314,6 +1371,15 @@ definitions:
           $ref: '#/definitions/model.ServiceStatus'
         type: array
       uptime_sec:
+        type: integer
+    type: object
+  model.LANAddress:
+    properties:
+      address:
+        type: string
+      interface:
+        type: string
+      prefix_length:
         type: integer
     type: object
   model.Line:
@@ -5243,6 +5309,36 @@ paths:
       security:
       - CustomerSessionCookie: []
       summary: 获取我的单台设备详情
+      tags:
+      - portal
+  /portal/devices/{mac}/addresses:
+    get:
+      description: LAN为物理接口地址；sampled_at为registry接收时间。egress为节点HTTPS请求所见出口，不保证直连WAN；缓存约一小时，失败保留原样本时间。旧节点无样本为null及空数组。
+      operationId: PortalDeviceAddresses
+      parameters:
+      - description: 设备 MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.DeviceAddressesResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 我的设备网络地址快照
       tags:
       - portal
   /portal/devices/{mac}/commands:
