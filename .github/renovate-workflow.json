@@ -6,7 +6,15 @@
   "schedule": [],
   "automerge": false,
   "minimumReleaseAge": "3 days",
+  "dependencyDashboard": {
+    "enabled": true
+  },
   "packageRules": [
+    {
+      "matchPackageNames": ["actions/upload-artifact"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
     {
       "groupName": "dev-dependencies",
       "matchPackageNames": [
