@@ -229,26 +229,30 @@ export default function PortalDevicesPage() {
     setServiceStatusError(false);
   }, []);
 
-  // Poll only while this device dialog is open. Late responses cannot replace
-  // another device's history; sequential timers avoid overlapping requests.
+  // Poll only while this device dialog is open. Ignore late responses and skip
+  // ticks while a request is in flight so polling never overlaps.
   useEffect(() => {
     const mac = cmdDevice?.mac;
     if (!mac) return;
     let stopped = false;
-    let historyTimer: number;
-    let servicesTimer: number;
+    let historyBusy = false;
+    let servicesBusy = false;
     const controller = new AbortController();
     const historyTick = async () => {
+      if (stopped || historyBusy) return;
+      historyBusy = true;
       try {
         const history = await portalSessionApi(PortalService.portalListDeviceCommands({ mac }));
         if (!stopped) { setCmdHistory(history ?? []); setCmdHistoryError(false); }
       } catch {
         if (!stopped) setCmdHistoryError(true);
       } finally {
-        if (!stopped) historyTimer = window.setTimeout(historyTick, 2000);
+        historyBusy = false;
       }
     };
     const servicesTick = async () => {
+      if (stopped || servicesBusy) return;
+      servicesBusy = true;
       try {
         const res = await fetch(apiPath(`/portal/devices/${mac}/services`), {
           credentials: 'include', signal: controller.signal,
@@ -259,16 +263,19 @@ export default function PortalDevicesPage() {
       } catch {
         if (!stopped) setServiceStatusError(true);
       } finally {
-        if (!stopped) { setStatusNow(Date.now()); servicesTimer = window.setTimeout(servicesTick, 5000); }
+        servicesBusy = false;
+        if (!stopped) setStatusNow(Date.now());
       }
     };
     void historyTick();
     void servicesTick();
+    const historyTimer = window.setInterval(() => { void historyTick(); }, 2000);
+    const servicesTimer = window.setInterval(() => { void servicesTick(); }, 5000);
     return () => {
       stopped = true;
       controller.abort();
-      clearTimeout(historyTimer);
-      clearTimeout(servicesTimer);
+      window.clearInterval(historyTimer);
+      window.clearInterval(servicesTimer);
     };
   }, [cmdDevice?.mac]);
 

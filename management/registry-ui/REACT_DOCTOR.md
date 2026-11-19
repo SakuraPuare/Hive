@@ -5,6 +5,7 @@
 ## 已修复的问题
 
 - **role-has-required-aria-props**（唯一 error）：`location-combobox` 补齐 `aria-controls`。
+- **effect-needs-cleanup**：设备命令/服务轮询使用 effect 直接拥有的 interval，并在 teardown 清理；请求未完成时跳过新 tick，避免重叠。关闭弹窗停止轮询，保留迟到响应隔离和请求取消。
 - **no-react19-deprecated-apis**（49 forwardRef + 3 useContext）：所有 shadcn 组件经 shadcn CLI（new-york 风格）重新生成为 React 19 ref-as-prop；`lib/auth`、`lib/portal-auth`、`lib/locale` 的 `useContext` 改为 `use()`。
 - **jsx-no-constructed-context-values**（3）：三个 Context Provider 的 value 用 `useMemo` 缓存。
 - **button-has-type**（9）：所有非提交按钮补 `type="button"`。

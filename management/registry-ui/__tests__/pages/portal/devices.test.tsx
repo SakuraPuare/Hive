@@ -287,6 +287,37 @@ describe('PortalDevicesPage', () => {
     expect(mockCommands).toHaveBeenCalledTimes(calls);
   }, 7000);
 
+  it('skips polling ticks during slow requests and cannot restart after unmount', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    const history = Promise.withResolvers<unknown[]>();
+    const service = Promise.withResolvers<Response>();
+    mockCommands.mockReturnValue(history.promise);
+    mockFetch.mockReturnValue(service.promise);
+    const view = render(<PortalDevicesPage />);
+    const manage = await screen.findByRole('button', { name: 'portal.cmdManage' });
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(manage);
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      expect(mockCommands).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const signal = mockFetch.mock.calls[0][1].signal as AbortSignal;
+      view.unmount();
+      expect(signal.aborted).toBe(true);
+      await act(async () => {
+        history.resolve([]);
+        service.resolve({ ok: true, json: async () => ({ sampled_at: null, services: [] }) } as Response);
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(mockCommands).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
+  });
+
   it('updates service state without queueing commands and marks old samples unknown', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
     mockListDevices.mockResolvedValue([gatewayNode]);
