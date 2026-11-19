@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "onboarding": false,
+  "requireConfig": "ignored",
+  "timezone": "Asia/Shanghai",
+  "schedule": [],
+  "automerge": false,
+  "minimumReleaseAge": "3 days",
+  "packageRules": [
+    {
+      "groupName": "dev-dependencies",
+      "matchPackageNames": [
+        "@tailwindcss/postcss",
+        "@testing-library/user-event",
+        "@vitejs/plugin-react",
+        "jsdom",
+        "playwright",
+        "postcss",
+        "react-doctor",
+        "tailwindcss",
+        "vitest"
+      ]
+    },
+    {
+      "groupName": "lucide monorepo",
+      "matchPackageNames": ["lucide-react"]
+    },
+    {
+      "groupName": "vue monorepo",
+      "matchPackageNames": ["vue", "@vue/server-renderer"]
+    }
+  ]
+}
