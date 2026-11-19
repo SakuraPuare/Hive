@@ -24,6 +24,19 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Renovate 只管理 token 用户自己创建的 issue/PR。定时实例的 token 属于
+      # SakuraPuare（Dependency Dashboard #31 的作者），本 workflow 也必须用同一
+      # 身份的 token，否则会另建一个 dashboard、并让定时实例看不到这里开的 PR。
+      - name: Check token identity
+        env:
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+        run: |
+          login=$(curl -fsS -H "Authorization: Bearer $RENOVATE_TOKEN" https://api.github.com/user | jq -r .login)
+          if [ "$login" != "SakuraPuare" ]; then
+            echo "::error::RENOVATE_TOKEN belongs to '$login'; it must belong to 'SakuraPuare' (same identity as the scheduled Renovate instance), otherwise this run creates a duplicate Dependency Dashboard and PRs the scheduled instance cannot manage."
+            exit 1
+          fi
+
       - name: Enable dry run
         if: inputs.dry_run
         run: echo "RENOVATE_DRY_RUN=lookup" >> "$GITHUB_ENV"
