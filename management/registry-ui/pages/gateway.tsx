@@ -31,7 +31,7 @@ import { RefreshCw, Waypoints, ChevronDown } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { LocationCombobox } from '@/components/ui/location-combobox';
 import { Collapsible } from 'radix-ui';
-import { countryCodeOptions, countryDisplay } from '@/lib/locations';
+import { countryCodeOptions, countryDisplay, effectiveCountry } from '@/lib/locations';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -495,11 +495,7 @@ function GatewayTable({
               .filter(Boolean);
             // Match resolveGatewayDirection: a valid operator override wins;
             // CN or an unknown country defaults to a domestic gateway.
-            const overrideCountry = (n.country_override ?? '').trim().toUpperCase();
-            const reportedCountry = (n.country ?? '').trim().toUpperCase();
-            const country = /^[A-Z]{2}$/.test(overrideCountry)
-              ? overrideCountry
-              : /^[A-Z]{2}$/.test(reportedCountry) ? reportedCountry : '';
+            const country = effectiveCountry(n);
             const storedDirection = direction.trim().toLowerCase();
             const resolvedDirection = storedDirection === 'auto'
               ? (country && country !== 'CN' ? 'overseas' : 'domestic')

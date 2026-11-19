@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { AdminService } from '@/src/generated/client';
 import type { model_NodeStatusCheck } from '@/src/generated/client';
 import { sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { useFormat } from '@/lib/format';
+import { nodeLocation } from '@/lib/locations';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageContainer } from '@/components/ui/page-container';
@@ -144,6 +145,7 @@ function SortableHead({
 
 export default function NodeStatusPage() {
   const t = useTranslations('nodeStatus');
+  const locale = useLocale();
   const tCommon = useTranslations('common');
   const fmt = useFormat();
   const [data, setData] = useState<model_NodeStatusCheck[]>([]);
@@ -493,7 +495,7 @@ export default function NodeStatusPage() {
                       {n.hostname}
                     </TableCell>
                     <TableCell className="py-3 text-sm text-muted-foreground">
-                      {n.location || '—'}
+                      {nodeLocation(n, locale) || '—'}
                     </TableCell>
                     <TableCell className="py-3">
                       <StatusChip status={n.status} />

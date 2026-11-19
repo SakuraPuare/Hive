@@ -4,6 +4,8 @@
 /* eslint-disable */
 export type model_NodeStatusCheck = {
     checked_at?: string;
+    country?: string;
+    country_override?: string;
     cpu_pct?: number;
     disk_pct?: number;
     hostname?: string;

@@ -42,6 +42,12 @@ cat /etc/hive/node-info
 
 节点列表 → 行操作「SSH 命令」，或勾选多台后点「SSH 命令」，面板会给出该节点可用的 Tailscale / EasyTier / FRP 命令并支持一键复制。FRP 命令需要 registry 配置 `FRP_SERVER_ADDR`（与 `.env` 一致）。
 
+### 节点位置
+
+管理员「节点 → 编辑节点」与「网关」共用 `country_override`：选择国家/地区即人工固定位置；选择「自动（跟随上报）」则清空覆盖，使用心跳上报的 `country`。节点列表、节点状态、节点详情及节点选择器统一按人工覆盖 → 心跳国家 → 旧 `location` 的顺序展示；搜索和节点 CSV 导出使用同一有效位置。
+
+旧 `location` 保留历史展示和订阅名称标签用途，仅在没有有效国家信息时作为管理员位置的回退值；不再提供第二个位置编辑框，也不据此决定网关自动分流。自动分流仍按有效国家判断：CN 出海，其它国家/地区回国。节点状态接口返回 `country` 与 `country_override`，无需数据库迁移。
+
 ### Tailscale SSH
 
 ```bash

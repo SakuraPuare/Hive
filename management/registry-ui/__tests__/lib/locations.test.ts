@@ -1,43 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { LOCATION_OPTIONS } from '@/lib/locations';
+import { countryCodeOptions, nodeLocation } from '@/lib/locations';
 
-describe('LOCATION_OPTIONS', () => {
-  it('is a non-empty array', () => {
-    expect(LOCATION_OPTIONS.length).toBeGreaterThan(10);
+describe('node location', () => {
+  it.each([
+    [{ country_override: ' jp ', country: 'CN', location: '🇨🇳 中国' }, '🇯🇵 日本'],
+    [{ country_override: '', country: 'CN', location: '🇯🇵 日本' }, '🇨🇳 中国'],
+    [{ country_override: 'unknown', country: ' cn ' }, '🇨🇳 中国'],
+    [{ country: 'unknown', location: '北京机房-1' }, '北京机房-1'],
+    [{}, ''],
+  ])('uses override, then reported country, then legacy location: %j', (node, expected) => {
+    expect(nodeLocation(node)).toBe(expected);
   });
 
-  it('first option is empty (不设置)', () => {
-    expect(LOCATION_OPTIONS[0]).toEqual({ value: '', label: '（不设置）' });
+  it('localizes the effective country in English', () => {
+    expect(nodeLocation({ country_override: 'JP', country: 'CN' }, 'en')).toBe('🇯🇵 Japan');
   });
 
-  it('contains China with flag emoji', () => {
-    const china = LOCATION_OPTIONS.find((o) => o.value.includes('中国'));
-    expect(china).toBeDefined();
-    expect(china!.value).toMatch(/🇨🇳/);
-  });
-
-  it('contains Japan with flag emoji', () => {
-    const jp = LOCATION_OPTIONS.find((o) => o.value.includes('日本'));
-    expect(jp).toBeDefined();
-    expect(jp!.value).toMatch(/🇯🇵/);
-  });
-
-  it('all non-empty options have matching value and label', () => {
-    LOCATION_OPTIONS.filter((o) => o.value !== '').forEach((o) => {
-      expect(o.value).toBe(o.label);
-    });
-  });
-
-  it('options after first are sorted by pinyin of the country name', () => {
-    // 国旗 emoji 排在名字前面，直接比较 label 会退化成按 emoji/ISO 码排序；
-    // 列表必须按国名（中文拼音）排序，否则找国家要靠猜。
-    const names = LOCATION_OPTIONS.slice(1).map((o) => o.label.replace(/^\S+\s/, ''));
-    const sorted = [...names].sort((a, b) => a.localeCompare(b, 'zh-CN'));
-    expect(names).toEqual(sorted);
-  });
-
-  it('country code options sort by pinyin in zh and alphabetically in en', async () => {
-    const { countryCodeOptions } = await import('@/lib/locations');
+  it('country code options sort by pinyin in zh and alphabetically in en', () => {
     for (const [locale, collation] of [['zh', 'zh-CN'], ['en', 'en']] as const) {
       const names = countryCodeOptions(locale).map((o) => o.label.replace(/^\S+\s/, ''));
       const sorted = [...names].sort((a, b) => a.localeCompare(b, collation));

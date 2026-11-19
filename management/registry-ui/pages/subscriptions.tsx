@@ -34,13 +34,15 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useToast } from '@/components/ui/toast';
 import { BookOpen, Download, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCurrentUser } from '@/lib/auth';
 import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
+import { nodeLocation } from '@/lib/locations';
 
 export default function Subscriptions() {
   const t = useTranslations('subscriptions');
+  const locale = useLocale();
   const tCommon = useTranslations('common');
   const tNav = useTranslations('nav');
   const tNodes = useTranslations('nodes');
@@ -252,7 +254,7 @@ export default function Subscriptions() {
     const q = deferredNodeSearch.toLowerCase();
     return (
       (n.hostname ?? '').toLowerCase().includes(q) ||
-      n.location?.toLowerCase().includes(q) ||
+      nodeLocation(n, locale).toLowerCase().includes(q) ||
       (n.mac ?? '').toLowerCase().includes(q)
     );
   });
@@ -684,8 +686,8 @@ export default function Subscriptions() {
                         <span className="text-sm font-500 text-foreground truncate">
                           {n.hostname}
                         </span>
-                        {n.location && (
-                          <span className="text-xs text-muted-foreground">{n.location}</span>
+                        {nodeLocation(n, locale) && (
+                          <span className="text-xs text-muted-foreground">{nodeLocation(n, locale)}</span>
                         )}
                       </div>
                     </label>

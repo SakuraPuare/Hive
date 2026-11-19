@@ -1061,6 +1061,8 @@ export type ModelNode = z.infer<typeof modelNodeSchema>;
 
 export const modelNodeStatusCheckSchema = z.object({
   checked_at: z.string().optional(),
+  country: z.string().optional(),
+  country_override: z.string().optional(),
   cpu_pct: z.number().optional(),
   disk_pct: z.number().optional(),
   hostname: z.string().optional(),

@@ -35,7 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useLocale, useTranslations } from 'next-intl';
-import { LOCATION_OPTIONS, countryCodeOptions, countryDisplay } from '@/lib/locations';
+import { countryCodeOptions, countryDisplay } from '@/lib/locations';
 
 const WEIGHT_MIN = 0;
 const WEIGHT_MAX = 10000;
@@ -74,7 +74,6 @@ export function NodeEditDialog({
   // State initializes directly from `node`. Call sites pass key={node.mac} so a
   // different node remounts this component with fresh initial values — the
   // React-recommended alternative to syncing state in an effect on prop change.
-  const [location, setLocation] = useState(node?.location ?? '');
   const [note, setNote] = useState(node?.note ?? '');
   const [enabled, setEnabled] = useState(node?.enabled ?? true);
   const [exitEnabled, setExitEnabled] = useState(node?.exit_enabled ?? true);
@@ -114,7 +113,7 @@ export function NodeEditDialog({
       await sessionApi(
         AdminService.nodeUpdate({
           mac: node.mac,
-          requestBody: { location, note, enabled, exit_enabled: exitEnabled, exit_direction: exitDirection, status, weight: weightValue, region, country_override: countryOverride.trim().toUpperCase() } as handler_NodeUpdateRequest,
+          requestBody: { note, enabled, exit_enabled: exitEnabled, exit_direction: exitDirection, status, weight: weightValue, region, country_override: countryOverride.trim().toUpperCase() } as handler_NodeUpdateRequest,
         }),
       );
       toast.success(t('saved'));
@@ -172,20 +171,6 @@ export function NodeEditDialog({
             className="grid grid-cols-1 gap-4 py-2 sm:grid-cols-2"
           >
             <div className="space-y-1.5">
-              <Label htmlFor="node-edit-location" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('location')}</Label>
-              <LocationCombobox
-                id="node-edit-location"
-                options={LOCATION_OPTIONS}
-                value={location}
-                onChange={setLocation}
-                placeholder={t('locationPlaceholder')}
-                searchPlaceholder={tCommon('search')}
-                emptyText={tCommon('noResults')}
-                clearable
-                clearLabel={tCommon('clear')}
-              />
-            </div>
-            <div className="space-y-1.5">
               <Label htmlFor="node-edit-region" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('region')}</Label>
               <Input id="node-edit-region" value={region} onChange={(e) => setRegion(e.target.value)} placeholder={t('regionPlaceholder')} helperText={t('regionHelper')} />
             </div>
@@ -203,7 +188,7 @@ export function NodeEditDialog({
               <p className="text-xs text-muted-foreground">{t('exitDirectionHelper')}</p>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label id="node-edit-country-label" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('countryOverride')}</Label>
+              <Label id="node-edit-country-label" className="text-xs font-500 text-muted-foreground uppercase tracking-wide">{t('location')}</Label>
               <LocationCombobox
                 ariaLabelledby="node-edit-country-label"
                 options={[{ value: '', label: `${t('countryAutoOption')}（${countryDisplay(node?.country, locale) || t('countryUnknown')}）` }, ...countryOptions]}

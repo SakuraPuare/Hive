@@ -138,6 +138,76 @@ func TestNodeStatus_WithProbeData(t *testing.T) {
 	}
 }
 
+func TestNodeStatus_CountryFields(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		country         string
+		countryOverride string
+		withProbe       bool
+	}{
+		{name: "reported country", country: "JP"},
+		{name: "override without probe", country: "CN", countryOverride: "US"},
+		{name: "override with probe", country: "CN", countryOverride: "US", withProbe: true},
+		{name: "legacy location only"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetDB(t)
+			const mac = "aabbccddee23"
+			insertTestNode(t, mac)
+			mustExec(t, "UPDATE nodes SET country = ?, country_override = ?, location = ? WHERE mac = ?",
+				tc.country, tc.countryOverride, "legacy location", mac)
+			if tc.withProbe {
+				mustExec(t, "INSERT INTO node_status_checks (mac, status, checked_at) VALUES (?, 'online', ?)",
+					mac, time.Now().UTC().Format(model.TimeLayout))
+			}
+
+			resp := doJSON("GET", "/admin/node-status", nil, adminCookie())
+			assertStatus(t, resp, http.StatusOK)
+			arr := parseJSONArray(resp)
+			if len(arr) != 1 {
+				t.Fatalf("expected 1 entry, got %d", len(arr))
+			}
+			for key, want := range map[string]string{
+				"country": tc.country, "country_override": tc.countryOverride, "location": "legacy location",
+			} {
+				if arr[0][key] != want {
+					t.Fatalf("%s = %v, want %q", key, arr[0][key], want)
+				}
+			}
+			wantStatus := "unknown"
+			if tc.withProbe {
+				wantStatus = "online"
+			}
+			if arr[0]["status"] != wantStatus {
+				t.Fatalf("status = %v, want %q", arr[0]["status"], wantStatus)
+			}
+		})
+	}
+}
+
+func TestNodeStatus_CountryOverrideTracksAdminUpdates(t *testing.T) {
+	resetDB(t)
+	const mac = "aabbccddee24"
+	insertTestNode(t, mac)
+	mustExec(t, "UPDATE nodes SET country = 'CN', location = 'legacy location' WHERE mac = ?", mac)
+
+	for _, override := range []string{"jp", ""} {
+		resp := doJSON("PATCH", "/nodes/"+mac, map[string]any{"country_override": override}, adminCookie())
+		assertStatus(t, resp, http.StatusOK)
+		resp.Body.Close()
+
+		resp = doJSON("GET", "/admin/node-status", nil, adminCookie())
+		assertStatus(t, resp, http.StatusOK)
+		arr := parseJSONArray(resp)
+		if len(arr) != 1 {
+			t.Fatalf("expected 1 entry, got %d", len(arr))
+		}
+		if arr[0]["country"] != "CN" || arr[0]["country_override"] != strings.ToUpper(override) {
+			t.Fatalf("status did not reflect override %q: %v", override, arr[0])
+		}
+	}
+}
+
 func TestNodeStatus_Unauthorized(t *testing.T) {
 	resetDB(t)
 	resp := doJSON("GET", "/admin/node-status", nil, nil)

@@ -11,8 +11,9 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Server, Wifi, WifiOff, CalendarPlus, Globe, Activity, AlertTriangle, Info, LayoutDashboard } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useFormat } from '@/lib/format';
+import { nodeLocation } from '@/lib/locations';
 
 // M3 token recipes per card variant — no raw palette colors
 type CardVariant = 'total' | 'online' | 'offline' | 'new';
@@ -103,6 +104,7 @@ function getStatusBadge(probeStatus: string | undefined, label: string, visibleL
 
 export default function Dashboard() {
   const t = useTranslations('dashboard');
+  const locale = useLocale();
   const tCommon = useTranslations('common');
   const tNav = useTranslations('nav');
   const tNodes = useTranslations('nodes');
@@ -424,7 +426,7 @@ export default function Dashboard() {
                           <TableCell>
                             <div className="flex items-center gap-1.5 text-muted-foreground">
                               <Globe aria-hidden="true" className="h-3.5 w-3.5" />
-                              <span className="text-sm">{n.location || tCommon('noData')}</span>
+                              <span className="text-sm">{nodeLocation(n, locale) || tCommon('noData')}</span>
                             </div>
                           </TableCell>
                           <TableCell>

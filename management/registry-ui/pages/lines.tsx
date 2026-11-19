@@ -49,9 +49,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCurrentUser } from '@/lib/auth';
 import { useRouter } from 'next/router';
+import { nodeLocation } from '@/lib/locations';
 
 function setsEqual(a: Set<string>, b: Set<string>) {
   if (a.size !== b.size) return false;
@@ -61,6 +62,7 @@ function setsEqual(a: Set<string>, b: Set<string>) {
 
 export default function LinesPage() {
   const t = useTranslations('lines');
+  const locale = useLocale();
   const tCommon = useTranslations('common');
   const tNodes = useTranslations('nodes');
   const router = useRouter();
@@ -275,11 +277,11 @@ export default function LinesPage() {
     const q = nodeSearch.toLowerCase();
     return (
       (n.hostname ?? '').toLowerCase().includes(q) ||
-      n.location?.toLowerCase().includes(q) ||
+      nodeLocation(n, locale).toLowerCase().includes(q) ||
       (n.mac ?? '').toLowerCase().includes(q) ||
       n.tailscale_ip?.toLowerCase().includes(q)
     );
-  }), [allNodes, nodeSearch]);
+  }), [allNodes, nodeSearch, locale]);
 
   function selectAllFiltered() {
     setSelectedMacs((prev) => {
@@ -861,7 +863,8 @@ export default function LinesPage() {
               ) : (
                 filteredNodes.map((n) => {
                   const mac = n.mac ?? '';
-                  const label = `${n.location ? `[${n.location}] ` : ''}${n.hostname ?? mac}`;
+                  const location = nodeLocation(n, locale);
+                  const label = `${location ? `[${location}] ` : ''}${n.hostname ?? mac}`;
                   return (
                     <li
                       key={mac}
@@ -884,8 +887,8 @@ export default function LinesPage() {
                         onClick={(e) => e.stopPropagation()}
                       />
                       <span className="text-sm text-foreground">
-                        {n.location && (
-                          <span className="mr-1.5 text-xs text-muted-foreground">[{n.location}]</span>
+                        {location && (
+                          <span className="mr-1.5 text-xs text-muted-foreground">[{location}]</span>
                         )}
                         {n.hostname}
                       </span>

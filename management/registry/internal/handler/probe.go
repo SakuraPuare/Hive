@@ -248,7 +248,7 @@ func (h *Handler) promQueryInstantByLabel(query, label string, stripPort bool, s
 func (h *Handler) HandleNodeStatus(w http.ResponseWriter, r *http.Request) {
 	var checks []model.NodeStatusCheck
 	err := h.DB.Raw(`
-		SELECT n.mac, n.hostname, n.location,
+		SELECT n.mac, n.hostname, n.location, n.country, n.country_override,
 		       COALESCE(nsc.status, 'unknown') AS status,
 		       nsc.latency_ms, nsc.cpu_pct, nsc.mem_pct, nsc.disk_pct, nsc.uptime_sec,
 		       COALESCE(nsc.checked_at, '') AS checked_at

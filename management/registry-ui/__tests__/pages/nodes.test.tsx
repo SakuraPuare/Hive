@@ -161,4 +161,14 @@ describe('Nodes page', () => {
     expect(screen.getByText('🇨🇳 中国')).toBeInTheDocument();
     expect(screen.getByText('🇯🇵 日本')).toBeInTheDocument();
   });
+
+  it('displays and searches the gateway override rather than the legacy location', async () => {
+    mockNodesList.mockResolvedValue([{ ...mockNodes[0], country: 'CN', country_override: 'US' }]);
+    const user = userEvent.setup();
+    render(<Nodes />);
+    expect(await screen.findByText('🇺🇸 美国')).toBeInTheDocument();
+    expect(screen.queryByText('🇨🇳 中国')).not.toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText('nodes.searchPlaceholder'), '美国');
+    expect(screen.getByText('node-alpha')).toBeInTheDocument();
+  });
 });

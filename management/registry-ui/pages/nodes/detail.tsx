@@ -14,7 +14,7 @@ import { SshCommandsDialog } from '@/components/nodes/SshCommandsDialog';
 import { NodeCommandsDialog } from '@/components/nodes/NodeCommandsDialog';
 import { ArrowLeft, RefreshCw, Pencil, Server, Terminal } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { countryDisplay } from '@/lib/locations';
+import { nodeLocation } from '@/lib/locations';
 import { useFormat } from '@/lib/format';
 
 function FieldRow({ label, value, mono, noData }: { label: string; value?: string | number | null; mono?: boolean; noData: string }) {
@@ -147,8 +147,7 @@ export default function NodeDetail() {
             <FieldRow label={t('macIpv4')} value={formatMac(node.mac)} mono noData={noData} />
             <FieldRow label={t('macIpv6')} value={node.mac6} mono noData={noData} />
             <FieldRow label={t('hostname')} value={node.hostname} noData={noData} />
-            <FieldRow label={t('location')} value={node.location} noData={noData} />
-            <FieldRow label={t('country')} value={countryDisplay(node.country_override || node.country, locale)} noData={noData} />
+            <FieldRow label={t('location')} value={nodeLocation(node, locale)} noData={noData} />
             <FieldRow label={t('note')} value={node.note} noData={noData} />
           </CardContent>
         </Card>

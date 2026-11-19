@@ -1514,6 +1514,10 @@ definitions:
     properties:
       checked_at:
         type: string
+      country:
+        type: string
+      country_override:
+        type: string
       cpu_pct:
         type: number
       disk_pct:

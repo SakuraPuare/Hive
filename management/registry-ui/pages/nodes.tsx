@@ -22,12 +22,13 @@ import {
   RefreshCw, Trash2, Download, MoreHorizontal, Power, PowerOff,
   Server, Wifi, WifiOff, HelpCircle, AlertTriangle, X, Terminal,
 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { DataTableFeatures } from '@/components/ui/data-table';
 import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { useFormat } from '@/lib/format';
+import { nodeLocation } from '@/lib/locations';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -128,6 +129,7 @@ async function runBatch(
 export default function NodesPage() {
   const router = useRouter();
   const t = useTranslations('nodes');
+  const locale = useLocale();
   const tCommon = useTranslations('common');
   const tNav = useTranslations('nav');
   const toast = useToast();
@@ -187,12 +189,12 @@ export default function NodesPage() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(n =>
-        [n.hostname, n.location, n.tailscale_ip, n.easytier_ip, n.mac, n.note]
+        [n.hostname, nodeLocation(n, locale), n.tailscale_ip, n.easytier_ip, n.mac, n.note]
           .some(v => v?.toLowerCase().includes(q))
       );
     }
     return result;
-  }, [nodes, statusFilter, searchQuery]);
+  }, [nodes, statusFilter, searchQuery, locale]);
 
   const counts = useMemo(() => {
     const online = nodes.filter(n => n.probe_status === 'online').length;
@@ -276,7 +278,7 @@ export default function NodesPage() {
     setExporting(true);
     try {
       const headers = ['note', 'hostname', 'location', 'mac', 'tailscale_ip', 'easytier_ip', 'frp_port', 'status', 'enabled', 'weight', 'region', 'registered_at', 'last_seen'];
-      const rows = filteredNodes.map(n => headers.map(h => String((n as Record<string, unknown>)[h] ?? '')));
+      const rows = filteredNodes.map(n => headers.map(h => h === 'location' ? nodeLocation(n, locale) : String((n as Record<string, unknown>)[h] ?? '')));
       const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(','))].join('\n');
       const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -301,7 +303,7 @@ export default function NodesPage() {
       cell: i => <span className="font-display font-600 text-foreground">{i.getValue() || '—'}</span> }),
     col.accessor('hostname', { header: t('colHostname'),
       cell: i => <span className="font-medium text-foreground">{i.getValue() || '—'}</span> }),
-    col.accessor('location', { header: t('colLocation'), cell: i => <span className="text-muted-foreground">{i.getValue() || '—'}</span> }),
+    col.accessor(n => nodeLocation(n, locale), { id: 'location', header: t('colLocation'), cell: i => <span className="text-muted-foreground">{i.getValue() || '—'}</span> }),
     col.accessor('tailscale_ip', { header: t('colTailscaleIp'),
       cell: i => <span className="font-mono text-xs text-muted-foreground">{i.getValue() || '—'}</span> }),
     col.accessor('easytier_ip', { header: t('colEasytierIp'),
@@ -372,7 +374,7 @@ export default function NodesPage() {
       ),
     }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [t, tCommon, fmt, statusConfig]);
+  ], [t, tCommon, fmt, statusConfig, locale]);
 
   // Column labels for the visibility dropdown
   const columnLabels: Record<string, string> = {

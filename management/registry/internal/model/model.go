@@ -276,6 +276,8 @@ type NodeStatusCheck struct {
 	MAC       string   `json:"mac" gorm:"primaryKey;column:mac"`
 	Hostname  string   `json:"hostname" gorm:"column:hostname;->"`
 	Location  string   `json:"location" gorm:"column:location;->"`
+	Country         string `json:"country" gorm:"column:country;->;-:migration"`
+	CountryOverride string `json:"country_override" gorm:"column:country_override;->;-:migration"`
 	Status    string   `json:"status"`
 	LatencyMs *int     `json:"latency_ms"`
 	CpuPct    *float64 `json:"cpu_pct" gorm:"column:cpu_pct"`
