@@ -930,6 +930,79 @@ elif args[:2] == ['rule', 'del']:
             target.chmod(0o755)
         return (self.root / 'usr/local/bin/hive-command-agent').read_text()
 
+    def service_agent_fixture(self):
+        agent = self.hotspot_fixture(bands='')
+        (self.root / 'commands.json').write_text(json.dumps([
+            {'id': 42, 'action': 'service-control',
+             'params': json.dumps({'service': 'xray', 'operation': 'status'})}]))
+        self.mock('curl', r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
+if '-d' in args:
+    target = 'heartbeat' if args[-1].endswith('/nodes/heartbeat') else 'acks'
+    (r/target).write_text(args[args.index('-d')+1])
+elif args[-1].endswith('/commands'):
+    print((r/'commands.json').read_text())
+''')
+        self.mock('systemctl', r'''#!/usr/bin/env python3
+import os, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
+if args[0] == 'show':
+    if args[1] == 'xray':
+        print('LoadState=loaded\nActiveState=active\nSubState=running')
+    elif args[1] == 'hive-hotspot-5g':
+        print('LoadState=loaded\nActiveState=active\nSubState=running')
+    elif args[1] == 'frpc':
+        print('LoadState=loaded\nActiveState=failed\nSubState=failed')
+    elif args[1] == 'nginx':
+        sys.exit(1)
+    else:
+        print('LoadState=not-found\nActiveState=inactive\nSubState=dead')
+        sys.exit(1)
+elif args[0] == 'status':
+    print('xray.service - Xray\nActive: failed (Result: exit-code)\n' + 'detail '*1000)
+    sys.exit(int((r/'status-exit').read_text()) if (r/'status-exit').exists() else 3)
+''')
+        return agent
+
+    def test_service_heartbeat_reports_actual_states_and_unknown(self):
+        self.run_script(self.service_agent_fixture())
+        states = {s['name']: s for s in json.loads((self.root / 'heartbeat').read_text())['services']}
+        self.assertEqual(states['xray']['active_state'], 'active')
+        self.assertEqual(states['xray']['sub_state'], 'running')
+        self.assertEqual(states['hive-hotspot-5g']['active_state'], 'active')
+        self.assertEqual(states['frpc']['active_state'], 'failed')
+        self.assertEqual(states['warp-svc']['load_state'], 'not-found')
+        self.assertEqual(states['warp-svc']['active_state'], 'not-found')
+        self.assertEqual(states['nginx']['active_state'], 'unknown')
+
+    def test_service_status_returns_bounded_actual_output(self):
+        self.run_script(self.service_agent_fixture())
+        ack = json.loads((self.root / 'acks').read_text())
+        self.assertEqual(ack['status'], 'done')
+        self.assertIn('Active: failed (Result: exit-code)', ack['result'])
+        self.assertLessEqual(len(ack['result'].encode()), 850 + len('xray status: '))
+
+    def test_service_status_execution_failure_is_failed(self):
+        agent = self.service_agent_fixture()
+        (self.root / 'status-exit').write_text('124')
+        self.run_script(agent)
+        ack = json.loads((self.root / 'acks').read_text())
+        self.assertEqual(ack['status'], 'failed')
+        self.assertIn('exit 124', ack['result'])
+
+    def test_service_control_rejects_multi_service_input(self):
+        agent = self.service_agent_fixture()
+        (self.root / 'commands.json').write_text(json.dumps([
+            {'id': 42, 'action': 'service-control',
+             'params': json.dumps({'service': 'xray frpc', 'operation': 'status'})}]))
+        self.run_script(agent)
+        ack = json.loads((self.root / 'acks').read_text())
+        self.assertEqual(ack['status'], 'failed')
+        self.assertIn('unsupported service', ack['result'])
+
     def test_hotspot_command_reports_5g_failure_and_cleans_ap(self):
         agent = self.hotspot_fixture()
         for service in ['hive-hotspot-5g.service', 'hive-hotspot-5g-dnsmasq.service']:

@@ -90,6 +90,30 @@ systemctl status nginx xray cloudflared frpc easytier tailscaled \
     ufw fail2ban prometheus-node-exporter
 ```
 
+### 客户门户服务快照与命令结果
+
+「我的设备」的服务状态来自 `hive-command-agent.timer` 约每 60 秒执行的普通心跳，
+不是浏览器向硬件实时发起 `systemctl`。页面每 5 秒读取 registry 最新快照；
+显示采样时间，超过 150 秒标记过期，不能把陈旧的 active 当作当前健康状态。
+旧镜像未上报状态时，采样时间为空、所有服务显示 unknown；不存在的 systemd unit
+明确显示 not-found。未安装的可选服务不等于节点整体故障。
+
+认证客户可查询自己已认领设备（其他客户或未认领设备返回 404）：
+
+```text
+GET /api/portal/devices/{mac}/services
+{"sampled_at":"2026-11-19T12:00:00Z","services":[{"name":"xray","active_state":"active","sub_state":"running","load_state":"loaded"}]}
+```
+
+接口完整返回 service-control 白名单中的各服务；`sampled_at` 是 registry 接收该次
+状态心跳的 UTC 时间，不会因页面刷新或旧版心跳而更新。页面刷新不下发状态命令，
+不会增加节点轮询频率。快照与控制动作共用白名单，不能查询或控制任意 unit。
+
+手动下发 service-control 的 status 命令会在下一个 agent 周期执行实际
+`systemctl status --no-pager --full --lines=5`，结果保留有界的真实状态输出（最多 850 字节，
+另加服务名称前缀），而不是只显示 done。inactive/failed/not-found 是状态查询结果，
+不是查询本身失败；超时或 systemctl 执行失败则回传 failed。页面每 2 秒刷新命令历史并展示回传结果；重启类命令仍是异步操作。
+
 ### 一键自测
 
 ```bash

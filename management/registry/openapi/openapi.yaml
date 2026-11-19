@@ -306,7 +306,8 @@ definitions:
           $ref: '#/definitions/handler.NodeOnlineDevice'
         type: array
       owner_access:
-        description: Agent understands owner-* users; false or omitted grants paid users only. Ignored for trusted servers.
+        description: Agent understands owner-* users; legacy agents default to paid
+          users only
         type: boolean
     type: object
   handler.NodeAccountingState:
@@ -495,7 +496,6 @@ definitions:
         example: K7QF-2M9X
         type: string
     type: object
-  handler.PortalDeviceSubscriptionAccessResponse: {"type": "object", "properties": {"token": {"type": "string"}}}
   handler.PortalCreateOrderRequest:
     properties:
       plan_id:
@@ -548,6 +548,11 @@ definitions:
     properties:
       gateway_direction:
         example: auto
+        type: string
+    type: object
+  handler.PortalDeviceSubscriptionAccessResponse:
+    properties:
+      token:
         type: string
     type: object
   handler.PortalLoginRequest:
@@ -1278,6 +1283,15 @@ definitions:
       status:
         type: string
     type: object
+  model.DeviceServicesResponse:
+    properties:
+      sampled_at:
+        type: string
+      services:
+        items:
+          $ref: '#/definitions/model.ServiceStatus'
+        type: array
+    type: object
   model.HeartbeatRequest:
     properties:
       country:
@@ -1293,6 +1307,12 @@ definitions:
         type: string
       mem_pct:
         type: number
+      services:
+        description: Services is omitted by legacy agents; nil must not invent a fresh
+          sample.
+        items:
+          $ref: '#/definitions/model.ServiceStatus'
+        type: array
       uptime_sec:
         type: integer
     type: object
@@ -1541,6 +1561,17 @@ definitions:
       ip:
         type: string
     type: object
+  model.ServiceStatus:
+    properties:
+      active_state:
+        type: string
+      load_state:
+        type: string
+      name:
+        type: string
+      sub_state:
+        type: string
+    type: object
   model.SubscriptionGroup:
     properties:
       created_at:
@@ -1594,9 +1625,6 @@ info:
   title: Hive Node Registry API
   version: 0.1.0
 paths:
-  "/d/{token}": {"get": {"description": "仅当前有效归属的单台设备；按设备出口方向分流，不依赖付费套餐。出口关闭时返回无凭据直连配置。", "operationId": "OwnerSubscriptionClash", "parameters": [{"description": "设备私密 token", "in": "path", "name": "token", "required": true, "type": "string"}], "produces": ["text/plain"], "responses": {"200": {"description": "Clash subscription", "schema": {"type": "string"}}, "404": {"description": "Not Found", "schema": {"type": "string"}}}, "summary": "获取自有设备免费 Clash 订阅", "tags": ["subscription"]}}
-  "/d/{token}/vless": {"get": {"description": "返回单台自有设备的 base64 VLESS 链接；出口关闭时仅返回无凭据说明。", "operationId": "OwnerSubscriptionVless", "parameters": [{"description": "设备私密 token", "in": "path", "name": "token", "required": true, "type": "string"}], "produces": ["text/plain"], "responses": {"200": {"description": "VLESS subscription", "schema": {"type": "string"}}, "404": {"description": "Not Found", "schema": {"type": "string"}}}, "summary": "获取自有设备免费 VLESS 订阅", "tags": ["subscription"]}}
-  "/portal/devices/{mac}/subscription-access": {"get": {"description": "独立于付费套餐和额度；每台自有设备一个私密 token。仅设备当前主人可获取。", "operationId": "PortalDeviceSubscriptionAccess", "parameters": [{"description": "设备 MAC", "in": "path", "name": "mac", "required": true, "type": "string"}], "produces": ["application/json"], "responses": {"200": {"description": "OK", "schema": {"$ref": "#/definitions/handler.PortalDeviceSubscriptionAccessResponse"}}, "404": {"description": "Not Found", "schema": {"$ref": "#/definitions/handler.ErrorResponse"}}, "500": {"description": "Internal Server Error", "schema": {"$ref": "#/definitions/handler.ErrorResponse"}}}, "security": [{"CustomerSessionCookie": []}], "summary": "获取我的设备免费订阅入口", "tags": ["portal"]}}
   /:
     get:
       description: 返回 Hive Registry 首页 HTML
@@ -4453,6 +4481,54 @@ paths:
       summary: 获取客户 VLESS 订阅（出海）
       tags:
       - subscription
+  /d/{token}:
+    get:
+      description: 仅当前有效归属的单台设备；按设备出口方向分流，不依赖付费套餐。出口关闭时返回无凭据直连配置。
+      operationId: OwnerSubscriptionClash
+      parameters:
+      - description: 设备私密 token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Clash subscription
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: 获取自有设备免费 Clash 订阅
+      tags:
+      - subscription
+  /d/{token}/vless:
+    get:
+      description: 返回单台自有设备的 base64 VLESS 链接；出口关闭时仅返回无凭据说明。
+      operationId: OwnerSubscriptionVless
+      parameters:
+      - description: 设备私密 token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: VLESS subscription
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: 获取自有设备免费 VLESS 订阅
+      tags:
+      - subscription
   /health:
     get:
       description: 检查服务和数据库连接是否正常
@@ -5380,6 +5456,36 @@ paths:
       summary: 代理节点 Mihomo API（只读）
       tags:
       - portal
+  /portal/devices/{mac}/services:
+    get:
+      description: 状态随节点约60秒心跳更新；sampled_at为registry接收时间，旧节点无样本为null及unknown。读取不会下发命令。
+      operationId: PortalDeviceServices
+      parameters:
+      - description: 设备 MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.DeviceServicesResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 我的设备最新服务状态快照
+      tags:
+      - portal
   /portal/devices/{mac}/subscription:
     delete:
       description: 客户解除网关设备与订阅的绑定；设备下一次同步后去掉全部代理，退化为直连兜底。
@@ -5445,6 +5551,36 @@ paths:
       security:
       - CustomerSessionCookie: []
       summary: 给网关设备下发订阅配置
+      tags:
+      - portal
+  /portal/devices/{mac}/subscription-access:
+    get:
+      description: 独立于付费套餐和额度；每台自有设备一个私密 token。仅设备当前主人可获取。
+      operationId: PortalDeviceSubscriptionAccess
+      parameters:
+      - description: 设备 MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PortalDeviceSubscriptionAccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - CustomerSessionCookie: []
+      summary: 获取我的设备免费订阅入口
       tags:
       - portal
   /portal/devices/{mac}/unbind:

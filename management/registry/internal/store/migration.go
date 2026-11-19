@@ -708,6 +708,13 @@ ALTER TABLE nodes ADD COLUMN owner_access_token CHAR(64) NULL DEFAULT NULL, ADD 
 ALTER TABLE nodes ADD COLUMN owner_xray_uuid CHAR(36) NULL DEFAULT NULL;
 `,
 	},
+	{
+		version: 38,
+		desc:    "nodes: latest allowlisted service state heartbeat snapshot",
+		up: `
+ALTER TABLE nodes ADD COLUMN service_states TEXT NULL DEFAULT NULL, ADD COLUMN services_sampled_at VARCHAR(32) NULL DEFAULT NULL;
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

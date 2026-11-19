@@ -36,10 +36,10 @@ const COMMAND_ACTIONS = ['reboot', 'restart-xray', 'restart-mihomo', 'resync'] a
 
 const SERVICE_GROUPS = [
   { key: 'proxy', services: ['xray', 'xray-exporter', 'cloudflared', 'frpc', 'easytier'] },
-  { key: 'network', services: ['hive-mihomo', 'hive-hotspot', 'hive-gateway'] },
+  { key: 'network', services: ['hive-mihomo', 'hive-hotspot', 'hive-hotspot-5g', 'hive-gateway'] },
   { key: 'security', services: ['hive-firewall', 'hive-fail2ban'] },
   { key: 'system', services: ['nginx', 'tailscaled', 'warp-svc'] },
-  { key: 'automation', services: ['hive-xray-sync.timer', 'hive-clash-sync.timer', 'hive-updater.timer'] },
+  { key: 'automation', services: ['hive-xray-sync.timer', 'hive-clash-sync.timer', 'hive-command-agent.timer', 'hive-updater.timer'] },
 ] as const;
 
 const SERVICE_OPERATIONS = ['start', 'stop', 'restart', 'status'] as const;
@@ -56,6 +56,10 @@ type HotspotConfig = {
 
 type DashboardInfo = { urls: string[]; secret: string };
 type LiveTraffic = { up: number; down: number; active: number; upSpeed: number; downSpeed: number };
+type ServiceSnapshot = {
+  sampled_at: string | null;
+  services: { name: string; active_state: string; sub_state: string; load_state: string }[];
+};
 
 function formatBytes(value: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -122,6 +126,10 @@ export default function PortalDevicesPage() {
   const [serviceSending, setServiceSending] = useState('');
   const [hotspotConfig, setHotspotConfig] = useState<HotspotConfig>(DEFAULT_HOTSPOT_CONFIG);
   const [hotspotSending, setHotspotSending] = useState(false);
+  const [cmdHistoryError, setCmdHistoryError] = useState(false);
+  const [serviceSnapshot, setServiceSnapshot] = useState<ServiceSnapshot | null>(null);
+  const [serviceStatusError, setServiceStatusError] = useState(false);
+  const [statusNow, setStatusNow] = useState(Date.now());
 
   // 解绑确认
   const [unbindDevice, setUnbindDevice] = useState<model_Node | null>(null);
@@ -211,18 +219,61 @@ export default function PortalDevicesPage() {
     }
   }, [claimCode, t, toast, loadDevices]);
 
-  const openCommands = useCallback(async (device: model_Node) => {
+  const openCommands = useCallback((device: model_Node) => {
     setCmdDevice(device);
     setCmdAction('resync');
     setHotspotConfig(DEFAULT_HOTSPOT_CONFIG);
     setCmdHistory([]);
-    try {
-      const h = await portalSessionApi(PortalService.portalListDeviceCommands({ mac: device.mac! }));
-      setCmdHistory(h ?? []);
-    } catch {
-      // 历史加载失败不阻塞下发
-    }
+    setCmdHistoryError(false);
+    setServiceSnapshot(null);
+    setServiceStatusError(false);
   }, []);
+
+  // Poll only while this device dialog is open. Late responses cannot replace
+  // another device's history; sequential timers avoid overlapping requests.
+  useEffect(() => {
+    const mac = cmdDevice?.mac;
+    if (!mac) return;
+    let stopped = false;
+    let historyTimer: number;
+    let servicesTimer: number;
+    const controller = new AbortController();
+    const historyTick = async () => {
+      try {
+        const history = await portalSessionApi(PortalService.portalListDeviceCommands({ mac }));
+        if (!stopped) { setCmdHistory(history ?? []); setCmdHistoryError(false); }
+      } catch {
+        if (!stopped) setCmdHistoryError(true);
+      } finally {
+        if (!stopped) historyTimer = window.setTimeout(historyTick, 2000);
+      }
+    };
+    const servicesTick = async () => {
+      try {
+        const res = await fetch(apiPath(`/portal/devices/${mac}/services`), {
+          credentials: 'include', signal: controller.signal,
+        });
+        if (!res.ok) throw new Error('service status unavailable');
+        const snapshot: ServiceSnapshot = await res.json();
+        if (!stopped) { setServiceSnapshot(snapshot); setServiceStatusError(false); }
+      } catch {
+        if (!stopped) setServiceStatusError(true);
+      } finally {
+        if (!stopped) { setStatusNow(Date.now()); servicesTimer = window.setTimeout(servicesTick, 5000); }
+      }
+    };
+    void historyTick();
+    void servicesTick();
+    return () => {
+      stopped = true;
+      controller.abort();
+      clearTimeout(historyTimer);
+      clearTimeout(servicesTimer);
+    };
+  }, [cmdDevice?.mac]);
+
+  const serviceSampleTime = serviceSnapshot?.sampled_at ? Date.parse(serviceSnapshot.sampled_at) : NaN;
+  const serviceStatusStale = !Number.isFinite(serviceSampleTime) || statusNow - serviceSampleTime > 150_000;
 
   const sendCommand = useCallback(async () => {
     if (!cmdDevice) return;
@@ -233,8 +284,6 @@ export default function PortalDevicesPage() {
         requestBody: { action: cmdAction },
       }));
       toast.success(t('cmdQueued'));
-      const h = await portalSessionApi(PortalService.portalListDeviceCommands({ mac: cmdDevice.mac! }));
-      setCmdHistory(h ?? []);
     } catch (e) {
       toast.error(getErrorMessage(e, t('cmdFailed')));
     } finally {
@@ -255,8 +304,6 @@ export default function PortalDevicesPage() {
         },
       }));
       toast.success(t('serviceQueued'));
-      const h = await portalSessionApi(PortalService.portalListDeviceCommands({ mac: cmdDevice.mac! }));
-      setCmdHistory(h ?? []);
     } catch (e) {
       toast.error(getErrorMessage(e, t('serviceFailed')));
     } finally {
@@ -273,8 +320,6 @@ export default function PortalDevicesPage() {
         requestBody: { action: 'hotspot-config', params: JSON.stringify(hotspotConfig) },
       }));
       toast.success(t('hotspotQueued'));
-      const h = await portalSessionApi(PortalService.portalListDeviceCommands({ mac: cmdDevice.mac! }));
-      setCmdHistory(h ?? []);
     } catch (e) {
       toast.error(getErrorMessage(e, t('hotspotFailed')));
     } finally {
@@ -674,6 +719,12 @@ export default function PortalDevicesPage() {
                 <h3 id="service-controls-title" className="text-sm font-600">{t('serviceControls')}</h3>
               </div>
               <p className="text-xs text-muted-foreground">{t('serviceControlsDesc')}</p>
+              <p className="text-xs text-muted-foreground" aria-live="polite">
+                {serviceStatusError ? t('serviceStatusUnavailable') : serviceSnapshot?.sampled_at
+                  ? t('serviceStatusSample', { time: fmt.dateTime(serviceSnapshot.sampled_at) })
+                  : t('serviceStatusUnknown')}
+                {serviceSnapshot?.sampled_at && serviceStatusStale ? ` · ${t('serviceStatusStale')}` : ''}
+              </p>
               <div className="space-y-4">
                 {SERVICE_GROUPS.map((group) => (
                   <div key={group.key} className="space-y-2">
@@ -683,7 +734,13 @@ export default function PortalDevicesPage() {
                         <div key={service} className="rounded-lg border border-md-outline-variant bg-md-surface-container-low p-2.5">
                           <div className="mb-2 flex items-center justify-between gap-2">
                             <span className="truncate text-sm font-500">{t(`service_${service.replaceAll('.', '_')}` as 'service_xray')}</span>
-                            <Activity className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                            {(() => {
+                              const state = serviceSnapshot?.services.find((s) => s.name === service);
+                              const unknown = serviceStatusError || serviceStatusStale || !state;
+                              return <span className={`text-xs ${unknown ? 'text-muted-foreground' : state.active_state === 'active' ? 'text-green-600' : state.active_state === 'failed' ? 'text-md-error' : 'text-muted-foreground'}`}>
+                                {unknown ? t('serviceStatusUnknown') : state.load_state === 'not-found' ? t('serviceStatusNotFound') : `${state.active_state} / ${state.sub_state}`}
+                              </span>;
+                            })()}
                           </div>
                           <div className="flex flex-wrap gap-1.5">
                             {SERVICE_OPERATIONS.map((operation) => {
@@ -717,17 +774,22 @@ export default function PortalDevicesPage() {
 
             <div>
               <p className="mb-2 text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('cmdHistory')}</p>
+              {cmdHistoryError && <p role="status" className="mb-2 text-xs text-md-error">{t('cmdHistoryLoadFailed')}</p>}
               {cmdHistory.length === 0 ? (
                 <p className="py-4 text-center text-sm text-muted-foreground">{t('cmdHistoryEmpty')}</p>
               ) : (
                 <ul className="space-y-2 max-h-64 overflow-y-auto">
                   {cmdHistory.map((c) => (
-                    <li key={c.id} className="flex items-center justify-between gap-3 rounded-lg bg-md-surface-container-high/50 px-3 py-2 text-sm">
-                      <span className="flex items-center gap-2">
-                        <span className="font-mono">{t(`cmdAction_${c.action}` as 'cmdAction_reboot')}</span>
-                        <span className="text-xs text-muted-foreground">{c.created_at ? fmt.dateTime(c.created_at) : ''}</span>
-                      </span>
-                      <CommandStatusChip status={c.status} />
+                    <li key={c.id} className="space-y-2 rounded-lg bg-md-surface-container-high/50 px-3 py-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-2">
+                          <span className="font-mono">{t(`cmdAction_${c.action}` as 'cmdAction_reboot')}</span>
+                          <span className="text-xs text-muted-foreground">{c.created_at ? fmt.dateTime(c.created_at) : ''}</span>
+                        </span>
+                        <CommandStatusChip status={c.status} />
+                      </div>
+                      {c.params && <p className="break-all font-mono text-xs text-muted-foreground">{c.params}</p>}
+                      {c.result && <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs">{c.result}</pre>}
                     </li>
                   ))}
                 </ul>

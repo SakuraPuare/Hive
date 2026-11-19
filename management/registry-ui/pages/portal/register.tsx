@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
-import { portalRegister } from '@/lib/portal-auth';
+import { portalLogin, portalRegister, useCustomer } from '@/lib/portal-auth';
 import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ type FieldErrors = {
 export default function PortalRegisterPage() {
   const t = useTranslations('portal');
   const router = useRouter();
+  const { refresh } = useCustomer();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
@@ -57,6 +58,8 @@ export default function PortalRegisterPage() {
     setLoading(true);
     try {
       await portalRegister(email, password, nickname, referralCode);
+      await portalLogin(email, password);
+      await refresh();
       await router.replace('/portal/dashboard');
       setSuccess(true);
     } catch (err) {

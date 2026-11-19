@@ -38,6 +38,15 @@ func (h *Handler) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusBadRequest, "mac required")
 		return
 	}
+	var serviceJSON []byte
+	if req.Services != nil {
+		states, ok := normalizeServiceStates(req.Services)
+		if !ok {
+			h.jsonErr(w, http.StatusBadRequest, "invalid service states")
+			return
+		}
+		serviceJSON, _ = json.Marshal(states)
+	}
 
 	now := time.Now().UTC().Format(model.TimeLayout)
 
@@ -50,6 +59,15 @@ func (h *Handler) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	if country := normalizeCountry(req.Country); country != "" {
 		if err := h.DB.Model(&model.Node{}).Where("mac = ?", req.MAC).Update("country", country).Error; err != nil {
 			log.Printf("heartbeat: update country for mac=%s: %v", req.MAC, err)
+		}
+	}
+	if serviceJSON != nil {
+		if err := h.DB.Model(&model.Node{}).Where("mac = ?", req.MAC).Updates(map[string]any{
+			"service_states":      string(serviceJSON),
+			"services_sampled_at": time.Now().UTC().Format(time.RFC3339),
+		}).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
 		}
 	}
 

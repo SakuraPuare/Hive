@@ -396,4 +396,20 @@ type HeartbeatRequest struct {
 	// Country is the node's egress country (ISO-3166 alpha-2). Empty on legacy
 	// agents; the registry keeps the last known value.
 	Country string `json:"country"`
+	// Services is omitted by legacy agents; nil must not invent a fresh sample.
+	Services []ServiceStatus `json:"services,omitempty"`
+}
+
+// ServiceStatus is one allowlisted systemd unit's observed state.
+type ServiceStatus struct {
+	Name        string `json:"name"`
+	ActiveState string `json:"active_state"`
+	SubState    string `json:"sub_state"`
+	LoadState   string `json:"load_state"`
+}
+
+// DeviceServicesResponse is the latest heartbeat sample, not a live RPC.
+type DeviceServicesResponse struct {
+	SampledAt *string         `json:"sampled_at"`
+	Services  []ServiceStatus `json:"services"`
 }

@@ -30,6 +30,35 @@ MAC_NORM="${MAC_NORM: -12}"
 AUTH="Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"
 BASE="${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/commands"
 
+# One whitelist for status snapshots and remote service-control operations.
+SERVICES=(xray xray-exporter cloudflared frpc easytier hive-mihomo hive-hotspot hive-hotspot-5g
+    hive-gateway hive-firewall hive-fail2ban nginx tailscaled warp-svc
+    hive-xray-sync.timer hive-clash-sync.timer hive-command-agent.timer hive-updater.timer)
+
+supported_service() {
+    local name
+    for name in "${SERVICES[@]}"; do [ "$name" != "$1" ] || return 0; done
+    return 1
+}
+
+service_states() {
+    local svc out key value active sub load
+    for svc in "${SERVICES[@]}"; do
+        active=unknown sub=unknown load=unknown
+        out=$(timeout 2 systemctl show "$svc" --property=LoadState,ActiveState,SubState 2>/dev/null || true)
+        while IFS='=' read -r key value; do
+            [ -n "$value" ] || continue
+            case "$key" in
+                ActiveState) active=$value ;;
+                SubState) sub=$value ;;
+                LoadState) load=$value ;;
+            esac
+        done <<< "$out"
+        if [ "$load" = "not-found" ]; then active=not-found sub=not-found; fi
+        printf '%s\t%s\t%s\t%s\n' "$svc" "$active" "$sub" "$load"
+    done | jq -Rsc 'split("\n") | map(select(length > 0) | split("\t") | {name:.[0],active_state:.[1],sub_state:.[2],load_state:.[3]})'
+}
+
 # ── 心跳 ───────────────────────────────────────────────────────────────
 # 面板上的"在线"和 CPU/内存/磁盘曲线全靠它（registry 写 last_seen + node_status_checks）。
 # 放在拉命令之前：命令通道故障不应让节点显示离线。所有取数失败都退化成 0，绝不致命。
@@ -59,7 +88,7 @@ country_code() {
 
 heartbeat() {
     [ -r /proc/uptime ] || return 0
-    local up cpu=0 mem=0 disk=0 total avail country
+    local up cpu=0 mem=0 disk=0 total avail country services
     read -r up _ < /proc/uptime || up=0
     up=${up%.*}
     total=$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
@@ -78,10 +107,12 @@ heartbeat() {
         fi
     fi
     country=$(country_code)
+    services=$(service_states)
     curl -4 -sf --max-time 10 -H "${AUTH}" -H 'Content-Type: application/json' \
         -d "$(jq -nc --arg mac "${MAC_NORM}" --argjson cpu "${cpu:-0}" --argjson mem "${mem:-0}" \
               --argjson disk "${disk:-0}" --argjson up "${up:-0}" --arg country "${country:-}" \
-              '{mac:$mac,cpu_pct:$cpu,mem_pct:$mem,disk_pct:$disk,uptime_sec:$up} + (if $country == "" then {} else {country:$country} end)')" \
+              --argjson services "$services" \
+              '{mac:$mac,cpu_pct:$cpu,mem_pct:$mem,disk_pct:$disk,uptime_sec:$up,services:$services} + (if $country == "" then {} else {country:$country} end)')" \
         "${NODE_REGISTRY_URL}/nodes/heartbeat" >/dev/null 2>&1 \
         && log "heartbeat ok (cpu=${cpu}% mem=${mem}% disk=${disk}%)" \
         || log "heartbeat failed（registry 不可达，下轮重试）"
@@ -135,19 +166,24 @@ echo "${RESP}" | jq -c '.[]' 2>/dev/null | while read -r cmd; do
             # params 是 JSON: {"service":"xray","operation":"restart"}
             svc=$(echo "$cmd" | jq -r '.params' | jq -r '.service // empty' 2>/dev/null)
             op=$(echo "$cmd" | jq -r '.params' | jq -r '.operation // empty' 2>/dev/null)
-            case "$svc" in
-                xray|xray-exporter|cloudflared|frpc|easytier|hive-mihomo|hive-hotspot|hive-gateway|hive-firewall|hive-fail2ban|nginx|tailscaled|warp-svc|hive-xray-sync.timer|hive-clash-sync.timer|hive-command-agent.timer|hive-updater.timer)
-                    ;;
-                *) ack "$id" "failed" "unsupported service: ${svc}"; continue ;;
-            esac
+            if ! supported_service "$svc"; then
+                ack "$id" "failed" "unsupported service: ${svc}"
+                continue
+            fi
             case "$op" in
                 start|stop|restart|status)
                     ;;
                 *) ack "$id" "failed" "unsupported operation: ${op}"; continue ;;
             esac
             if [ "$op" = "status" ]; then
-                out=$(systemctl is-active "$svc" 2>&1 || true)
-                ack "$id" "done" "${svc} status: ${out:0:850}"
+                # Inactive/missing units return 3/4; timeout or execution errors
+                # are failures, not successful status observations.
+                out=$(SYSTEMD_COLORS=0 timeout 5 systemctl status "$svc" --no-pager --full --lines=5 2>&1 | { head -c 850; cat >/dev/null; })
+                status_rc=$?
+                case "$status_rc" in
+                    0|3|4) ack "$id" "done" "${svc} status: ${out}" ;;
+                    *) ack "$id" "failed" "${svc} status (exit ${status_rc}): ${out}" ;;
+                esac
             else
                 out=$(systemctl "$op" "$svc" 2>&1) \
                     && ack "$id" "done" "${svc} ${op}: ${out:0:850}" \

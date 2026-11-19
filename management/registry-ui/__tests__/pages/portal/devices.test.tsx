@@ -64,6 +64,7 @@ describe('PortalDevicesPage', () => {
     mockRouter.replace.mockClear();
     mockListDevices.mockReset();
     mockCommands.mockReset();
+    mockEnqueue.mockReset();
     mockBindSubscription.mockReset();
     mockUnbindSubscription.mockReset();
     mockSetDeviceExit.mockReset();
@@ -72,6 +73,7 @@ describe('PortalDevicesPage', () => {
       ok: true,
       json: async () => (String(url).endsWith('/dashboard')
         ? { urls: ['http://172.20.1.7:9090/ui'], secret: 'deadbeefsecret' }
+        : String(url).endsWith('/services') ? { sampled_at: null, services: [] }
         : { uploadTotal: 1024, downloadTotal: 4096, connections: [{}, {}] }),
     }));
     // jsdom 没有全局 fetch；这里只替换实现，不改变调用契约。
@@ -266,4 +268,54 @@ describe('PortalDevicesPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(button).not.toBeDisabled();
   });
+  it('refreshes a queued command to its actual output and stops polling when closed', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    const command = { id: 6, action: 'service-control', params: '{"service":"xray","operation":"status"}', status: 'pending' };
+    mockCommands.mockResolvedValueOnce([command]).mockResolvedValue([{ ...command, status: 'done', result: 'xray.service\nActiveState=active\nSubState=running' }]);
+    const view = render(<PortalDevicesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'portal.cmdManage' }));
+    await screen.findByText('portal.cmdStatus_pending');
+    await waitFor(() => expect(screen.getByText(/ActiveState=active/)).toBeInTheDocument(), { timeout: 4000 });
+    expect(screen.getByText('portal.cmdStatus_done')).toBeInTheDocument();
+    expect(screen.queryByText('portal.cmdStatus_pending')).not.toBeInTheDocument();
+    view.unmount();
+    const calls = mockCommands.mock.calls.length;
+    const delay = Promise.withResolvers<void>();
+    setTimeout(delay.resolve, 2100);
+    await delay.promise;
+    expect(mockCommands).toHaveBeenCalledTimes(calls);
+  }, 7000);
+
+  it('updates service state without queueing commands and marks old samples unknown', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    mockCommands.mockResolvedValue([]);
+    const services = [{ name: 'xray', load_state: 'loaded', active_state: 'active', sub_state: 'running' }];
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ sampled_at: new Date().toISOString(), services }) })
+      .mockResolvedValue({ ok: true, json: async () => ({ sampled_at: new Date(Date.now() - 180_000).toISOString(), services }) });
+    render(<PortalDevicesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'portal.cmdManage' }));
+    await screen.findByText('active / running');
+    await waitFor(() => expect(screen.getByText(/portal.serviceStatusStale/)).toBeInTheDocument(), { timeout: 7000 });
+    expect(screen.queryByText('active / running')).not.toBeInTheDocument();
+    expect(mockEnqueue).not.toHaveBeenCalled();
+  }, 9000);
+
+  it('does not put a late response from another device into the current dialog', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode, plainNode]);
+    const late = Promise.withResolvers<unknown[]>();
+    mockCommands.mockReturnValueOnce(late.promise).mockResolvedValue([{ id: 2, action: 'resync', status: 'done', result: 'current device output' }]);
+    render(<PortalDevicesPage />);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'portal.cmdManage' }))[0]);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape', code: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole('button', { name: 'portal.cmdManage' })[1]);
+    await screen.findByText('current device output');
+    await act(async () => late.resolve([{ id: 1, action: 'resync', status: 'done', result: 'wrong device output' }]));
+    expect(screen.queryByText('wrong device output')).not.toBeInTheDocument();
+    expect(screen.getByText('current device output')).toBeInTheDocument();
+  });
+
 });
