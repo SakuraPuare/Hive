@@ -3,7 +3,7 @@ module hive/registry
 go 1.27.0
 
 require (
-	github.com/go-sql-driver/mysql v1.10.1
+	github.com/go-sql-driver/mysql v1.10.2
 	github.com/prometheus/client_golang v1.25.0
 	golang.org/x/crypto v0.59.0
 	gorm.io/driver/mysql v1.6.0
