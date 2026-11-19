@@ -240,6 +240,19 @@ if [ -x /usr/local/bin/hive-hotspot-firewall.sh ]; then
     /usr/local/bin/hive-hotspot-firewall.sh || echo "  ⚠ 热点防火墙规则未完整应用（无 5G 热点属正常）"
 fi
 
+# NM shared 的有线 LAN / 热点规则也会被 reset 清掉；恢复已激活连接。
+# 首启尚未激活的连接由同一 dispatcher 的 up 事件处理。
+dispatcher=/etc/NetworkManager/dispatcher.d/90-hive-hotspot
+if [ -x "$dispatcher" ] && command -v nmcli >/dev/null 2>&1; then
+    while IFS=: read -r conn iface; do
+        case "$conn" in
+            hive-lan-*|hive-hotspot-2g|hive-hotspot-5g)
+                CONNECTION_ID="$conn" DEVICE_IP_IFACE="$iface" "$dispatcher" "$iface" up
+                ;;
+        esac
+    done < <(nmcli -t -f NAME,DEVICE connection show --active)
+fi
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 安全加固
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

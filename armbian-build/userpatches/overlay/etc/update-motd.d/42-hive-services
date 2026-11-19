@@ -16,6 +16,10 @@ done
 
 # Load hive node configuration
 safe_source /etc/hive/config.env
+if [[ -f /etc/hive/node-info ]]; then
+    source /usr/local/bin/hive-node-info
+    hive_load_node_info
+fi
 
 # No wireless NIC is a valid configuration (wired-only board). Detect it once
 # so the service and connection sections don't show a stale hotspot as stopped.
@@ -169,10 +173,18 @@ rm -rf "${_TMP}"
 # ──────────────────────────────────────────────────────────
 
 # Node Identity
-INTERFACE=$(ip link show | grep -E '^[0-9]+: (eth|en|wl)' | head -1 | cut -d: -f2 | tr -d ' ')
-MAC_ADDR=$(ip link show "$INTERFACE" 2>/dev/null | grep -o -E '([a-f0-9]{2}:){5}[a-f0-9]{2}' | head -1)
-if [[ -n "$MAC_ADDR" ]]; then
-    MAC6=$(echo "$MAC_ADDR" | tr -d : | tail -c 7)
+MAC_ADDR="${MAC:-}"
+if [[ -z "$MAC_ADDR" ]]; then
+    for iface_path in /sys/class/net/*; do
+        [[ -e "$iface_path/device" ]] || continue
+        MAC_ADDR=$(cat "$iface_path/address" 2>/dev/null)
+        [[ -n "$MAC_ADDR" ]] && break
+    done
+fi
+MAC_ADDR="${MAC_ADDR//:/}"
+if [[ "$MAC_ADDR" =~ ^[[:xdigit:]]{12}$ ]]; then
+    MAC6="${MAC_ADDR: -6}"
+    MAC_ADDR=$(printf '%s' "$MAC_ADDR" | sed 's/../&:/g;s/:$//')
     echo ""
     printf "\e[0;90m Node Identity: \x1B[0m\n"
     echo ""
@@ -180,21 +192,18 @@ if [[ -n "$MAC_ADDR" ]]; then
     printf " \e[1;36m%-18s\e[0m: \e[0;94mhive-%s\e[0m\n" "Node ID" "$MAC6"
     [[ -n "${CF_DOMAIN}" ]] && \
         printf " \e[1;36m%-18s\e[0m: \e[0;94mhive-%s.%s\e[0m\n" "Public Domain" "$MAC6" "${CF_DOMAIN}"
-    # 首次上线时由 provision-node.sh 从 registry 领取；客户在门户输入它认领本机。
-    if [[ -s /etc/hive/claim-code ]]; then
-        printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m  (客户门户 → 我的设备 → 认领设备)\n" \
-            "Claim Code" "$(cat /etc/hive/claim-code)"
-    fi
-    # provision-node 写入：409 = 已被认领/已发过凭证，重试无用，必须管理员轮换。
-    if [[ -s /etc/hive/provision-blocked ]]; then
-        printf " \e[1;31m%-18s\e[0m: \e[0;91m%s\e[0m\n" "Provisioning" "$(cat /etc/hive/provision-blocked)"
-    fi
+fi
+# Claim and provisioning state do not depend on discovering a physical NIC.
+if [[ -s /etc/hive/claim-code ]]; then
+    printf " \e[1;36m%-18s\e[0m: \e[0;93m%s\e[0m  (客户门户 → 我的设备 → 认领设备)\n" \
+        "Claim Code" "$(cat /etc/hive/claim-code)"
+fi
+if [[ -s /etc/hive/provision-blocked ]]; then
+    printf " \e[1;31m%-18s\e[0m: \e[0;91m%s\e[0m\n" "Provisioning" "$(cat /etc/hive/provision-blocked)"
 fi
 
 # Connection Info
 if [[ -f /etc/hive/node-info ]]; then
-    source /usr/local/bin/hive-node-info
-    hive_load_node_info
 
     echo ""
     printf "\e[0;90m Connection Info: \x1B[0m\n"

@@ -1496,6 +1496,49 @@ exit 0
         self.assertNotIn('hive-lan-eth1',
                          json.loads((self.root / 'nm-state.json').read_text())['connections'])
 
+    def test_motd_claim_survives_named_ports_and_missing_identity(self):
+        hive = self.root / 'etc/hive'
+        hive.mkdir(parents=True)
+        (hive / 'config.env').write_text('')
+        (hive / 'claim-code').write_text('TEST-CODE\n')
+        (hive / 'node-info').write_text('MAC=6294b5421371\nMAC6=421371\n')
+        for name in ['ip', 'systemctl', 'ping', 'tailscale']:
+            self.mock(name, '#!/bin/sh\nexit 0\n')
+        source = (REPO / 'armbian-build/userpatches/overlay/etc/update-motd.d/42-hive-services').read_text()
+        source = source.replace('/etc/hive/', str(hive) + '/')
+        source = source.replace('/usr/local/bin/hive-node-info', str(BIN / 'hive-node-info'))
+        source = source.replace('/sys/class/net/', str(self.root / 'net') + '/')
+        source = source.replace('    hive_load_node_info\n', f'    hive_load_node_info "{hive / "node-info"}"\n')
+        result = self.run_script(source)
+        self.assertIn('62:94:b5:42:13:71', result.stdout)
+        self.assertIn('hive-421371', result.stdout)
+        self.assertIn('TEST-CODE', result.stdout)
+        (hive / 'node-info').unlink()
+        self.assertIn('TEST-CODE', self.run_script(source).stdout)
+
+    def test_lan_dispatcher_opens_downstream_and_cleans_without_touching_wan(self):
+        self.mock('logger', '#!/bin/sh\nexit 0\n')
+        self.mock('ufw', '''#!/bin/sh
+printf '%s\\n' "$*" >> "$HIVE_TEST_ROOT/ufw-calls"
+''')
+        source = (REPO / 'armbian-build/userpatches/overlay/etc/NetworkManager/dispatcher.d/90-hive-hotspot').read_text()
+        source = source.replace('/run/', str(self.root) + '/')
+        self.env.update(CONNECTION_ID='hive-lan-lan', DEVICE_IP_IFACE='lan')
+        self.run_script(source, 0, 'lan', 'up')
+        calls = (self.root / 'ufw-calls').read_text()
+        self.assertIn('allow in on lan to any port 67 proto udp', calls)
+        self.assertIn('allow in on lan to any port 53', calls)
+        self.assertIn('route allow in on lan', calls)
+        self.env['DEVICE_IP_IFACE'] = ''
+        self.run_script(source, 0, 'lan', 'down')
+        calls = (self.root / 'ufw-calls').read_text()
+        self.assertIn('delete allow in on lan to any port 67 proto udp', calls)
+        self.assertIn('delete allow in on lan to any port 53', calls)
+        self.assertFalse((self.root / 'hive-hotspot-ap-iface.hive-lan-lan').exists())
+        self.env['CONNECTION_ID'] = 'Wired connection 2'
+        self.run_script(source, 0, 'wan', 'up')
+        self.assertEqual(calls, (self.root / 'ufw-calls').read_text())
+
     def test_firewall_fails_when_a_concurrent_writer_dropped_rules(self):
         # ufw rewrites /etc/ufw/user.rules on every command, so a second writer
         # (hive-hotspot at first boot, live-verified on hardware) can drop rules

@@ -1,7 +1,7 @@
 #!/bin/bash
 # /etc/NetworkManager/dispatcher.d/90-hive-hotspot
-# 热点连接 up/down 时，按实际 AP 接口动态放行 UFW 转发/DHCP/DNS。
-# 支持双频两个连接：hive-hotspot-2g（WPA2）与 hive-hotspot-5g（WPA3）。
+# Hive NM shared 连接 up/down 时，按下游接口动态放行 UFW 转发/DHCP/DNS。
+# 支持双频热点及 hive-lan-* 有线 LAN；不放行 WAN。
 #
 # 背景：UFW 策略 deny incoming + deny forward。NM shared 模式在自己的 nft 表
 #   里做 NAT，但 netfilter 任一表 DROP 即终结，UFW 的 deny 会先丢掉热点流量。
@@ -15,12 +15,16 @@ IFACE="$1"
 ACTION="$2"
 CONN="${CONNECTION_ID:-}"
 
-# 仅处理本项目的热点连接（2g / 5g）
+# 仅处理本项目的下游共享连接。
 case "$CONN" in
-    hive-hotspot-2g|hive-hotspot-5g) ;;
+    hive-hotspot-2g|hive-hotspot-5g|hive-lan-*) ;;
     *) exit 0 ;;
 esac
 command -v ufw >/dev/null 2>&1 || exit 0
+if [ "${HIVE_UFW_LOCK_HELD:-}" != 1 ]; then
+    exec 8>"${UFW_LOCK:-/run/hive-ufw.lock}"
+    flock -w 120 8 || exit 1
+fi
 STATE_FILE="/run/hive-hotspot-ap-iface.${CONN}"
 
 case "$ACTION" in

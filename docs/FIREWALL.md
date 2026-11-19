@@ -29,6 +29,12 @@ Hive Network 节点使用 `ufw` (Uncomplicated Firewall) 作为防火墙管理�
 |------|------|----------|------|
 | 22   | SSH  | 本地网络 + Tailscale | 远程管理访问 |
 | 9100 | Node Exporter | Tailscale 网络 | Prometheus 监控指标 |
+| 67/UDP | DHCP 服务 | Hive LAN / 热点下游接口 | 允许源地址为 0.0.0.0 的首次 DHCP 请求，不开放 WAN |
+| 53/TCP+UDP | DNS 服务 | Hive LAN / 热点下游接口 | NetworkManager shared dnsmasq |
+
+`90-hive-hotspot` NM dispatcher 同时管理 `hive-hotspot-2g/5g` 与 `hive-lan-*` 的 DHCP、DNS 和入向转发规则；连接断开时删除。防火墙初始化重置规则后，会重放已激活连接的规则。所有这些 UFW 写入共用 `/run/hive-ufw.lock`。
+
+节点 MOTD 的身份优先读取 `/etc/hive/node-info`，不依赖 `eth*` 网口命名；认领码只要 `/etc/hive/claim-code` 非空即展示。
 
 ### 出站连接
 
