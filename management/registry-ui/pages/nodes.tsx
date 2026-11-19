@@ -17,6 +17,7 @@ import {
 import { useToast } from '@/components/ui/toast';
 import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
 import { SshCommandsDialog } from '@/components/nodes/SshCommandsDialog';
+import { NodeCommandsDialog } from '@/components/nodes/NodeCommandsDialog';
 import {
   RefreshCw, Trash2, Download, MoreHorizontal, Power, PowerOff,
   Server, Wifi, WifiOff, HelpCircle, AlertTriangle, X, Terminal,
@@ -149,6 +150,7 @@ export default function NodesPage() {
   const [editTarget, setEditTarget] = useState<model_Node | null>(null);
   // SSH command dialog: one row or the current selection; null = closed.
   const [sshNodes, setSshNodes] = useState<model_Node[] | null>(null);
+  const [commandNodes, setCommandNodes] = useState<model_Node[] | null>(null);
 
   const loadNodes = useCallback(async () => {
     setLoading(true);
@@ -353,6 +355,11 @@ export default function NodesPage() {
               className="rounded-lg hover-state cursor-pointer"
               onSelect={() => setSshNodes([row.original])}>
               {t('sshRowAction')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="rounded-lg hover-state cursor-pointer"
+              onSelect={() => setCommandNodes([row.original])}>
+              {t('controlRowAction')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -559,6 +566,15 @@ export default function NodesPage() {
             <Button
               size="sm"
               variant="outline"
+              onClick={() => setCommandNodes([...selectedRows])}
+              disabled={batchBusy}
+              className="state-layer rounded-lg gap-1.5">
+              <Server className="h-3.5 w-3.5" aria-hidden="true" />
+              {t('batchControl')}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => batchToggle('enable')}
               loading={batchBusy}
               disabled={batchBusy}
@@ -603,6 +619,13 @@ export default function NodesPage() {
         nodes={sshNodes ?? []}
         open={sshNodes !== null}
         onOpenChange={(o) => { if (!o) setSshNodes(null); }}
+      />
+
+      <NodeCommandsDialog
+        key={commandNodes?.map((n) => n.mac).join(',') ?? 'no-commands'}
+        nodes={commandNodes ?? []}
+        open={commandNodes !== null}
+        onOpenChange={(o) => { if (!o) setCommandNodes(null); }}
       />
 
       {/* ── Single-row delete confirmation ─────────────────────────────────── */}

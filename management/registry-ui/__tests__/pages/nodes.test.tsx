@@ -17,6 +17,10 @@ vi.mock('@/lib/openapi-session', () => ({
   sessionApi: (p: Promise<any>) => p,
 }));
 
+vi.mock('@/lib/auth', () => ({ useCurrentUser: () => ({
+  user: { can: () => true }, loading: false,
+}) }));
+
 import Nodes from '@/pages/nodes';
 
 const mockNodes = [

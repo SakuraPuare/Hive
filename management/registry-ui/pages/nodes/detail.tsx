@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
 import { ServerCredentialCard } from '@/components/nodes/ServerCredentialCard';
 import { SshCommandsDialog } from '@/components/nodes/SshCommandsDialog';
+import { NodeCommandsDialog } from '@/components/nodes/NodeCommandsDialog';
 import { ArrowLeft, RefreshCw, Pencil, Server, Terminal } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { countryDisplay } from '@/lib/locations';
@@ -47,6 +48,7 @@ export default function NodeDetail() {
   const [error, setError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [sshOpen, setSshOpen] = useState(false);
+  const [commandsOpen, setCommandsOpen] = useState(false);
 
   const noData = tCommon('noData');
 
@@ -119,6 +121,10 @@ export default function NodeDetail() {
         }
         actions={
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setCommandsOpen(true)}>
+              <Server className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{t('controlNode')}</span>
+            </Button>
             <Button variant="outline" onClick={() => setSshOpen(true)}>
               <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{t('sshCommands')}</span>
@@ -216,6 +222,13 @@ export default function NodeDetail() {
         nodes={[node]}
         open={sshOpen}
         onOpenChange={setSshOpen}
+      />
+
+      <NodeCommandsDialog
+        key={node.mac}
+        nodes={[node]}
+        open={commandsOpen}
+        onOpenChange={setCommandsOpen}
       />
 
       <NodeEditDialog
