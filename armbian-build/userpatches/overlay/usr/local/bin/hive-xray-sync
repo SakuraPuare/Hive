@@ -110,7 +110,7 @@ prepare_generation() {
 # blocks that user from source IPs outside the registry's allowed set. The rule
 # only affects new connections; existing sessions keep running until they close.
 apply_device_limits() {
-    local response="$1" online="$2" rules listed tmp
+    local response="$1" online="$2" rules listed tmp digest current_tags desired_tags additions
     if [ "${online_ok:-0}" -ne 1 ]; then
         echo "[hive-xray-sync] skipping device limit reconcile (online stats unavailable)" >&2
         return 0
@@ -134,32 +134,37 @@ apply_device_limits() {
                user: ["sub-\($d.subscription_id)"],
                source: [$blocked[] | if test(":") then . + "/128" else . + "/32" end],
                outboundTag: "block"}
-          ]
+          ] | sort_by(.ruleTag)
     '); then
         echo "[hive-xray-sync] cannot build device limit rules" >&2
         return 0
     fi
-    # Rule tags are unique per subscription, so list them from Xray instead of
-    # keeping local state across reboots.
-    if ! listed=$(xray api lsrules --server=127.0.0.1:10085 2>/dev/null); then
+    # Xray rejects duplicate tags. Content-versioned tags let us install the new
+    # block set before removing obsolete rules, preserving unrelated routes.
+    digest=$(printf '%s' "$rules" | sha256sum | cut -d' ' -f1)
+    rules=$(printf '%s' "$rules" | jq -c --arg digest "$digest" 'map(.ruleTag += "-" + $digest)') || return 0
+    if ! listed=$(xray api lsrules --server=127.0.0.1:10085 2>/dev/null) ||
+        ! current_tags=$(printf '%s' "$listed" | jq -ce '[.rules[] | .ruleTag | select(startswith("hive-devlimit-"))]'); then
         echo "[hive-xray-sync] cannot list routing rules" >&2
         return 0
     fi
-    local -a tags=()
-    mapfile -t tags < <(printf '%s' "$listed" | jq -r '.rules[]? | select(.ruleTag | startswith("hive-devlimit-")) | .ruleTag')
-    if [ "${#tags[@]}" -gt 0 ]; then
-        if ! xray api rmrules --server=127.0.0.1:10085 "${tags[@]}" >/dev/null 2>&1; then
-            echo "[hive-xray-sync] cannot remove old device limit rules" >&2
+    desired_tags=$(printf '%s' "$rules" | jq -c 'map(.ruleTag)') || return 0
+    additions=$(printf '%s' "$rules" | jq -c --argjson current "$current_tags" '[.[] | select(.ruleTag as $tag | $current | index($tag) | not)]') || return 0
+    if [ "$(printf '%s' "$additions" | jq 'length')" -gt 0 ]; then
+        tmp=$(mktemp --suffix=.json "$HIVE_ACCESS_DIR/devlimit.XXXXXX") || return 0
+        if ! jq -n --argjson rules "$additions" '{routing:{rules:$rules}}' > "$tmp" ||
+           ! xray api adrules --server=127.0.0.1:10085 -append "$tmp" >/dev/null 2>&1; then
+            rm -f "$tmp"
+            echo "[hive-xray-sync] cannot apply device limit rules; keeping old rules" >&2
             return 0
         fi
-    fi
-    if [ "$(printf '%s' "$rules" | jq 'length')" -gt 0 ]; then
-        tmp=$(mktemp --suffix=.json "$HIVE_ACCESS_DIR/devlimit.XXXXXX") || return 0
-        if ! jq -n --argjson rules "$rules" '{routing:{rules:$rules}}' > "$tmp" ||
-           ! xray api adrules --server=127.0.0.1:10085 -append "$tmp" >/dev/null 2>&1; then
-            echo "[hive-xray-sync] cannot apply device limit rules" >&2
-        fi
         rm -f "$tmp"
+    fi
+    local -a tags=()
+    mapfile -t tags < <(jq -nr --argjson current "$current_tags" --argjson desired "$desired_tags" '$current - $desired | .[]')
+    if [ "${#tags[@]}" -gt 0 ] &&
+        ! xray api rmrules --server=127.0.0.1:10085 "${tags[@]}" >/dev/null 2>&1; then
+        echo "[hive-xray-sync] cannot remove obsolete device limit rules" >&2
     fi
 }
 replay_reports || fail 'traffic replay failed'

@@ -275,10 +275,10 @@ func (h *Handler) HandlePortalSetDeviceGateway(w http.ResponseWriter, r *http.Re
 		h.jsonErr(w, http.StatusBadRequest, "gateway_direction must be auto, domestic, overseas, global or direct")
 		return
 	}
-	// 方向与已绑定订阅的线路必须能配出一台上游：境内网关要境外节点、境外网关要
-	// 回国节点。配不出来时切换方向等于放弃代理（只剩直连兜底），先拦下并说明要先
-	// 换订阅，而不是让用户以为切换成功、实际什么都代理不了。
-	if node.BoundSubscriptionID != nil && *node.BoundSubscriptionID != 0 && !h.gatewayDirectionHasUpstream(node, directionForNode(dir, effectiveNodeCountry(node))) {
+	// 直连模式不需要上游。代理方向与已绑定订阅的线路必须能配出一台上游：
+	// 境内网关要境外节点、境外网关要回国节点。配不出来时只剩直连兜底，
+	// 先拦下并说明要先换订阅，而不是让用户以为切换成功、实际什么都代理不了。
+	if dir != "direct" && node.BoundSubscriptionID != nil && *node.BoundSubscriptionID != 0 && !h.gatewayDirectionHasUpstream(node, directionForNode(dir, effectiveNodeCountry(node))) {
 		h.jsonErr(w, http.StatusConflict, "当前订阅的线路里没有该分流方向可用的上游节点，请先改绑对应方向的订阅")
 		return
 	}

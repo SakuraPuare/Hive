@@ -243,6 +243,74 @@ exit 0
             if 'ufw allow in proto udp from' in line and 'IP' in line:
                 self.assertNotIn('getent', line)
 
+    def test_cloudflared_key_failure_still_installs_local_deb(self):
+        source = (REPO / 'armbian-build/userpatches/customize-image.sh').read_text()
+        setup = source[source.index('cloudflared_keyring='):source.index('# 3. 安装运行时依赖')]
+        install = source[source.index('install_cloudflared_deb() {'):source.index('# cloudflare-warp 没有任何国内镜像')]
+        for path in ['etc/apt/sources.list.d', 'usr/share/keyrings', 'var/cache/hive-debs']:
+            (self.root / path).mkdir(parents=True)
+        deb = self.root / 'var/cache/hive-debs/cloudflared_2026.11.0_arm64.deb'
+        deb.write_bytes(b'local package')
+        self.mock('curl', '#!/bin/sh\nexit 22\n')
+        self.mock('apt-get', '#!/bin/sh\ncase "$*" in *cloudflared_*.deb*) echo "$*" > "$HIVE_TEST_ROOT/installed";; *) exit 100;; esac\n')
+        script = 'set -e\n' + setup + install
+        for path in ['/usr/share/keyrings', '/etc/apt/sources.list.d', '/var/cache/hive-debs']:
+            script = script.replace(path, str(self.root) + path)
+        self.run_script(script)
+        self.assertIn(str(deb), (self.root / 'installed').read_text())
+        deb.unlink()
+        self.run_script(script, 1)
+
+    def test_package_index_refreshes_and_offline_prefetch_uses_last_version(self):
+        import gzip
+        import hashlib
+        source = (REPO / 'scripts/download-binaries.sh').read_text()
+        fetch = source[source.index('fetch_raw() {'):source.index('# resolve_latest_tag')]
+        prefetch = source[source.index('prefetch_repo_deb() {'):source.index('\nprefetch_repo_deb "pkg.cloudflareclient.com"')]
+        cache, remote, overlay = [self.root / name for name in ['cache', 'remote', 'debs']]
+        for path in [cache, remote, overlay]:
+            path.mkdir()
+        self.mock('curl', r'''#!/usr/bin/env python3
+import os, shutil, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT'])
+args = sys.argv[1:]
+if (r/'offline').exists():
+    sys.exit(22)
+url = args[-1]
+name = 'Packages.gz' if url.endswith('Packages.gz') else url.rsplit('/', 1)[-1]
+shutil.copyfile(r/'remote'/name, args[args.index('-o')+1])
+with (r/'downloads').open('a') as out:
+    out.write(name+'\n')
+''')
+        script = ('set -e\nBIN_CACHE="' + str(cache) + '"\nWARP_DEBS="' + str(overlay) + '"\n'
+                  + fetch + prefetch + '\nprefetch_repo_deb example.test trixie cloudflare-warp\n')
+        def publish(version):
+            name = f'cloudflare-warp_{version}_arm64.deb'
+            data = version.encode()
+            (remote / name).write_bytes(data)
+            metadata = (f'Package: cloudflare-warp\nArchitecture: arm64\nVersion: {version}\n'
+                        f'Filename: pool/{name}\nSHA256: {hashlib.sha256(data).hexdigest()}\n\n')
+            (remote / 'Packages.gz').write_bytes(gzip.compress(metadata.encode()))
+            return name
+        old = publish('2026.10.0')
+        self.run_script(script)
+        new = publish('2026.11.0')
+        self.run_script(script)
+        self.assertEqual([p.name for p in overlay.iterdir()], [new])
+        self.assertEqual((overlay / new).read_bytes(), b'2026.11.0')
+        (self.root / 'offline').touch()
+        self.run_script(script)
+        self.assertEqual((overlay / new).read_bytes(), b'2026.11.0')
+        downloads = (self.root / 'downloads').read_text().splitlines()
+        self.assertEqual(downloads.count('Packages.gz'), 2)
+        self.assertEqual(downloads.count(old), 1)
+        self.assertEqual(downloads.count(new), 1)
+        (cache / 'cloudflare-warp-trixie-Packages.gz').unlink()
+        result = self.run_script(script)
+        self.assertIn('无缓存', result.stdout)
+        self.assertEqual((overlay / new).read_bytes(), b'2026.11.0')
+
     def test_every_external_call_in_provisioning_is_bounded(self):
         # provisioning talks to Cloudflare, Tailscale and the registry on the
         # node's first boot. An unbounded curl hangs until systemd kills the
@@ -800,6 +868,10 @@ elif args[0] == 'stop':
     for service in args[1:]: state[service] = False
 elif args[0] == 'is-active':
     sys.exit(0 if state.get(args[-1], False) else 3)
+elif args[0] == 'show' and 'SubState' in args:
+    substate = r/'mihomo-substate'
+    print(substate.read_text().strip() if substate.exists()
+          else ('running' if state.get(args[-1], False) else 'dead'))
 (r/'services.json').write_text(json.dumps(state))
 ''')
         self.mock('nmcli', r'''#!/usr/bin/env python3
@@ -933,6 +1005,27 @@ elif args[:2] == ['rule', 'del']:
         self.assertNotIn('223.5.5.5', conf)
         # 门禁不在（正常代理分流）：热点包该走 TUN，不能插直连策略路由。
         self.assertNotIn('rule add from 10.42.1.0/24 lookup main', (self.root / 'ip-calls').read_text())
+
+    def test_hotspot_start_post_uses_ready_dns_and_stop_post_falls_back(self):
+        self.run_script(self.hotspot_fixture(bands='5g'))
+        (self.root / 'etc/mihomo').mkdir(parents=True, exist_ok=True)
+        (self.root / 'etc/mihomo/config.yaml').write_text('mixed-port: 7890\n')
+        (self.root / 'mihomo-substate').write_text('start-post\n')
+        (self.root / 'dns1053').touch()
+        self.mock('sleep', '#!/bin/sh\necho unexpected-wait >&2\nexit 1\n')
+        dns = (self.root / 'usr/local/bin/hive-hotspot-dns.sh').read_text()
+        firewall = (self.root / 'usr/local/bin/hive-hotspot-firewall.sh').read_text()
+        result = self.run_script(dns, 0, '--wait')
+        self.assertNotIn('unexpected-wait', result.stderr)
+        conf = self.root / 'etc/hive/dnsmasq-5g.conf'
+        self.assertIn('server=127.0.0.1#1053\n', conf.read_text())
+        self.run_script(firewall)
+        self.assertNotIn('10.42.1.0/24 lookup main', (self.root / 'ip-rules').read_text())
+        (self.root / 'mihomo-substate').write_text('stop-post\n')
+        self.run_script(dns)
+        self.run_script(firewall)
+        self.assertIn('server=223.5.5.5\n', conf.read_text())
+        self.assertIn('10.42.1.0/24 lookup main', (self.root / 'ip-rules').read_text())
 
     def test_hotspot_with_blocked_gate_bypasses_mihomo(self):
         # 实测：门禁在、交付配置末端是 MATCH,REJECT 时，热点客户端 DHCP/DNS 都正常但

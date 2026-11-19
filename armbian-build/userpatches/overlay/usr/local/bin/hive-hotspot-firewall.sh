@@ -138,7 +138,11 @@ gate_present() {
 # "没有 mihomo 配置时 AP 也要有网"，所以这里默认站在可用性一侧。
 hotspot_proxied() {
     gate_present && return 1
-    systemctl is-active --quiet hive-mihomo 2>/dev/null || return 1
+    # ExecStartPost 时主进程已运行，不能用只接受 active 的 is-active。
+    case "$(systemctl show -p SubState --value hive-mihomo 2>/dev/null)" in
+        running|start-post) ;;
+        *) return 1 ;;
+    esac
     [ -s "$MIHOMO_CONF" ]
 }
 

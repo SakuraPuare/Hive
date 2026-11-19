@@ -139,15 +139,19 @@ https://pkg.cloudflareclient.com/ ${RELEASE} main" \
 # pkg.cloudflare.com 没有国内镜像（TUNA/USTC/NJU/BFSU/aliyun 全 404），实测 18.3 MB @ 516 KB/s。
 echo ">>> Adding cloudflared apt repo..."
 cloudflared_keyring=/usr/share/keyrings/cloudflare-main.gpg
-curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --max-time 120 \
-    "https://pkg.cloudflare.com/cloudflare-main.gpg" \
-    | gpg --yes --dearmor -o "${cloudflared_keyring}"
-if ! gpg --show-keys "${cloudflared_keyring}" > /dev/null 2>&1; then
-    echo ">>> ERROR: cloudflared 仓库密钥无效（${cloudflared_keyring}）" >&2
-    exit 1
+cloudflared_key=$(mktemp)
+if curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --max-time 120 \
+        "https://pkg.cloudflare.com/cloudflare-main.gpg" -o "${cloudflared_key}" &&
+    gpg --yes --dearmor -o "${cloudflared_key}.gpg" "${cloudflared_key}" &&
+    gpg --show-keys "${cloudflared_key}.gpg" > /dev/null 2>&1; then
+    mv -f "${cloudflared_key}.gpg" "${cloudflared_keyring}"
+    echo "deb [signed-by=${cloudflared_keyring}] https://pkg.cloudflare.com/cloudflared any main" \
+        | tee /etc/apt/sources.list.d/cloudflared.list
+else
+    echo ">>> WARNING: cloudflared 仓库密钥不可用，将尝试预取 deb" >&2
+    rm -f /etc/apt/sources.list.d/cloudflared.list
 fi
-echo "deb [signed-by=${cloudflared_keyring}] https://pkg.cloudflare.com/cloudflared any main" \
-    | tee /etc/apt/sources.list.d/cloudflared.list
+rm -f "${cloudflared_key}" "${cloudflared_key}.gpg"
 
 # ─────────────────────────────────────────────
 # 3. 安装运行时依赖（单次 update + install）

@@ -133,13 +133,25 @@ mkdir -p "${WARP_DEBS}"
 # <repo 地址去掉 scheme> <suite> <包名>
 prefetch_repo_deb() {
     local base="$1" suite="$2" pkg="$3" arch="arm64"
-    local gz meta fn sha ver f
+    local gz meta fn sha ver f index_tmp
     echo ""
     echo ">>> ${pkg} deb (${base} ${suite}/${arch})..."
-    if ! gz=$(fetch_raw "https://${base}/dists/${suite}/main/binary-${arch}/Packages.gz" \
-            "${pkg}-${suite}-Packages.gz"); then
-        echo "    [警告] 取 ${pkg} 包索引失败，跳过预取（构建时走 apt）"
-        return 0
+    # Packages.gz 是可变索引：每次刷新，只有下载失败时才复用旧索引。
+    # deb 仍通过 fetch_raw 按版本化文件名缓存，不重复下载。
+    gz="${BIN_CACHE}/${pkg}-${suite}-Packages.gz"
+    index_tmp=$(mktemp "${gz}.XXXXXX") || return 1
+    if curl -fL --retry 5 --retry-delay 3 --retry-all-errors --retry-connrefused \
+            --connect-timeout 20 --max-time 900 -o "$index_tmp" \
+            "https://${base}/dists/${suite}/main/binary-${arch}/Packages.gz" &&
+        gzip -t "$index_tmp"; then
+        mv -f "$index_tmp" "$gz"
+    else
+        rm -f "$index_tmp"
+        if [ ! -s "$gz" ]; then
+            echo "    [警告] 取 ${pkg} 包索引失败且无缓存，跳过预取（构建时走 apt）"
+            return 0
+        fi
+        echo "    [警告] 取 ${pkg} 包索引失败，回退缓存"
     fi
     meta="$(python3 -c '
 import gzip, sys

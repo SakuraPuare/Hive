@@ -134,6 +134,38 @@ func TestPortalGatewayDirectionRequiresMatchingUpstream(t *testing.T) {
 	resp.Body.Close()
 }
 
+func TestPortalGatewayDirectWithoutUpstream(t *testing.T) {
+	mac, owner, sid, _ := boundGatewayFixture(t)
+	// Keep the subscription bound but remove its only eligible upstream.
+	mustExec(t, "UPDATE nodes SET exit_enabled = 0 WHERE mac = 'aabbccddeeff'")
+	mustExec(t, "UPDATE nodes SET country = 'CN' WHERE mac = ?", mac)
+
+	resp := doJSON("PUT", "/portal/devices/"+mac+"/gateway", map[string]any{"gateway_direction": "direct"}, customerCookie(owner))
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	var got string
+	testDB.Raw("SELECT gateway_direction FROM nodes WHERE mac = ?", mac).Scan(&got)
+	if got != "direct" {
+		t.Fatalf("gateway_direction = %q, want direct", got)
+	}
+	if got := scalar(t, "SELECT bound_subscription_id FROM nodes WHERE mac = ?", mac); got != int64(sid) {
+		t.Fatalf("bound_subscription_id = %d, want %d", got, sid)
+	}
+
+	for _, direction := range []string{"auto", "domestic", "overseas", "global"} {
+		t.Run(direction, func(t *testing.T) {
+			resp := doJSON("PUT", "/portal/devices/"+mac+"/gateway", map[string]any{"gateway_direction": direction}, customerCookie(owner))
+			assertStatus(t, resp, http.StatusConflict)
+			resp.Body.Close()
+			var got string
+			testDB.Raw("SELECT gateway_direction FROM nodes WHERE mac = ?", mac).Scan(&got)
+			if got != "direct" {
+				t.Fatalf("rejected %s changed gateway_direction to %q", direction, got)
+			}
+		})
+	}
+}
+
 func TestCountryOverrideBeatsReportedCountry(t *testing.T) {
 	mac, _, _, credential := boundGatewayFixture(t)
 	// Reported CN would pick the domestic split; the override must win.

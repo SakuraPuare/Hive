@@ -282,9 +282,9 @@ if [ "$PROFILE" = nanopi-r28s ] && [ ! -f "${ARMBIAN_DIR}/config/boards/nanopi-r
     exit 1
 fi
 
-# 检查关键二进制
+# 检查 overlay 预置二进制；cloudflared 由 customize-image.sh 安装并校验 /usr/bin/cloudflared。
 OVERLAY_BIN="${ROOT_DIR}/armbian-build/userpatches/overlay/usr/local/bin"
-for bin in xray cloudflared frpc easytier-core mihomo xray-exporter; do
+for bin in xray frpc easytier-core mihomo xray-exporter; do
     if [ ! -f "${OVERLAY_BIN}/${bin}" ]; then
         echo "ERROR: ${bin} not found. Run: ./scripts/download-binaries.sh"
         exit 1

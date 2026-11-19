@@ -493,17 +493,32 @@ function GatewayTable({
               .split(',')
               .map((s) => s.trim())
               .filter(Boolean);
+            // Match resolveGatewayDirection: a valid operator override wins;
+            // CN or an unknown country defaults to a domestic gateway.
+            const overrideCountry = (n.country_override ?? '').trim().toUpperCase();
+            const reportedCountry = (n.country ?? '').trim().toUpperCase();
+            const country = /^[A-Z]{2}$/.test(overrideCountry)
+              ? overrideCountry
+              : /^[A-Z]{2}$/.test(reportedCountry) ? reportedCountry : '';
+            const storedDirection = direction.trim().toLowerCase();
+            const resolvedDirection = storedDirection === 'auto'
+              ? (country && country !== 'CN' ? 'overseas' : 'domestic')
+              : storedDirection === 'domestic' || storedDirection === 'overseas'
+                || storedDirection === 'global' || storedDirection === 'direct'
+                ? storedDirection
+                : 'domestic';
+            // global/direct use the opposite of the node's own exit direction.
+            const ownDirection = n.exit_direction?.trim().toLowerCase() === 'domestic'
+              ? 'domestic' : 'overseas';
+            const required = resolvedDirection === 'overseas'
+              ? 'domestic'
+              : resolvedDirection === 'domestic'
+                ? 'overseas'
+                : (ownDirection === 'domestic' ? 'overseas' : 'domestic');
             const candidates = nodes.filter((c) => {
               if (!c.mac || c.mac === mac) return false;
-              // 上游必须与本网关方向互补，与服务端过滤保持一致：
-              // 境内网关(domestic)用出海节点，境外网关(overseas)用回国节点，
-              // global/direct 用节点自身方向的对侧。
-              const required = direction === 'overseas'
-                ? 'domestic'
-                : direction === 'domestic'
-                  ? 'overseas'
-                  : (n.exit_direction === 'domestic' ? 'overseas' : 'domestic');
-              return (c.exit_direction || 'overseas') === required;
+              return (c.exit_direction?.trim().toLowerCase() === 'domestic'
+                ? 'domestic' : 'overseas') === required;
             });
             const isSaving = savingMacs.has(mac);
             const rowDisabled = !canWrite || isSaving;

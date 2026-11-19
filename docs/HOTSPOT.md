@@ -56,6 +56,7 @@ grep -E '^WIFI_' /etc/hive/node-info
      - 给 `10.42.1.0/24` 加 SNAT（`! -o Meta` 时才 NAT），客户端经物理上行直连出网。
    - **转发放行是双向的**：入向按「AP 接口 + 热点网段」、回程按 `conntrack --ctorigsrc <热点网段>`（出向 oif=AP 接口），两条都插在旧固件遗留的订阅门禁 `DROP` 之上；新固件不再落 DROP，这段只在升级窗口生效。
    - 触发点：热点生成、`setup-firewall.sh`、`hive-mihomo.service.d/10-hive-hotspot.conf`（起停）、网关兜底/恢复（`hive_gateway_unblock_forward`）。全部幂等。
+   - 启动钩子接受 Mihomo 的 `SubState=running|start-post`；`ExecStartPost` 时单元仍是 activating，但进程已启动。DNS 脚本继续等待 1053 监听就绪；停止或失败状态仍使用公共 DNS。
    - 2.4G 的 UFW 洞由 NM dispatcher `90-hive-hotspot` 在连接 up 时放行、down 时撤销（接口名持久化到 `/run` 供精确清理）。
 
 ## 配置（可选，`/etc/hive/config.env` 或构建时 `.env` 覆盖）

@@ -53,14 +53,19 @@ elif name=='xray':
     if (root/('fail-'+action)).exists():sys.exit(1)
     if action=='statsquery':print(json.dumps({'stat':state['stats']}))
     elif action=='statsonlineiplist':print(json.dumps({'users':state.get('online',[])}))
-    elif action=='lsrules':print(json.dumps({'rules':state.get('routing_rules',[])}))
+    elif action=='lsrules':print(json.dumps({'rules':[{'ruleTag':r.get('ruleTag',''),'tag':r.get('outboundTag','')} for r in state.get('routing_rules',[])]}))
     elif action=='rmrules':
         tags=[a for a in args[2:] if not a.startswith('-')]
         state['routing_rules']=[r for r in state.get('routing_rules',[]) if r.get('ruleTag') not in tags]
+        state.setdefault('routing_history',[]).append(state['routing_rules'])
         save()
     elif action=='adrules':
         cfg=json.loads(Path(args[-1]).read_text())
-        state['routing_rules']=state.get('routing_rules',[])+cfg['routing']['rules']
+        rules=cfg['routing']['rules']
+        existing=state.get('routing_rules',[]) if '-append' in args else []
+        if {r.get('ruleTag') for r in existing} & {r.get('ruleTag') for r in rules}:sys.exit(1)
+        state['routing_rules']=existing+rules
+        state.setdefault('routing_history',[]).append(state['routing_rules'])
         save()
     elif action=='adu':
         if not args[-1].endswith('.json'):sys.exit(23)
@@ -614,7 +619,8 @@ class SubscriptionScripts(unittest.TestCase):
         self.state_update(online=[{'email':'sub-1','ips':[{'ip':'203.0.113.7','lastSeen':1},{'ip':'203.0.113.8','lastSeen':1}]}])
         self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'used':2,'allowed_ips':['203.0.113.7']}])
         self.run_agent('hive-xray-sync')
-        self.assertEqual(self.state()['routing_rules'],[{'type':'field','ruleTag':'hive-devlimit-1','user':['sub-1'],'source':['203.0.113.8/32'],'outboundTag':'block'}])
+        self.assertEqual([{k:v for k,v in r.items() if k!='ruleTag'} for r in self.state()['routing_rules']],
+                         [{'type':'field','user':['sub-1'],'source':['203.0.113.8/32'],'outboundTag':'block'}])
         report=json.loads((self.root/'reports').read_text().splitlines()[-1])
         self.assertEqual(report['online'],[{'subscription_id':1,'ips':['203.0.113.7','203.0.113.8']}])
 
@@ -646,11 +652,35 @@ class SubscriptionScripts(unittest.TestCase):
         self.run_agent('hive-xray-sync')
         self.assertEqual(len(self.state()['routing_rules']),1)
 
+    def test_device_limit_update_never_drops_existing_block_or_unrelated_route(self):
+        ips=[{'ip':ip,'lastSeen':1} for ip in ['203.0.113.7','203.0.113.8','203.0.113.9']]
+        self.state_update(online=[{'email':'sub-1','ips':ips}])
+        self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':2,'allowed_ips':['203.0.113.7','203.0.113.9']}])
+        self.run_agent('hive-xray-sync')
+        old=self.state()['routing_rules']
+        unrelated={'type':'field','ruleTag':'operator-rule','source':['192.0.2.1/32'],'outboundTag':'direct'}
+        self.state_update(routing_rules=old+[unrelated],routing_history=[])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['routing_history'],[],'unchanged blocks must not be reinstalled')
+        self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'allowed_ips':['203.0.113.7']}])
+        (self.root/'fail-adrules').touch()
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['routing_rules'],old+[unrelated],'failed installation must preserve old blocks')
+        (self.root/'fail-adrules').unlink()
+        self.run_agent('hive-xray-sync')
+        for snapshot in self.state()['routing_history']:
+            self.assertTrue(any('203.0.113.8/32' in rule.get('source',[]) and rule.get('outboundTag')=='block' for rule in snapshot),
+                            'the still-blocked IP must never become unblocked during replacement')
+            self.assertIn(unrelated,snapshot)
+        rules=[r for r in self.state()['routing_rules'] if r.get('outboundTag')=='block']
+        self.assertEqual([r['source'] for r in rules],[['203.0.113.8/32','203.0.113.9/32']])
+
     def test_device_limit_ipv6_rule(self):
         self.state_update(online=[{'email':'sub-1','ips':[{'ip':'2001:db8::1','lastSeen':1},{'ip':'2001:db8::2','lastSeen':1}]}])
         self.desired([{'email':'sub-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'used':2,'allowed_ips':['2001:db8::1']}])
         self.run_agent('hive-xray-sync')
-        self.assertEqual(self.state()['routing_rules'],[{'type':'field','ruleTag':'hive-devlimit-1','user':['sub-1'],'source':['2001:db8::2/128'],'outboundTag':'block'}])
+        self.assertEqual([{k:v for k,v in r.items() if k!='ruleTag'} for r in self.state()['routing_rules']],
+                         [{'type':'field','user':['sub-1'],'source':['2001:db8::2/128'],'outboundTag':'block'}])
 
     def test_outage_retries_do_not_restart_mihomo_once_in_direct_fallback(self):
         # 断网且已经切成直连兜底之后，clash-sync 每 15s 还会失败一次；此时不能重写

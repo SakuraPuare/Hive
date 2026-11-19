@@ -30,7 +30,11 @@ AP_ADDR="${AP_ADDR%%/*}"
 
 # mihomo 的 DNS 端口真的在监听才算数：ExecStartPost 时进程已 fork，端口可能还没 bind。
 mihomo_dns_up() {
-    systemctl is-active --quiet hive-mihomo || return 1
+    # ExecStartPost 时 ActiveState 仍为 activating，但主进程已在运行。
+    case "$(systemctl show -p SubState --value hive-mihomo 2>/dev/null)" in
+        running|start-post) ;;
+        *) return 1 ;;
+    esac
     command -v ss >/dev/null 2>&1 || return 0
     ss -lunH 'sport = :1053' 2>/dev/null | grep -q .
 }

@@ -170,8 +170,10 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 - 预取失败不会让构建失败，只是回落到 ghcr.io 慢速直连。
 - Tailscale 源由 `customize-image.sh` 现场探测：USTC → NJU → 官方，取第一个能拉到 `dists/${RELEASE}/Release` 的；两个镜像的 `Packages.gz` 与官方逐字节一致（USTC 最新、NJU 快但滞后约两周），所以 apt 的签名校验不受影响。
 - cloudflared 走官方 apt 源 `https://pkg.cloudflare.com/cloudflared`（套件用 `any`：该仓库只有 any/bookworm/jammy/noble/focal，没有 trixie；二进制是静态 Go）。deb 18.3 MiB，比 raw 二进制 37.7 MiB 少一半，且版本与校验和进 apt 索引；包内 postinst 会建 `/usr/local/bin/cloudflared` 软链，所以老路径仍可用（`cloudflared.service` 里的 ExecStart 已改为 `/usr/bin/cloudflared`）。实测 516 KB/s，没有国内镜像。
-- cloudflared 的安装是「apt 优先、失败回落」：`customize-image.sh` 先 `apt-get install cloudflared`，失败才用 `/var/cache/hive-debs/cloudflared_*_arm64.deb`（`download-binaries.sh` 按官方 Packages 预取、校验 sha256）；两者都没有才硬失败。这样仓库抖动不会把整次构建带崩，正常情况又拿到 apt 管理的版本。
+- cloudflared 的安装是「apt 优先、失败回落」：仓库密钥下载或校验失败时跳过该源，不中止构建；`customize-image.sh` 先尝试 `apt-get install cloudflared`，失败才用 `/var/cache/hive-debs/cloudflared_*_arm64.deb`（`download-binaries.sh` 按官方 Packages 预取、校验 sha256）；两者都没有才硬失败。
+- 构建前只检查 overlay 预置的裸二进制，不要求 `overlay/usr/local/bin/cloudflared`；cloudflared 在 chroot 安装后由 `customize-image.sh` 校验 `/usr/bin/cloudflared`，缺失仍会中止构建。
 - Cloudflare WARP 没有镜像：实测 TUNA / USTC / NJU / ZJU / CERNET / PKU / SJTU / SUSTech / aliyun / tencent / huawei 全 404。`./scripts/download-binaries.sh` 按官方 `Packages.gz` 解析当前 arm64 版本、校验 sha256 后放进 `userpatches/overlay/var/cache/hive-debs/`（已 gitignore），`customize-image.sh` 命中本地 deb 就不走官方源、装完删除；预取失败自动回落到官方源。
+- Cloudflare 的 `Packages.gz` 索引每次预取都会刷新并校验 gzip，只有获取失败时才回退上一次的索引；deb 按版本化文件名长期缓存，因此能发现新版，也不会重复下载同版本包。
 - 境内/境外的判断看 `GITHUB_SERVER_URL`（只有 GitHub 官方 runner 是 `https://github.com`），不看 `GITHUB_ACTIONS`：自托管 `develop` runner 同样会导出 `GITHUB_ACTIONS=true`，按它判断会让境内 CI 走官方源。
 
 仍直连的部分：Docker 基础镜像 `ghcr.io/armbian/docker-armbian-build:*`（仅首次）、GitHub Releases 上的 xray/mihomo/frp 等（有持久缓存）、`rockchip-linux/rkbin`、R28S 的厂商内核分支 `github.com/armbian/linux-rockchip`。确实慢时给 `git`/`curl` 设 `https_proxy`（框架用 `env -i` 跑 oras 时也会透传 `http_proxy`/`https_proxy`/`HTTP_PROXY`/`HTTPS_PROXY`）；Docker 守护进程拉镜像要另外在 `/etc/docker/daemon.json` 或 systemd drop-in 里配代理。
