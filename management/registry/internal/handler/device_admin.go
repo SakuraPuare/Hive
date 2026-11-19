@@ -53,8 +53,10 @@ func (h *Handler) HandleAdminAssignDevice(w http.ResponseWriter, r *http.Request
 	res := h.DB.Exec(
 		"UPDATE nodes SET bound_subscription_id = IF(owner_customer_id = ?, bound_subscription_id, NULL), "+
 			"owner_exit_enabled = IF(owner_customer_id = ?, owner_exit_enabled, 1), "+
+			"owner_access_token = IF(owner_customer_id = ?, owner_access_token, NULL), "+
+			"owner_xray_uuid = IF(owner_customer_id = ?, owner_xray_uuid, NULL), "+
 			"owner_customer_id = ?, claimed_at = ? WHERE mac = ? AND server_enabled = 0",
-		body.CustomerID, body.CustomerID, body.CustomerID, now, mac,
+		body.CustomerID, body.CustomerID, body.CustomerID, body.CustomerID, body.CustomerID, now, mac,
 	)
 	if res.Error != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())
@@ -101,7 +103,7 @@ func (h *Handler) HandleAdminAssignDevice(w http.ResponseWriter, r *http.Request
 func (h *Handler) HandleAdminUnassignDevice(w http.ResponseWriter, r *http.Request) {
 	mac := r.PathValue("mac")
 	res := h.DB.Exec(
-		"UPDATE nodes SET owner_customer_id = NULL, claimed_at = NULL, bound_subscription_id = NULL, owner_exit_enabled = 1 WHERE mac = ?", mac,
+		"UPDATE nodes SET owner_customer_id = NULL, claimed_at = NULL, bound_subscription_id = NULL, owner_exit_enabled = 1, owner_access_token = NULL, owner_xray_uuid = NULL WHERE mac = ?", mac,
 	)
 	if res.Error != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+res.Error.Error())

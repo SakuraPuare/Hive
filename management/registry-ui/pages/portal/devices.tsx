@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { useLocale, useTranslations } from 'next-intl';
 import { countryDisplay } from '@/lib/locations';
 import { useCustomer } from '@/lib/portal-auth';
-import { apiPath, portalSessionApi } from '@/lib/openapi-session';
+import { apiPath, apiUrl, portalSessionApi } from '@/lib/openapi-session';
 import { useClipboard } from '@/lib/use-clipboard';
 import { getErrorMessage } from '@/lib/i18n';
 import { PortalService } from '@/src/generated/client';
@@ -104,6 +104,10 @@ export default function PortalDevicesPage() {
   const [error, setError] = useState('');
   const [exitBusy, setExitBusy] = useState('');
   const [dirBusy, setDirBusy] = useState('');
+  const [freeSubBusy, setFreeSubBusy] = useState('');
+  const [freeSub, setFreeSub] = useState<{ device: model_Node; token: string } | null>(null);
+  const { copied: freeClashCopied, copy: copyFreeClash } = useClipboard();
+  const { copied: freeVlessCopied, copy: copyFreeVless } = useClipboard();
 
   // 认领对话框
   const [claimOpen, setClaimOpen] = useState(false);
@@ -333,6 +337,22 @@ export default function PortalDevicesPage() {
     }
   }, [subDevice, t, toast, loadDevices]);
 
+  const openFreeSubscription = useCallback(async (device: model_Node) => {
+    if (!device.mac) return;
+    setFreeSubBusy(device.mac);
+    try {
+      const res = await fetch(apiPath(`/portal/devices/${device.mac}/subscription-access`), { credentials: 'include' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw { error: body?.error || t('freeSubscriptionFailed') };
+      if (typeof body?.token !== 'string' || !body.token) throw { error: t('freeSubscriptionFailed') };
+      setFreeSub({ device, token: body.token });
+    } catch (e) {
+      toast.error(getErrorMessage(e, t('freeSubscriptionFailed')));
+    } finally {
+      setFreeSubBusy('');
+    }
+  }, [t, toast]);
+
   const openDashboard = useCallback(async (device: model_Node) => {
     setDashDevice(device);
     setDashInfo(null);
@@ -526,6 +546,8 @@ export default function PortalDevicesPage() {
                     <TableCell className="text-sm text-muted-foreground">{d.claimed_at ? fmt.dateTime(d.claimed_at) : '—'}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="sm" loading={freeSubBusy === d.mac} disabled={!!freeSubBusy}
+                          onClick={() => openFreeSubscription(d)}>{t('freeSubscription')}</Button>
                         {d.gateway_enabled && (
                           <Button variant="ghost" size="sm" onClick={() => openSubscription(d)}>{t('subscriptionConfig')}</Button>
                         )}
@@ -778,6 +800,36 @@ export default function PortalDevicesPage() {
                   </ul>
                   <p className="text-xs text-muted-foreground">{t('mihomoHint')}</p>
                 </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!freeSub} onOpenChange={(open) => { if (!open) setFreeSub(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('freeSubscriptionTitle', { name: freeSub?.device.hostname || freeSub?.device.mac || '' })}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{t('freeSubscriptionHint')}</p>
+            {freeSub && (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="free-subscription-clash">{t('freeSubscriptionClash')}</Label>
+                  <Input id="free-subscription-clash" readOnly value={apiUrl(`/d/${freeSub.token}`)} className="font-mono text-xs" />
+                  <Button variant="secondary" onClick={async () => {
+                    if (!await copyFreeClash(apiUrl(`/d/${freeSub.token}`))) toast.error(t('copyFailed'));
+                  }}>{freeClashCopied ? tCommon('copied') : t('copyClash')}</Button>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="free-subscription-vless">{t('freeSubscriptionVless')}</Label>
+                  <Input id="free-subscription-vless" readOnly value={apiUrl(`/d/${freeSub.token}/vless`)} className="font-mono text-xs" />
+                  <Button variant="secondary" onClick={async () => {
+                    if (!await copyFreeVless(apiUrl(`/d/${freeSub.token}/vless`))) toast.error(t('copyFailed'));
+                  }}>{freeVlessCopied ? tCommon('copied') : t('copyVless')}</Button>
+                </div>
+                <p className="text-xs text-muted-foreground">{t('freeSubscriptionImportHint')}</p>
               </>
             )}
           </div>

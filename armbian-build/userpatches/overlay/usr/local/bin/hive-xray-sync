@@ -48,24 +48,25 @@ fi
 # Replay unacknowledged snapshots before starting a new runtime. No bytes are
 # counted twice even if a previous response was lost after its DB commit.
 post_report() {
-    local body status source="$1" online="${2:-}" request="$1" merged=''
+    local body status source="$1" online="${2:-}" request
     body=$(mktemp "$HIVE_ACCESS_DIR/accounting-response.XXXXXX") || return 1
-    if [ -n "$online" ]; then
-        merged=$(mktemp "$HIVE_ACCESS_DIR/accounting-request.XXXXXX") || { rm -f "$body"; return 1; }
-        if ! jq --argjson online "$online" '. + {online: $online}' "$source" > "$merged"; then
-            rm -f "$body" "$merged"; return 1
-        fi
-        request="$merged"
+    request=$(mktemp "$HIVE_ACCESS_DIR/accounting-request.XXXXXX") || { rm -f "$body"; return 1; }
+    # Advertise support on the wire, including replayed snapshots, without
+    # changing durable counters or adding online data to historical reports.
+    if ! jq --argjson online "${online:-null}" '
+        . + {owner_access: true} + (if $online == null then {} else {online: $online} end)
+    ' "$source" > "$request"; then
+        rm -f "$body" "$request"; return 1
     fi
     if ! status=$(curl -4 -sS --max-time 5 -o "$body" -w '%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" \
       -H 'Content-Type: application/json' --data-binary "@$request" \
       "$ACCOUNTING_URL"); then
-        rm -f "$body"; [ -z "$merged" ] || rm -f "$merged"; return 1
+        rm -f "$body" "$request"; return 1
     fi
     case "$status" in
-        200) cat "$body"; rm -f "$body"; [ -z "$merged" ] || rm -f "$merged" ;;
-        410) rm -f "$body"; [ -z "$merged" ] || rm -f "$merged"; return 10 ;; # Permanently fenced, never bill again.
-        *) rm -f "$body"; [ -z "$merged" ] || rm -f "$merged"; return 1 ;;
+        200) cat "$body"; rm -f "$body" "$request" ;;
+        410) rm -f "$body" "$request"; return 10 ;; # Permanently fenced, never bill again.
+        *) rm -f "$body" "$request"; return 1 ;;
     esac
 }
 replay_reports() {
@@ -210,7 +211,7 @@ fi
 if ! printf '%s' "$response" | jq -e '
   (.lease_seconds | type == "number" and . >= 1 and . <= 45 and floor == .) and
   (.users | type == "array") and
-  all(.users[]; (.email | test("^sub-[1-9][0-9]*$")) and (.uuid | test("^[0-9a-fA-F-]{36}$"))) and
+  all(.users[]; (.email | test("^(sub|owner)-[1-9][0-9]*$")) and (.uuid | test("^[0-9a-fA-F-]{36}$"))) and
   (([.users[].email] | unique | length) == (.users | length)) and
   ((.device_limits // []) | type == "array") and
   all(.device_limits[]?;

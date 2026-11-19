@@ -113,6 +113,8 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 
 	// ── 公开订阅分组（无需认证）────────────────────────────────────────────
 	mux.HandleFunc("GET /s/{token}", h.HandlePublicGroupClash)
+	mux.HandleFunc("GET /d/{token}", h.HandleOwnerSubscriptionClash)
+	mux.HandleFunc("GET /d/{token}/vless", h.HandleOwnerSubscriptionVless)
 
 	// ── 订阅分组管理 ──────────────────────────────────────────────────────
 	mux.HandleFunc("GET /admin/subscription-groups", perm("subscription:read")(h.HandleListGroups))
@@ -226,6 +228,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// ── 客户门户 — 我的设备 ──────────────────────────────────────────────────
 	mux.HandleFunc("GET /portal/devices", cust(h.HandlePortalListDevices))
 	mux.HandleFunc("GET /portal/devices/{mac}", cust(h.HandlePortalGetDevice))
+	mux.HandleFunc("GET /portal/devices/{mac}/subscription-access", cust(h.HandlePortalDeviceSubscriptionAccess))
 	mux.HandleFunc("POST /portal/devices/claim", cust(h.HandlePortalClaimDevice))
 	mux.HandleFunc("POST /portal/devices/{mac}/unbind", cust(h.HandlePortalUnbindDevice))
 	mux.HandleFunc("PUT /portal/devices/{mac}/exit", cust(h.HandlePortalSetDeviceExit))

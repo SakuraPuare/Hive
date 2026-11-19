@@ -455,13 +455,13 @@ func (h *Handler) nodeDeviceLimits(subIDs []uint, now time.Time) ([]NodeDeviceLi
 
 // HandleNodeXrayUsers responds after durable accounting has committed.
 func (h *Handler) HandleNodeXrayUsers(w http.ResponseWriter, r *http.Request) {
-	h.respondXrayUsers(w, r, true)
+	h.respondXrayUsers(w, r, true, false)
 }
 
 // respondXrayUsers returns the subscriptions this node may serve. Trusted exit
 // servers only see subscriptions assigned to them via lines; legacy device mode
 // keeps the pre-2026-10-27 behaviour where every enabled node can serve a line.
-func (h *Handler) respondXrayUsers(w http.ResponseWriter, r *http.Request, requireServer bool) {
+func (h *Handler) respondXrayUsers(w http.ResponseWriter, r *http.Request, requireServer, ownerAccess bool) {
 	if requireServer {
 		if !h.Auth.RequireServerAuth(w, r) {
 			return
@@ -524,6 +524,25 @@ func (h *Handler) respondXrayUsers(w http.ResponseWriter, r *http.Request, requi
 			Email: fmt.Sprintf("sub-%d", row.ID),
 		})
 		subIDs = append(subIDs, row.ID)
+	}
+	// Owner access is a separate, unmetered identity, never a subscription or
+	// a device-limit entry. Trusted servers cannot serve customer-owned devices.
+	if !requireServer && ownerAccess {
+		var owner struct {
+			CustomerID uint
+			UUID       string
+		}
+		if err := h.DB.Raw("SELECT n.owner_customer_id AS customer_id, n.owner_xray_uuid AS uuid "+
+			"FROM nodes n JOIN customers c ON c.id = n.owner_customer_id AND c.status = 'active' "+
+			"WHERE n.mac = ? AND n.server_enabled = 0 AND n.enabled = 1 AND n.status = 'active' "+
+			"AND n.exit_enabled = 1 AND n.owner_exit_enabled = 1 "+
+			"AND n.owner_access_token IS NOT NULL AND n.owner_xray_uuid <> ''", mac).Scan(&owner).Error; err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+			return
+		}
+		if owner.CustomerID != 0 && owner.UUID != "" {
+			users = append(users, XrayUser{UUID: owner.UUID, Email: fmt.Sprintf("owner-%d", owner.CustomerID)})
+		}
 	}
 	deviceLimits, err := h.nodeDeviceLimits(subIDs, time.Now().UTC())
 	if err != nil {

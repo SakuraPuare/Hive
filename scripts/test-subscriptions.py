@@ -482,6 +482,99 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertEqual(self.state()['clients'],[{'email':'sub-1','id':UUID,'level':0}])
         self.assertEqual((self.root/'run/hive-subscriptions/xray.users').read_text(),f'sub-1\t{UUID}\n')
 
+    def test_owner_only_device_access_is_free_and_has_no_device_limit(self):
+        (self.root/'etc/hive/server-token').unlink()
+        (self.root/'etc/hive/device-token').write_text('customer-device-token')
+        self.desired([{'email':'owner-1','uuid':UUID}],device_limits=[{'subscription_id':1,'device_limit':1,'allowed_ips':['203.0.113.7']}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['clients'],[{'email':'owner-1','id':UUID,'level':0}])
+        self.assertEqual((self.root/'run/hive-subscriptions/xray.users').read_text(),f'owner-1\t{UUID}\n')
+        self.state_update(stats=[{'name':'user>>>owner-1>>>traffic>>>uplink','value':'123'},
+                                 {'name':'user>>>owner-1>>>traffic>>>downlink','value':'456'}],
+                          online=[{'email':'owner-1','ips':[{'ip':'203.0.113.8','lastSeen':1}]}])
+        self.run_agent('hive-xray-sync')
+        reports=[json.loads(line) for line in (self.root/'reports').read_text().splitlines()]
+        self.assertTrue(all(report['counters']==[] and report.get('online',[])==[] for report in reports))
+        self.assertTrue(all(report['owner_access'] is True for report in reports))
+        self.assertEqual(self.state().get('billed',0),0)
+        self.assertEqual(self.state()['routing_rules'],[])
+        self.assertTrue(self.state()['xray'])
+        calls=(self.root/'calls').read_text()
+        self.assertIn('xray api adu ',calls)
+        self.assertIn("-pattern user>>>sub-",calls)
+        self.assertIn('/nodes/aabbccddeeff/xray-users',calls)
+
+    def test_owner_and_subscription_users_keep_billing_and_limits_separate(self):
+        self.desired([{'email':'sub-1','uuid':UUID},{'email':'owner-1','uuid':UUID2}],
+                     device_limits=[{'subscription_id':1,'device_limit':1,'allowed_ips':['203.0.113.7']}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['clients'],[{'email':'owner-1','id':UUID2,'level':0},
+                                                 {'email':'sub-1','id':UUID,'level':0}])
+        self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'30'},
+                                 {'name':'user>>>sub-1>>>traffic>>>downlink','value':'45'},
+                                 {'name':'user>>>owner-1>>>traffic>>>uplink','value':'1000'},
+                                 {'name':'user>>>owner-1>>>traffic>>>downlink','value':'2000'}],
+                          online=[{'email':'sub-1','ips':[{'ip':'203.0.113.7','lastSeen':1},{'ip':'203.0.113.8','lastSeen':1}]},
+                                  {'email':'owner-1','ips':[{'ip':'203.0.113.9','lastSeen':1}]}])
+        self.run_agent('hive-xray-sync')
+        report=json.loads((self.root/'reports').read_text().splitlines()[-1])
+        self.assertEqual(report['counters'],[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'30'},
+                                            {'name':'user>>>sub-1>>>traffic>>>downlink','value':'45'}])
+        self.assertEqual(report['online'],[{'subscription_id':1,'ips':['203.0.113.7','203.0.113.8']}])
+        self.assertEqual(self.state()['billed'],75)
+        self.assertEqual([{k:v for k,v in r.items() if k!='ruleTag'} for r in self.state()['routing_rules']],
+                         [{'type':'field','user':['sub-1'],'source':['203.0.113.8/32'],'outboundTag':'block'}])
+        reports=[json.loads(line) for line in (self.root/'reports').read_text().splitlines()]
+        self.assertTrue(all('owner-' not in c['name'] for report in reports for c in report['counters']))
+        self.assertTrue(all(report['owner_access'] is True for report in reports))
+
+    def test_owner_capability_is_added_to_replay_without_changing_snapshots(self):
+        self.desired([{'email':'owner-1','uuid':UUID}])
+        self.run_agent('hive-xray-sync')
+        (self.root/'lose-response').touch()
+        self.run_agent('hive-xray-sync',expected=1)
+        pending=list((self.root/'var/lib/hive/traffic-pending').glob('*.json'))
+        self.assertTrue(pending)
+        for path in pending:
+            snapshot=json.loads(path.read_text())
+            self.assertNotIn('owner_access',snapshot)
+            self.assertNotIn('online',snapshot)
+        self.run_agent('hive-xray-sync')
+        reports=[json.loads(line) for line in (self.root/'reports').read_text().splitlines()]
+        self.assertTrue(all(report['owner_access'] is True for report in reports))
+        self.assertTrue(any('online' not in report for report in reports))
+        self.assertFalse(list((self.root/'var/lib/hive/traffic-pending').glob('*.json')))
+        self.assertFalse(list((self.root/'run/hive-subscriptions').glob('accounting-request.*')))
+
+    def test_owner_revocation_restarts_runtime_and_preserves_paid_counters(self):
+        self.desired([{'email':'sub-1','uuid':UUID},{'email':'owner-1','uuid':UUID2}])
+        self.run_agent('hive-xray-sync')
+        epoch=self.state()['epoch']
+        self.state_update(connections=True,
+                          stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'75'},
+                                 {'name':'user>>>owner-1>>>traffic>>>uplink','value':'1000'}])
+        self.desired([{'email':'sub-1','uuid':UUID}])
+        (self.root/'calls').write_text('')
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['epoch'],epoch+1)
+        self.assertFalse(self.state()['connections'])
+        self.assertEqual(self.state()['clients'],[{'email':'sub-1','id':UUID,'level':0}])
+        self.assertEqual((self.root/'run/hive-subscriptions/xray.users').read_text(),f'sub-1\t{UUID}\n')
+        # The restarted runtime's generation reaches the registry on its next
+        # report; verify continued paid access instead of that internal timing.
+        self.state_update(stats=[{'name':'user>>>sub-1>>>traffic>>>uplink','value':'25'}])
+        self.run_agent('hive-xray-sync')
+        self.assertEqual(self.state()['clients'],[{'email':'sub-1','id':UUID,'level':0}])
+        self.assertEqual(self.state()['billed'],100)
+        reports=[json.loads(line) for line in (self.root/'reports').read_text().splitlines()]
+        self.assertTrue(all(report['owner_access'] is True for report in reports))
+        self.assertTrue(all('owner-' not in c['name'] for report in reports for c in report['counters']))
+        self.assertFalse(list((self.root/'var/lib/hive/traffic-pending').glob('*.json')))
+        calls=(self.root/'calls').read_text()
+        self.assertEqual(calls.count('systemctl restart xray\n'),1)
+        self.assertNotIn('xray api rmu ',calls)
+        self.assertIn('xray api adu ',calls)
+
     def test_partially_applied_users_stop_the_agent(self):
         self.desired([{'email':'sub-1','uuid':UUID},{'email':'sub-2','uuid':UUID2}])
         (self.root/'partial-adu').touch()

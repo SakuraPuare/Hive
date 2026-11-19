@@ -700,6 +700,14 @@ ALTER TABLE nodes ADD COLUMN country VARCHAR(2) NOT NULL DEFAULT '' COMMENT '节
 ALTER TABLE nodes ADD COLUMN country_override VARCHAR(2) NOT NULL DEFAULT '' COMMENT '人工指定的国家（优先于心跳上报；空=自动）';
 `,
 	},
+	{
+		version: 37,
+		desc:    "nodes: private owner subscription credentials independent of paid plans",
+		up: `
+ALTER TABLE nodes ADD COLUMN owner_access_token CHAR(64) NULL DEFAULT NULL, ADD UNIQUE KEY uk_nodes_owner_access_token (owner_access_token);
+ALTER TABLE nodes ADD COLUMN owner_xray_uuid CHAR(36) NULL DEFAULT NULL;
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

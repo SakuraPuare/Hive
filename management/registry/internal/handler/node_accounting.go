@@ -47,6 +47,7 @@ type NodeAccountingRequest struct {
 	Epoch      string               `json:"epoch"`                                                        // Xray systemd InvocationID
 	Counters   []NodeTrafficCounter `json:"counters"`
 	Online     []NodeOnlineDevice   `json:"online,omitempty"`
+	OwnerAccess bool               `json:"owner_access,omitempty"` // Agent understands owner-* users; legacy agents default to paid users only
 }
 
 var counterName = regexp.MustCompile(`^user>>>sub-([1-9][0-9]*)>>>traffic>>>(uplink|downlink)$`)
@@ -256,7 +257,7 @@ func (h *Handler) handleAccounting(w http.ResponseWriter, r *http.Request, requi
 		h.jsonErr(w, 500, fmt.Sprintf("accounting: %v", err))
 		return
 	}
-	h.respondXrayUsers(w, r, requireServer)
+	h.respondXrayUsers(w, r, requireServer, report.OwnerAccess)
 }
 
 // Legacy agents cannot renew authorization without metering.

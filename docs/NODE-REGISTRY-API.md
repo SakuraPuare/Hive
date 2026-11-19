@@ -42,6 +42,9 @@
 | GET | /api/labels | Cookie 或 Bearer | 可打印标签 HTML |
 | GET | /api/portal/devices/{mac}/dashboard | 客户会话 | 网关节点 Mihomo 面板地址 + per-node secret |
 | GET | /api/portal/devices/{mac}/mihomo/{version\|connections} | 客户会话 | 只读代理节点 9090（门户内实时流量） |
+| GET | /api/portal/devices/{mac}/subscription-access | 客户会话 | 取得自有设备免费订阅 token（无套餐也可用，仅主人） |
+| GET | /api/d/{token} | 私有免费 token | 单台自有设备 Clash/Mihomo 配置，按出口方向分流，不扣套餐额度 |
+| GET | /api/d/{token}/vless | 私有免费 token | 单台自有设备 Base64 VLESS 订阅；解绑或转移后旧 token 失效 |
 | GET | /api/health | Cookie 或 Bearer | 健康检查 |
 | GET | /api/ | Cookie 或 Bearer | 控制台 Dashboard |
 

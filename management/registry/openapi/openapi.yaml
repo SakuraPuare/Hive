@@ -305,6 +305,9 @@ definitions:
         items:
           $ref: '#/definitions/handler.NodeOnlineDevice'
         type: array
+      owner_access:
+        description: Agent understands owner-* users; false or omitted grants paid users only. Ignored for trusted servers.
+        type: boolean
     type: object
   handler.NodeAccountingState:
     properties:
@@ -492,6 +495,7 @@ definitions:
         example: K7QF-2M9X
         type: string
     type: object
+  handler.PortalDeviceSubscriptionAccessResponse: {"type": "object", "properties": {"token": {"type": "string"}}}
   handler.PortalCreateOrderRequest:
     properties:
       plan_id:
@@ -1590,6 +1594,9 @@ info:
   title: Hive Node Registry API
   version: 0.1.0
 paths:
+  "/d/{token}": {"get": {"description": "仅当前有效归属的单台设备；按设备出口方向分流，不依赖付费套餐。出口关闭时返回无凭据直连配置。", "operationId": "OwnerSubscriptionClash", "parameters": [{"description": "设备私密 token", "in": "path", "name": "token", "required": true, "type": "string"}], "produces": ["text/plain"], "responses": {"200": {"description": "Clash subscription", "schema": {"type": "string"}}, "404": {"description": "Not Found", "schema": {"type": "string"}}}, "summary": "获取自有设备免费 Clash 订阅", "tags": ["subscription"]}}
+  "/d/{token}/vless": {"get": {"description": "返回单台自有设备的 base64 VLESS 链接；出口关闭时仅返回无凭据说明。", "operationId": "OwnerSubscriptionVless", "parameters": [{"description": "设备私密 token", "in": "path", "name": "token", "required": true, "type": "string"}], "produces": ["text/plain"], "responses": {"200": {"description": "VLESS subscription", "schema": {"type": "string"}}, "404": {"description": "Not Found", "schema": {"type": "string"}}}, "summary": "获取自有设备免费 VLESS 订阅", "tags": ["subscription"]}}
+  "/portal/devices/{mac}/subscription-access": {"get": {"description": "独立于付费套餐和额度；每台自有设备一个私密 token。仅设备当前主人可获取。", "operationId": "PortalDeviceSubscriptionAccess", "parameters": [{"description": "设备 MAC", "in": "path", "name": "mac", "required": true, "type": "string"}], "produces": ["application/json"], "responses": {"200": {"description": "OK", "schema": {"$ref": "#/definitions/handler.PortalDeviceSubscriptionAccessResponse"}}, "404": {"description": "Not Found", "schema": {"$ref": "#/definitions/handler.ErrorResponse"}}, "500": {"description": "Internal Server Error", "schema": {"$ref": "#/definitions/handler.ErrorResponse"}}}, "security": [{"CustomerSessionCookie": []}], "summary": "获取我的设备免费订阅入口", "tags": ["portal"]}}
   /:
     get:
       description: 返回 Hive Registry 首页 HTML

@@ -105,7 +105,7 @@ func (h *Handler) HandlePortalClaimDevice(w http.ResponseWriter, r *http.Request
 	// 原子条件更新：只在 hash 匹配且尚未被认领时绑定。RowsAffected 是竞态安全的
 	// 单一判定点——防止两人同时认领同一设备、以及重复认领。
 	res := h.DB.Exec(
-		"UPDATE nodes SET owner_customer_id = ?, claimed_at = ?, bound_subscription_id = NULL, owner_exit_enabled = 1 "+
+		"UPDATE nodes SET owner_customer_id = ?, claimed_at = ?, bound_subscription_id = NULL, owner_exit_enabled = 1, owner_access_token = NULL, owner_xray_uuid = NULL "+
 			"WHERE claim_code_hash = ? AND claim_code_hash <> '' AND owner_customer_id IS NULL AND server_enabled = 0",
 		cid, now, hashClaimCode(body.Code),
 	)
@@ -353,7 +353,7 @@ func (h *Handler) HandlePortalUnbindDevice(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := h.DB.Exec(
-		"UPDATE nodes SET owner_customer_id = NULL, claimed_at = NULL, bound_subscription_id = NULL, owner_exit_enabled = 1 WHERE mac = ? AND owner_customer_id = ?",
+		"UPDATE nodes SET owner_customer_id = NULL, claimed_at = NULL, bound_subscription_id = NULL, owner_exit_enabled = 1, owner_access_token = NULL, owner_xray_uuid = NULL WHERE mac = ? AND owner_customer_id = ?",
 		mac, cid,
 	).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())

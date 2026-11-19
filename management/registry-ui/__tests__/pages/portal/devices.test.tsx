@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react';
 import PortalDevicesPage from '@/pages/portal/devices';
 import { mockRouter } from '@/test/setup';
+import { useToast } from '@/components/ui/toast';
 
 const mockCustomer = { id: 1, email: 'test@example.com', nickname: 'Test', status: 'active', created_at: '' };
 const mockUseCustomer = vi.fn();
@@ -33,6 +34,7 @@ vi.mock('@/src/generated/client', () => ({
 vi.mock('@/lib/openapi-session', () => ({
   portalSessionApi: (p: any) => p,
   apiPath: (path: string) => `/api${path}`,
+  apiUrl: (path: string) => `${window.location.origin}/api${path}`,
 }));
 
 const gatewayNode = {
@@ -190,5 +192,78 @@ describe('PortalDevicesPage', () => {
     await waitFor(() => {
       expect(mockUnbindSubscription).toHaveBeenCalledWith({ mac: 'aabbccddeeff' });
     });
+  });
+
+  it('offers free links for each owned device without a paid subscription, even when its exit is off', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode, { ...plainNode, exit_enabled: false, owner_exit_enabled: false }]);
+    const token = 'device-token';
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ token }) });
+
+    render(<PortalDevicesPage />);
+    await screen.findByText('hive-33445566');
+    expect(screen.getAllByRole('button', { name: 'portal.freeSubscription' })).toHaveLength(2);
+    const row = screen.getByText('hive-33445566').closest('tr')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'portal.freeSubscription' }));
+
+    const clashUrl = `${window.location.origin}/api/d/${token}`;
+    await screen.findByDisplayValue(clashUrl);
+    expect(screen.getByLabelText('portal.freeSubscriptionClash')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('portal.freeSubscriptionVless')).toHaveValue(`${clashUrl}/vless`);
+    expect(screen.getByText('portal.freeSubscriptionHint')).toBeInTheDocument();
+    expect(screen.getByText('portal.freeSubscriptionImportHint')).toBeInTheDocument();
+    expect(mockFetch).toHaveBeenCalledWith('/api/portal/devices/112233445566/subscription-access', { credentials: 'include' });
+  });
+
+  it('copies both absolute free subscription URLs for import into a proxy client', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ token: 'owner-token' }) });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<PortalDevicesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'portal.freeSubscription' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'portal.copyClash' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/api/d/owner-token`));
+    fireEvent.click(screen.getByRole('button', { name: 'portal.copyVless' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/api/d/owner-token/vless`));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'common.copied' })).toHaveLength(2));
+  });
+
+  it('shows a busy action while fetching free access and lets the owner retry a failed request', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    const { promise, resolve: finishRequest } = Promise.withResolvers<unknown>();
+    mockFetch.mockReturnValueOnce(promise);
+
+    render(<PortalDevicesPage />);
+    const button = await screen.findByRole('button', { name: 'portal.freeSubscription' });
+    fireEvent.click(button);
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    await act(async () => {
+      finishRequest({ ok: false, json: async () => ({ error: 'Device no longer belongs to you' }) });
+    });
+    await waitFor(() => expect(useToast().error).toHaveBeenCalledWith('Device no longer belongs to you'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(button).not.toBeDisabled();
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ token: 'retry-token' }) });
+    fireEvent.click(button);
+    await screen.findByDisplayValue(`${window.location.origin}/api/d/retry-token`);
+  });
+
+  it('reports network failures without displaying invalid free subscription links', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    mockFetch.mockRejectedValueOnce(new Error('Network offline'));
+
+    render(<PortalDevicesPage />);
+    const button = await screen.findByRole('button', { name: 'portal.freeSubscription' });
+    fireEvent.click(button);
+    await waitFor(() => expect(useToast().error).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(button).not.toBeDisabled();
   });
 });
