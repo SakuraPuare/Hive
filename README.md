@@ -71,10 +71,13 @@ flowchart LR
 | `nanopi-zero2` | NanoPi Zero2 / RK3528，1 GB / 2 GB | `make build` |
 | `nanopi-r28s` | NanoPi R28S / RK3528，1 GB | `make build-r28s` |
 | `nanopi-r3s` | NanoPi R3S / RK3566 | `make build-r3s` |
+| `nanopi-r3s-lts` | NanoPi R3S LTS / RK3566，独立 headless 板型 | `make build-r3s-lts` |
 | `orangepi4-lts` | Orange Pi 4 LTS / RK3399 | `make build-opi4` |
 | QEMU | ARM64 UEFI 测试镜像 | `make build-qemu`、`make run-qemu` |
 
 Wi-Fi 热点和双频能力取决于无线芯片、驱动及 AP 支持。
+
+NanoPi R3S LTS 使用独立 DTB `rockchip/rk3566-nanopi-r3s-lts.dtb`、`current` 6.18 内核与上游 v2026.04 U-Boot 板级补丁；仅 headless 内核裁剪复用 R3S 脚本，不提供显示、音频和媒体支持。**R3S 与 R3S LTS 镜像及固件不可混刷，R3S LTS 真机启动、网口与 OTA 回切尚未验收。** 构建前的框架文件门禁和串口参数见 [镜像构建指南](docs/BUILD.md)。
 
 当前设备分为：已上线的 **Zero2 2 GB**、未上线的 **Zero2 1 GB** 和 **R28S 1 GB**。两种内存的 Zero2 共用镜像，R28S 使用独立构建配置和固件包；不能跨板型刷写。镜像按运行内存自动配置服务限额。三组设备均以 **32 GB TF 卡**为基线，**64 GB TF 卡**使用同一板型镜像；A/B 镜像首次启动将数据分区扩展到剩余空间。存量接入和新设备首刷见 [设备分组与迁移](docs/OTA.md#设备分组与迁移)。
 
@@ -162,6 +165,7 @@ make gen-ota-keys                 # 首次生成，后续版本保留同一签�
 make build-ota VERSION=1.0.0      # 应用包：备份、安装、健康检查，失败自动恢复
 make build-ab VERSION=1.0.0       # Zero2 1 GB / 2 GB：引导 A/B 出厂镜像 + 固件包
 make build-ab-r28s VERSION=1.0.0  # R28S 1 GB：独立引导 A/B 出厂镜像 + 固件包
+make build-ab-r3s-lts VERSION=1.0.0 # R3S LTS：独立引导载荷 A/B 出厂镜像 + 固件包
 make build-ota-bootstrap VERSION=1.0.0  # 已上线设备首次接入应用 OTA
 ```
 
@@ -169,9 +173,9 @@ make build-ota-bootstrap VERSION=1.0.0  # 已上线设备首次接入应用 OTA
 
 NanoPi 本地**不长期保存 OTA 包**，安装时从服务器下载到临时目录，完成或失败退出后删除包及解压文件；断电残留在下次 updater 启动时清理。单次下载最多 2 GiB，下载和解压前检查可用空间。应用回滚使用事务备份，固件回滚使用旧字母的引导载荷，无需保留下载包。详见 [设备临时下载](docs/OTA.md#设备临时下载与包大小)。
 
-应用更新支持失败回滚和进程中断后的开机恢复。NanoPi Zero2 / R28S 的引导 A/B 路径包含单根分区、独立数据分区、冗余启动环境、`/boot` 内双份内核载荷、三次试启动和健康确认；现有单分区设备须先离线整盘刷写新镜像，之后使用系统 OTA 包升级。
+应用更新支持失败回滚和进程中断后的开机恢复。NanoPi Zero2 / R28S / R3S LTS 的引导 A/B 路径包含单根分区、独立数据分区、冗余启动环境、`/boot` 内双份内核载荷、三次试启动和健康确认；现有单分区设备须先离线整盘刷写对应板型的新镜像，之后使用系统 OTA 包升级。
 
-**两种板型的 A/B 引导器已交叉编译验证，Zero2 出厂镜像与引导载荷包已实编译并校验产物结构；三组设备的真机验收仍待完成。** 内核完全卡死且无法自行重启时，仍需要硬件看门狗或人工重启，不能仅靠启动次数保证无人值守恢复。出厂镜像约 4.5 GB，8 GB 及以上 TF 卡即可写入。构建、上传、首刷、回切边界及验收步骤见 [OTA 与 A/B 升级说明](docs/OTA.md)。
+**Zero2 / R28S 两种板型的 A/B 引导器已交叉编译验证，Zero2 出厂镜像与引导载荷包已实编译并校验产物结构；三组既有设备的真机验收仍待完成。R3S LTS 新增独立构建与引导载荷 A/B 路径，不代表已经通过编译或实机验收。** 内核完全卡死且无法自行重启时，仍需要硬件看门狗或人工重启，不能仅靠启动次数保证无人值守恢复。出厂镜像约 4.5 GB，8 GB 及以上 TF 卡即可写入。构建、上传、首刷、回切边界及验收步骤见 [OTA 与 A/B 升级说明](docs/OTA.md)。
 
 ## 功能边界
 

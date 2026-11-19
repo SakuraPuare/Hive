@@ -20,6 +20,7 @@ on:
           - nanopi-zero2
           - nanopi-r28s
           - nanopi-r3s
+          - nanopi-r3s-lts
           - orangepi4-lts
           - all   # 手动也想所有板型全编时选 all
 
@@ -30,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: [nanopi-zero2, nanopi-r28s, nanopi-r3s, orangepi4-lts]
+        profile: [nanopi-zero2, nanopi-r28s, nanopi-r3s, nanopi-r3s-lts, orangepi4-lts]
     # all → 所有板型全编；单板 → 只编选中的那块。
     # 用静态 matrix（不用 fromJSON 动态 matrix——Gitea act_runner 对
     # fromJSON(needs.*.outputs.*) 有 bug：matrix 维度生成了但 matrix.profile 绑成

@@ -105,6 +105,14 @@ NODE_REGISTRY_URL=https://registry.example.com
 
 这会克隆 Armbian 官方构建系统到 `armbian-build/build/`，约需下载 100-200 MB。
 
+NanoPi R3S LTS 要求框架包含以下上游文件；`build.sh` 会逐项检查，缺失时要求更新框架并停止构建，避免旧框架静默缺板：
+
+- `config/boards/nanopi-r3s-lts.conf`
+- `patch/kernel/archive/rockchip64-6.18/dt/rk3566-nanopi-r3s-lts.dts`
+- `patch/u-boot/v2026.04/board_nanopi-r3s-lts/Add-board-NanoPi-R3S-LTS.patch`
+
+LTS 设备树由 Armbian 的 6.18 patch 目录提供，不是 Linux 6.18 原生板级支持；U-Boot 沿用上游 LTS 的 v2026.04 板级补丁。
+
 ### 步骤 4：下载 arm64 二进制
 
 ```bash
@@ -208,13 +216,26 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 # 指定开发板 profile（默认 nanopi-zero2）
 ./scripts/build.sh nanopi-zero2   # NanoPi Zero2  (RK3528)
 ./scripts/build.sh nanopi-r3s     # NanoPi R3S    (RK3566)
+./scripts/build.sh nanopi-r3s-lts # NanoPi R3S LTS (RK3566，独立板型)
 ./scripts/build.sh orangepi4-lts  # 香橙派 Pi 4 LTS (RK3399)
 
 # 内核源码获取方式（默认 shallow；需要完整历史/bisect 时才用 full）
 KERNEL_GIT=full ./scripts/build.sh nanopi-zero2
 ```
 
-> 内核精简 config 由 `configs/kernel/<profile>.sh` 在构建时生成，写入
+NanoPi R3S LTS 的 canonical profile 是 `nanopi-r3s-lts`，与 `nanopi-r3s` 不同；镜像和固件包不可混刷。它使用 `current` / `linux-rockchip64-current`（6.18），Cortex-A55 编译优化，独立 DTB `rockchip/rk3566-nanopi-r3s-lts.dtb`，串口为 `ttyS2,1500000`。内核配置映射到现有 `configs/kernel/nanopi-r3s.sh`，沿用 headless 裁剪（无显示、音频和媒体子系统）。此适配尚未完成 R3S LTS 真机启动、双网口及 OTA 回切验收。
+
+```bash
+make build-r3s-lts                         # 普通镜像
+make build-ab-r3s-lts VERSION=1.0.0        # 独立引导载荷 A/B 出厂镜像 + 系统 OTA 包
+make build-all                            # 包含 R3S LTS 的所有普通板型镜像
+```
+
+A/B 构建仍需先生成并保留 OTA 签名密钥（`make gen-ota-keys`），`VERSION` 必填。R3S LTS 沿用 Hive 单根分区、独立数据分区和 `/boot` 内双份引导载荷的 A/B 方案，不是整套双 rootfs；首次接入需离线整盘刷写对应板型的出厂镜像。普通镜像 CI 的 `build-image.yml` 与 GitHub 分发入口 `request-image-build.yml` 均可选择 `nanopi-r3s-lts`，`all` 包含该板型。
+
+适配验证：R3S LTS 独立固件打包、写入校验、试启动确认与回滚，以及 Zero2/R28S 兼容回归共 85 项通过；板型识别、DTB/串口渲染与 WAN 选择共 5 项通过。隔离交叉编译的 U-Boot v2026.04（叠加 Armbian LTS 补丁和 Hive A/B hook）通过非空 FIT 与冗余 MMC 环境门禁；6.18 LTS DTB 编译通过，看门狗节点可用。这不代表完整出厂镜像已构建或真机已验收。
+
+> 内核精简 config 由 `configs/kernel/` 下映射的脚本在构建时生成（R3S LTS 复用 `nanopi-r3s.sh`），写入
 > `userpatches/config/kernel/<LINUXCONFIG>.config`，Armbian 按文件名自动优先采用。
 > 如需交互式调整内核选项，用 Armbian CLI 独立命令（`KERNEL_CONFIGURE=yes` 旧用法已废弃）：
 >

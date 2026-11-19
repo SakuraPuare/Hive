@@ -12,6 +12,7 @@ on:
           - nanopi-zero2
           - nanopi-r28s
           - nanopi-r3s
+          - nanopi-r3s-lts
           - orangepi4-lts
           - all
   release:

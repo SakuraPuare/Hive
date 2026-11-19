@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NanoPi Zero2/R28S boot payload installer. This is sourced only after signature and
+# NanoPi Zero2/R28S/R3S LTS boot payload installer. This is sourced only after signature and
 # payload verification by hive-updater; standalone mode confirms a trial boot.
 FW_STATE=/var/lib/hive
 FW_PENDING="$FW_STATE/firmware-pending.json"

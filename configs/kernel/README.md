@@ -1,6 +1,6 @@
 # 内核配置优化
 
-每个板子对应一个优化脚本，构建时自动从 Armbian 基线 config 生成定制版本。
+每个板型 profile 映射到一个优化脚本，构建时自动从 Armbian 基线 config 生成定制版本；相同内核策略可复用脚本。
 
 ## 工作原理
 
@@ -11,10 +11,12 @@ Armbian 基线 config ──→ 优化脚本 ──→ userpatches/config/kernel
 
 - `nanopi-zero2.sh` — 基于 `linux-rockchip64-current.config`，1 GB / 2 GB 共用
 - `nanopi-r28s.sh` — 基于 `linux-rk35xx-vendor.config` (kernel 6.1)，保留双网口和板载 AIC8800 SDIO 驱动
-- `nanopi-r3s.sh` — 基于 `linux-rockchip64-current.config` (kernel 6.18)
+- `nanopi-r3s.sh` — `nanopi-r3s` 与 `nanopi-r3s-lts` 共用，基于 `linux-rockchip64-current.config` (kernel 6.18)
 - `orangepi4-lts.sh` — 基于 `linux-rockchip64-current.config`（香橙派 Pi 4 LTS / RK3399）
 
 构建时 `build.sh` 自动调用对应脚本，无需手动操作。
+
+`nanopi-r3s-lts` 使用独立板型及 `rockchip/rk3566-nanopi-r3s-lts.dtb`，仅内核裁剪复用 `nanopi-r3s.sh`，不复制新脚本。R3S 与 R3S LTS 的镜像和固件不可混刷。两者均为 headless 配置，关闭显示、音频和媒体子系统；R3S LTS 实机启动与网口验收尚未完成。
 
 > 注意：优化 config 必须用「默认名」（如 `linux-rockchip64-current.config`，不加 `-hive` 后缀）
 > 写入 `userpatches/config/kernel/`。Armbian 选 config 只认 `LINUXCONFIG` 变量，且 family
@@ -23,7 +25,7 @@ Armbian 基线 config ──→ 优化脚本 ──→ userpatches/config/kernel
 
 ## 优化内容
 
-Zero2、R3S、Orange Pi 的裁剪策略相近；R28S 保留厂商基线，不套用这些主线内核裁剪。以下裁剪，都是 Rockchip ARM 路由器场景不需要的：
+Zero2、R3S / R3S LTS、Orange Pi 的裁剪策略相近；R28S 保留厂商基线，不套用这些主线内核裁剪。以下裁剪，都是 Rockchip ARM 路由器场景不需要的：
 
 | 类别 | 禁用项 | 理由 |
 |------|--------|------|

@@ -422,7 +422,7 @@ func TestOTAChunkCompletionRemovesInvalidBundle(t *testing.T) {
 func TestOTAFirmwareBoardMetadata(t *testing.T) {
 	resetDB(t)
 	otaStorage(t)
-	for _, board := range []string{"nanopi-zero2", "nanopi-r28s", "nanopi-r3s"} {
+	for _, board := range []string{"nanopi-zero2", "nanopi-r28s", "nanopi-r3s-lts", "nanopi-r3s"} {
 		data := otaManifestBundle(t, fmt.Sprintf(`{"version":"2.0","kind":"firmware","board":%q,"files":[]}`, board))
 		resp := uploadTestOTA(t, data, true)
 		if board == "nanopi-r3s" {

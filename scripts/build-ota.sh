@@ -144,10 +144,8 @@ if [ -n "$FIRMWARE" ]; then
     BOARD=$(jq -r '.board // empty' "$META")
     LAYOUT=$(jq -r '.layout // empty' "$META")
     [ "$(jq -r '.version // empty' "$META")" = "$VERSION" ] || { echo 'Boot payload version mismatch'; exit 1; }
-    case "$BOARD:$LAYOUT" in
-        nanopi-zero2:nanopi-zero2-bootab-v1|nanopi-r28s:nanopi-r28s-bootab-v1) ;;
-        *) echo 'Unsupported boot payload layout'; exit 1;;
-    esac
+    source "${OVERLAY_DIR}/usr/local/bin/hive-board" || { echo 'Cannot load board configuration'; exit 1; }
+    hive_board_config "$BOARD" && [ "$LAYOUT" = "$HIVE_LAYOUT" ] || { echo 'Unsupported boot payload layout'; exit 1; }
     # The device rejects anything outside this set, so fail the build instead of
     # shipping a bundle every node would refuse.
     while IFS= read -r f; do

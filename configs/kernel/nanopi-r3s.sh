@@ -50,7 +50,9 @@ disable CONFIG_X25         # X.25 — 上世纪的分组交换网络
 disable CONFIG_LAPB        # LAPB — X.25 的链路层
 disable CONFIG_PHONET      # Phonet — Nokia 手机内部总线协议
 
-# ── WiFi 驱动（R3S 无 PCIe/mPCIe 插槽，无板载 WiFi）─────────────────────
+# ── WiFi 驱动（R3S / LTS 无板载 WiFi、无可扩展的 PCIe WiFi 插槽）────────
+# PCIe 控制器与 Realtek 有线驱动必须保留：第二个网口通过 PCIe 连接。
+# LTS 共用此 headless 配置，不启用 HDMI 或音频。
 
 # Atheros（需要 PCIe 插槽）
 disable CONFIG_ATH9K       # Atheros 9xxx — 802.11n PCIe

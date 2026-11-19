@@ -602,6 +602,8 @@ if sys.argv[-1] == os.environ['HIVE_TEST_ROOT'] + '/etc/test-app':
 
 class FirmwareTests(unittest.TestCase):
     board = "nanopi-zero2"
+    soc = "rk3528"
+    dtb = "rk3528-nanopi-zero2.dtb"
     setUp = base.DeviceRegressionTests.setUp
     mock = base.DeviceRegressionTests.mock
     script = base.DeviceRegressionTests.script
@@ -616,7 +618,7 @@ class FirmwareTests(unittest.TestCase):
         (files / 'usr/lib/hive').mkdir(parents=True)
         (files / 'boot/Image').write_bytes(b'new kernel payload\n')
         (files / 'boot/uInitrd').write_bytes(b'new initramfs\n')
-        (files / 'boot/dtb/rockchip/rk3528-nanopi-zero2.dtb').write_bytes(b'new device tree\n')
+        (files / 'boot/dtb/rockchip' / self.dtb).write_bytes(b'new device tree\n')
         (files / 'usr/lib/modules/6.18.59/hive.ko').write_bytes(b'new module\n')
         (files / 'usr/lib/firmware/radio.bin').write_bytes(b'new radio firmware\n')
         (files / 'usr/lib/hive/boot-payload.json').write_text(
@@ -640,7 +642,7 @@ class FirmwareTests(unittest.TestCase):
         # hive_active remains the confirmed letter during a trial boot.
         (self.root / 'proc/device-tree').mkdir(parents=True)
         (self.root / 'proc/device-tree/compatible').write_bytes(
-            ('friendlyarm,' + self.board + '\0rockchip,rk3528\0').encode())
+            ('friendlyarm,' + self.board + '\0rockchip,' + self.soc + '\0').encode())
         self.set_running_slot(slot)
         (self.root / 'dev').mkdir()
         for part in (1, 2):
@@ -734,7 +736,7 @@ else firmware_confirm; fi
         # The confirmed letter is never touched; the inactive one gets the payload.
         self.assertEqual((self.root / 'boot/Image.A').read_bytes(), b'current system must remain unchanged')
         self.assertEqual((self.root / 'boot/Image.B').read_bytes(), b'new kernel payload\n')
-        self.assertEqual((self.root / 'boot/dtb.B/rockchip/rk3528-nanopi-zero2.dtb').read_bytes(),
+        self.assertEqual((self.root / 'boot/dtb.B/rockchip' / self.dtb).read_bytes(),
                          b'new device tree\n')
         self.assertEqual((self.root / 'usr/lib/modules/6.18.59/hive.ko').read_bytes(), b'new module\n')
         self.assertEqual((self.root / 'usr/lib/firmware/radio.bin').read_bytes(), b'new radio firmware\n')
@@ -819,7 +821,7 @@ if [ "$#" -eq 0 ] && [ -n "${CORRUPT_DEST:-}" ]; then
 fi
 ''')
         for destination in ['boot/Image.B', 'boot/uInitrd.B',
-                            'boot/dtb.B/rockchip/rk3528-nanopi-zero2.dtb',
+                            'boot/dtb.B/rockchip/' + self.dtb,
                             'usr/lib/modules/6.18.59/hive.ko',
                             'usr/lib/firmware/radio.bin', 'usr/lib/hive/boot-payload.json']:
             with self.subTest(destination=destination):
@@ -1107,12 +1109,30 @@ fi
 
 class R28SFirmwareTests(FirmwareTests):
     board = "nanopi-r28s"
+    dtb = "rk3528-nanopi-rev03.dtb"
 
     def test_zero2_manifest_is_rejected_before_writing(self):
         runner = self.firmware_fixture()
         path = self.root / 'firmware/manifest.json'
         manifest = json.loads(path.read_text())
         manifest.update(board='nanopi-zero2', layout='nanopi-zero2-bootab-v1')
+        path.write_text(json.dumps(manifest))
+        self.run_script(runner, 'stage', expected=1)
+        self.assertFalse((self.root / 'environment-writes').exists())
+        self.assertFalse((self.root / 'boot/Image.B').exists())
+        self.assertEqual((self.root / 'boot/Image.A').read_bytes(), b'current system must remain unchanged')
+
+
+class R3SLTSFirmwareTests(FirmwareTests):
+    board = "nanopi-r3s-lts"
+    soc = "rk3566"
+    dtb = "rk3566-nanopi-r3s-lts.dtb"
+
+    def test_r3s_manifest_is_rejected_before_writing(self):
+        runner = self.firmware_fixture()
+        path = self.root / 'firmware/manifest.json'
+        manifest = json.loads(path.read_text())
+        manifest.update(board='nanopi-r3s', layout='nanopi-r3s-bootab-v1')
         path.write_text(json.dumps(manifest))
         self.run_script(runner, 'stage', expected=1)
         self.assertFalse((self.root / 'environment-writes').exists())

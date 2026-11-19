@@ -9,6 +9,7 @@
 | 设备 | 角色 |
 |------|------|
 | **NanoPi R3S**（双千兆口） | 路由器：WAN 口接上游路由器自动 DHCP，LAN 口给下游设备发 DHCP + 透明代理 |
+| **NanoPi R3S LTS**（双千兆口，独立 `nanopi-r3s-lts` 板型） | 路由器：Armbian 将 GMAC 命名为 `wan`、PCIe 网口命名为 `lan`；使用独立 LTS 镜像，非普通 R3S 镜像，尚未完成真机双网口验收 |
 | 有 WiFi 网卡的设备 | WiFi 热点的下游客户端同样自动走透明代理 |
 | 单网口、有无线网卡 | 交给 WiFi 热点路径：热点下游客户端自动走透明代理 |
 | 单网口、无无线网卡 | 单臂（旁路）网关为 WIP：节点保持普通角色，不配置转发/NAT，Mihomo 空载 |
@@ -19,7 +20,7 @@
 
 `hive-gateway.sh` 开机自动探测有线网卡：
 
-- **WAN 口**：默认选"当前有默认路由的那个口"（接上游路由器，走 DHCP 客户端）。可用 `GATEWAY_WAN_IFACE` 指定。
+- **WAN 口**：优先使用 `GATEWAY_WAN_IFACE` 指定的口；未指定时依次选择当前持有默认路由的有线口、命名为 `wan` 的有线口、第一个已 up 的有线口，最后回退到第一个有线口。R3S LTS 的 `lan` 在 sysfs 字母排序中可能先出现，因此无默认路由时仍优先选命名为 `wan` 的口，不按枚举顺序把 `lan` 当成 WAN。
 - **LAN 口**：WAN 之外的有线口，配静态 `10.42.2.1/24` + NetworkManager `method=shared`（自带 dnsmasq 发 DHCP + NAT）。可用 `GATEWAY_LAN_IFACE` 指定。
 
 > LAN 网段 `10.42.2.x` 起，避开 WiFi 热点占用的 `10.42.0.x`（2.4G）和 `10.42.1.x`（5G）。

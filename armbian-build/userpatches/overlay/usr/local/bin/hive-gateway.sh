@@ -8,7 +8,7 @@
 #   - 单网口且无无线（如 Zero2 无 USB 无线卡）：单臂（旁路）网关是 WIP，暂不配置，
 #     干净退出 0，节点保持普通角色。
 #   - 单网口但有无线：交给 WiFi 热点路径，本脚本不配 WAN/LAN（Mihomo 仍接管热点转发）。
-#   - 双/多网口设备：第一个口作 WAN，其余口作 LAN（10.42.2.1 / .3.1 / .4.1 递增，避开热点的 .0.1/.1.1）。
+#   - 双/多网口设备：自动选择 WAN，其余口作 LAN（10.42.2.1 / .3.1 / .4.1 递增，避开热点的 .0.1/.1.1）。
 #
 # 设计与 hive-hotspot.sh 一致：一切从 MAC 确定性派生、NM keyfile、flock 单实例锁、幂等可反复调用。
 # 触发：hive-gateway.service（开机）+ udev（网线热插拔）。门控：网卡 < 2 时干净退出 0。
@@ -164,7 +164,7 @@ fi
 cleanup_one_arm
 
 # ── 3. 选 WAN 口 ──────────────────────────────────────────────────────
-# 优先级：GATEWAY_WAN_IFACE 指定 > 当前持有默认路由的口 > 第一个 up 的口 > 兜底第一个。
+# 优先级：GATEWAY_WAN_IFACE 指定 > 当前持有默认路由的口 > 命名 wan 的口 > 第一个 up 的口 > 兜底第一个。
 in_wired() {  # $1=iface 是否在 WIRED 列表里
     local w
     for w in "${WIRED[@]}"; do [ "$w" = "$1" ] && return 0; done
@@ -180,6 +180,9 @@ if [ -z "$WAN" ]; then
     if [ -n "$def_dev" ] && in_wired "$def_dev"; then
         WAN="$def_dev"; log "WAN 口取自当前默认路由：$WAN"
     fi
+fi
+if [ -z "$WAN" ] && in_wired wan; then
+    WAN=wan; log "WAN 口取命名 wan 的有线口：$WAN"
 fi
 if [ -z "$WAN" ]; then
     for iface in "${WIRED[@]}"; do

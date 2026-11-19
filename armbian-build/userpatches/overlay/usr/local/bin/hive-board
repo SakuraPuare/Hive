@@ -11,6 +11,10 @@ hive_board_config() {
             HIVE_DTB=rockchip/rk3528-nanopi-rev03.dtb
             HIVE_CONSOLE=ttyS0,1500000
             ;;
+        nanopi-r3s-lts)
+            HIVE_DTB=rockchip/rk3566-nanopi-r3s-lts.dtb
+            HIVE_CONSOLE=ttyS2,1500000
+            ;;
         *) return 1;;
     esac
     # v2: one root filesystem plus an A/B boot payload inside /boot. The name
@@ -27,6 +31,8 @@ hive_detect_board() {
         hive_board_config nanopi-zero2
     elif grep -Eq '^friendly(arm|elec),nanopi-r28s$' <<< "$compatible"; then
         hive_board_config nanopi-r28s
+    elif grep -Fxq friendlyarm,nanopi-r3s-lts <<< "$compatible"; then
+        hive_board_config nanopi-r3s-lts
     else
         return 1
     fi

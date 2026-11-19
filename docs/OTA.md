@@ -1,4 +1,4 @@
-# OTA 更新与 NanoPi Zero2 / R28S A/B 镜像
+# OTA 更新与 NanoPi Zero2 / R28S / R3S LTS A/B 镜像
 
 Hive 支持两类签名更新包，均通过后台「OTA 更新」上传并分配设备。
 
@@ -7,9 +7,11 @@ Hive 支持两类签名更新包，均通过后台「OTA 更新」上传并分�
 | 类型 | 更新范围 | 生效与回滚 |
 |---|---|---|
 | application | 脚本、程序、服务单元、静态资源 | 备份后替换；安装、服务重启或健康检查失败时恢复；进程中断后在下次运行或开机时恢复 |
-| firmware | NanoPi Zero2 / R28S 各自的内核、DTB、initramfs 及配套内核模块 | 写未激活引导载荷，读回校验后试启动；健康检查通过才确认；试启动失败后由 U-Boot 回到原载荷 |
+| firmware | NanoPi Zero2 / R28S / R3S LTS 各自的内核、DTB、initramfs 及配套内核模块 | 写未激活引导载荷，读回校验后试启动；健康检查通过才确认；试启动失败后由 U-Boot 回到原载荷 |
 
-**引导 A/B 已接入两种板型，U-Boot v2026.07-rc4 的 Zero2 / R28S 产物已实际交叉编译并校验 FIT、设备树和保留区边界；Zero2 的出厂镜像与引导载荷包已实编译并校验产物结构，三组设备尚未真机验收。** 应用回滚、固件写入/回切在隔离环境中测试；TF 扩容还验证了真实 `sfdisk` 对普通镜像文件保留系统分区及 UUID。不能把这些检查当成批量上线验收。
+**原有 Zero2 / R28S 两种板型已接入引导 A/B，U-Boot v2026.07-rc4 的对应产物已实际交叉编译并校验 FIT、设备树和保留区边界；Zero2 的出厂镜像与引导载荷包已实编译并校验产物结构，历史三组设备尚未真机验收。** 应用回滚、固件写入/回切在隔离环境中测试；TF 扩容还验证了真实 `sfdisk` 对普通镜像文件保留系统分区及 UUID。不能把这些检查当成批量上线验收。
+
+**R3S LTS 是新增的独立适配，不是普通 R3S，也不属于下方历史三组设备。** 隔离交叉编译的 U-Boot v2026.04（叠加 Armbian LTS 板级补丁与 Hive A/B hook）已通过非空 FIT、冗余 MMC 环境配置及引导保留区边界校验；6.18 的独立 LTS DTB 已编译并验证看门狗节点可用。**尚未构建完整 R3S LTS 出厂镜像，亦未进行真机启动、双网口或 OTA 回切验收。** 隔离验证不代表实机看门狗复位或整机可用。
 
 ## 设备分组与迁移
 
@@ -24,6 +26,8 @@ Hive 支持两类签名更新包，均通过后台「OTA 更新」上传并分�
 [Zero2 官方规格](https://wiki.friendlyelec.com/wiki/index.php/NanoPi_Zero2/zh)列出 1 GB / 2 GB 内存版本；同一构建配置并不代表本仓库产物已经在两种实物上验证。[R28S 官方规格](https://wiki.friendlyelec.com/wiki/index.php/NanoPi_R28S/zh)列出 RK3528A、1 GB 内存、双千兆网口及板载无线。它与 Zero2 同属 RK3528 系列，但板级外围不同，也不是本仓库已有的 RK3566 / NanoPi R3S。
 
 [Armbian 的 R28S 配置](https://github.com/armbian/build/blob/main/config/boards/nanopi-r28s.csc)使用 `vendor` 6.1 内核、`rk3528-nanopi-rev03.dtb` 和 `radxa-aic8800` 扩展。Hive 为其接入固定版本主线 U-Boot，并在 `userpatches/u-boot/hive-r28s-v2026.07/` 保存板级回移补丁；Linux 设备树来源固定到提交 `c1e23f3425c4`，配置依据 [R28S U-Boot 上游 RFC](https://mail-archive.com/u-boot%40lists.u-boot-project.org/msg07609.html)。该固定版本的引导器设备树不含新 USB 节点，因此补丁省略这些节点，只用于 SD/eMMC 引导；不影响厂商 Linux 中的 USB 驱动。该补丁是本仓库适配，不代表 R28S 配置已被 U-Boot 上游合入。
+
+新增 NanoPi R3S LTS 使用独立 canonical profile/board `nanopi-r3s-lts`、布局 `nanopi-r3s-lts-bootab-v1`，内核为 `current` / `linux-rockchip64-current`（6.18），DTB 为 `rockchip/rk3566-nanopi-r3s-lts.dtb`，串口为 `ttyS2,1500000`。Armbian 的 LTS 内核设备树和 U-Boot v2026.04 板级补丁供应该适配，Hive 通过 `config/hive-bootab.inc` 接入共享引导 A/B 策略。普通 `nanopi-r3s` 不支持此布局；不得互刷两者镜像或 firmware 包。LTS 后续须独立首刷验收，不改变上述三组设备的状态与迁移安排。
 
 **1 GB / 2 GB 是运行内存，引导载荷占用的是 TF 卡存储。** 本批设备均使用 32 GB 或 64 GB TF 卡，使用同一板型出厂镜像。首次启动的 `hive-data-grow` 校验 GPT、两个分区名称与边界，仅扩大最后的数据分区并调整 ext4；根文件系统、设备标识和分区 UUID 不变。写入 GPT 后中断可在下次启动继续扩展文件系统；不允许改动非 Hive 分区或已挂载的数据分区。
 
@@ -68,7 +72,7 @@ sudo bash hive-ota-bootstrap-1.0.0/install.sh --install
 Registry 启动时及每小时自动清理一次；也可在「OTA 更新 → 存储管理」查看受管包、上传暂存和可清理空间，并执行相同规则的即时清理。查看需要 `ota:read`，清理需要 `ota:write`；手动清理记入审计日志。
 
 - **默认保留 30 天**：只有超过保留期且没有任何当前设备任务引用的包才可清理。`pending`、`installing`、`done`、`failed`、`rolled_back` 的当前分配都保护其包；多个发布记录共享 SHA256 时，只要任一记录被设备引用，就保留同一个文件。
-- **保留最近 3 个不同版本**：应用包、Zero2 固件、R28S 固件分别保留；按最近上传/使用时间排序，不按版本字符串排序。同一版本重复构建只占一个版本名额，默认保留其中最新的一份包；其余包仍受 30 天期限及任务引用保护。
+- **保留最近 3 个不同版本**：按 `(kind, board)` 分组，应用包（`application`，无目标板型）、Zero2 固件（`firmware, nanopi-zero2`）、R28S 固件（`firmware, nanopi-r28s`）和 R3S LTS 固件（`firmware, nanopi-r3s-lts`）分别保留；按最近上传/使用时间排序，不按版本字符串排序。同一版本重复构建只占本组一个版本名额，默认保留其中最新的一份包；其余包仍受 30 天期限及任务引用保护。
 - 保留期依据文件最后上传/分配时间及最新发布记录创建时间。重复上传相同包、重试完成上传、创建新发布记录或再次分配会续期。旧数据直接扫描现有目录和数据库，无需新增数据库迁移。
 - 废弃的单次上传临时文件、分片会话、完成回执在 **24 小时无活动后**回收，不依赖再次上传来触发。正在接收的单次上传使用独立文件锁，慢上传不会阻止其他包清理；分片写入、组装、发布、分配及清理也有互斥保护。
 - 清理只移除受管的包文件和已过期上传目录，**保留发布记录与当前任务记录**。后台显示「包已清理或缺失」，并禁止再次分配；重新上传相同 SHA256 的包后可继续使用该发布记录。外部 HTTP(S) 下载地址的文件不由 Hive 删除。
@@ -84,7 +88,7 @@ Registry 启动时及每小时自动清理一次；也可在「OTA 更新 → �
 
 ### 设备临时下载与包大小
 
-NanoPi Zero2 1 GB/2 GB 和 R28S 1 GB 均按需下载，32/64 GB TF 卡使用相同策略：
+历史三组 NanoPi Zero2 1 GB/2 GB 和 R28S 1 GB 均按需下载，32/64 GB TF 卡使用相同策略；新增 R3S LTS 沿用该策略，但尚未真机验收：
 
 - 本地不长期缓存 OTA 包。安装时从服务器下载到 `/var/lib/hive/ota-download.*/bundle.tar.gz`，整个包最多 **2 GiB**；整包 SHA256、Ed25519 签名、hook 和清单文件哈希全部通过后才安装。
 - 安装成功或失败退出时清理下载包和解压目录；断电或进程被强制终止留下的 `ota-download.*` 在下次 updater 启动并取得互斥锁后清理。定时任务和手动更新不会并行下载。
@@ -137,7 +141,7 @@ make build-ota VERSION=1.0.0
 
 没有 Hive 布局的普通 Armbian 设备不能直接接收 firmware 包：`hive-firmware` 会校验 `/usr/lib/hive/ab-layout`、两个分区标签（`hive-root`、`hive-data`）和 U-Boot 环境 stamp，缺任何一项都拒绝。这类设备需要先构建并**离线整盘刷写**出厂镜像；这会覆盖原有分区与数据。已有身份、配置如需保留，须先另行备份并在首刷前注入根分区，不能指望整盘 `dd` 自动保留。
 
-适配路径为 **NanoPi Zero2 / current 内核** 与 **NanoPi R28S / vendor 6.1 内核**，均使用固定的主线 U-Boot 加 Hive A/B 配置。Zero2 的 1 GB / 2 GB 沿用同一构建配置。R3S、Orange Pi、USB 根盘和自定义分区未启用这条固件升级路径。
+适配路径为 **NanoPi Zero2 / current 内核**、**NanoPi R28S / vendor 6.1 内核** 与 **NanoPi R3S LTS / current 6.18 内核**，均使用板型固定版本的主线 U-Boot 加 Hive A/B 配置。Zero2 的 1 GB / 2 GB 沿用同一构建配置；R3S LTS 使用独立 profile 和布局，完整镜像尚未构建。普通 R3S、Orange Pi、USB 根盘和自定义分区未启用这条固件升级路径。
 
 ```bash
 make env
@@ -147,6 +151,7 @@ make download-binaries
 make gen-ota-keys
 make build-ab VERSION=1.0.0       # Zero2 1 GB / 2 GB
 make build-ab-r28s VERSION=1.0.0  # R28S 1 GB
+make build-ab-r3s-lts VERSION=1.0.0  # R3S LTS，独立板型；尚未完成整机验收
 ```
 
 除了原有 Armbian 构建依赖，镜像转换主机需要 `rsync`、`jq`、`binutils`、`util-linux`、`udev`、`e2fsprogs`。转换通过 `sudo` 创建临时 loop 设备，只接受普通镜像文件作为输入输出，不接受块设备路径。
@@ -158,7 +163,14 @@ make build-ab-r28s VERSION=1.0.0  # R28S 1 GB
 - `output/ota/hive-firmware-nanopi-zero2-v1.0.0.tar.gz`：已签名的系统更新包，上传后台使用。
 - 相应 SHA256 校验文件。
 
-R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。后台上传完成后显示固件目标板型；设备同时校验实际设备树、已安装布局及签名清单板型，拒绝跨板型安装。
+R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。R3S LTS 完整构建后的对应产物为：
+
+- `output/ab/hive-nanopi-r3s-lts-factory-1.0.0.img` 及 `.img.xz`：离线整盘首刷镜像。
+- `output/ab/hive-nanopi-r3s-lts-boot-1.0.0.tar`：引导载荷包，不能直接刷写。
+- `output/ota/hive-firmware-nanopi-r3s-lts-v1.0.0.tar.gz`：签名固件包，上传后台使用。
+- 相应 SHA256 校验文件；这些是构建输出约定，当前尚无完整 LTS 出厂镜像构建验收。
+
+后台上传完成后显示固件目标板型；设备同时校验实际设备树、已安装布局及签名清单板型，拒绝跨板型安装。LTS 固件只匹配 `nanopi-r3s-lts` / `nanopi-r3s-lts-bootab-v1`，不能分配为普通 R3S 固件。
 
 出厂镜像约 4.5 GB（4625 MiB），8 GB 及以上的 TF 卡即可写入。首次启动自动扩容数据分区：
 
@@ -172,11 +184,11 @@ R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。后台上
 
 只有一套根文件系统：字母只决定 U-Boot 加载哪一套内核载荷。6144 MiB 是按实测占用（2975 MiB，含两套各约 90 MiB 的引导载荷）留出约 3.1 GiB 余量，`HIVE_ROOT_MIB` 可覆盖；4 GiB 在实测中已被用到 3.0 GiB、只剩 709 MiB，而应用包也装在这块固定分区里、设备上没有任何扩根通路，所以默认上调。一次跨内核版本升级要临时再放下约 166 MiB 的模块树，试启动确认成功后 `firmware_confirm` 删除与运行内核不符的 `/usr/lib/modules/*`，这部分占用因此不会逐版本累积；试启动失败回滚时保留旧树，因为回退到的字母仍需要它。两套载荷在出厂镜像里内容相同，第一次固件更新写入未激活的那一套。
 
-启动环境的偏移量只是默认值：编译期由 `hive-rk3528.inc` 写入 U-Boot `.config`，`post_uboot_custom_postprocess` 从最终 `.config` 抄成 `/usr/lib/hive/uboot-env`，运行期 `hive-firmware` 直接从这份 stamp 读 `CONFIG_ENV_SIZE`/`CONFIG_ENV_OFFSET`/`CONFIG_ENV_OFFSET_REDUND` 生成 `fw_setenv` 配置。改偏移只需改一处；stamp 缺失或格式错误时固件更新直接失败，不会写到 U-Boot 不读的位置。
+启动环境的偏移量只是默认值：编译期由共享 `config/hive-bootab.inc` 写入 U-Boot `.config`，`post_uboot_custom_postprocess` 从最终 `.config` 抄成 `/usr/lib/hive/uboot-env`，运行期 `hive-firmware` 直接从这份 stamp 读 `CONFIG_ENV_SIZE`/`CONFIG_ENV_OFFSET`/`CONFIG_ENV_OFFSET_REDUND` 生成 `fw_setenv` 配置。改偏移只需改一处；stamp 缺失或格式错误时固件更新直接失败，不会写到 U-Boot 不读的位置。
 
 构建脚本会检查 U-Boot 中的 A/B 标记及大小（从 LBA 64 起的引导镜像必须在 12 MiB 环境区之前结束），拒绝普通引导器或会覆盖启动环境的产物。`post_uboot_custom_postprocess` 在 `olddefconfig` 之后复核最终 `.config` 的 `ENV_IS_IN_MMC`、`ENV_REDUNDANT`、`ENV_SIZE`/`ENV_OFFSET`/`ENV_OFFSET_REDUND`、`CMD_SAVEENV`/`CMD_SETEXPR`/`CMD_PART`/`CMD_FDT` 并要求 `ENV_IS_NOWHERE` 关闭，缺任何一项直接中断构建；同时把这份配置写入镜像的 `/usr/lib/hive/uboot-env`。`scripts/check-uboot-env.sh` 在建厂镜像时再对照两份证据：stamp 内容，以及 `u-boot-rockchip.bin` 里确实存在 MMC 环境驱动、冗余读写、`saveenv`、`setexpr`、`part uuid`、`booti`、`fdt` 的字符串。只匹配 `HIVE_AB_V1` 不能证明环境可写。固件安装时从**实际当前根分区反查父磁盘**（必须是 `/dev/mmcblk[0-9]+`），校验 `p1` 标签为 `hive-root` 且起始于 32768、`p2` 为 `hive-data`，再从内核命令行中唯一的 `hive.slot=A|B` 取实际运行字母；缺失、无效或重复参数直接拒绝，`hive_active` 只表示已确认字母，不能用于识别试启动；不假设 Linux 的 `mmcblk0` 永远代表某种介质，也不按全局分区标签误选另一张卡。
 
-内核侧另有一道门禁：`scripts/verify-kernel-dtb.py` 从本次构建的 `linux-dtb-current-rockchip64` deb 里取出板级 DTB，断言 RK3528 看门狗节点存在、`compatible` 含 `snps,dw-wdt` 且未被 `status = "disabled"` 关掉。该节点不在主线 6.18（v7.0 才合入 `rk3528.dtsi`），由 `armbian-build/userpatches/kernel/archive/rockchip64-6.18/` 的补丁回移；Armbian 只从 `userpatches/kernel/<KERNELPATCHDIR>` 读用户补丁，放错目录不会报错，只会让镜像里没有 `/dev/watchdog0`，所以这里用构建失败兜住。
+Zero2 内核侧另有一道门禁：`scripts/verify-kernel-dtb.py` 从本次构建的 `linux-dtb-current-rockchip64` deb 里取出板级 DTB，断言 RK3528 看门狗节点存在、`compatible` 含 `snps,dw-wdt` 且未被 `status = "disabled"` 关掉。该节点不在主线 6.18（v7.0 才合入 `rk3528.dtsi`），由 `armbian-build/userpatches/kernel/archive/rockchip64-6.18/` 的补丁回移；Armbian 只从 `userpatches/kernel/<KERNELPATCHDIR>` 读用户补丁，放错目录不会报错，只会让镜像里没有 `/dev/watchdog0`，所以这里用构建失败兜住。R3S LTS 是 RK3566，其独立 6.18 DTB 的看门狗节点已在隔离编译中验证，不依赖这份 RK3528 回移补丁，也不能据此声称 LTS 真机已复位验收。
 
 首刷可使用烧录工具，或从另一张启动卡/救援系统运行 `dd`。确认目标**整盘**且其分区都未挂载后执行；绝不能覆盖当前运行系统所在的盘：
 
@@ -187,7 +199,7 @@ test -b /dev/目标整盘 && sudo dd if=output/ab/hive-nanopi-zero2-factory-1.0.
 sync
 ```
 
-首刷后按 README 为每台设备安装独立 `/etc/hive/device-token`，完成注册和网络配置，再进行 OTA 验收。普通 `make build` / `make build-r28s` 仍生成普通镜像，不会隐式改变现有板型的分区方案。
+首刷后按 README 为每台设备安装独立 `/etc/hive/device-token`，完成注册和网络配置，再进行 OTA 验收。普通 `make build` / `make build-r28s` / `make build-r3s-lts` 仍生成普通镜像，不会隐式改变现有板型的分区方案。
 
 ## 后续系统更新与回切
 
@@ -196,6 +208,7 @@ sync
 ```bash
 make build-ab VERSION=1.1.0
 # R28S 使用 make build-ab-r28s VERSION=1.1.0
+# R3S LTS 使用 make build-ab-r3s-lts VERSION=1.1.0，上传对应 nanopi-r3s-lts 固件包
 # 上传 output/ota/hive-firmware-nanopi-zero2-v1.1.0.tar.gz；无需再 dd 整盘镜像
 ```
 
@@ -224,6 +237,8 @@ U-Boot 在每次试启动前先持久化扣减尝试次数。新内核/DTB/initr
 3. 在下载、载荷写入、环境切换、第一次启动期间分别断电；恢复后确认仍有可启动系统、身份不变、任务结果可上报。
 4. 注入服务检查失败、Registry 不可达和坏内核文件，验证回切旧字母及 `rolled_back` 状态。
 5. 验证真实内核卡死与硬件看门狗。**看门狗节点不在主线 6.18（v7.0 才合入 `rk3528.dtsi`），由 `userpatches/kernel/archive/rockchip64-6.18/` 的补丁回移，构建期 `scripts/verify-kernel-dtb.py` 断言它确实进了镜像；PID 1 用 `RuntimeWatchdogSec=30s` 打开 `/dev/watchdog0`。** systemd 起来之后的卡死 30 秒内由 SoC 硬复位，`hive_tries` 随后递减。仍未覆盖：systemd 启动之前的卡死（U-Boot 没有 WDT 驱动，SPL→内核早期没有喂狗者）只能断电，断电后已扣减的 `hive_tries` 继续生效。30 秒超时在慢卡 fsck/介质探测下是否误复位，须在真机确认。
+
+新增 R3S LTS 需在完整镜像构建后独立执行上述首刷、升级、断电和回切场景，并核对 `wan` / `lan` 双网口及 `ttyS2,1500000` 串口。其 RK3566 看门狗 DTB 隔离验证已通过，但 `/dev/watchdog0` 的实际喂狗、卡死复位与超时行为仍需真机验收；不要将上方历史三组设备或 RK3528 补丁的事实套用到 LTS。
 
 引导 A/B 不能修复损坏的 U-Boot、介质物理故障或两套引导载荷同时损坏。固件安装阶段不修改 GPT 或引导器；首启数据扩容仅增大最后一个分区。改变根文件系统大小、分区顺序或引导器仍需离线维护。
 

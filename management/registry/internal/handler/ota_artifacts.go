@@ -76,7 +76,7 @@ func readOTAMetadata(f *os.File) (otaArtifactResponse, error) {
 		if meta.Kind != "application" && meta.Kind != "firmware" {
 			return meta, errors.New("unsupported bundle kind")
 		}
-		if meta.Kind == "firmware" && meta.Board != "nanopi-zero2" && meta.Board != "nanopi-r28s" {
+		if meta.Kind == "firmware" && meta.Board != "nanopi-zero2" && meta.Board != "nanopi-r28s" && meta.Board != "nanopi-r3s-lts" {
 			return meta, errors.New("unsupported firmware board")
 		}
 		return meta, nil

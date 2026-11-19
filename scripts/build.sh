@@ -26,8 +26,8 @@ case "${PROFILE}" in
     # RK3528：4×Cortex-A53，ARMv8.0-A，无 crypto 扩展（不能照搬 R3S 的 +crc+crypto）
     EXTRA_CFLAGS="-O2 -march=armv8-a -mtune=cortex-a53 -fomit-frame-pointer"
     ;;
-  nanopi-r3s)
-    BOARD="nanopi-r3s"
+  nanopi-r3s|nanopi-r3s-lts)
+    BOARD="${PROFILE}"
     BRANCH="current"
     BASE_KERNEL_CONFIG="linux-rockchip64-current"
     EXTRA_CFLAGS="-O2 -march=armv8-a+crc+crypto -mtune=cortex-a55 -fomit-frame-pointer"
@@ -47,7 +47,7 @@ case "${PROFILE}" in
     ;;
   *)
     echo "ERROR: 未知 profile '${PROFILE}'"
-    echo "支持的 profile: nanopi-zero2, nanopi-r28s, nanopi-r3s, orangepi4-lts"
+    echo "支持的 profile: nanopi-zero2, nanopi-r28s, nanopi-r3s, nanopi-r3s-lts, orangepi4-lts"
     exit 1
     ;;
 esac
@@ -67,11 +67,14 @@ HIVE_AB="${HIVE_AB:-no}"
 HIVE_IMAGE_VERSION="${HIVE_IMAGE_VERSION:-}"
 if [ "$HIVE_AB" = yes ]; then
     source "${ROOT_DIR}/armbian-build/userpatches/overlay/usr/local/bin/hive-board"
-    hive_board_config "$PROFILE" || { echo 'A/B requires NanoPi Zero2 or R28S'; exit 1; }
+    hive_board_config "$PROFILE" || { echo 'A/B requires NanoPi Zero2, R28S or R3S LTS'; exit 1; }
     [[ "$HIVE_IMAGE_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || { echo 'Set HIVE_IMAGE_VERSION'; exit 1; }
 fi
 
-KERNEL_OPTIMIZE_SCRIPT="${ROOT_DIR}/configs/kernel/${PROFILE}.sh"
+KERNEL_OPTIMIZE_PROFILE="${PROFILE}"
+# R3S LTS has its own board/DTB, but shares the RK3566 headless kernel policy.
+if [ "$PROFILE" = nanopi-r3s-lts ]; then KERNEL_OPTIMIZE_PROFILE="nanopi-r3s"; fi
+KERNEL_OPTIMIZE_SCRIPT="${ROOT_DIR}/configs/kernel/${KERNEL_OPTIMIZE_PROFILE}.sh"
 
 RELEASE="trixie"
 export KERNEL_EXTRA_CFLAGS="${EXTRA_CFLAGS}"
@@ -280,6 +283,18 @@ fi
 if [ "$PROFILE" = nanopi-r28s ] && [ ! -f "${ARMBIAN_DIR}/config/boards/nanopi-r28s.csc" ]; then
     echo 'Update Armbian: the upstream NanoPi R28S board and AIC8800 extension are required.'
     exit 1
+fi
+if [ "$PROFILE" = nanopi-r3s-lts ]; then
+    for prerequisite in \
+        config/boards/nanopi-r3s-lts.conf \
+        patch/kernel/archive/rockchip64-6.18/dt/rk3566-nanopi-r3s-lts.dts \
+        patch/u-boot/v2026.04/board_nanopi-r3s-lts/Add-board-NanoPi-R3S-LTS.patch; do
+        if [ ! -f "${ARMBIAN_DIR}/${prerequisite}" ]; then
+            echo "ERROR: Update Armbian for NanoPi R3S LTS; missing ${prerequisite}."
+            echo "Run: ./scripts/setup-armbian.sh"
+            exit 1
+        fi
+    done
 fi
 
 # 检查 overlay 预置二进制；cloudflared 由 customize-image.sh 安装并校验 /usr/bin/cloudflared。

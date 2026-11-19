@@ -39,14 +39,19 @@ class HardwareTests(unittest.TestCase):
 
     def test_hardware_identity_uses_actual_device_tree(self):
         source = (BIN / 'hive-board').read_text().replace('/proc/device-tree/compatible', str(self.root / 'compatible'))
-        for compatible, board in [('friendlyarm,nanopi-zero2','nanopi-zero2'),
-                                  ('friendlyarm,nanopi-r28s','nanopi-r28s'),
-                                  ('friendlyelec,nanopi-r28s','nanopi-r28s')]:
-            (self.root / 'compatible').write_bytes(compatible.encode()+b'\0rockchip,rk3528\0')
+        for compatible, board, soc in [('friendlyarm,nanopi-zero2','nanopi-zero2','rk3528'),
+                                       ('friendlyarm,nanopi-r28s','nanopi-r28s','rk3528'),
+                                       ('friendlyelec,nanopi-r28s','nanopi-r28s','rk3528'),
+                                       ('friendlyarm,nanopi-r3s-lts','nanopi-r3s-lts','rk3566')]:
+            (self.root / 'compatible').write_bytes(compatible.encode()+b'\0rockchip,'+soc.encode()+b'\0')
             result = self.run_script(source+'\nhive_detect_board && echo "$HIVE_BOARD:$HIVE_LAYOUT"')
             self.assertEqual(result.stdout.strip(), f'{board}:{board}-bootab-v1')
-        (self.root / 'compatible').write_bytes(b'friendlyarm,nanopi-r3s\0rockchip,rk3566\0')
-        self.run_script(source+'\nhive_detect_board', 1)
+        for compatible in ['friendlyarm,nanopi-r3s', 'friendlyelec,nanopi-r3s-lts',
+                           'friendlyarm,nanopi-r3s-lts-extra']:
+            with self.subTest(compatible=compatible):
+                (self.root / 'compatible').write_bytes(compatible.encode()+b'\0rockchip,rk3566\0')
+                self.run_script(source+'\nhive_detect_board', 1)
+        self.run_script(source+'\nhive_board_config nanopi-r3s', 1)
 
     def test_memory_profile_tracks_ram_not_board_name(self):
         source = (REPO / 'armbian-build/userpatches/overlay/usr/lib/systemd/system-generators/hive-memory-generator').read_text()
@@ -419,8 +424,11 @@ with (r/'downloads').open('a') as out:
         self.assertIn('sudo', r.stdout + r.stderr)
 
     def test_boot_policy_contains_matching_kernel_dtb(self):
-        for board, dtb in [('nanopi-zero2','rk3528-nanopi-zero2.dtb'), ('nanopi-r28s','rk3528-nanopi-rev03.dtb')]:
+        for board, dtb, console in [('nanopi-zero2','rk3528-nanopi-zero2.dtb','ttyS0,1500000'),
+                                    ('nanopi-r28s','rk3528-nanopi-rev03.dtb','ttyS0,1500000'),
+                                    ('nanopi-r3s-lts','rk3566-nanopi-r3s-lts.dtb','ttyS2,1500000')]:
             text = subprocess.check_output([str(REPO/'scripts/render-ab-boot.sh'),board],text=True)
+            self.assertIn('console='+console,text)
             self.assertIn('/boot/dtb.${hive_slot}/rockchip/'+dtb,text)
             self.assertIn('${hive_slot}',text)  # Not expanded by the host shell.
 
@@ -1083,12 +1091,13 @@ elif args[:2] == ['rule', 'del']:
         self.assertIn('-I FORWARD 1 -i wlan0 -s 10.42.0.0/24 '
                       '-m comment --comment hive-hotspot -j ACCEPT', calls)
 
-    def gateway_fixture(self, default_route=''):
+    def gateway_fixture(self, default_route='', interfaces=('eth0', 'eth1')):
         # Relocate paths only; run the production WAN/LAN selection and keyfile
         # writer against a mocked NetworkManager.
         for path in ['etc/hive', 'etc/NetworkManager/system-connections', 'etc/sysctl.d', 'run', 'sys/class/net']:
             (self.root / path).mkdir(parents=True, exist_ok=True)
-        for iface, mac in [('eth0', '02:00:00:00:00:10'), ('eth1', '02:00:00:00:00:11')]:
+        for index, iface in enumerate(interfaces):
+            mac = f'02:00:00:00:00:{0x10 + index:02x}'
             net = self.root / 'sys/class/net' / iface
             (net / 'device').mkdir(parents=True)
             (net / 'address').write_text(mac + '\n')
@@ -1097,7 +1106,7 @@ elif args[:2] == ['rule', 'del']:
         (self.root / 'etc/hive/config.env').write_text('')
         (self.root / 'default-route').write_text(default_route)
         (self.root / 'nm-state.json').write_text(json.dumps(
-            {'connections': {}, 'active': [], 'interfaces': ['eth0', 'eth1']}))
+            {'connections': {}, 'active': [], 'interfaces': list(interfaces)}))
         for name in ['logger', 'chown']:
             self.mock(name, '#!/bin/sh\nexit 0\n')
         self.mock('ip', r'''#!/usr/bin/env python3
@@ -1162,6 +1171,24 @@ sys.exit(1)
         for path in ['/etc/NetworkManager/system-connections', '/etc/hive', '/etc/sysctl.d', '/run/', '/sys/class/net']:
             source = source.replace(path, str(self.root) + path)
         return source
+
+    def test_gateway_named_wan_precedes_up_lan_but_not_route_or_pin(self):
+        source = self.gateway_fixture(interfaces=('lan', 'wan'))
+        # LTS names sort lan first; an unplugged wan still has the WAN role.
+        (self.root / 'sys/class/net/wan/operstate').write_text('down\n')
+        for route, pin, expected_wan in [('', '', 'wan'), ('lan', '', 'lan'),
+                                         ('lan', 'wan', 'wan'), ('wan', 'lan', 'lan')]:
+            with self.subTest(route=route, pin=pin):
+                (self.root / 'default-route').write_text(route)
+                (self.root / 'etc/hive/config.env').write_text(f'GATEWAY_WAN_IFACE={pin}\n')
+                self.run_script(source)
+                info = (self.root / 'etc/hive/node-info').read_text()
+                expected_lan = 'lan' if expected_wan == 'wan' else 'wan'
+                self.assertIn(f'GATEWAY_WAN_IFACE={expected_wan}\n', info)
+                self.assertIn(f'GATEWAY_LAN_IFACES={expected_lan}\n', info)
+                keyfiles = self.root / 'etc/NetworkManager/system-connections'
+                self.assertTrue((keyfiles / f'hive-lan-{expected_lan}.nmconnection').exists())
+                self.assertFalse((keyfiles / f'hive-lan-{expected_wan}.nmconnection').exists())
 
     def test_gateway_drops_lan_profile_from_the_former_lan_port(self):
         # A profile left on a port that later became WAN keeps method=shared and
