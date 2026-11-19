@@ -14,9 +14,9 @@
 - [ ] `.env` 中新增的环境变量已在 VPS 上配置
 - [ ] 当前没有其他人正在发布
 
-### Actions 版本兼容
+### Actions 检查与产物交接
 
-Registry CI 的 `gofmt check` 会阻断后续测试和前端构建，Go 改动提交前须通过 `gofmt -l .`。文档 GitHub Pages 部署固定 `upload-pages-artifact` v4：当前 `deploy-pages` v5 内置 artifact client v2，新上传器可能已成功上传、但部署端仍查不到 `github-pages` 产物；不能只升级上传端。Cloudflare Pages 不使用这条产物链。
+Registry CI 的 `gofmt check` 会阻断后续测试和前端构建，Go 改动提交前须通过 `gofmt -l .`。文档 GitHub Pages 按[官方推荐](https://github.com/actions/deploy-pages#usage)拆分构建上传与部署 job，部署通过 `needs` 等待上传 job 完成。`deploy-pages` 单次列举产物可能碰到[列表可见性延迟](https://github.com/actions/deploy-pages/issues/451)，出现上传成功但查不到 `github-pages` 的偶发失败；这不是已证实的上传/部署版本不兼容。跨 job 交接降低这个竞态风险，不能保证 GitHub 服务永不发生延迟。Cloudflare Pages 不使用这条产物链。
 
 ---
 
