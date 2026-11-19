@@ -50,12 +50,11 @@ proxy-groups:
     type: select
     proxies: [直连]
 
-# No customer traffic before a valid subscription is received.
-# 节点自身的控制面必须放行：auto-route 把本机出站也送进 TUN，源地址是 TUN 地址；
-# mihomo 在本机实测匹配不到进程名（find-process-mode=always 亦然），只靠
-# PROCESS-NAME 会让节点连注册/拉配置都做不到（fail-closed 自锁）。
+# 还没有有效订阅时退化为直连：不代理，但热点/局域网不断网。
+# 节点自身的控制面必须放行：本机出站不进 tproxy（见 hive-gateway-route），
+# 源地址白名单与 PROCESS-NAME 仍保留，兼容旧 TUN 配置。
 rules:
   - SRC-IP-CIDR,198.18.0.1/32,DIRECT
   - SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT
   - PROCESS-NAME,curl,DIRECT
-  - MATCH,REJECT
+  - MATCH,直连

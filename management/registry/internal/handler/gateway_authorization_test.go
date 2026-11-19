@@ -33,8 +33,10 @@ func assertGatewayAccess(t *testing.T, mac, credential, access string) {
 	body := readBody(resp)
 	const subscriptionUUID = "11111111-2222-4333-8444-555555555555"
 	if access == "blocked" {
-		if strings.Contains(body, subscriptionUUID) || !strings.Contains(body, "MATCH,REJECT") {
-			t.Fatalf("blocked gateway retained a subscription or direct fallback: %s", body)
+		// 未授权只意味着不能代理：配置必须退化为直连兜底，且不得携带任何上游凭证。
+		if strings.Contains(body, subscriptionUUID) || strings.Contains(body, "type: vless") ||
+			!strings.Contains(body, "MATCH,直连") || strings.Contains(body, "MATCH,REJECT") {
+			t.Fatalf("blocked gateway must degrade to DIRECT without upstream credentials: %s", body)
 		}
 	} else if !strings.Contains(body, subscriptionUUID) || !strings.Contains(body, "MATCH,代理") {
 		t.Fatalf("authorized gateway lost its subscription route: %s", body)
@@ -153,7 +155,7 @@ func TestGatewayUpstreamFollowsNodeDirection(t *testing.T) {
 	assertGatewayAccess(t, mac, credential, "blocked")
 }
 
-func TestGatewayRendererRejectsEmptyEffectiveUpstream(t *testing.T) {
+func TestGatewayRendererDegradesToDirectWithoutUpstream(t *testing.T) {
 	for _, nodes := range [][]model.Node{
 		nil,
 		{{MAC: "112233445566", CFURL: "https://self.invalid"}},
@@ -165,9 +167,33 @@ func TestGatewayRendererRejectsEmptyEffectiveUpstream(t *testing.T) {
 			OverrideUUID: "11111111-2222-4333-8444-555555555555",
 			AllNodes:     nodes,
 		})
-		if !strings.Contains(body, "MATCH,REJECT") || strings.Contains(body, "MATCH,直连") {
-			t.Fatalf("empty effective upstream failed open: %s", body)
+		if !strings.Contains(body, "MATCH,直连") || strings.Contains(body, "MATCH,REJECT") {
+			t.Fatalf("empty effective upstream must degrade to DIRECT: %s", body)
 		}
+		if strings.Contains(body, "type: vless") {
+			t.Fatalf("direct fallback leaked an upstream proxy: %s", body)
+		}
+	}
+}
+
+// A blocked decision must win over whatever nodes the caller passed: the config
+// may keep the node list but must not expose a single proxy.
+func TestGatewayRendererBlockedDirectionIgnoresUpstreams(t *testing.T) {
+	body := buildGatewayClashYAML(gatewayClashArgs{
+		SelfMAC:      "112233445566",
+		Direction:    "blocked",
+		OverrideUUID: "11111111-2222-4333-8444-555555555555",
+		AllNodes: []model.Node{{
+			MAC:      "aabbccddeeff",
+			CFURL:    "https://exit.example.com",
+			XrayUUID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+		}},
+	})
+	if !strings.Contains(body, "MATCH,直连") || strings.Contains(body, "MATCH,REJECT") {
+		t.Fatalf("blocked gateway must render DIRECT: %s", body)
+	}
+	if strings.Contains(body, "type: vless") || strings.Contains(body, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") {
+		t.Fatalf("blocked gateway leaked upstream credentials: %s", body)
 	}
 }
 

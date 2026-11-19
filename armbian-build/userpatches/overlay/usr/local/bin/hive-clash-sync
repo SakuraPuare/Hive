@@ -34,9 +34,10 @@ SAFE_PATHS=/var/www/metacubexd mihomo -t -d /etc/mihomo -f "$tmp" >/dev/null 2>&
 hive_lease_write gateway "$request_started" "$lease" || fail 'invalid or expired authorization'
 if ! cmp -s "$tmp" /etc/mihomo/config.yaml || ! systemctl is-active --quiet hive-mihomo; then
     # Restart closes existing tunnels when a subscription is revoked or changed.
-    hive_gateway_block_forward || fail 'cannot block forwarding'
     mv -f "$tmp" /etc/mihomo/config.yaml
     systemctl restart hive-mihomo || { hive_stop_gateway; exit 1; }
 fi
 hive_lease_valid gateway || { hive_stop_gateway; exit 1; }
-if [ "$access" = active ]; then hive_gateway_unblock_forward; else hive_gateway_block_forward; fi
+# 授权失效只意味着不能代理，配置本身已是/将被替换为直连兜底；转发始终放行，
+# 同时清掉旧固件可能残留的 FORWARD DROP。
+hive_gateway_unblock_forward || fail 'cannot release forwarding'

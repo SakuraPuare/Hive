@@ -6,12 +6,13 @@
 #      所以热点生成与防火墙初始化都要各调一次（同规则、同 comment）。
 #   2. 热点网段的 SNAT：mihomo 不在时客户端靠它直连出公网；走 TUN 的出站不 NAT，
 #      保持原始源地址交给 mihomo 做规则分流。
-#   3. 订阅门禁（hive_gateway_block_forward 落的 FORWARD DROP）之上的双向 ACCEPT：
-#      入向"AP 接口 + 热点网段"，回程"conntrack --ctorigsrc 热点网段 + oif AP"。
-#      没有 mihomo 配置/授权时门禁会一直挂着，不豁免热点就是"连上 Wi-Fi 没网"。
-#   4. 直连模式（门禁在 / 没有配置 / mihomo 没跑）下把热点网段从 TUN 摘到 main 表，
-#      并给公共解析器插绕开 dns-hijack 的直连规则 —— 否则会进 TUN 被交付配置的
-#      MATCH,REJECT 拒掉，或拿到不可路由的 fake-IP。
+#   3. 旧固件遗留的订阅门禁（`FORWARD --comment hive-subscription -j DROP`）之上的
+#      双向 ACCEPT：入向"AP 接口 + 热点网段"，回程"conntrack --ctorigsrc 热点网段 +
+#      oif AP"。新固件不再安装这条 DROP，分支只用于升级窗口；不豁免热点就是
+#      "连上 Wi-Fi 没网"。
+#   4. 直连模式（旧门禁在 / 没有配置 / mihomo 没跑）下把热点网段从 TUN 摘到 main 表，
+#      并给公共解析器插绕开 dns-hijack 的直连规则 —— 否则会进 TUN 被旧 REJECT 配置
+#      拒掉，或拿到不可路由的 fake-IP。
 #
 # 调用方：hive-hotspot.sh（热点生成）、setup-firewall.sh（防火墙初始化）、
 #         hive-mihomo.service 的 ExecStartPost/ExecStopPost、hive-subscription-state。

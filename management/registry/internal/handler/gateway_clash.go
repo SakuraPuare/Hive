@@ -71,8 +71,16 @@ type gatewayClashArgs struct {
 //
 // The self node is never an upstream (no self-routing loop), the upstream pool
 // is auto (url-test over all) or manual (selected subset), and the CN routing
-// rule flips by the node's gateway_direction.
+// rule flips by the node's gateway_direction. Without a usable upstream (unbound
+// subscription, expired lease, direction/plan mismatch) the gateway degrades to
+// DIRECT instead of REJECT so the downstream LAN keeps internet access.
 func buildGatewayClashYAML(args gatewayClashArgs) string {
+	if args.Direction == "blocked" {
+		// 未授权的网关不允许携带任何上游凭证。handler 已把节点列表置空，这里再
+		// 兜底一次：即便调用方传了节点，也不能把订阅 UUID 写进配置。
+		args.AllNodes = nil
+		args.UpstreamMACs = nil
+	}
 	manualSet := map[string]bool{}
 	for _, m := range args.UpstreamMACs {
 		m = strings.ToLower(strings.TrimSpace(m))
@@ -127,9 +135,12 @@ func buildGatewayClashYAML(args gatewayClashArgs) string {
 		cnAction, otherAction = "直连", "代理"
 	}
 
+	// 没有可用上游（未绑定/订阅失效/线路方向不匹配）时退化为直连兜底：订阅只决定
+	// "能不能走代理"，不能把下游 LAN/热点的网络一起掐断。节点侧也不再装 FORWARD
+	// DROP，因此直连兜底对客户端立即可用。
 	hasUpstream := len(proxies) > 0
 	if !hasUpstream || args.Direction == "blocked" || args.OverrideUUID == "" {
-		cnAction, otherAction = "REJECT", "REJECT"
+		cnAction, otherAction = "直连", "直连"
 	}
 
 	data := gatewayClashData{

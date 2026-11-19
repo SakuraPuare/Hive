@@ -48,14 +48,14 @@ grep -E '^WIFI_' /etc/hive/node-info
 4. **落地方式两频不同**：
    - 2.4G 走 NetworkManager keyfile（`hive-hotspot-2g`，`band=bg` + `key-mgmt=wpa-psk`），`ipv4.method=shared`（`10.42.0.1/24`）：NM 自带 dnsmasq 发 DHCP/DNS 并做 NAT。
    - 5G 走独立 hostapd（`hive-hotspot-5g.service`，WPA3-SAE + `pmf=2`，默认 ch149/80MHz），DHCP/DNS 由独立 dnsmasq（`hive-hotspot-5g-dnsmasq.service`，`10.42.1.1/24`）提供；开 5G 前 `iw reg set <国家码>`（默认 CN，5G AP 必需）。
-5. **出网与 DNS 不依赖 mihomo**（mihomo 没有配置 / `GATEWAY_ENABLED=off` / 订阅未授权时，连上热点照样要有网）。热点有两种模式，由 `hive-hotspot-firewall.sh` 与 `hive-hotspot-dns.sh` 共同决定，**判据相同**：门禁 `FORWARD -j DROP` 不在、`/etc/mihomo/config.yaml` 存在、mihomo 在跑 —— 三条都满足才把热点交给代理。
-   - **代理模式**（三条都满足）：dnsmasq 上游指向 mihomo `127.0.0.1#1053`（fake-IP 分流），客户端流量按 auto-route 进 TUN。
+5. **出网与 DNS 不依赖 mihomo**（mihomo 没有配置 / `GATEWAY_ENABLED=off` / 订阅未授权时，连上热点照样要有网）。热点有两种模式，由 `hive-hotspot-firewall.sh` 与 `hive-hotspot-dns.sh` 共同决定，**判据相同**：没有旧固件残留的门禁 `FORWARD -j DROP`、`/etc/mihomo/config.yaml` 存在、mihomo 在跑 —— 三条都满足才把热点交给 mihomo。新固件不再安装该 DROP；它只可能来自升级前的旧版本，`hive-clash-sync`/`hive-gateway-prepare` 首次运行就会删掉。
+   - **代理模式**（三条都满足）：dnsmasq 上游指向 mihomo `127.0.0.1#1053`（fake-IP 分流），客户端流量按 tproxy 进 mihomo。订阅无效时 mihomo 跑的是直连兜底配置（`MATCH,直连`），热点照常上网。
    - **直连模式**（其余情况）：
-     - `ip rule add from 10.42.1.0/24 lookup main pref 8000` 把热点流量从 TUN 摘到主路由表（否则会被交付配置末端的 `MATCH,REJECT` 拒掉 —— 实测症状是 DHCP/DNS 都正常但 HTTPS 全超时）；`10.42.0.0/24` 同样处理。
+     - `ip rule add from 10.42.1.0/24 lookup main pref 8000` 把热点流量从 TUN 摘到主路由表（旧固件 REJECT 配置下否则 HTTPS 全超时）；`10.42.0.0/24` 同样处理。
      - dnsmasq 上游换成公共 DNS（223.5.5.5、119.29.29.29）。**只改上游还不够**：本机到这些服务器的 53 端口查询会被 mihomo 的 `dns-hijack: any:53` 抓走并回 fake-IP，所以还要 `ip rule add to <resolver> lookup main pref 7000` 让解析走真实网络。
      - 给 `10.42.1.0/24` 加 SNAT（`! -o Meta` 时才 NAT），客户端经物理上行直连出网。
-   - **转发放行是双向的**：入向按「AP 接口 + 热点网段」、回程按 `conntrack --ctorigsrc <热点网段>`（出向 oif=AP 接口），两条都插在订阅门禁 `DROP` 之上；门禁每轮重落 DROP 都会重跑脚本，顺序不会颠倒。
-   - 触发点：热点生成、`setup-firewall.sh`、`hive-mihomo.service.d/10-hive-hotspot.conf`（起停）、订阅门禁落/撤 DROP。全部幂等。
+   - **转发放行是双向的**：入向按「AP 接口 + 热点网段」、回程按 `conntrack --ctorigsrc <热点网段>`（出向 oif=AP 接口），两条都插在旧固件遗留的订阅门禁 `DROP` 之上；新固件不再落 DROP，这段只在升级窗口生效。
+   - 触发点：热点生成、`setup-firewall.sh`、`hive-mihomo.service.d/10-hive-hotspot.conf`（起停）、网关兜底/恢复（`hive_gateway_unblock_forward`）。全部幂等。
    - 2.4G 的 UFW 洞由 NM dispatcher `90-hive-hotspot` 在连接 up 时放行、down 时撤销（接口名持久化到 `/run` 供精确清理）。
 
 ## 配置（可选，`/etc/hive/config.env` 或构建时 `.env` 覆盖）

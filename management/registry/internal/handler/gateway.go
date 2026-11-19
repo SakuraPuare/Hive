@@ -110,7 +110,8 @@ func (h *Handler) HandleNodeClashConfig(w http.ResponseWriter, r *http.Request) 
 
 	// 计费绑定：若本网关绑定了某客户订阅，且该订阅有效（未停用/未过期/未超量），
 	// 则上游代理统一使用该订阅的 UUID —— 网关走上游 Hive 节点的流量落到 sub-<id>
-	// 客户，由可信出口的计费接口计入该订阅。已绑定或属于客户的网关失效时必须拒绝转发。
+	// 客户，由可信出口的计费接口计入该订阅。已绑定或属于客户的网关失效时不再代理
+	// （blocked），但配置会退化为直连兜底，下游网络不断。
 	overrideUUID := ""
 	blocked := true
 	lease := subscriptionLeaseSeconds

@@ -210,7 +210,7 @@ func (h *Handler) HandlePortalBindDeviceSubscription(w http.ResponseWriter, r *h
 // HandlePortalUnbindDeviceSubscription godoc
 // @Summary      解绑网关设备的订阅配置
 // @ID           PortalUnbindDeviceSubscription
-// @Description  客户解除网关设备与订阅的绑定；设备下一次同步后进入未绑定（fail-closed）配置。
+// @Description  客户解除网关设备与订阅的绑定；设备下一次同步后去掉全部代理，退化为直连兜底。
 // @Tags         portal
 // @Security     CustomerSessionCookie
 // @Produce      json
@@ -276,8 +276,8 @@ func (h *Handler) HandlePortalSetDeviceGateway(w http.ResponseWriter, r *http.Re
 		return
 	}
 	// 方向与已绑定订阅的线路必须能配出一台上游：境内网关要境外节点、境外网关要
-	// 回国节点。配不出来时切换方向等于让网关 fail-closed（客户端断网），先拦下并
-	// 说明要先换订阅，而不是让用户在面板上把设备点成砖。
+	// 回国节点。配不出来时切换方向等于放弃代理（只剩直连兜底），先拦下并说明要先
+	// 换订阅，而不是让用户以为切换成功、实际什么都代理不了。
 	if node.BoundSubscriptionID != nil && *node.BoundSubscriptionID != 0 && !h.gatewayDirectionHasUpstream(node, directionForNode(dir, effectiveNodeCountry(node))) {
 		h.jsonErr(w, http.StatusConflict, "当前订阅的线路里没有该分流方向可用的上游节点，请先改绑对应方向的订阅")
 		return

@@ -272,8 +272,9 @@ func TestInvalidGatewaySubscriptionDoesNotFallBack(t *testing.T) {
 	assertStatus(t, resp, 200)
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if !strings.Contains(string(body), "MATCH,REJECT") || strings.Contains(string(body), "type: vless") {
-		t.Fatalf("invalid gateway retained upstream credentials: %s", body)
+	if !strings.Contains(string(body), "MATCH,直连") || strings.Contains(string(body), "MATCH,REJECT") ||
+		strings.Contains(string(body), "type: vless") {
+		t.Fatalf("invalid gateway must degrade to DIRECT without upstream credentials: %s", body)
 	}
 }
 

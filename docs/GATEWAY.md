@@ -51,7 +51,7 @@
 
 网关的"代理"流量要送到集群里**别的出口节点**（境外节点的现有 Xray VLESS 出口）。上游池由 registry 自动生成——列出集群所有 `exit_enabled && owner_exit_enabled && enabled && status=active` 的出口节点（默认所有节点都是出口，管理员或设备所有者可关闭），**且永远排除节点自己**（不会自己代理给自己造成回环）。
 
-授权检查前先排除本网关，并与所绑定订阅的套餐线路取交集。若有效上游为空（例如线路只包含本网关），返回 `X-Hive-Access: blocked` 与 REJECT 配置，不会静默降级为全直连。
+授权检查前先排除本网关，并与所绑定订阅的套餐线路取交集。若有效上游为空（例如未绑定订阅、订阅失效，或线路里没有互补方向的节点），返回 `X-Hive-Access: blocked` 与**直连兜底**配置：不代理任何流量，但下游 LAN/热点照常上网（见下文「无有效订阅时的直连兜底」）。
 
 上游池还按**方向互补**过滤（节点字段 `exit_direction`，`overseas` 出海 / `domestic` 回国）：
 
@@ -59,7 +59,7 @@
 - `gateway_direction=overseas`（节点在墙外）只取 `exit_direction=domestic` 的境内节点；
 - `global`/`direct` 没有 CN 分流，取与节点自身 `exit_direction` 相反的方向。
 
-两类节点不会混进同一个上游池：把境外网关代理到另一个境外节点拿不到国内 IP，反之亦然。方向不匹配导致上游为空时同样 fail-closed。
+两类节点不会混进同一个上游池：把境外网关代理到另一个境外节点拿不到国内 IP，反之亦然。方向不匹配导致上游为空时同样是直连兜底：客户网络不断，只是没有代理。
 
 ### 分流方向：`auto` 自动识别
 
@@ -124,13 +124,13 @@ Mihomo 只接管 **LAN/AP 的转发流量**（`prerouting`），本机自身出�
 3. **ufw 放行**：tproxy 投递回来的客户端包带着原目的地址走 `LOCAL_IN`，而 ufw 的 INPUT 策略是 DROP；在一个 nft base chain 里 `accept` 不会跳过同 hook 的另一条 base chain（实测 `[UFW BLOCK] ... DPT=443 MARK=0x2`）。脚本把 `-A ufw-before-input -m mark --mark 0x2 -j ACCEPT` 写进 `/etc/ufw/before.rules` 与 `before6.rules`（ufw 每次 reload、热点每次启停都会重建自己的链），并立即插一条同样的 INPUT 规则；`hive-test.sh` 的 `gateway-tproxy-ufw` 项检查它。
 4. 客户端 DNS 由 dnsmasq 在网关地址上应答：`fib daddr type local return` 保证发往网关自身的解析不进入 tproxy。
 5. fake-IP 只服务客户端；本机解析器不再被 mihomo 接管。Xray 出口仍保留自己的 DoH，域名解析不依赖宿主 resolver。
-6. fail-closed：blocked 配置对热点源网段 `DIRECT`、其余 `MATCH,REJECT`；mihomo 停止时 `hive-gateway-route` 通过 `PartOf` 一并停止，规则撤掉后客户端直连。TUN 时代的源/进程白名单仍由 blocked 配置生成，但 tproxy 下不会命中，属于历史兜底。
+6. 直连兜底：blocked 配置（无有效订阅/无可用上游）对热点源网段 `DIRECT`、其余 `MATCH,直连`，不代理也不断网；mihomo 停止时 `hive-gateway-route` 通过 `PartOf` 一并停止，规则撤掉后客户端直连。TUN 时代的源/进程白名单仍由兜底配置生成，但 tproxy 下不会命中，属于历史兜底。
 
-## fail-closed（无有效订阅时）
+## 无有效订阅时的直连兜底
 
-客户解绑、管理员解除/变更设备所有者、再次认领时，会同步清空原有订阅绑定并重置所有者出口偏好；重复分配给同一客户则保留其绑定与偏好。已归属客户的网关只接受该客户的订阅，遗留的跨客户绑定也会被配置接口拒绝。无主的运营方网关仍允许管理员显式绑定客户订阅；认领后必须由新所有者重新绑定。撤销配置在下次同步生效，失联时由现有短租约到期机制阻断。
+客户解绑、管理员解除/变更设备所有者、再次认领时，会同步清空原有订阅绑定并重置所有者出口偏好；重复分配给同一客户则保留其绑定与偏好。已归属客户的网关只接受该客户的订阅，遗留的跨客户绑定也会被配置接口拒绝。无主的运营方网关仍允许管理员显式绑定客户订阅；认领后必须由新所有者重新绑定。撤销配置在下次同步生效，失联时由现有短租约到期机制触发兜底。
 
-`hive-gateway-prepare` 与 `hive_stop_gateway` 会把配置的 `rules` 整体换掉，客户流量一概拒绝：
+**订阅只决定“能不能走代理”，不决定“有没有网”。** 未绑定、订阅失效或没有互补方向的上游时，registry 返回 `X-Hive-Access: blocked`，配置里去掉全部代理，规则整体换成直连：
 
 ```yaml
 rules:
@@ -140,16 +140,18 @@ rules:
   - …（xray / cloudflared / easytier-core / frpc / tailscaled）
   - SRC-IP-CIDR,10.42.0.0/24,DIRECT             # WiFi 热点客户端（2.4G）
   - SRC-IP-CIDR,10.42.1.0/24,DIRECT             # WiFi 热点客户端（5G）
-  - MATCH,REJECT
+  - MATCH,直连
 ```
 
-tproxy 下这些 TUN 时代的源/进程规则由 blocked 配置继续生成，但本机出站根本不进 mihomo，不会命中，属于历史兜底；真正生效的是热点源网段 `DIRECT` 和其余 `MATCH,REJECT`。`hive_gateway_block_config` 仍强制 `respect-rules: false`：否则 mihomo 自己的解析请求会被 `MATCH,REJECT` 拒掉，节点拿不到订阅、fail-closed 变自锁。v4/v6 地址推导函数仍保留给旧 TUN 配置兜底。
+节点侧 `hive_gateway_direct_config` 在租约到期/同步失败时写同一份兜底配置并重启 mihomo；`hive_gateway_release_forward` 只负责删掉旧固件遗留的 `FORWARD --comment hive-subscription -j DROP`，不再安装新的 DROP。`hive-clash-sync`、`hive-gateway-prepare`、`hive-subscription-guard` 每次运行都会幂等清理这条旧规则，升级后的第一次启动即恢复转发。tproxy 下这些 TUN 时代的源/进程规则不会命中，属于历史兜底，真正生效的是 `MATCH,直连`。
 
-**WiFi 热点不受这套门禁约束**：AP 是与代理网关独立的共享上网功能，没有订阅配置时连上热点也要有网。mihomo 不运行/无配置时 `hive-gateway-route` 不安装 tproxy 规则，热点客户端直连；dnsmasq 在 1053 不在听时改用公共 DNS（`hive-hotspot-dns`）。mihomo 正常时 dnsmasq 转发到 1053，客户端拿 fake-IP，连接被 tproxy 接管；blocked 配置里的 `SRC-IP-CIDR,10.42.0.0/24`、`10.42.1.0/24,DIRECT` 让热点在 fail-closed 时仍直连。`FORWARD` 门禁 DROP 之上有双向放行（入向 AP 接口+热点网段，回程 `--ctorigsrc` 热点网段），每轮重落 DROP 都会重插。细节见 [HOTSPOT.md](HOTSPOT.md)。
+`hive_gateway_direct_config` 仍强制 `respect-rules: false`（兼容旧交付配置里的 `true`），避免 mihomo 自己的 DoH 被规则引擎接管。
+
+**WiFi 热点**：AP 是与代理网关独立的共享上网功能，没有订阅配置时连上热点也要有网。mihomo 不运行/无配置时 `hive-gateway-route` 不安装 tproxy 规则，热点客户端直连；dnsmasq 在 1053 不在听时改用公共 DNS（`hive-hotspot-dns`）。mihomo 正常时 dnsmasq 转发到 1053，客户端拿 fake-IP，连接被 tproxy 接管；兜底配置里的 `SRC-IP-CIDR,10.42.0.0/24`、`10.42.1.0/24,DIRECT` 让热点始终能出网。热点脚本仍保留“旧 `hive-subscription` DROP 存在时插双向放行”的兼容分支，只用于升级窗口。细节见 [HOTSPOT.md](HOTSPOT.md)。
 
 **Tailscale 域名必须排除出 fake-IP**：`tailscaled` 的控制面连接绑定在物理网卡地址上（`--accept-dns=false` 也一样），实测 `SYN-SENT 192.168.5.222:36686 -> 198.18.0.20:443`——fake-IP 只有"源地址 198.18.0.1、走 TUN"的流量才有反向映射，绑定端0 的 SYN 直接出公网，于是注册 10s 超时、节点永远进不了 tailnet。安装配置时会向 `dns.fake-ip-filter` 补 `'+.tailscale.com'`/`'+.tailscale.io'`（真实地址仍按域名走规则分流）。
 
-另外 `dns.respect-rules` 会被强制改成 `false`：交付配置里它是 `true`，于是 mihomo 自己的 DoH 也要过规则，而节点没有可用上游时终端规则是 `RULE-SET,cn_domain,REJECT`/`MATCH,REJECT`——实测 `[TCP] mihomo --> 223.5.5.5:443 match Match using REJECT`，解析全灭，tailscaled 注册 `context deadline exceeded`，节点在面板上永久离线。
+另外 `dns.respect-rules` 会被强制改成 `false`（旧交付配置里它是 `true`）：否则 mihomo 自己的 DoH 也要过规则引擎，旧固件 fail-closed 时实测 `[TCP] mihomo --> 223.5.5.5:443 match Match using REJECT`，解析全灭、节点永久离线。直连兜底下发后该风险消失，但旧配置仍可能在升级窗口内被使用。
 
 ## 配置项（`/etc/hive/config.env`）
 

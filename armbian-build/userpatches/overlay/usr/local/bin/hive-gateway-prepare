@@ -11,14 +11,16 @@ if ! hive_gateway_enabled; then
     hive_gateway_clear_access || fail 'cannot clear gateway access while disabled'
     exit 1
 fi
-# 没有配置就没有"网关"可封：此时落 FORWARD DROP 只会把热点客户端的直连一起掐死
+# 没有配置就没有"网关"可管：此时什么都不做，热点/直连由热点脚本自己兜底
 # （本单元随后被跳过，规则再无人撤销，而 WiFi 热点是独立于代理网关的功能）。
 if [ ! -s /etc/mihomo/config.yaml ]; then
-    hive_gateway_clear_access || fail 'cannot clear the forwarding block without a configuration'
+    hive_gateway_clear_access || fail 'cannot clear gateway access without a configuration'
     exit 1
 fi
 hive_gateway_tproxy_config /etc/mihomo/config.yaml || fail 'cannot switch gateway config to tproxy'
-hive_gateway_block_forward || fail 'cannot install the forwarding block'
+# 旧固件会在这里落 FORWARD DROP；现在授权失效只意味着不能代理，转发必须放行，
+# 因此顺手把升级后可能残留的 DROP 删掉。
+hive_gateway_release_forward || fail 'cannot release the legacy forwarding block'
 if ! hive_lease_valid gateway; then
-    hive_gateway_block_config || fail 'cannot replace the gateway rules with the blocked policy'
+    hive_gateway_direct_config || fail 'cannot install the direct fallback policy'
 fi

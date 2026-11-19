@@ -559,14 +559,14 @@ class SubscriptionScripts(unittest.TestCase):
         self.run_agent('hive-xray-sync')
         self.assertEqual(self.state()['routing_rules'],[{'type':'field','ruleTag':'hive-devlimit-1','user':['sub-1'],'source':['2001:db8::2/128'],'outboundTag':'block'}])
 
-    def test_outage_retries_do_not_restart_mihomo_once_fail_closed(self):
-        # 断网且已经 fail-closed 之后，clash-sync 每 15s 还会失败一次；此时不能重写
-        # blocked 配置、重启 mihomo（真机日志里是每 15s 一对 Stopping/Starting）。
-        # 但转发必须保持阻断（fail-closed 不能因为重试而放松）。
+    def test_outage_retries_do_not_restart_mihomo_once_in_direct_fallback(self):
+        # 断网且已经切成直连兜底之后，clash-sync 每 15s 还会失败一次；此时不能重写
+        # 配置、重启 mihomo（真机日志里是每 15s 一对 Stopping/Starting）。转发始终
+        # 放行——订阅失效只意味着不能代理，不能把下游网络一起掐掉。
         (self.root / 'fail-network').write_text('')
         access = self.root / 'run/hive-subscriptions'
         access.mkdir(parents=True, exist_ok=True)
-        (access / 'gateway.blocked').write_text('')
+        (access / 'gateway.direct').write_text('')
         (access / 'gateway.lease').unlink(missing_ok=True)
         self.state_update(mihomo=True)
         (self.root / 'calls').write_text('')
@@ -575,11 +575,11 @@ class SubscriptionScripts(unittest.TestCase):
         calls = (self.root / 'calls').read_text()
         self.assertNotIn('systemctl restart hive-mihomo', calls)
         self.assertNotIn('systemctl stop hive-mihomo', calls)
-        self.assertTrue(self.state()['iptables'], '重试期间转发必须保持阻断')
+        self.assertFalse(self.state().get('iptables', False), '重试期间转发必须保持放行')
 
-    def test_expired_lease_still_fails_closed_exactly_once(self):
-        # 授权过期（文件还在）时第一次失败必须 fail-closed：写 blocked 配置、重启
-        # mihomo、留下 blocked 标记；之后的重试不再重启。
+    def test_expired_lease_applies_direct_fallback_exactly_once(self):
+        # 授权过期（文件还在）时第一次失败必须切直连兜底：写直连配置、重启 mihomo、
+        # 留下 direct 标记；之后的重试不再重启。转发不阻断。
         (self.root / 'fail-network').write_text('')
         access = self.root / 'run/hive-subscriptions'
         access.mkdir(parents=True, exist_ok=True)
@@ -589,18 +589,21 @@ class SubscriptionScripts(unittest.TestCase):
         first = (self.root / 'calls').read_text()
         self.assertIn('systemctl restart hive-mihomo', first)
         self.assertFalse((access / 'gateway.lease').exists())
-        self.assertTrue((access / 'gateway.blocked').exists())
+        self.assertTrue((access / 'gateway.direct').exists())
+        self.assertFalse(self.state().get('iptables', False))
+        text = (self.root / 'etc/mihomo/config.yaml').read_text()
+        self.assertIn('- MATCH,直连', text)
+        self.assertNotIn('MATCH,REJECT', text)
         (self.root / 'calls').write_text('')
         self.run_agent('hive-clash-sync', expected=1)
         second = (self.root / 'calls').read_text()
         self.assertNotIn('systemctl restart hive-mihomo', second)
         self.assertNotIn('systemctl stop hive-mihomo', second)
-        # 网恢复、授权重新有效后必须解除 fail-closed（清 blocked 标记 + 放行转发），
-        # 否则下一次断网前的正常服务会被上一轮的标记挡住。
+        # 网恢复、授权重新有效后必须清掉直连标记并恢复代理配置。
         (self.root / 'fail-network').unlink()
         self.run_agent('hive-clash-sync')
-        self.assertFalse((access / 'gateway.blocked').exists(), '恢复后必须清掉 blocked 标记')
-        self.assertFalse(self.state()['iptables'], '恢复后必须放行转发')
+        self.assertFalse((access / 'gateway.direct').exists(), '恢复后必须清掉 direct 标记')
+        self.assertFalse(self.state().get('iptables', False), '恢复后转发必须放行')
 
     def test_gateway_off_entrypoints_preserve_unrelated_forwarding(self):
         self.set_gateway_enabled('off')
@@ -650,52 +653,34 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertFalse(self.state()['mihomo'])
         self.assertEqual(self.state()['firewall'],expected)
 
-    def test_gateway_off_preserves_block_when_mihomo_cannot_stop(self):
+    def test_gateway_off_releases_forwarding_even_when_mihomo_cannot_stop(self):
         self.set_gateway_enabled('off')
         access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
         lease=access/'gateway.lease';lease.write_text('9999999999\n')
         (self.root/'fail-mihomo-stop').touch()
         (self.root/'fail-mihomo-kill').touch()
-        self.seed_gateway_firewall(blocked=True)
-        original=self.state()['firewall']
+        expected=self.seed_gateway_firewall(blocked=True)
         for name in ['hive-clash-sync','hive-subscription-guard']:
             with self.subTest(entrypoint=name):
                 self.run_agent(name,expected=1)
-                self.assertTrue(self.state()['mihomo'])
-                self.assertEqual(self.state()['firewall'],original)
+                self.assertEqual(self.state()['firewall'],expected)
                 self.assertTrue(lease.exists())
 
-    def test_gateway_on_without_authorization_still_blocks(self):
+    def test_gateway_on_without_authorization_degrades_to_direct(self):
         self.set_gateway_enabled('on')
         access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
         (self.root/'fail-network').touch()
         for name in ['hive-clash-sync','hive-gateway-prepare','hive-subscription-guard']:
             with self.subTest(entrypoint=name):
                 self.expire('gateway')
-                unrelated=self.seed_gateway_firewall()
+                unrelated=self.seed_gateway_firewall(blocked=True)
                 self.run_agent(name,expected=1 if name=='hive-clash-sync' else 0)
-                self.assertTrue(self.state()['iptables'])
-                self.assertTrue(self.state()['ip6tables'])
+                self.assertFalse(self.state()['iptables'])
+                self.assertFalse(self.state()['ip6tables'])
                 for tool,rules in self.state()['firewall'].items():
-                    self.assertEqual(rules[1:],unrelated[tool])
-                self.assertIn('MATCH,REJECT',(self.root/'etc/mihomo/config.yaml').read_text())
-
-    def test_gateway_prepare_reports_firewall_failure_instead_of_skipping(self):
-        # ExecCondition exit codes 1..254 mean "condition not met": systemd skips
-        # Mihomo and reports the unit as successful. A real failure must exit 255,
-        # otherwise GATEWAY_ENABLED=off and a broken firewall are indistinguishable
-        # and both silently disable the gateway.
-        self.set_gateway_enabled('on')
-        self.seed_gateway_firewall()
-        (self.root/'fail-iptables').touch()
-        self.run_agent('hive-gateway-prepare',expected=255)
-        (self.root/'fail-iptables').unlink()
-        self.run_agent('hive-gateway-prepare')
-        self.set_gateway_enabled('off')
-        access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
-        (access/'gateway.lease').write_text('9999999999\n')
-        self.run_agent('hive-gateway-prepare',expected=1)
-        self.assertFalse((access/'gateway.lease').exists())
+                    self.assertEqual(rules,unrelated[tool])
+                self.assertIn('MATCH,直连',(self.root/'etc/mihomo/config.yaml').read_text())
+                self.assertNotIn('MATCH,REJECT',(self.root/'etc/mihomo/config.yaml').read_text())
 
     def test_gateway_prepare_reports_blocked_config_failure(self):
         self.set_gateway_enabled('on')
@@ -727,9 +712,10 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertFalse(self.state()['iptables'])
         self.assertFalse(self.state()['ip6tables'])
 
-    def test_hotspot_clients_stay_above_the_forwarding_block(self):
-        # 门禁每轮同步都会重插 DROP；热点放行必须被重新插到它上面，否则没有授权的
-        # 节点"连上 Wi-Fi 完全没网"（规则顺序有语义）。
+    def test_hotspot_clients_stay_above_a_legacy_forwarding_block(self):
+        # 旧固件会留下 FORWARD DROP（hive-subscription）。热点放行必须插在它上面，
+        # 否则 AP 客户端"连上 Wi-Fi 完全没网"（规则顺序有语义）。新固件不再重插
+        # 该 DROP，但升级后的第一次启动仍可能遇到旧规则。
         (self.root/'etc/hive/hotspot-5g.env').write_text('AP_IFACE=wlan0\nAP_IP4=10.42.1.1/24\n')
         source=(OVERLAY/'usr/local/bin/hive-hotspot-firewall.sh').read_text()
         for old,new in [('/usr/local/bin',str(self.root/'bin')),('/etc/hive',str(self.root/'etc/hive')),('/run/',str(self.root/'run/'))]:
@@ -738,10 +724,8 @@ class SubscriptionScripts(unittest.TestCase):
         logger=self.root/'mock'/'logger';logger.write_text('#!/bin/sh\nexit 0\n');logger.chmod(0o755)
         ipmock=self.root/'mock'/'ip'
         ipmock.write_text('#!/bin/sh\necho "$*" >> "$HIVE_TEST_ROOT/ip-calls"\nexit 0\n');ipmock.chmod(0o755)
-        self.seed_gateway_firewall()
-        (self.root/'run/hive-subscriptions').mkdir(parents=True,exist_ok=True)
-        self.expire('gateway')
-        self.run_agent('hive-gateway-prepare')
+        self.seed_gateway_firewall(blocked=True)
+        subprocess.run([str(p)],env=self.env,capture_output=True,text=True,timeout=15)
         rules=self.state()['firewall']['iptables']
         drop=['filter','FORWARD','-m','comment','--comment','hive-subscription','-j','DROP']
         accept=['filter','FORWARD','-i','wlan0','-s','10.42.1.0/24','-m','comment','--comment','hive-hotspot','-j','ACCEPT']
@@ -753,8 +737,17 @@ class SubscriptionScripts(unittest.TestCase):
         ret=['filter','FORWARD','-o','wlan0','-m','conntrack','--ctorigsrc','10.42.1.0/24','-m','comment','--comment','hive-hotspot-ret','-j','ACCEPT']
         self.assertIn(ret,rules,'回程回包也必须在门禁之上放行')
         self.assertLess(rules.index(ret),rules.index(drop))
-        # 门禁在时热点网段要从 TUN 摘到 main 表（否则交付配置的 MATCH,REJECT 掐掉客户端）。
         self.assertIn('rule add from 10.42.1.0/24 lookup main pref 8000',(self.root/'ip-calls').read_text())
+
+    def test_gateway_entrypoints_remove_the_legacy_forwarding_block(self):
+        # 升级后第一次启动/同步必须无条件撤掉旧固件留下的 DROP（转发只由 mihomo
+        # 直连兜底接管），否则客户端会一直断网。
+        self.seed_gateway_firewall(blocked=True)
+        (self.root/'run/hive-subscriptions').mkdir(parents=True,exist_ok=True)
+        self.expire('gateway')
+        self.run_agent('hive-gateway-prepare')
+        self.assertFalse(self.state()['iptables'])
+        self.assertFalse(self.state()['ip6tables'])
 
     def test_gateway_reenable_requires_fresh_authorization(self):
         self.set_gateway_enabled('off')
@@ -763,24 +756,26 @@ class SubscriptionScripts(unittest.TestCase):
         self.set_gateway_enabled('on')
         (self.root/'fail-network').touch()
         self.run_agent('hive-clash-sync',expected=1)
-        self.assertTrue(self.state()['iptables'])
-        self.assertTrue(self.state()['ip6tables'])
+        self.assertFalse(self.state()['iptables'])
+        self.assertFalse(self.state()['ip6tables'])
+        self.assertIn('MATCH,直连',(self.root/'etc/mihomo/config.yaml').read_text())
         (self.root/'fail-network').unlink()
         self.run_agent('hive-clash-sync')
         self.assertTrue(self.state()['mihomo'])
         self.assertEqual(self.state()['firewall'],expected)
         self.assertTrue((self.root/'run/hive-subscriptions/gateway.lease').exists())
 
-    def test_gateway_expiry_blocks_ipv4_ipv6_and_closes_tunnels(self):
+    def test_gateway_expiry_degrades_to_direct(self):
         self.run_agent('hive-clash-sync')
         self.state_update(gateway_connections=True)
         self.expire('gateway')
         self.run_agent('hive-subscription-guard')
-        self.assertTrue(self.state()['iptables']);self.assertTrue(self.state()['ip6tables'])
+        self.assertFalse(self.state().get('iptables', False));self.assertFalse(self.state().get('ip6tables', False))
         self.assertFalse(self.state()['gateway_connections'])
-        self.assertIn('MATCH,REJECT',(self.root/'etc/mihomo/config.yaml').read_text())
+        self.assertIn('MATCH,直连',(self.root/'etc/mihomo/config.yaml').read_text())
+        self.assertNotIn('MATCH,REJECT',(self.root/'etc/mihomo/config.yaml').read_text())
         self.run_agent('hive-clash-sync')
-        self.assertFalse(self.state()['iptables']);self.assertFalse(self.state()['ip6tables'])
+        self.assertFalse(self.state().get('iptables', False));self.assertFalse(self.state().get('ip6tables', False))
 
     def test_gateway_unchanged_config_still_renews_lease(self):
         self.run_agent('hive-clash-sync')
@@ -846,10 +841,10 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertEqual(text.count("'+.tailscale.com'"), 1)
         self.assertEqual(text.count("'+.tailscale.io'"), 1)
 
-    def test_blocked_gateway_keeps_the_node_reachable(self):
+    def test_direct_fallback_keeps_the_node_reachable(self):
         # 实测：本机 mihomo 匹配不到 PROCESS-NAME（连 find-process-mode=always 也不行），
-        # 只按进程名白名单时，节点自己到 registry 的 TLS 会落到 MATCH,REJECT 被掐掉 ——
-        # 于是永远拉不到真配置，fail-closed 变成自锁。必须按 TUN 源地址放行本机流量。
+        # 只按进程名白名单时，节点自己到 registry 的 TLS 会落到终端 REJECT 被掐掉。
+        # 必须按 TUN 源地址放行本机流量（该规则在直连兜底配置里继续保留）。
         self.set_gateway_enabled('on')
         self.seed_gateway_firewall()
         access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
@@ -863,14 +858,14 @@ class SubscriptionScripts(unittest.TestCase):
         rules=[line.strip() for line in text.splitlines() if line.strip().startswith('- ')]
         self.assertIn('- SRC-IP-CIDR,198.18.0.1/32,DIRECT',rules)
         self.assertIn('- SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT',rules)
-        self.assertLess(rules.index('- SRC-IP-CIDR,198.18.0.1/32,DIRECT'),rules.index('- MATCH,REJECT'))
+        self.assertLess(rules.index('- SRC-IP-CIDR,198.18.0.1/32,DIRECT'),rules.index('- MATCH,直连'))
         # 实测日志 "[TCP] mihomo --> 223.5.5.5:443 match Match using REJECT"：fail-closed
         # 下 DNS 若仍受规则约束，解析全灭、租约永远拉不到，节点永久离线。
         dns_part=text.split('\nrules:\n')[0]
         self.assertIn('respect-rules: false',dns_part)
         self.assertNotIn('respect-rules: true',text)
 
-    def test_blocked_gateway_switches_to_tproxy_and_keeps_hotspot_direct(self):
+    def test_direct_fallback_switches_to_tproxy_and_keeps_hotspot_direct(self):
         self.set_gateway_enabled('on')
         self.seed_gateway_firewall()
         access=self.root/'run/hive-subscriptions';access.mkdir(exist_ok=True)
@@ -882,14 +877,17 @@ class SubscriptionScripts(unittest.TestCase):
         self.assertIn('tproxy-port: 7893',text)
         self.assertNotIn('\ntun:\n',text)
         self.assertIn('- SRC-IP-CIDR,10.42.1.0/24,DIRECT',text)
-        self.assertIn('- MATCH,REJECT',text)
+        self.assertIn('- MATCH,直连',text)
 
-    def test_gateway_rejects_missing_lease_and_blocks_boot_fallback(self):
+    def test_gateway_missing_lease_uses_direct_fallback(self):
         (self.root/'headers').write_text('HTTP/1.1 200 OK\r\n\r\n')
         self.run_agent('hive-clash-sync',expected=1)
-        self.assertTrue(self.state()['iptables'])
-        self.assertIn('MATCH,REJECT',(self.root/'etc/mihomo/config.yaml').read_text())
+        self.assertFalse(self.state().get('iptables', False))
+        self.assertFalse(self.state().get('ip6tables', False))
+        text=(self.root/'etc/mihomo/config.yaml').read_text()
+        self.assertIn('MATCH,直连',text)
+        self.assertNotIn('MATCH,REJECT',text)
         self.run_agent('hive-gateway-prepare')
-        self.assertTrue(self.state()['ip6tables'])
+        self.assertFalse(self.state().get('ip6tables', False))
 
 if __name__=='__main__':unittest.main(verbosity=2)

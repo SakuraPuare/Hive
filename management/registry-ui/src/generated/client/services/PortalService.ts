@@ -252,7 +252,7 @@ export class PortalService {
     }
     /**
      * 解绑网关设备的订阅配置
-     * 客户解除网关设备与订阅的绑定；设备下一次同步后进入未绑定（fail-closed）配置。
+     * 客户解除网关设备与订阅的绑定；设备下一次同步后去掉全部代理，退化为直连兜底。
      * @returns handler_StatusResponse OK
      * @throws ApiError
      */
