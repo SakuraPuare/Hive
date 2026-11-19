@@ -191,8 +191,9 @@ func TestScopedSubscriptionsRequireCustomerAndEnforceQuota(t *testing.T) {
 	}
 	mustExec(t, "UPDATE customer_subscriptions SET traffic_used=traffic_limit WHERE id=?", id)
 	resp := doJSON("GET", "/l/"+lineToken+"?subscription="+token, nil, nil)
-	if body := readBody(resp); !strings.Contains(body, "MATCH,REJECT") || strings.Contains(body, "11111111-2222") {
-		t.Fatalf("quota bypass: %s", body)
+	if body := readBody(resp); !strings.Contains(body, "MATCH,DIRECT") || strings.Contains(body, "MATCH,REJECT") ||
+		strings.Contains(body, "11111111-2222") || strings.Contains(body, "type: vless") {
+		t.Fatalf("quota must degrade to DIRECT without nodes: %s", body)
 	}
 }
 

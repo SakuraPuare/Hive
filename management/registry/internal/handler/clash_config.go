@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	_ "embed"
+	"fmt"
 	"strings"
 	"text/template"
 
@@ -284,4 +285,21 @@ func buildFullClashYAML(title string, nodes []model.Node, opts clashOptions) str
 		result = "# 本套餐暂无可用的回国节点；以下配置不会代理任何流量。\n" + result
 	}
 	return result
+}
+
+// buildDirectSubscriptionYAML is the fallback served when a customer
+// subscription is expired, suspended or over quota. It keeps the device online
+// by routing everything DIRECT and carries no node credentials: the
+// subscription gates proxying, not internet access.
+func buildDirectSubscriptionYAML(reason string) string {
+	return fmt.Sprintf(`# %s
+mixed-port: 7890
+allow-lan: true
+mode: rule
+log-level: info
+ipv6: true
+proxies: []
+rules:
+  - MATCH,DIRECT
+`, reason)
 }

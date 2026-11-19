@@ -386,6 +386,11 @@ func TestCustomerSubscription_ExpiredSubscription(t *testing.T) {
 	if !strings.Contains(body, "订阅已过期") {
 		t.Fatalf("expected expired message, got: %s", body)
 	}
+	// 过期只取消代理：客户端拿到的是一份无节点凭证的直连配置，网络不断。
+	if !strings.Contains(body, "MATCH,DIRECT") || strings.Contains(body, "MATCH,REJECT") ||
+		!strings.Contains(body, "proxies: []") || strings.Contains(body, "type: vless") {
+		t.Fatalf("expired subscription must degrade to DIRECT without nodes: %s", body)
+	}
 }
 
 func TestCustomerSubscription_InactiveSubscription(t *testing.T) {

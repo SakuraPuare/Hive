@@ -478,10 +478,12 @@ func (h *Handler) serveCustomerSubscription(w http.ResponseWriter, r *http.Reque
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	if ok, reason := checkSubscriptionValid(sub.Status, sub.TrafficUsed, sub.TrafficLimit, sub.ExpiresAt); !ok {
+		// 订阅失效只取消代理能力，不掐客户端网络：下发无代理的直连配置（不含任何
+		// 节点凭证）。客户设备仍能上网，只是不再经过 Hive。
 		if vless {
 			fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte("# "+reason)))
 		} else {
-			fmt.Fprintf(w, "# %s\nproxies: []\nrules:\n  - MATCH,REJECT\n", reason)
+			fmt.Fprint(w, buildDirectSubscriptionYAML(reason))
 		}
 		return
 	}
