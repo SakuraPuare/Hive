@@ -14,6 +14,10 @@
 - [ ] `.env` 中新增的环境变量已在 VPS 上配置
 - [ ] 当前没有其他人正在发布
 
+### Actions 版本兼容
+
+Registry CI 的 `gofmt check` 会阻断后续测试和前端构建，Go 改动提交前须通过 `gofmt -l .`。文档 GitHub Pages 部署固定 `upload-pages-artifact` v4：当前 `deploy-pages` v5 内置 artifact client v2，新上传器可能已成功上传、但部署端仍查不到 `github-pages` 产物；不能只升级上传端。Cloudflare Pages 不使用这条产物链。
+
 ---
 
 ## 二、标准发布

@@ -77,7 +77,7 @@ func TestOwnerSubscriptionWithoutPaidPlanAndPrivateJSON(t *testing.T) {
 	resp = doJSON("GET", "/portal/devices/"+mac+"/subscription-access", nil, nil)
 	assertStatus(t, resp, http.StatusUnauthorized)
 	resp.Body.Close()
-	for _, path := range []string{"/portal/devices", "/portal/devices/"+mac, "/admin/nodes"} {
+	for _, path := range []string{"/portal/devices", "/portal/devices/" + mac, "/admin/nodes"} {
 		cookie := customerCookie(cid)
 		if path == "/admin/nodes" {
 			cookie = adminCookie()
@@ -144,9 +144,9 @@ func TestOwnerSubscriptionIgnoresPaidExpiryQuotaAndPreservesBilling(t *testing.T
 	paidToken := setupCustomerSubscription(t)
 	mac := "aabbccddeeff"
 	var sub struct {
-		ID uint
+		ID         uint
 		CustomerID uint
-		XrayUUID string
+		XrayUUID   string
 	}
 	testDB.Raw("SELECT id, customer_id, xray_uuid FROM customer_subscriptions WHERE token = ?", paidToken).Scan(&sub)
 	mustExec(t, "UPDATE nodes SET server_enabled = 0, owner_customer_id = ? WHERE mac = ?", sub.CustomerID, mac)

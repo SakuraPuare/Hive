@@ -81,11 +81,17 @@ func TestPortalDeviceServicesHeartbeat(t *testing.T) {
 	for _, state := range result.Services {
 		switch state.Name {
 		case "xray":
-			if state.ActiveState != "active" || state.SubState != "running" { t.Fatalf("xray: %+v", state) }
+			if state.ActiveState != "active" || state.SubState != "running" {
+				t.Fatalf("xray: %+v", state)
+			}
 		case "frpc":
-			if state.ActiveState != "failed" { t.Fatalf("frpc: %+v", state) }
+			if state.ActiveState != "failed" {
+				t.Fatalf("frpc: %+v", state)
+			}
 		case "warp-svc":
-			if state.ActiveState != "not-found" { t.Fatalf("warp: %+v", state) }
+			if state.ActiveState != "not-found" {
+				t.Fatalf("warp: %+v", state)
+			}
 		}
 	}
 	// No snapshot in a legacy heartbeat must preserve, not refresh, the old sample.

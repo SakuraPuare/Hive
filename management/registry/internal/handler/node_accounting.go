@@ -43,11 +43,11 @@ type NodeOnlineDevice struct {
 }
 
 type NodeAccountingRequest struct {
-	Generation int64                `json:"generation,omitempty,string" swaggertype:"string" example:"1"` // Monotonic per-node runtime, zero for legacy agents
-	Epoch      string               `json:"epoch"`                                                        // Xray systemd InvocationID
-	Counters   []NodeTrafficCounter `json:"counters"`
-	Online     []NodeOnlineDevice   `json:"online,omitempty"`
-	OwnerAccess bool               `json:"owner_access,omitempty"` // Agent understands owner-* users; legacy agents default to paid users only
+	Generation  int64                `json:"generation,omitempty,string" swaggertype:"string" example:"1"` // Monotonic per-node runtime, zero for legacy agents
+	Epoch       string               `json:"epoch"`                                                        // Xray systemd InvocationID
+	Counters    []NodeTrafficCounter `json:"counters"`
+	Online      []NodeOnlineDevice   `json:"online,omitempty"`
+	OwnerAccess bool                 `json:"owner_access,omitempty"` // Agent understands owner-* users; legacy agents default to paid users only
 }
 
 var counterName = regexp.MustCompile(`^user>>>sub-([1-9][0-9]*)>>>traffic>>>(uplink|downlink)$`)
