@@ -392,6 +392,13 @@ export default function PortalDevicesPage() {
     return s.status === 'active' && notExpired && underLimit;
   });
 
+  // 订阅一律用套餐名展示；只有查不到名字时退回编号，避免出现裸 "#1"。
+  const subscriptionLabel = (id?: number | null) => {
+    if (!id) return '';
+    const sub = subscriptions.find((s) => s.id === id);
+    return sub?.plan_name || t('subscriptionFallback', { id });
+  };
+
   if (authLoading) return (
     <div className="flex items-center justify-center py-24" role="status" aria-live="polite" aria-busy="true">
       <div className="flex flex-col items-center gap-4">
@@ -486,7 +493,7 @@ export default function PortalDevicesPage() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {d.gateway_enabled
-                        ? (d.bound_subscription_id ? `#${d.bound_subscription_id}` : t('subscriptionUnbound'))
+                        ? (d.bound_subscription_id ? subscriptionLabel(d.bound_subscription_id) : t('subscriptionUnbound'))
                         : '—'}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -787,7 +794,7 @@ export default function PortalDevicesPage() {
             <p className="text-sm text-muted-foreground">{t('subscriptionDialogHint')}</p>
             {subDevice?.bound_subscription_id ? (
               <div className="rounded-lg border border-md-outline-variant bg-md-surface-container-low p-3">
-                <p className="text-sm font-500">{t('subscriptionCurrent', { id: subDevice.bound_subscription_id })}</p>
+                <p className="text-sm font-500">{t('subscriptionCurrent', { plan: subscriptionLabel(subDevice.bound_subscription_id) })}</p>
                 <Button variant="ghost" size="sm" className="mt-2 text-md-error hover:bg-md-error/10"
                   onClick={unbindSubscription} loading={unbindingSub}>
                   {t('subscriptionUnbind')}
@@ -806,8 +813,7 @@ export default function PortalDevicesPage() {
                 {activeSubscriptions.map((s) => (
                   <option key={s.id} value={s.id}>
                     {t('subscriptionOption', {
-                      id: s.id ?? 0,
-                      plan: s.plan_id ?? 0,
+                      plan: s.plan_name || t('subscriptionFallback', { id: s.id ?? 0 }),
                       expires: s.expires_at ? fmt.dateTime(s.expires_at) : '—',
                     })}
                   </option>

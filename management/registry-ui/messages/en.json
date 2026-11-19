@@ -904,13 +904,13 @@
     "subscriptionConfig": "Subscription",
     "subscriptionDialogTitle": "Subscription · {name}",
     "subscriptionDialogHint": "Choose a subscription to deliver to this gateway. The device pulls the new Mihomo config on its next sync cycle.",
-    "subscriptionCurrent": "Current binding: subscription #{id}",
+    "subscriptionCurrent": "Current binding: {plan}",
     "subscriptionUnbind": "Unbind",
     "subscriptionUnbindSuccess": "Subscription unbound",
     "subscriptionUnbindFailed": "Failed to unbind subscription",
     "subscriptionSelect": "Subscription",
     "subscriptionSelectPlaceholder": "Select a valid subscription",
-    "subscriptionOption": "Subscription #{id} · plan #{plan} · expires {expires}",
+    "subscriptionOption": "{plan} · expires {expires}",
     "subscriptionNoActive": "No valid subscriptions available",
     "subscriptionSyncHint": "The device pulls the config automatically; if it is offline, the change applies on the first sync after it comes online.",
     "subscriptionBind": "Deliver subscription",
@@ -1194,7 +1194,8 @@
     "discardDraft": "Discard",
     "backToTickets": "Back to tickets",
     "loginFieldsRequired": "Please enter your email and password",
-    "codeInvalidFormat": "Please enter a 6-digit numeric code"
+    "codeInvalidFormat": "Please enter a 6-digit numeric code",
+    "subscriptionFallback": "Subscription #{id}"
   },
   "announcements": {
     "title": "Announcements",

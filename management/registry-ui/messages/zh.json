@@ -904,13 +904,13 @@
     "subscriptionConfig": "订阅配置",
     "subscriptionDialogTitle": "订阅配置 · {name}",
     "subscriptionDialogHint": "选择要下发给这台网关设备的订阅。设备会在下一个同步周期拉取新的 Mihomo 配置。",
-    "subscriptionCurrent": "当前绑定：订阅 #{id}",
+    "subscriptionCurrent": "当前绑定：{plan}",
     "subscriptionUnbind": "解除绑定",
     "subscriptionUnbindSuccess": "已解除订阅绑定",
     "subscriptionUnbindFailed": "解除绑定失败",
     "subscriptionSelect": "选择订阅",
     "subscriptionSelectPlaceholder": "请选择有效订阅",
-    "subscriptionOption": "订阅 #{id} · 套餐 #{plan} · 到期 {expires}",
+    "subscriptionOption": "{plan} · 到期 {expires}",
     "subscriptionNoActive": "没有可用的有效订阅",
     "subscriptionSyncHint": "下发后设备会自动拉取；若设备离线，将在上线后的下一个周期生效。",
     "subscriptionBind": "下发订阅配置",
@@ -1194,7 +1194,8 @@
     "discardDraft": "放弃草稿",
     "backToTickets": "返回工单列表",
     "loginFieldsRequired": "请输入邮箱和密码",
-    "codeInvalidFormat": "请输入 6 位数字验证码"
+    "codeInvalidFormat": "请输入 6 位数字验证码",
+    "subscriptionFallback": "订阅 #{id}"
   },
   "announcements": {
     "title": "公告管理",
