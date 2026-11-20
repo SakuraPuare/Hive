@@ -370,13 +370,13 @@ func TestPortalDeviceDashboard_ReturnsMeshURLAndSecret(t *testing.T) {
 		t.Fatalf("secret does not match the per-node controller secret")
 	}
 	found := false
-	for _, u := range body.URLs {
-		if u == "http://172.20.1.7:9090/ui" {
+	for _, endpoint := range body.Endpoints {
+		if endpoint.Network == "easytier" && endpoint.URL == "http://172.20.1.7:9090/ui/" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("mesh dashboard URL missing: %v", body.URLs)
+		t.Fatalf("mesh dashboard URL missing: %v", body.Endpoints)
 	}
 }
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react';
 import PortalDevicesPage from '@/pages/portal/devices';
+import type { DashboardInfo } from '@/lib/mihomo-panel';
 import { mockRouter } from '@/test/setup';
 import { useToast } from '@/components/ui/toast';
 
@@ -57,6 +58,13 @@ const plainNode = {
 };
 
 const mockFetch = vi.fn();
+const dashboardInfo: DashboardInfo = {
+  mac: gatewayNode.mac,
+  secret: 'deadbeefsecret',
+  sampled_at: '2026-11-14T10:00:00Z',
+  endpoints: [{ network: 'easytier', interface: '', address: '172.20.1.7', url: 'http://172.20.1.7:9090/ui' }],
+  egress: { ipv4: '203.0.113.7', ipv6: '2001:db8::7', sampled_at: '2026-11-14T10:00:00Z' },
+};
 
 describe('PortalDevicesPage', () => {
   beforeEach(() => {
@@ -72,7 +80,7 @@ describe('PortalDevicesPage', () => {
     mockFetch.mockImplementation(async (url: string) => ({
       ok: true,
       json: async () => (String(url).endsWith('/dashboard')
-        ? { urls: ['http://172.20.1.7:9090/ui'], secret: 'deadbeefsecret' }
+        ? dashboardInfo
         : String(url).endsWith('/services') ? { sampled_at: null, services: [] }
         : { uploadTotal: 1024, downloadTotal: 4096, connections: [{}, {}] }),
     }));
@@ -111,24 +119,120 @@ describe('PortalDevicesPage', () => {
     });
   });
 
-  it('opens the mihomo panel dialog with the per-node secret and dashboard url', async () => {
+  it('opens the Mihomo dialog with a masked per-node key and an authenticated same-origin panel link', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
     mockListDevices.mockResolvedValue([gatewayNode]);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
 
     render(<PortalDevicesPage />);
-    await waitFor(() => screen.getByText('portal.mihomoPanel'));
+    fireEvent.click(await screen.findByRole('button', { name: 'portal.mihomoPanel' }));
 
-    fireEvent.click(screen.getByText('portal.mihomoPanel'));
-
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('deadbeefsecret')).toBeInTheDocument();
+    const secret = await screen.findByLabelText('portal.mihomoSecret');
+    expect(secret).toHaveValue('deadbeefsecret');
+    expect(secret).toHaveAttribute('type', 'password');
+    fireEvent.click(screen.getByRole('button', { name: 'portal.mihomoCopy' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('deadbeefsecret'));
+    expect(screen.getByText('portal.mihomoNetwork_easytier')).toBeInTheDocument();
+    expect(screen.getByText('172.20.1.7:9090')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'portal.mihomoOneClick' });
+    const url = new URL(link.getAttribute('href')!);
+    expect(url.origin).toBe('http://172.20.1.7:9090');
+    expect(url.pathname).toBe('/ui/');
+    expect(url.search).toBe('');
+    expect(new URLSearchParams(url.hash.slice(3)).get('secret')).toBe('deadbeefsecret');
+    expect(link).toHaveAttribute('rel', 'noreferrer');
+    expect(link).toHaveAttribute('referrerpolicy', 'no-referrer');
+    expect(link).not.toHaveTextContent('deadbeefsecret');
+    expect(screen.getByText('portal.mihomoSecretWarning')).toBeInTheDocument();
+    expect(mockFetch).toHaveBeenCalledWith('/api/portal/devices/aabbccddeeff/dashboard', {
+      credentials: 'include', signal: expect.any(AbortSignal),
     });
-    expect(screen.getByText('http://172.20.1.7:9090/ui')).toBeInTheDocument();
-    expect(mockFetch).toHaveBeenCalledWith('/api/portal/devices/aabbccddeeff/dashboard', { credentials: 'include' });
-    // 实时流量：同一入口还轮询 /mihomo/connections（累计值换算成瞬时速率）。
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith('/api/portal/devices/aabbccddeeff/mihomo/connections', { credentials: 'include' });
     });
+  });
+
+  it('labels every network separately, retains IPv6 and special key parameters, and never links public egress', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    const networks: DashboardInfo['endpoints'][number]['network'][] = [
+      'wan', 'lan', 'physical', 'hotspot5g', 'hotspot2g', 'easytier', 'tailscale', 'mesh',
+      'lan-fallback', 'hotspot5g-fallback', 'hotspot2g-fallback',
+    ];
+    const secret = 'key + &?#/=中文';
+    const endpoints = networks.map((network, index) => ({
+      network, interface: index < 3 ? `eth${index}` : '', address: `2001:db8::${index + 10}`,
+      url: `http://[2001:db8::${index + 10}]:9090/ui`,
+    }));
+    mockFetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => (
+      url.endsWith('/dashboard') ? { ...dashboardInfo, secret, endpoints } : {}
+    ) }));
+    render(<PortalDevicesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'portal.mihomoPanel' }));
+    await screen.findByLabelText('portal.mihomoSecret');
+    const dialog = screen.getByRole('dialog');
+    networks.forEach((network, index) => {
+      const row = within(dialog).getByText(`portal.mihomoNetwork_${network}`).closest('li')!;
+      expect(within(row).getByText(`portal.mihomoReach_${network}`)).toBeInTheDocument();
+      if (index < 3) expect(within(row).getByText(`eth${index}`)).toBeInTheDocument();
+      expect(within(row).getByText(`[2001:db8::${index + 10}]:9090`)).toBeInTheDocument();
+      const url = new URL(within(row).getByRole('link').getAttribute('href')!);
+      const params = new URLSearchParams(url.hash.slice(3));
+      expect(params.get('hostname')).toBe(`[2001:db8::${index + 10}]`);
+      expect(params.get('port')).toBe('9090');
+      expect(params.get('secret')).toBe(secret);
+      expect(params.get('http')).toBe('true');
+      expect(url.search).toBe('');
+    });
+    expect(within(dialog).getAllByRole('link')).toHaveLength(networks.length);
+    expect(within(dialog).getByText('203.0.113.7').closest('a')).toBeNull();
+    expect(within(dialog).getByText('2001:db8::7').closest('a')).toBeNull();
+    expect(within(dialog).getByText('portal.mihomoEgressHint')).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/portal.mihomoSampleStale/)).toHaveLength(2);
+  });
+
+  it('marks absent egress and address samples unknown while retaining explicit fallback labels', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    mockFetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => (
+      url.endsWith('/dashboard') ? {
+        ...dashboardInfo, sampled_at: null,
+        endpoints: [{ network: 'lan-fallback', interface: '', address: '10.42.2.1', url: 'http://10.42.2.1:9090/ui' }],
+        egress: { ipv4: '', ipv6: '', sampled_at: null },
+      } : {}
+    ) }));
+    render(<PortalDevicesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'portal.mihomoPanel' }));
+    await screen.findByLabelText('portal.mihomoSecret');
+    expect(screen.getAllByText('portal.mihomoNotObserved')).toHaveLength(2);
+    expect(screen.getAllByText('portal.mihomoSampleUnknown')).toHaveLength(2);
+    expect(screen.getByText('portal.mihomoNetwork_lan-fallback')).toBeInTheDocument();
+  });
+
+  it('aborts a closed dashboard request and ignores its late key after switching devices', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    const other = { ...gatewayNode, mac: '112233445566', hostname: 'other gateway' };
+    mockListDevices.mockResolvedValue([gatewayNode, other]);
+    const late = Promise.withResolvers<Response>();
+    mockFetch.mockImplementation((url: string) => {
+      if (url === `/api/portal/devices/${gatewayNode.mac}/dashboard`) return late.promise;
+      return Promise.resolve({ ok: true, json: async () => url.endsWith('/dashboard')
+        ? { ...dashboardInfo, mac: other.mac, secret: 'current-device-key' } : {} });
+    });
+    render(<PortalDevicesPage />);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'portal.mihomoPanel' }))[0]);
+    const signal = mockFetch.mock.calls.find(([url]) => String(url).endsWith('/dashboard'))![1].signal as AbortSignal;
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape', code: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(signal.aborted).toBe(true);
+    fireEvent.click(screen.getAllByRole('button', { name: 'portal.mihomoPanel' })[1]);
+    await screen.findByDisplayValue('current-device-key');
+    await act(async () => late.resolve({ ok: true, json: async () => dashboardInfo } as Response));
+    expect(screen.queryByDisplayValue('deadbeefsecret')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('portal.mihomoSecret')).toHaveValue('current-device-key');
+    const link = new URL(screen.getByRole('link', { name: 'portal.mihomoOneClick' }).getAttribute('href')!);
+    expect(new URLSearchParams(link.hash.slice(3)).get('secret')).toBe('current-device-key');
   });
 
   it('hides the panel action for nodes without the gateway role', async () => {

@@ -38,7 +38,7 @@ class HardwareTests(unittest.TestCase):
         p.write_text(text)
         p.chmod(0o755)
 
-    def address_collector(self, rows, now, traces):
+    def address_collector(self, rows, now, traces, routes=None):
         source = (BIN / 'hive-command-agent').read_text()
         code = source.split("address_snapshot() {\n    python3 - <<'PY'\n", 1)[1].split('\nPY\n}', 1)[0]
         code = code.replace('/var/lib/hive/egress-addresses.json', str(self.root / 'egress.json'))
@@ -47,7 +47,14 @@ class HardwareTests(unittest.TestCase):
         def command(args, **kwargs):
             calls.append(args)
             if args[0] == 'ip':
-                self.assertEqual(args, ['ip', '-j', 'address', 'show'])
+                if args != ['ip', '-j', 'address', 'show']:
+                    self.assertIn(args, [
+                        ['ip', '-4', '-j', 'route', 'show', 'table', 'main', 'default'],
+                        ['ip', '-6', '-j', 'route', 'show', 'table', 'main', 'default']])
+                    value = (routes or {}).get(4 if '-4' in args else 6, [])
+                    if isinstance(value, Exception):
+                        raise value
+                    return value.encode() if isinstance(value, str) else json.dumps(value).encode()
                 if isinstance(rows, Exception):
                     raise rows
                 if isinstance(rows, str):
@@ -81,16 +88,17 @@ class HardwareTests(unittest.TestCase):
             {'ifname': '../eth0', 'addr_info': [{'local': '1.1.1.1', 'prefixlen': 32}]},
         ]
         sample, calls = self.address_collector(rows, 1700000000,
-            {4: 'ip=1.1.1.1\nloc=US\n', 6: 'ip=2606:4700:4700::1111\nloc=US\n'})
+            {4: 'ip=1.1.1.1\nloc=US\n', 6: 'ip=2606:4700:4700::1111\nloc=US\n'},
+            {4: [{'dev': 'eth0'}], 6: [{'dev': 'tailscale0'}]})
         self.assertEqual(sample['lan'], [
-            {'interface': 'eth0', 'address': '192.168.1.2', 'prefix_length': 24},
-            {'interface': 'eth0', 'address': '2001:db8::2', 'prefix_length': 64},
-            {'interface': 'wlan0', 'address': '10.42.2.1', 'prefix_length': 24}])
+            {'interface': 'eth0', 'address': '192.168.1.2', 'prefix_length': 24, 'role': 'wan'},
+            {'interface': 'eth0', 'address': '2001:db8::2', 'prefix_length': 64, 'role': 'wan'},
+            {'interface': 'wlan0', 'address': '10.42.2.1', 'prefix_length': 24, 'role': 'lan'}])
         self.assertEqual(sample['egress'], {'ipv4': '1.1.1.1', 'ipv6': '2606:4700:4700::1111', 'sampled_at': '2023-11-14T22:13:20Z'})
         self.assertEqual(sample['country'], 'US')
-        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(calls), 5)
         sample, calls = self.address_collector(rows, 1700000060, {})
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls), 3)
         self.assertEqual(sample['egress']['sampled_at'], '2023-11-14T22:13:20Z')
 
     def test_command_egress_failed_refresh_retains_original_samples(self):
@@ -99,10 +107,10 @@ class HardwareTests(unittest.TestCase):
         failed, calls = self.address_collector([], 1700003601,
             {4: subprocess.CalledProcessError(7, 'curl'), 6: 'ip=not-an-ip\n'})
         self.assertEqual(failed['egress'], first['egress'])
-        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(calls), 5)
         cached, calls = self.address_collector([], 1700003661, {})
         self.assertEqual(cached['egress'], first['egress'])
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls), 3)
         partial, _ = self.address_collector([], 1700007202,
             {4: 'ip=8.8.8.8\n', 6: subprocess.CalledProcessError(7, 'curl')})
         self.assertEqual(partial['egress']['ipv4'], '8.8.8.8')
@@ -118,6 +126,27 @@ class HardwareTests(unittest.TestCase):
         sample, _ = self.address_collector(rows, 1700000000,
             {4: subprocess.CalledProcessError(7, 'curl'), 6: subprocess.CalledProcessError(7, 'curl')})
         self.assertEqual(len(sample['lan']), 32)
+
+    def test_command_addresses_ipv6_default_identifies_uplink(self):
+        for iface in ['wan', 'lan']:
+            (self.root / 'net' / iface / 'device').mkdir(parents=True)
+        rows = [{'ifname': iface, 'addr_info': [{'local': address, 'prefixlen': 64}]}
+                for iface, address in [('wan', '2001:db8::2'), ('lan', 'fd00::1')]]
+        sample, _ = self.address_collector(rows, 1700000000,
+            {4: subprocess.CalledProcessError(7, 'curl'), 6: subprocess.CalledProcessError(7, 'curl')},
+            {6: [{'dev': 'wan'}]})
+        self.assertEqual([item['role'] for item in sample['lan']], ['wan', 'lan'])
+
+    def test_command_addresses_failed_routes_leave_roles_unknown(self):
+        (self.root / 'net' / 'wan' / 'device').mkdir(parents=True)
+        rows = [{'ifname': 'wan', 'addr_info': [{'local': '192.168.1.2', 'prefixlen': 24}]}]
+        for failure in [subprocess.CalledProcessError(1, 'ip'), '{bad', 'null', '[null]']:
+            with self.subTest(failure=str(failure)):
+                sample, _ = self.address_collector(rows, 1700000000,
+                    {4: subprocess.CalledProcessError(7, 'curl'), 6: subprocess.CalledProcessError(7, 'curl')},
+                    {4: [{'dev': 'wan'}], 6: failure})
+                self.assertTrue(sample['collection_ok'])
+                self.assertNotIn('role', sample['lan'][0])
 
     def test_command_lan_collection_failure_omits_snapshot_but_refreshes_cache(self):
         for index, failure in enumerate([subprocess.CalledProcessError(1, 'ip'),

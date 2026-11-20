@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -44,9 +45,64 @@ func nodeManagementAddr(n model.Node) string {
 
 // DashboardResponse is the portal's view of a gateway node's Mihomo panel.
 type DashboardResponse struct {
-	MAC    string   `json:"mac"`
-	URLs   []string `json:"urls"`   // 直接打开面板的候选地址（需在节点 LAN/mesh 内）
-	Secret string   `json:"secret"` // 面板 API 密钥（per-node，HMAC(server key, mac)）
+	MAC       string              `json:"mac"`
+	Endpoints []DashboardEndpoint `json:"endpoints"`
+	Secret    string              `json:"secret"`
+	SampledAt *string             `json:"sampled_at"`
+	Egress    model.DeviceEgress  `json:"egress"`
+}
+
+type DashboardEndpoint struct {
+	Network   string `json:"network"`
+	Interface string `json:"interface"`
+	Address   string `json:"address"`
+	URL       string `json:"url"`
+}
+
+// dashboardEndpoints never treats HTTPS egress observations as controller addresses.
+// A nil snapshot is legacy/unknown; an observed empty snapshot has no physical candidates.
+func dashboardEndpoints(n model.Node, sample *model.DeviceAddressSnapshot) []DashboardEndpoint {
+	endpoints := make([]DashboardEndpoint, 0, 8)
+	seen := make(map[string]bool)
+	add := func(network, iface, raw string) {
+		ip, valid := validObservedIP(strings.TrimSpace(raw))
+		if !valid {
+			return
+		}
+		address := ip.String()
+		key := network + "/" + address
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		endpoints = append(endpoints, DashboardEndpoint{
+			Network: network, Interface: iface, Address: address,
+			URL: "http://" + net.JoinHostPort(address, "9090") + "/ui/",
+		})
+	}
+	add("easytier", "", n.EasytierIP)
+	add("tailscale", "", n.TailscaleIP)
+	add("mesh", "", n.MeshIP)
+	if sample == nil {
+		add("lan-fallback", "", "10.42.2.1")
+		add("hotspot5g-fallback", "", "10.42.1.1")
+		add("hotspot2g-fallback", "", "10.42.0.1")
+		return endpoints
+	}
+	for _, entry := range sample.LAN {
+		network := entry.Role
+		if network == "" {
+			network = "physical"
+		}
+		switch entry.Address {
+		case "10.42.1.1":
+			network = "hotspot5g"
+		case "10.42.0.1":
+			network = "hotspot2g"
+		}
+		add(network, entry.Interface, entry.Address)
+	}
+	return endpoints
 }
 
 // HandlePortalDeviceDashboard godoc
@@ -60,6 +116,7 @@ type DashboardResponse struct {
 // @Param        mac path string true "设备 MAC"
 // @Success      200 {object} DashboardResponse
 // @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
 // @Router       /portal/devices/{mac}/dashboard [get]
 func (h *Handler) HandlePortalDeviceDashboard(w http.ResponseWriter, r *http.Request) {
 	n, ok := h.ownedNode(w, r.PathValue("mac"), customerID(r))
@@ -70,19 +127,40 @@ func (h *Handler) HandlePortalDeviceDashboard(w http.ResponseWriter, r *http.Req
 		h.jsonErr(w, http.StatusNotFound, "device has no gateway dashboard")
 		return
 	}
-	urls := make([]string, 0, 5)
-	for _, ip := range []string{nodeManagementAddr(n)} {
-		if ip != "" {
-			urls = append(urls, "http://"+ip+":9090/ui")
-		}
+	var row struct {
+		AddressSnapshot    *string
+		AddressesSampledAt *string
 	}
-	// 客户连的是节点自己的 WiFi/LAN 时用得到这些固定网关地址（GATEWAY.md 的约定）。
-	urls = append(urls,
-		"http://10.42.2.1:9090/ui", // 有线 LAN
-		"http://10.42.1.1:9090/ui", // 5G 热点
-		"http://10.42.0.1:9090/ui", // 2.4G 热点
-	)
-	h.jsonOK(w, DashboardResponse{MAC: n.MAC, URLs: urls, Secret: h.gatewaySecret(n.MAC)})
+	if err := h.DB.Table("nodes").Select("address_snapshot, addresses_sampled_at").Where("mac = ?", n.MAC).Take(&row).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return
+	}
+	result := DashboardResponse{MAC: n.MAC, Secret: h.gatewaySecret(n.MAC)}
+	var snapshot *model.DeviceAddressSnapshot
+	if row.AddressSnapshot != nil || row.AddressesSampledAt != nil {
+		if row.AddressSnapshot == nil || row.AddressesSampledAt == nil {
+			h.jsonErr(w, http.StatusInternalServerError, "invalid stored address snapshot")
+			return
+		}
+		var sample model.DeviceAddressSnapshot
+		if err := json.Unmarshal([]byte(*row.AddressSnapshot), &sample); err != nil || strings.TrimSpace(*row.AddressSnapshot) == "null" {
+			h.jsonErr(w, http.StatusInternalServerError, "invalid stored address snapshot")
+			return
+		}
+		normalized, valid := normalizeDeviceAddresses(sample)
+		if !valid {
+			h.jsonErr(w, http.StatusInternalServerError, "invalid stored address snapshot")
+			return
+		}
+		if _, err := time.Parse(time.RFC3339, *row.AddressesSampledAt); err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "invalid stored address snapshot")
+			return
+		}
+		snapshot = &normalized
+		result.Egress, result.SampledAt = normalized.Egress, row.AddressesSampledAt
+	}
+	result.Endpoints = dashboardEndpoints(n, snapshot)
+	h.jsonOK(w, result)
 }
 
 // HandlePortalDeviceMihomo godoc

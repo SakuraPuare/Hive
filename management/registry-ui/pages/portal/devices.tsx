@@ -6,6 +6,7 @@ import { useCustomer } from '@/lib/portal-auth';
 import { apiPath, apiUrl, portalSessionApi } from '@/lib/openapi-session';
 import { useClipboard } from '@/lib/use-clipboard';
 import { getErrorMessage } from '@/lib/i18n';
+import { mihomoPanelUrl, type DashboardInfo } from '@/lib/mihomo-panel';
 import { PortalService } from '@/src/generated/client';
 import type { model_Node, model_DeviceCommand } from '@/src/generated/client';
 import { useFormat } from '@/lib/format';
@@ -54,7 +55,6 @@ type HotspotConfig = {
   preferBand: string;
 };
 
-type DashboardInfo = { urls: string[]; secret: string };
 type LiveTraffic = { up: number; down: number; active: number; upSpeed: number; downSpeed: number };
 type ServiceSnapshot = {
   sampled_at: string | null;
@@ -405,21 +405,34 @@ export default function PortalDevicesPage() {
     }
   }, [t, toast]);
 
-  const openDashboard = useCallback(async (device: model_Node) => {
+  const openDashboard = useCallback((device: model_Node) => {
     setDashDevice(device);
     setDashInfo(null);
     setDashError('');
     setLive(null);
     dashSample.current = null;
-    try {
-      const res = await fetch(apiPath(`/portal/devices/${device.mac}/dashboard`), { credentials: 'include' });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw { error: body?.error || t('mihomoUnavailable') };
-      setDashInfo(body as DashboardInfo);
-    } catch (e) {
-      setDashError(getErrorMessage(e, t('mihomoUnavailable')));
-    }
-  }, [t]);
+  }, []);
+
+  useEffect(() => {
+    const mac = dashDevice?.mac;
+    if (!mac) return;
+    let stopped = false;
+    const controller = new AbortController();
+    const loadDashboard = async () => {
+      try {
+        const res = await fetch(apiPath(`/portal/devices/${mac}/dashboard`), {
+          credentials: 'include', signal: controller.signal,
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw { error: body?.error || t('mihomoUnavailable') };
+        if (!stopped) setDashInfo(body as DashboardInfo);
+      } catch (e) {
+        if (!stopped) setDashError(getErrorMessage(e, t('mihomoUnavailable')));
+      }
+    };
+    void loadDashboard();
+    return () => { stopped = true; controller.abort(); };
+  }, [dashDevice?.mac, t]);
 
   // 实时速率：/mihomo/connections 只有累计值，按两次采样的差算瞬时速率。
   // 节点离线 / EasyTier 断链时 registry 返回 503，这里显示"不可达"而不是卡住。
@@ -446,8 +459,10 @@ export default function PortalDevicesPage() {
             downSpeed = Math.max(0, (down - prev.down) / seconds);
           }
         }
-        dashSample.current = { at: now, up, down };
-        if (!stopped) setLive({ up, down, active, upSpeed, downSpeed });
+        if (!stopped) {
+          dashSample.current = { at: now, up, down };
+          setLive({ up, down, active, upSpeed, downSpeed });
+        }
       } catch {
         if (!stopped) setLive(null);
       }
@@ -471,6 +486,12 @@ export default function PortalDevicesPage() {
     return sub?.plan_name || t('subscriptionFallback', { id });
   };
 
+  const dashboard = dashInfo?.mac === dashDevice?.mac ? dashInfo : null;
+  const sampleNote = (sampledAt: string | null) => {
+    const sampleTime = sampledAt ? Date.parse(sampledAt) : NaN;
+    if (!Number.isFinite(sampleTime)) return t('mihomoSampleUnknown');
+    return `${t('mihomoSampledAt', { time: fmt.dateTime(sampledAt) })}${Date.now() - sampleTime > 150_000 ? ` · ${t('mihomoSampleStale')}` : ''}`;
+  };
   if (authLoading) return (
     <div className="flex items-center justify-center py-24" role="status" aria-live="polite" aria-busy="true">
       <div className="flex flex-col items-center gap-4">
@@ -845,29 +866,51 @@ export default function PortalDevicesPage() {
               )}
             </section>
 
-            {dashInfo && (
+            {dashboard && (
               <>
+                <section className="space-y-1.5">
+                  <p className="text-sm font-500">{t('mihomoEgress')}</p>
+                  <p className="text-xs text-muted-foreground">{t('mihomoEgressHint')}</p>
+                  <dl className="space-y-1 text-sm">
+                    <div className="flex gap-2"><dt>IPv4</dt><dd className="break-all font-mono">{dashboard.egress.ipv4 || t('mihomoNotObserved')}</dd></div>
+                    <div className="flex gap-2"><dt>IPv6</dt><dd className="break-all font-mono">{dashboard.egress.ipv6 || t('mihomoNotObserved')}</dd></div>
+                  </dl>
+                  <p className="text-xs text-muted-foreground">{sampleNote(dashboard.egress.sampled_at)}</p>
+                </section>
                 <div className="space-y-1.5">
                   <Label htmlFor="mihomo-secret">{t('mihomoSecret')}</Label>
                   <div className="flex gap-2">
-                    <Input id="mihomo-secret" readOnly value={dashInfo.secret} className="font-mono text-xs" />
-                    <Button variant="secondary" className="shrink-0" onClick={() => copySecret(dashInfo.secret)}>
+                    <Input id="mihomo-secret" type="password" readOnly value={dashboard.secret} className="font-mono text-xs" />
+                    <Button variant="secondary" className="shrink-0" onClick={() => copySecret(dashboard.secret)}>
                       {secretCopied ? t('mihomoCopied') : t('mihomoCopy')}
                     </Button>
                   </div>
+                  <p className="text-xs text-muted-foreground">{t('mihomoSecretWarning')}</p>
                 </div>
                 <div className="space-y-1.5">
                   <p className="text-sm font-500">{t('mihomoOpen')}</p>
-                  <ul className="space-y-1">
-                    {dashInfo.urls.map((url) => (
-                      <li key={url}>
-                        <a href={url} target="_blank" rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-sm text-md-primary hover:underline">
-                          {url}
-                          <ExternalLink className="size-3" aria-hidden="true" />
-                        </a>
-                      </li>
-                    ))}
+                  <p className="text-xs text-muted-foreground">{sampleNote(dashboard.sampled_at)}</p>
+                  <ul className="space-y-2">
+                    {dashboard.endpoints.map((endpoint) => {
+                      const url = new URL(endpoint.url);
+                      return (
+                        <li key={`${endpoint.network}:${endpoint.interface}:${endpoint.address}`} className="space-y-1 rounded-lg bg-md-surface-container-high/50 p-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0 text-sm">
+                              <span className="font-500">{t(`mihomoNetwork_${endpoint.network}`)}</span>
+                              {endpoint.interface && <span className="ml-2 font-mono text-xs text-muted-foreground">{endpoint.interface}</span>}
+                              <p className="break-all font-mono">{url.host}</p>
+                            </div>
+                            <a href={mihomoPanelUrl(endpoint.url, dashboard.secret)} target="_blank" rel="noreferrer" referrerPolicy="no-referrer"
+                              className="inline-flex shrink-0 items-center gap-1 text-sm text-md-primary hover:underline">
+                              {t('mihomoOneClick')}
+                              <ExternalLink className="size-3" aria-hidden="true" />
+                            </a>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{t(`mihomoReach_${endpoint.network}`)}</p>
+                        </li>
+                      );
+                    })}
                   </ul>
                   <p className="text-xs text-muted-foreground">{t('mihomoHint')}</p>
                 </div>

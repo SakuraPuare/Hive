@@ -24,9 +24,17 @@ func TestNormalizeDeviceAddresses(t *testing.T) {
 	if !ok || len(got.LAN) != 2 || got.Egress.IPv6 == "" {
 		t.Fatalf("valid dual stack rejected: %+v", got)
 	}
+	for _, role := range []string{"", "wan", "lan"} {
+		sample := addressSample()
+		sample.LAN[0].Role = role
+		if normalized, valid := normalizeDeviceAddresses(sample); !valid || normalized.LAN[0].Role != role {
+			t.Fatalf("role %q rejected: %+v", role, normalized)
+		}
+	}
 	for _, mutate := range []func(*model.DeviceAddressSnapshot){
 		func(s *model.DeviceAddressSnapshot) { s.LAN[0].Interface = "../../eth0" },
 		func(s *model.DeviceAddressSnapshot) { s.LAN[0].Interface = strings.Repeat("x", 16) },
+		func(s *model.DeviceAddressSnapshot) { s.LAN[0].Role = "uplink" },
 		func(s *model.DeviceAddressSnapshot) { s.LAN[0].Address = "example.com" },
 		func(s *model.DeviceAddressSnapshot) { s.LAN[0].Address = "127.0.0.1" },
 		func(s *model.DeviceAddressSnapshot) { s.LAN[0].Address = "169.254.1.1" },

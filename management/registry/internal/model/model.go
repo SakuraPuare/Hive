@@ -427,6 +427,7 @@ type LANAddress struct {
 	Interface    string `json:"interface"`
 	Address      string `json:"address"`
 	PrefixLength int    `json:"prefix_length"`
+	Role         string `json:"role,omitempty"` // wan/lan from main-table default routes; empty on legacy/unknown samples.
 }
 
 // DeviceEgress is the observed node HTTPS request path, not guaranteed direct WAN.

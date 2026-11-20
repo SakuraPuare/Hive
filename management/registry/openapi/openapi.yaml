@@ -222,18 +222,31 @@ definitions:
       total_upload:
         type: integer
     type: object
+  handler.DashboardEndpoint:
+    properties:
+      address:
+        type: string
+      interface:
+        type: string
+      network:
+        type: string
+      url:
+        type: string
+    type: object
   handler.DashboardResponse:
     properties:
+      egress:
+        $ref: '#/definitions/model.DeviceEgress'
+      endpoints:
+        items:
+          $ref: '#/definitions/handler.DashboardEndpoint'
+        type: array
       mac:
         type: string
-      secret:
-        description: 面板 API 密钥（per-node，HMAC(server key, mac)）
+      sampled_at:
         type: string
-      urls:
-        description: 直接打开面板的候选地址（需在节点 LAN/mesh 内）
-        items:
-          type: string
-        type: array
+      secret:
+        type: string
     type: object
   handler.EnrollRequest:
     properties:
@@ -1381,6 +1394,10 @@ definitions:
         type: string
       prefix_length:
         type: integer
+      role:
+        description: wan/lan from main-table default routes; empty on legacy/unknown
+          samples.
+        type: string
     type: object
   model.Line:
     properties:
@@ -5431,6 +5448,10 @@ paths:
             $ref: '#/definitions/handler.DashboardResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
       security:

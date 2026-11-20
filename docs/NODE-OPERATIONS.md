@@ -115,6 +115,21 @@ GET /api/portal/devices/{mac}/services
 状态心跳的 UTC 时间，不会因页面刷新或旧版心跳而更新。页面刷新不下发状态命令，
 不会增加节点轮询频率。快照与控制动作共用白名单，不能查询或控制任意 unit。
 
+### Mihomo 面板地址与一键连接
+
+「我的设备 → Mihomo 面板」按网络分别展示 WAN 上联接口、LAN、2.4G/5G 热点、
+EasyTier、Tailscale 和 Cloudflare Mesh 地址。WAN 是物理接口在主路由表中的默认路由角色，
+可能是家庭路由器分配的私网地址；旧样本无法确定角色时明确标为物理接口，不猜测 WAN。
+缺少快照时的固定网关地址仅作为默认候选，不代表热点已经启动。
+
+「一键打开」在节点自己的 MetaCubeXD 地址中使用 `#/?hostname=…&port=9090&http=true&secret=…`
+自动连接后端，IPv6 正确加方括号。密钥位于 URL fragment，不发送给 HTTP 静态资源服务器；
+仍会存在于浏览器地址/历史中，勿分享完整链接。页面不在链接文字中显示密钥。
+
+需要从对应网络访问该地址；WAN 候选不保证从公网可达。观测公网出口只用于展示，
+可能经过 NAT/代理，不生成公网 9090 链接，也不改变防火墙或暴露管理端口。
+
+
 手动下发 service-control 的 status 命令会在下一个 agent 周期执行实际
 `systemctl status --no-pager --full --lines=5`，结果保留有界的真实状态输出（最多 850 字节，
 另加服务名称前缀），而不是只显示 done。inactive/failed/not-found 是状态查询结果，

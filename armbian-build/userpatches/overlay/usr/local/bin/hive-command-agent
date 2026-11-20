@@ -103,6 +103,27 @@ try:
                 item = {'interface': iface, 'address': address, 'prefix_length': prefix}
                 if item not in lan and len(lan) < 32:
                     lan.append(item)
+    # Only main-table physical default devices identify uplinks; overlay/TUN
+    # policy routes do not. Failed route inspection leaves the role unknown.
+    uplinks = set()
+    routes_ok = True
+    for family in ('-4', '-6'):
+        try:
+            routes = json.loads(subprocess.check_output(['ip', family, '-j', 'route', 'show', 'table', 'main', 'default'], timeout=3))
+            if not isinstance(routes, list) or any(not isinstance(route, dict) for route in routes):
+                raise ValueError('invalid route list')
+            for route in routes:
+                dev = route.get('dev')
+                if isinstance(dev, str):
+                    uplinks.add(dev)
+                for hop in route.get('nexthops', []):
+                    if isinstance(hop, dict) and isinstance(hop.get('dev'), str):
+                        uplinks.add(hop['dev'])
+        except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+            routes_ok = False
+    if routes_ok:
+        for item in lan:
+            item['role'] = 'wan' if item['interface'] in uplinks else 'lan'
     collection_ok = True
 except (OSError, ValueError, TypeError, subprocess.SubprocessError):
     pass
