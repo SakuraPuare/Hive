@@ -118,6 +118,7 @@
 - 首次登记立刻写入节点行（`registered_at`/`last_seen`），面板无需等待其他置备步骤完成。
 - 服务端只存现有 `device_credentials.token_hash`，不会存明文秘密。相同 token 重试返回 200，即使原响应已丢失或设备随后被认领，也不修改凭证、归属或节点配置。
 - 新认领码由域分隔的 MAC + token 哈希确定性生成，格式为 Crockford `XXXX-XXXX`。重试仅当推导码的哈希仍匹配原 `claim_code_hash` 才返回明文；已有历史认领码不覆盖、不恢复。
+- migration 40 起，认领码明文同时写入 `nodes.claim_code`，管理员可在节点详情的「设备认领码」卡片查看（`GET /admin/nodes/{mac}/claim-code`，需 `node:write`）。认领校验仍只使用 `claim_code_hash`；迁移前入网的历史设备没有明文，只能从设备上读取或由管理员直接分配。
 - `provision-node.sh` 校验 HTTP 200 和回显 token 后，先原子持久化 `claim-code`，最后原子持久化 `device-token`（每步都是 sync 文件 → rename → sync 目录）。`enrollment-token` 单独保存，不能提前当作已完成登记的 `device-token`；恢复后清除 `provision-blocked`。
 - token 缺失或格式错误返回 400；已有凭证但 token 不同/已被管理员轮换，或旧节点没有凭证且已认领/带认领历史/是服务器，返回 409。合格的旧未认领、未发证节点可登记，但保留原认领码及注册元数据。
 - MAC 本身不能恢复秘密。原 token 丢失须通过管理员轮换 `POST /api/admin/nodes/{mac}/credential`，旧 token 随即不能再入网。

@@ -148,7 +148,7 @@ curl -fsS -X POST "${NODE_REGISTRY_URL}/nodes/enroll" \
 |------|------|------|
 | `/etc/hive/enrollment-token` | 入网前持久化的 64 位十六进制随机秘密 | 丢响应/掉电后证明同一次入网；它存在不代表入网已完成 |
 | `/etc/hive/device-token` | 服务端确认后的本机凭证（每 MAC 一把） | 发号、注册、心跳、命令、OTA、订阅拉取 |
-| `/etc/hive/claim-code` | 认领码（registry 只存 sha256） | MOTD 展示，客户在门户"我的设备 → 认领"绑定 |
+| `/etc/hive/claim-code` | 认领码（registry 同时存 sha256 与管理员视图明文） | MOTD 展示，客户在门户"我的设备 → 认领"绑定；管理员可在节点详情查看 |
 
 成功响应须为 HTTP 200 且回显原 token；先按相同的原子持久化顺序写认领码，再写 `device-token`。因此无论响应丢失，还是在响应与落盘之间掉电，下次都用原 `enrollment-token` 重试，不会因未完成的凭证文件跳过入网。恢复成功或管理员补发本机凭证后，旧 `/etc/hive/provision-blocked` 标记会被清除。
 

@@ -1,5 +1,17 @@
 basePath: /
 definitions:
+  handler.AdminClaimCodeResponse:
+    properties:
+      claim_code:
+        example: K7QF-2M9X
+        type: string
+      claimable:
+        example: true
+        type: boolean
+      mac:
+        example: aabbccddeeff
+        type: string
+    type: object
   handler.AdminLoginRequest:
     properties:
       password:
@@ -1524,7 +1536,8 @@ definitions:
       owner_customer_id:
         description: |-
           设备归属：owner_customer_id 非空即"这台设备属于某客户"，客户可在门户查看/管理。
-          claim_code_hash 只存哈希、不出 JSON（明文仅在注册响应回传一次）。
+          认领校验只认 claim_code_hash；claim_code 是管理员面板展示用的明文，
+          不出现在节点 JSON 中（见 /admin/nodes/{mac}/claim-code）。
         type: integer
       owner_exit_enabled:
         type: boolean
@@ -2638,6 +2651,38 @@ paths:
       security:
       - AdminSessionCookie: []
       summary: 分配设备给客户
+      tags:
+      - admin
+  /admin/nodes/{mac}/claim-code:
+    get:
+      description: |-
+        返回管理员可见的认领码明文。仅迁移后首次入网/重注册的设备有明文；
+        迁移前入网的历史设备只存哈希，返回空串。认领仍校验 claim_code_hash。
+      operationId: AdminGetDeviceClaimCode
+      parameters:
+      - description: 设备 MAC
+        in: path
+        name: mac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.AdminClaimCodeResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - AdminSessionCookie: []
+      summary: 查看设备认领码
       tags:
       - admin
   /admin/nodes/{mac}/commands:

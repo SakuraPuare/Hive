@@ -722,6 +722,15 @@ ALTER TABLE nodes ADD COLUMN service_states TEXT NULL DEFAULT NULL, ADD COLUMN s
 ALTER TABLE nodes ADD COLUMN address_snapshot JSON NULL DEFAULT NULL, ADD COLUMN addresses_sampled_at VARCHAR(32) NULL DEFAULT NULL;
 `,
 	},
+	{
+		version: 40,
+		desc:    "nodes: operator-visible claim code plaintext",
+		// 认领仍以 claim_code_hash 为准；claim_code 只为管理员面板展示而留。
+		// 历史设备（迁移前入网）没有明文，只能保持空串（或由设备重新入网回填）。
+		up: `
+ALTER TABLE nodes ADD COLUMN claim_code CHAR(9) NOT NULL DEFAULT '' COMMENT '认领码明文（仅管理员视图）；认领校验仍用 claim_code_hash';
+`,
+	},
 }
 
 // RunMigrations runs all pending migrations in order.

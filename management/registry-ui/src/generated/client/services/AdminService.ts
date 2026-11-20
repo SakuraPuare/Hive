@@ -2,6 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { handler_AdminClaimCodeResponse } from '../models/handler_AdminClaimCodeResponse';
 import type { handler_AdminLoginRequest } from '../models/handler_AdminLoginRequest';
 import type { handler_AdminReferralListResponse } from '../models/handler_AdminReferralListResponse';
 import type { handler_AdminSSHConfigResponse } from '../models/handler_AdminSSHConfigResponse';
@@ -858,6 +859,33 @@ export class AdminService {
             errors: {
                 400: `Bad Request`,
                 404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 查看设备认领码
+     * 返回管理员可见的认领码明文。仅迁移后首次入网/重注册的设备有明文；
+     * 迁移前入网的历史设备只存哈希，返回空串。认领仍校验 claim_code_hash。
+     * @returns handler_AdminClaimCodeResponse OK
+     * @throws ApiError
+     */
+    public static adminGetDeviceClaimCode({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<handler_AdminClaimCodeResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/nodes/{mac}/claim-code',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
             },
         });
     }

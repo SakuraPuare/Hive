@@ -60,6 +60,8 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// 设备归属（管理员分配/解除）
 	mux.HandleFunc("POST /admin/nodes/{mac}/assign", perm("node:write")(h.HandleAdminAssignDevice))
 	mux.HandleFunc("POST /admin/nodes/{mac}/unassign", perm("node:write")(h.HandleAdminUnassignDevice))
+	// 认领码明文只给有写权限的管理员（node:read 只读账号看不到）。
+	mux.HandleFunc("GET /admin/nodes/{mac}/claim-code", perm("node:write")(h.HandleAdminGetClaimCode))
 	// 设备远程命令（管理员下发/查历史）
 	mux.HandleFunc("POST /admin/nodes/{mac}/commands", perm("node:write")(h.HandleAdminEnqueueCommand))
 	mux.HandleFunc("GET /admin/nodes/{mac}/commands", perm("node:read")(h.HandleAdminListCommands))

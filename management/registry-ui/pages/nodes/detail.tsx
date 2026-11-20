@@ -10,6 +10,7 @@ import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { NodeEditDialog } from '@/components/nodes/NodeEditDialog';
 import { ServerCredentialCard } from '@/components/nodes/ServerCredentialCard';
+import { ClaimCodeCard } from '@/components/nodes/ClaimCodeCard';
 import { SshCommandsDialog } from '@/components/nodes/SshCommandsDialog';
 import { NodeCommandsDialog } from '@/components/nodes/NodeCommandsDialog';
 import { ArrowLeft, RefreshCw, Pencil, Server, Terminal } from 'lucide-react';
@@ -139,6 +140,7 @@ export default function NodeDetail() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <ServerCredentialCard key={node.mac} node={node} onChanged={(enabled) => setNode((current) => current && ({ ...current, server_enabled: enabled }))} />
+        <ClaimCodeCard key={`claim-${node.mac}`} node={node} />
         <Card className="rounded-xl border bg-card animate-slide-up" style={{ animationDelay: '40ms' }}>
           <CardHeader className="pb-2 pt-5 px-5">
             <CardTitle role="heading" aria-level={2} className="font-display text-base font-600 text-foreground">{t('identifiers')}</CardTitle>

@@ -91,8 +91,9 @@ func generateUUID() (string, error) {
 const crockfordBase32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
 // generateClaimCode returns an 8-char Crockford-base32 device claim code
-// formatted "XXXX-XXXX". The plaintext is returned to the device once at
-// registration; the server persists only its sha256 (see hashClaimCode).
+// formatted "XXXX-XXXX". The plaintext is returned to the device at
+// registration and kept in nodes.claim_code for the admin panel; claiming
+// still validates only its sha256 (see hashClaimCode).
 func generateClaimCode() (string, error) {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {

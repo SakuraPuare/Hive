@@ -127,7 +127,7 @@ func (h *Handler) HandleNodeEnroll(w http.ResponseWriter, r *http.Request) {
 		}
 		var existing model.Node
 		if err := tx.Raw(
-			"SELECT mac, registered_at, owner_customer_id, claimed_at, server_enabled, claim_code_hash FROM nodes WHERE mac = ? FOR UPDATE",
+			"SELECT mac, registered_at, owner_customer_id, claimed_at, server_enabled, claim_code_hash, claim_code FROM nodes WHERE mac = ? FOR UPDATE",
 			mac,
 		).Scan(&existing).Error; err != nil {
 			return err
@@ -142,6 +142,11 @@ func (h *Handler) HandleNodeEnroll(w http.ResponseWriter, r *http.Request) {
 			}
 			if existing.ClaimCodeHash == derivedClaimHash {
 				claimCode = derivedCode
+				// Migration 40 之前入网的设备只有哈希；重试时顺手补明文，
+				// 让管理员面板能看到同一份认领码。
+				if existing.ClaimCode == "" {
+					return tx.Model(&model.Node{}).Where("mac = ?", mac).Update("claim_code", derivedCode).Error
+				}
 			}
 			return nil
 		}
@@ -163,6 +168,7 @@ func (h *Handler) HandleNodeEnroll(w http.ResponseWriter, r *http.Request) {
 		if existing.ClaimCodeHash == "" {
 			claimCode = derivedCode
 			updates["claim_code_hash"] = derivedClaimHash
+			updates["claim_code"] = derivedCode
 		}
 		return tx.Model(&model.Node{}).Where("mac = ?", mac).Updates(updates).Error
 	})

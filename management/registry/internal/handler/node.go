@@ -64,7 +64,7 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 认领码：仅在首次注册（或历史节点尚无 code）时铸造一次；重刷/重注册保持稳定，
-	// 不覆盖既有 code（避免把已认领设备的码悄悄换掉）。明文只在本次响应回传一次。
+	// 不覆盖既有 code（避免把已认领设备的码悄悄换掉）。明文同时落库供管理员面板查看。
 	claimCodePlain := ""
 
 	if existing.MAC != "" {
@@ -89,6 +89,7 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 			if code, err := generateClaimCode(); err == nil {
 				claimCodePlain = code
 				updates["claim_code_hash"] = hashClaimCode(code)
+				updates["claim_code"] = code
 			}
 		}
 		// EasyTier 静态发号：老节点若 easytier_ip 为空则幂等补分配回填（迁移过渡期）。
@@ -138,8 +139,8 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 			tailscaleIP = "pending"
 		}
 		if err := h.DB.Exec(
-			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, frp_port, tailscale_ip, easytier_ip, xray_uuid, mesh_tunnel_id, mesh_ip, claim_code_hash, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, body.FRPPort, tailscaleIP, easytierIP, body.XrayUUID, body.MeshTunnelID, body.MeshIP, claimHash, now, now,
+			"INSERT INTO nodes (mac, mac6, hostname, cf_url, tunnel_id, frp_port, tailscale_ip, easytier_ip, xray_uuid, mesh_tunnel_id, mesh_ip, claim_code_hash, claim_code, registered_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			body.MAC, body.MAC6, body.Hostname, body.CFURL, body.TunnelID, body.FRPPort, tailscaleIP, easytierIP, body.XrayUUID, body.MeshTunnelID, body.MeshIP, claimHash, claimCodePlain, now, now,
 		).Error; err != nil {
 			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return

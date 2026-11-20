@@ -1523,5 +1523,16 @@
     "tokenHelp": "Shown once. Save only on this exit server as /etc/hive/server-token, owned by root with mode 0600. Never include it in customer devices or shared images.",
     "hide": "Hide key",
     "failed": "Could not update exit access"
+  },
+  "claimCode": {
+    "title": "Device claim code",
+    "loading": "Loading…",
+    "refresh": "Refresh",
+    "copy": "Copy",
+    "copied": "Copied",
+    "hint": "The customer enters this code under \"My devices → Claim\" to bind the device. Treat it as an ownership secret and share it only with that customer.",
+    "claimed": "The device is already claimed or acting as an exit server, so this code is inactive. It becomes valid again after unclaiming or revoking the server role.",
+    "notStored": "This device enrolled before claim-code plaintext was stored, so only its hash exists. Read /etc/hive/claim-code on the device, or assign the device to a customer directly from this page.",
+    "loadFailed": "Could not load the claim code"
   }
 }

@@ -62,7 +62,7 @@ func TestNodeEnroll_FirstBootGetsCredentialAndClaimCode(t *testing.T) {
 		t.Fatalf("node row lacks presence timestamps: %+v", node)
 	}
 
-	// Only hashes are persisted; the same secret can recover a discarded response.
+	// 凭证与认领码的校验仍只依赖哈希；明文 claim_code 仅供管理员面板展示。
 	var storedHash, claimHash string
 	testDB.Raw("SELECT token_hash FROM device_credentials WHERE mac = ?", mac).Scan(&storedHash)
 	sum := sha256.Sum256([]byte(body.Token))
@@ -72,6 +72,11 @@ func TestNodeEnroll_FirstBootGetsCredentialAndClaimCode(t *testing.T) {
 	testDB.Raw("SELECT claim_code_hash FROM nodes WHERE mac = ?", mac).Scan(&claimHash)
 	if claimHash != hashClaimCode(body.ClaimCode) {
 		t.Fatalf("stored claim hash does not match the returned code")
+	}
+	var storedCode string
+	testDB.Raw("SELECT claim_code FROM nodes WHERE mac = ?", mac).Scan(&storedCode)
+	if storedCode != body.ClaimCode {
+		t.Fatalf("stored claim plaintext = %q, want %q", storedCode, body.ClaimCode)
 	}
 
 	// 领到的凭证必须真的能过 RequireDeviceAuth，否则 provisioning 还是全 401。
@@ -104,6 +109,20 @@ func TestNodeEnroll_RecoversDiscardedResponseWithSameSecret(t *testing.T) {
 	testDB.Raw("SELECT claim_code_hash FROM nodes WHERE mac = ?", mac).Scan(&storedClaimHash)
 	if storedClaimHash != hashClaimCode(recovered.ClaimCode) {
 		t.Fatal("retry claim code does not match the original stored hash")
+	}
+	// 迁移前入网的设备只有哈希；带原 token 重试应补回明文。
+	mustExec(t, "UPDATE nodes SET claim_code='' WHERE mac = ?", mac)
+	backfill := doJSON("POST", "/nodes/enroll", map[string]string{"mac": mac, "token": testEnrollmentToken}, nil)
+	assertStatus(t, backfill, http.StatusOK)
+	var backfilled EnrollResponse
+	decodeBody(t, backfill, &backfilled)
+	if backfilled.ClaimCode != recovered.ClaimCode {
+		t.Fatalf("backfill returned %q, want %q", backfilled.ClaimCode, recovered.ClaimCode)
+	}
+	var backfilledCode string
+	testDB.Raw("SELECT claim_code FROM nodes WHERE mac = ?", mac).Scan(&backfilledCode)
+	if backfilledCode != recovered.ClaimCode {
+		t.Fatalf("retry did not backfill claim plaintext: %q", backfilledCode)
 	}
 	assertStatus(t, doBearer("POST", "/nodes/heartbeat", map[string]any{"mac": mac}, recovered.Token), http.StatusOK)
 	var auditCount int64
@@ -419,4 +438,35 @@ func TestPortalDeviceMihomo_ReportsMissingManagementAddress(t *testing.T) {
 
 	resp := doJSON("GET", "/portal/devices/"+mac+"/mihomo/connections", nil, customerCookie(cid))
 	assertStatus(t, resp, http.StatusServiceUnavailable)
+}
+
+func TestAdminClaimCodeEndpoint(t *testing.T) {
+	resetDB(t)
+	mac := "a1a2a3a4a5a6"
+	enrolled := doJSON("POST", "/nodes/enroll", map[string]string{"mac": mac, "token": testEnrollmentToken}, nil)
+	assertStatus(t, enrolled, http.StatusOK)
+	var enrolledBody EnrollResponse
+	decodeBody(t, enrolled, &enrolledBody)
+
+	path := "/admin/nodes/" + mac + "/claim-code"
+	assertStatus(t, doJSON("GET", path, nil, nil), http.StatusUnauthorized)
+
+	resp := doJSON("GET", path, nil, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	var view AdminClaimCodeResponse
+	decodeBody(t, resp, &view)
+	if view.MAC != mac || view.ClaimCode != enrolledBody.ClaimCode || !view.Claimable {
+		t.Fatalf("admin claim view = %+v, want code %q claimable", view, enrolledBody.ClaimCode)
+	}
+
+	cid := insertTestCustomer(t, "claim-view@example.com")
+	assertStatus(t, doJSON("POST", "/portal/devices/claim", map[string]string{"code": enrolledBody.ClaimCode}, customerCookie(cid)), http.StatusOK)
+	resp = doJSON("GET", path, nil, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	decodeBody(t, resp, &view)
+	if view.ClaimCode != enrolledBody.ClaimCode || view.Claimable {
+		t.Fatalf("claimed device view = %+v, want retained code and claimable=false", view)
+	}
+
+	assertStatus(t, doJSON("GET", "/admin/nodes/ffffffffffff/claim-code", nil, adminCookie()), http.StatusNotFound)
 }

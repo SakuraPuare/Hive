@@ -8,6 +8,7 @@ export { OpenAPI } from './core/OpenAPI';
 export type { OpenAPIConfig } from './core/OpenAPI';
 
 export type { handler_ackCommandRequest } from './models/handler_ackCommandRequest';
+export type { handler_AdminClaimCodeResponse } from './models/handler_AdminClaimCodeResponse';
 export type { handler_AdminLoginRequest } from './models/handler_AdminLoginRequest';
 export type { handler_AdminReferralItem } from './models/handler_AdminReferralItem';
 export type { handler_AdminReferralListResponse } from './models/handler_AdminReferralListResponse';

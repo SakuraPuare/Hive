@@ -68,10 +68,12 @@ type Node struct {
 	BoundSubscriptionID *uint `json:"bound_subscription_id"`
 
 	// 设备归属：owner_customer_id 非空即"这台设备属于某客户"，客户可在门户查看/管理。
-	// claim_code_hash 只存哈希、不出 JSON（明文仅在注册响应回传一次）。
+	// 认领校验只认 claim_code_hash；claim_code 是管理员面板展示用的明文，
+	// 不出现在节点 JSON 中（见 /admin/nodes/{mac}/claim-code）。
 	OwnerCustomerID *uint   `json:"owner_customer_id"`
 	ClaimedAt       *string `json:"claimed_at"`
 	ClaimCodeHash   string  `json:"-"`
+	ClaimCode       string  `json:"-"`
 
 	// Private heartbeat snapshot; only the owned-device address endpoint exposes it.
 	AddressSnapshot    *string `json:"-"`
