@@ -8,7 +8,7 @@ import { useClipboard } from '@/lib/use-clipboard';
 import { getErrorMessage } from '@/lib/i18n';
 import { mihomoPanelUrl, type DashboardInfo } from '@/lib/mihomo-panel';
 import { PortalService } from '@/src/generated/client';
-import type { model_Node, model_DeviceCommand } from '@/src/generated/client';
+import type { model_Node, model_DeviceCommand, handler_PortalDevice } from '@/src/generated/client';
 import { useFormat } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -116,7 +116,7 @@ export default function PortalDevicesPage() {
   const [claiming, setClaiming] = useState(false);
 
   // 命令对话框（针对某台设备）
-  const [cmdDevice, setCmdDevice] = useState<model_Node | null>(null);
+  const [cmdDevice, setCmdDevice] = useState<handler_PortalDevice | null>(null);
   const [cmdAction, setCmdAction] = useState<string>('reboot');
   const [cmdHistory, setCmdHistory] = useState<model_DeviceCommand[]>([]);
   const [cmdSending, setCmdSending] = useState(false);
@@ -684,6 +684,7 @@ export default function PortalDevicesPage() {
             </div>
             <Button onClick={sendCommand} loading={cmdSending} className="w-full">{t('cmdSend')}</Button>
 
+            {cmdDevice?.hotspot_capable && (
             <section className="space-y-3 border-t border-md-outline-variant pt-4" aria-labelledby="hotspot-config-title">
               <div className="flex items-center gap-2">
                 <Wifi className="size-4 text-md-primary" aria-hidden="true" />
@@ -737,6 +738,7 @@ export default function PortalDevicesPage() {
               </div>
               <Button onClick={sendHotspotConfig} loading={hotspotSending} className="w-full">{t('hotspotApply')}</Button>
             </section>
+            )}
 
             <section className="space-y-3 border-t border-md-outline-variant pt-4" aria-labelledby="service-controls-title">
               <div className="flex items-center gap-2">
@@ -755,7 +757,7 @@ export default function PortalDevicesPage() {
                   <div key={group.key} className="space-y-2">
                     <p className="text-xs font-600 uppercase tracking-wide text-muted-foreground">{t(`serviceGroup_${group.key}` as 'serviceGroup_proxy')}</p>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      {group.services.map((service) => (
+                      {(cmdDevice?.hotspot_capable ? group.services : group.services.filter((service) => service !== 'hive-hotspot')).map((service) => (
                         <div key={service} className="rounded-lg border border-md-outline-variant bg-md-surface-container-low p-2.5">
                           <div className="mb-2 flex items-center justify-between gap-2">
                             <span className="truncate text-sm font-500">{t(`service_${service.replaceAll('.', '_')}` as 'service_xray')}</span>

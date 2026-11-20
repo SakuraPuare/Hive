@@ -123,6 +123,7 @@ def valid(raw, family=None, public=False):
         return None
 lan = []
 collection_ok = False
+hotspot_capable = False
 try:
     rows = json.loads(subprocess.check_output(['ip', '-j', 'address', 'show'], timeout=3))
     if not isinstance(rows, list):
@@ -162,6 +163,30 @@ try:
                         uplinks.add(hop['dev'])
         except (OSError, ValueError, TypeError, subprocess.SubprocessError):
             routes_ok = False
+    # Report AP capability independently of the current hotspot state so a
+    # newly added wireless adapter makes hotspot configuration available.
+    hotspot_capable = False
+    wireless_seen = False
+    modes_read = False
+    net_root = pathlib.Path('/sys/class/net')
+    for iface_dir in (net_root.iterdir() if net_root.exists() else ()):
+        phy = iface_dir / 'phy80211'
+        if not phy.exists():
+            continue
+        wireless_seen = True
+        try:
+            phy_name = phy.resolve().name
+            info = subprocess.check_output(['iw', 'phy', phy_name, 'info'], timeout=2).decode()
+        except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
+            continue
+        modes_read = True
+        if re.search(r'^\s*\*\s*AP(?:/VLAN)?\s*$', info, re.M):
+            hotspot_capable = True
+            break
+    if not hotspot_capable and wireless_seen and not modes_read:
+        # iw could not enumerate modes; a present wireless NIC is the best
+        # available signal that the user can configure a hotspot.
+        hotspot_capable = True
     # AP interfaces are detected from iw mode, so 2.4G/5G APs and virtual Wi-Fi
     # interfaces are covered without matching any board-specific address.
     ap_interfaces = set()
@@ -224,7 +249,7 @@ try:
 except OSError:
     pass
 times = [cache[str(f)]['success'] for f in (4, 6) if cache[str(f)].get('ip')]
-print(json.dumps({'collection_ok': collection_ok, 'lan': lan, 'egress': {'ipv4': cache['4'].get('ip', ''), 'ipv6': cache['6'].get('ip', ''), 'sampled_at': stamp(min(times)) if times else None}, 'country': country}))
+print(json.dumps({'collection_ok': collection_ok, 'lan': lan, 'hotspot_capable': hotspot_capable, 'egress': {'ipv4': cache['4'].get('ip', ''), 'ipv6': cache['6'].get('ip', ''), 'sampled_at': stamp(min(times)) if times else None}, 'country': country}))
 PY
 }
 

@@ -19,7 +19,7 @@ func customerActor(cid uint) string { return "customer:" + strconv.FormatUint(ui
 func (h *Handler) ownedNode(w http.ResponseWriter, mac string, cid uint) (model.Node, bool) {
 	var n model.Node
 	if err := h.DB.Raw(
-		"SELECT "+model.NodeCols+" FROM nodes n LEFT JOIN node_status_checks nsc ON n.mac = nsc.mac WHERE n.mac = ?", mac,
+		"SELECT "+model.NodeCols+", n.address_snapshot FROM nodes n LEFT JOIN node_status_checks nsc ON n.mac = nsc.mac WHERE n.mac = ?", mac,
 	).Scan(&n).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return n, false
@@ -54,6 +54,28 @@ type PortalDevice struct {
 	Country              string  `json:"country"`
 	CountryOverride      string  `json:"country_override"`
 	ClaimedAt            *string `json:"claimed_at"`
+	HotspotCapable       bool    `json:"hotspot_capable"`
+}
+
+func hotspotCapable(n model.Node) bool {
+	if n.AddressSnapshot == nil {
+		return false
+	}
+	var sample model.DeviceAddressSnapshot
+	if err := json.Unmarshal([]byte(*n.AddressSnapshot), &sample); err != nil {
+		return false
+	}
+	if sample.HotspotCapable {
+		return true
+	}
+	// Legacy agents do not send the capability flag; an observed AP address
+	// still proves the device currently has a hotspot.
+	for _, entry := range sample.LAN {
+		if entry.Role == "hotspot" {
+			return true
+		}
+	}
+	return false
 }
 
 // portalDevice maps an allowlisted subset of a node onto the customer view.
@@ -77,6 +99,7 @@ func portalDevice(n model.Node) PortalDevice {
 		Country:              n.Country,
 		CountryOverride:      n.CountryOverride,
 		ClaimedAt:            n.ClaimedAt,
+		HotspotCapable:       hotspotCapable(n),
 	}
 }
 
@@ -102,7 +125,7 @@ func (h *Handler) HandlePortalListDevices(w http.ResponseWriter, r *http.Request
 	cid := customerID(r)
 	nodes := make([]model.Node, 0)
 	if err := h.DB.Raw(
-		"SELECT "+model.NodeCols+" FROM nodes n LEFT JOIN node_status_checks nsc ON n.mac = nsc.mac "+
+		"SELECT "+model.NodeCols+", n.address_snapshot FROM nodes n LEFT JOIN node_status_checks nsc ON n.mac = nsc.mac "+
 			"WHERE n.owner_customer_id = ? AND n.server_enabled = 0 ORDER BY n.hostname", cid,
 	).Scan(&nodes).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())

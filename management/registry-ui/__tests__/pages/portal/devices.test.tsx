@@ -471,6 +471,29 @@ describe('PortalDevicesPage', () => {
     expect(screen.queryByText('portal.service_hive-firewall')).not.toBeInTheDocument();
   });
 
+  it('hides hotspot configuration without AP capability', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    mockCommands.mockResolvedValue([]);
+    render(<PortalDevicesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'portal.cmdManage' }));
+
+    expect(await screen.findByText('portal.service_hive-gateway')).toBeInTheDocument();
+    expect(screen.queryByText('portal.hotspotConfig')).not.toBeInTheDocument();
+    expect(screen.queryByText('portal.service_hive-hotspot')).not.toBeInTheDocument();
+  });
+
+  it('shows hotspot configuration when the device reports AP capability', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([{ ...gatewayNode, hotspot_capable: true }]);
+    mockCommands.mockResolvedValue([]);
+    render(<PortalDevicesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'portal.cmdManage' }));
+
+    expect(await screen.findByText('portal.hotspotConfig')).toBeInTheDocument();
+    expect(screen.getByText('portal.service_hive-hotspot')).toBeInTheDocument();
+  });
+
   it('does not put a late response from another device into the current dialog', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
     mockListDevices.mockResolvedValue([gatewayNode, plainNode]);

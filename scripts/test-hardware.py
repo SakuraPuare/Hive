@@ -38,7 +38,7 @@ class HardwareTests(unittest.TestCase):
         p.write_text(text)
         p.chmod(0o755)
 
-    def address_collector(self, rows, now, traces, routes=None, ap_interfaces=()):
+    def address_collector(self, rows, now, traces, routes=None, ap_interfaces=(), ap_capable=False):
         source = (BIN / 'hive-command-agent').read_text()
         code = source.split("address_snapshot() {\n    python3 - <<'PY'\n", 1)[1].split('\nPY\n}', 1)[0]
         code = code.replace('/var/lib/hive/egress-addresses.json', str(self.root / 'egress.json'))
@@ -47,6 +47,9 @@ class HardwareTests(unittest.TestCase):
         def command(args, **kwargs):
             calls.append(args)
             if args[0] == 'iw':
+                if args[1] == 'phy':
+                    modes = ['managed'] + (['AP', 'AP/VLAN'] if ap_capable else [])
+                    return ('Supported interface modes:\n' + ''.join(f'\t\t * {mode}\n' for mode in modes)).encode()
                 mode = 'AP' if args[2] in ap_interfaces else 'managed'
                 return f'Interface {args[2]}\n\ttype {mode}\n'.encode()
             if args[0] == 'ip':
@@ -163,11 +166,28 @@ class HardwareTests(unittest.TestCase):
         ]
         sample, _ = self.address_collector(rows, 1700000000,
             {4: subprocess.CalledProcessError(7, 'curl'), 6: subprocess.CalledProcessError(7, 'curl')},
-            {4: [{'dev': 'end0'}]}, ap_interfaces={'wlan1'})
+            {4: [{'dev': 'end0'}]}, ap_interfaces={'wlan1'}, ap_capable=True)
+        self.assertTrue(sample['hotspot_capable'])
         self.assertEqual(sample['lan'], [
             {'interface': 'end0', 'address': '192.168.5.2', 'prefix_length': 24, 'role': 'wan'},
             {'interface': 'lan0', 'address': '10.42.2.1', 'prefix_length': 24, 'role': 'lan'},
             {'interface': 'wlan1', 'address': '10.42.0.1', 'prefix_length': 24, 'role': 'hotspot'}])
+
+    def test_command_addresses_reports_added_ap_capable_adapter(self):
+        (self.root / 'net' / 'eth0' / 'device').mkdir(parents=True)
+        # A USB Wi-Fi adapter appears as phy80211 before any AP is configured.
+        (self.root / 'net' / 'wlan9' / 'phy80211').mkdir(parents=True)
+        rows = [{'ifname': 'eth0', 'addr_info': [{'local': '192.168.5.2', 'prefixlen': 24}]}]
+        sample, _ = self.address_collector(rows, 1700000000,
+            {4: subprocess.CalledProcessError(7, 'curl'), 6: subprocess.CalledProcessError(7, 'curl')},
+            ap_capable=True)
+        self.assertTrue(sample['hotspot_capable'])
+        self.assertEqual(sample['lan'][0]['role'], 'lan')
+
+        sample, _ = self.address_collector(rows, 1700000060,
+            {4: subprocess.CalledProcessError(7, 'curl'), 6: subprocess.CalledProcessError(7, 'curl')},
+            ap_capable=False)
+        self.assertFalse(sample['hotspot_capable'])
 
     def test_command_lan_collection_failure_omits_snapshot_but_refreshes_cache(self):
         for index, failure in enumerate([subprocess.CalledProcessError(1, 'ip'),

@@ -514,6 +514,7 @@ export const handlerPortalDeviceSchema = z.object({
   gateway_upstream_mode: z.string().optional(),
   gateway_upstream_nodes: z.string().optional(),
   hostname: z.string().optional(),
+  hotspot_capable: z.boolean().optional(),
   last_seen: z.string().optional(),
   mac: z.string().optional(),
   mac6: z.string().optional(),
@@ -1011,6 +1012,9 @@ export type ModelLANAddress = z.infer<typeof modelLANAddressSchema>;
 
 export const modelDeviceAddressSnapshotSchema = z.object({
   egress: modelDeviceEgressSchema.optional(),
+/** HotspotCapable reports a Wi-Fi adapter that supports AP mode. Legacy
+agents omit it; portal falls back to an observed hotspot address. */
+  hotspot_capable: z.boolean().optional(),
   lan: z.array(modelLANAddressSchema).optional()
 });
 export type ModelDeviceAddressSnapshot = z.infer<typeof modelDeviceAddressSnapshotSchema>;

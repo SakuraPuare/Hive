@@ -14,6 +14,7 @@ export type handler_PortalDevice = {
     gateway_upstream_mode?: string;
     gateway_upstream_nodes?: string;
     hostname?: string;
+    hotspot_capable?: boolean;
     last_seen?: string;
     mac?: string;
     mac6?: string;

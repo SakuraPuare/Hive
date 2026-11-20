@@ -6054,6 +6054,8 @@ components:
           type: string
         hostname:
           type: string
+        hotspot_capable:
+          type: boolean
         last_seen:
           type: string
         mac:
@@ -6797,6 +6799,11 @@ components:
       properties:
         egress:
           $ref: "#/components/schemas/model.DeviceEgress"
+        hotspot_capable:
+          description: |-
+            HotspotCapable reports a Wi-Fi adapter that supports AP mode. Legacy
+            agents omit it; portal falls back to an observed hotspot address.
+          type: boolean
         lan:
           items:
             $ref: "#/components/schemas/model.LANAddress"

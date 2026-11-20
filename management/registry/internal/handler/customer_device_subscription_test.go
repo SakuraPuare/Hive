@@ -25,6 +25,8 @@ func TestPortalDeviceEndpointsExposeOnlyCustomerFields(t *testing.T) {
 		WHERE mac = ?`,
 		"tunnel-secret-id", "172.20.1.2", "100.64.1.2", "172.20.1.3", "mesh-secret-id",
 		22222, "Hong Kong", "operator note", "hk", 7, "HK", "US", mac)
+	mustExec(t, "UPDATE nodes SET address_snapshot = ?, addresses_sampled_at = ? WHERE mac = ?",
+		`{"hotspot_capable":true,"lan":[]}`, "2026-11-20T00:00:00Z", mac)
 
 	forbidden := []string{
 		"tailscale_ip", "easytier_ip", "mesh_ip", "mesh_tunnel_id", "frp_port",
@@ -50,7 +52,8 @@ func TestPortalDeviceEndpointsExposeOnlyCustomerFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(devices) != 1 || devices[0].MAC != mac || devices[0].MAC6 != "ddeeff" || devices[0].Hostname == "" ||
-		devices[0].ProbeStatus == "" || !devices[0].GatewayEnabled || devices[0].Country != "HK" || devices[0].CountryOverride != "US" {
+		devices[0].ProbeStatus == "" || !devices[0].GatewayEnabled || devices[0].Country != "HK" || devices[0].CountryOverride != "US" ||
+		!devices[0].HotspotCapable {
 		t.Fatalf("portal list view = %+v", devices)
 	}
 
@@ -60,7 +63,7 @@ func TestPortalDeviceEndpointsExposeOnlyCustomerFields(t *testing.T) {
 	if err := json.Unmarshal([]byte(single), &device); err != nil {
 		t.Fatal(err)
 	}
-	if device.MAC != mac || device.CountryOverride != "US" || len(device.GatewayUpstreamNodes) != 0 {
+	if device.MAC != mac || device.CountryOverride != "US" || len(device.GatewayUpstreamNodes) != 0 || !device.HotspotCapable {
 		t.Fatalf("portal get view = %+v", device)
 	}
 

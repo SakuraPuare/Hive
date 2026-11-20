@@ -444,6 +444,9 @@ type DeviceEgress struct {
 type DeviceAddressSnapshot struct {
 	LAN    []LANAddress `json:"lan"`
 	Egress DeviceEgress `json:"egress"`
+	// HotspotCapable reports a Wi-Fi adapter that supports AP mode. Legacy
+	// agents omit it; portal falls back to an observed hotspot address.
+	HotspotCapable bool `json:"hotspot_capable,omitempty"`
 }
 
 // DeviceAddressesResponse contains addresses only, never node credentials.
