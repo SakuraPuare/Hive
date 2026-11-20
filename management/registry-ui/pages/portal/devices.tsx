@@ -37,7 +37,7 @@ const COMMAND_ACTIONS = ['reboot', 'restart-xray', 'restart-mihomo', 'resync'] a
 
 const SERVICE_GROUPS = [
   { key: 'proxy', services: ['xray', 'xray-exporter', 'cloudflared', 'frpc', 'easytier'] },
-  { key: 'network', services: ['hive-mihomo', 'hive-hotspot', 'hive-hotspot-5g', 'hive-gateway'] },
+  { key: 'network', services: ['hive-mihomo', 'hive-hotspot', 'hive-gateway'] },
   { key: 'security', services: ['hive-firewall', 'hive-fail2ban'] },
   { key: 'system', services: ['nginx', 'tailscaled', 'warp-svc'] },
   { key: 'automation', services: ['hive-xray-sync.timer', 'hive-clash-sync.timer', 'hive-command-agent.timer', 'hive-updater.timer'] },
