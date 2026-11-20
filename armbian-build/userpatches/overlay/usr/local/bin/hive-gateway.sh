@@ -152,6 +152,9 @@ if [ "$NWIRED" -lt 2 ]; then
     cleanup_one_arm
     # 网口减少（拔掉 USB 网卡/改单口）后这些连接已无对应 LAN，留着会被 NM 激活。
     prune_lan_profiles
+    # 同理清掉上次多口拓扑写入的 WAN/LAN 记录；留着会让 agent 把不存在的有线网关
+    # 报成 running，hive-gateway-route / motd 也会读到过期的 LAN 口。
+    [ -f "$NODE_INFO" ] && sed -i '/^GATEWAY_/d' "$NODE_INFO" 2>/dev/null
     if [ "$WIRELESS" -eq 0 ]; then
         log "仅 ${NWIRED} 个有线口、无无线网卡：单臂（旁路）网关是 WIP，暂不配置；节点保持普通角色"
     else

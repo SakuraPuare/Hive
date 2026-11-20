@@ -1572,12 +1572,20 @@ exit 0
             'connections': {'hive-lan-eth1': {'iface': 'eth1', 'device': '', 'method': 'shared'}},
             'active': [], 'interfaces': ['eth0']}))
         shutil.rmtree(self.root / 'sys/class/net/eth1')
+        # The former multi-port run recorded a LAN gateway; the agent reports
+        # hive-gateway as running from these fields, so they must go too.
+        (self.root / 'etc/hive/node-info').write_text(
+            'MAC=aabbccddeeff\nGATEWAY_WAN_IFACE=eth0\n'
+            'GATEWAY_LAN_IFACES=eth1\nGATEWAY_LAN_IP=10.42.2.1\n')
 
         self.run_script(source)
 
         self.assertFalse(stale.exists())
         self.assertNotIn('hive-lan-eth1',
                          json.loads((self.root / 'nm-state.json').read_text())['connections'])
+        info = (self.root / 'etc/hive/node-info').read_text()
+        self.assertNotIn('GATEWAY_', info)
+        self.assertIn('MAC=aabbccddeeff', info)
 
     def test_motd_claim_survives_named_ports_and_missing_identity(self):
         hive = self.root / 'etc/hive'
