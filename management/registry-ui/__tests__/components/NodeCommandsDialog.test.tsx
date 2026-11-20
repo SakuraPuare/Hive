@@ -2,12 +2,13 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { model_DeviceCommand, model_Node } from '@/src/generated/client';
 
-const { enqueue, list, permissions } = vi.hoisted(() => ({
-  enqueue: vi.fn(), list: vi.fn(), permissions: { read: true, write: true },
+const { enqueue, list, services, permissions } = vi.hoisted(() => ({
+  enqueue: vi.fn(), list: vi.fn(), services: vi.fn(), permissions: { read: true, write: true },
 }));
 vi.mock('@/src/generated/client', () => ({ AdminService: {
   adminEnqueueDeviceCommand: enqueue,
   adminListDeviceCommands: list,
+  adminDeviceServices: services,
 } }));
 vi.mock('@/lib/openapi-session', () => ({ sessionApi: (promise: Promise<unknown>) => promise }));
 vi.mock('@/lib/auth', () => ({ useCurrentUser: () => ({
@@ -30,6 +31,10 @@ describe('NodeCommandsDialog', () => {
     vi.useFakeTimers();
     enqueue.mockReset();
     list.mockReset().mockResolvedValue([]);
+    services.mockReset().mockResolvedValue({
+      sampled_at: new Date().toISOString(),
+      services: [{ name: 'xray', active_state: 'active', sub_state: 'running', load_state: 'loaded' }],
+    });
     permissions.read = true;
     permissions.write = true;
   });
@@ -96,6 +101,25 @@ describe('NodeCommandsDialog', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(within(batch).getByText('nodeCommands.notInHistory')).toBeInTheDocument();
     expect(within(batch).getByText(/nodeCommands.status_done/)).toBeInTheDocument();
+  });
+
+  it('shows sampled service states and confirms mutating service actions', async () => {
+    enqueue.mockResolvedValue({ id: 43 });
+    render(<NodeCommandsDialog nodes={[nodes[0]]} open onOpenChange={() => {}} />);
+    await settle();
+    expect(services).toHaveBeenCalledWith({ mac: nodes[0].mac });
+    expect(screen.getByText('active / running')).toBeInTheDocument();
+    const card = screen.getByText('nodeCommands.service_xray').closest('div')!.parentElement!;
+    fireEvent.click(within(card).getByRole('button', { name: 'nodeCommands.serviceOp_restart' }));
+    const confirmation = screen.getByRole('alertdialog');
+    expect(within(confirmation).getByText(/"service":"xray","operation":"restart"/)).toBeInTheDocument();
+    expect(enqueue).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'common.cancel' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'nodeCommands.serviceOp_status' }));
+    await settle();
+    expect(enqueue).toHaveBeenCalledWith({ mac: nodes[0].mac, requestBody: {
+      action: 'service-control', params: '{"service":"xray","operation":"status"}',
+    } });
   });
 
   it('cancels reads on close and unmount and ignores late responses after a target switch', async () => {

@@ -7,6 +7,7 @@ import { useFormat } from '@/lib/format';
 import { getErrorMessage } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Activity, Play, RotateCw, Settings2, Square } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -19,10 +20,21 @@ const SERVICES = [
   'nginx', 'tailscaled', 'warp-svc', 'hive-xray-sync.timer', 'hive-clash-sync.timer',
   'hive-command-agent.timer', 'hive-updater.timer',
 ] as const;
+const SERVICE_GROUPS = [
+  { key: 'proxy', services: ['xray', 'xray-exporter', 'cloudflared', 'frpc', 'easytier'] },
+  { key: 'network', services: ['hive-mihomo', 'hive-hotspot', 'hive-hotspot-5g', 'hive-gateway'] },
+  { key: 'security', services: ['hive-firewall', 'hive-fail2ban'] },
+  { key: 'system', services: ['nginx', 'tailscaled', 'warp-svc'] },
+  { key: 'automation', services: ['hive-xray-sync.timer', 'hive-clash-sync.timer', 'hive-command-agent.timer', 'hive-updater.timer'] },
+] as const;
+const SERVICE_OPERATIONS = ['start', 'stop', 'restart', 'status'] as const;
 const OPERATIONS = ['start', 'stop', 'restart', 'status'] as const;
 const STATUSES = ['pending', 'sent', 'done', 'failed', 'expired'] as const;
 type Action = typeof ACTIONS[number];
 type Operation = typeof OPERATIONS[number];
+type ServiceOperation = typeof SERVICE_OPERATIONS[number];
+type ServiceState = { name?: string; active_state?: string; sub_state?: string; load_state?: string };
+type ServiceSnapshot = { sampled_at?: string | null; services?: ServiceState[] };
 type BatchEntry = { mac: string; command?: model_DeviceCommand; error?: string; missing?: boolean };
 type Cancelable = Promise<unknown> & { cancel?: () => void };
 type Session = { active: boolean; running: number; waiters: (() => void)[]; reads: Set<Cancelable> };
@@ -69,6 +81,9 @@ export function NodeCommandsDialog({ nodes, open, onOpenChange }: {
   const [batch, setBatch] = useState<BatchEntry[]>([]);
   const [history, setHistory] = useState<model_DeviceCommand[]>([]);
   const [pollErrors, setPollErrors] = useState<Record<string, string>>({});
+  const [serviceSnapshot, setServiceSnapshot] = useState<ServiceSnapshot | null>(null);
+  const [serviceError, setServiceError] = useState('');
+  const [serviceNow, setServiceNow] = useState(() => Date.now());
   const sessionRef = useRef<Session | null>(null);
   const targetKey = nodes.map((node) => node.mac ?? '').join(',');
   const previousTarget = useRef(targetKey);
@@ -114,6 +129,32 @@ export function NodeCommandsDialog({ nodes, open, onOpenChange }: {
     };
   }, [open, targetKey, canRead, t]);
 
+  useEffect(() => {
+    const mac = nodes.length === 1 ? nodes[0].mac : '';
+    if (!open || !canRead || !mac) {
+      setServiceSnapshot(null);
+      setServiceError('');
+      return;
+    }
+    let stopped = false;
+    let timer: number | undefined;
+    const tick = async () => {
+      try {
+        const snapshot = await sessionApi(AdminService.adminDeviceServices({ mac }));
+        if (stopped) return;
+        setServiceSnapshot(snapshot);
+        setServiceError('');
+        setServiceNow(Date.now());
+      } catch (error) {
+        if (!stopped) setServiceError(getErrorMessage(error, t('serviceStatusUnavailable')));
+      } finally {
+        if (!stopped) timer = window.setTimeout(() => { void tick(); }, 5000);
+      }
+    };
+    void tick();
+    return () => { stopped = true; window.clearTimeout(timer); };
+  }, [open, canRead, targetKey, t]);
+
   function commandLabel(command: handler_enqueueCommandRequest | model_DeviceCommand) {
     const known = ACTIONS.find((value) => value === command.action);
     const label = known ? t(`action_${known}`) : command.action ?? t('unknown');
@@ -149,6 +190,28 @@ export function NodeCommandsDialog({ nodes, open, onOpenChange }: {
   };
   const readOnly = action === 'service-control' && operation === 'status';
   const stopsAgent = action === 'service-control' && service === 'hive-command-agent.timer' && operation === 'stop';
+  const serviceSampleTime = serviceSnapshot?.sampled_at ? Date.parse(serviceSnapshot.sampled_at) : NaN;
+  const serviceStale = !Number.isFinite(serviceSampleTime) || serviceNow - serviceSampleTime > 150_000;
+  const confirmationParams = (() => {
+    if (!confirmation?.params) return null;
+    try {
+      return JSON.parse(confirmation.params) as { service?: string; operation?: string };
+    } catch {
+      return null;
+    }
+  })();
+  const confirmationStopsAgent = confirmationParams?.service === 'hive-command-agent.timer' && confirmationParams.operation === 'stop';
+  function runService(serviceName: string, operationName: ServiceOperation) {
+    const command: handler_enqueueCommandRequest = {
+      action: 'service-control',
+      params: JSON.stringify({ service: serviceName, operation: operationName }),
+    };
+    if (operationName === 'status') {
+      void dispatch(command);
+    } else {
+      setConfirmation(command);
+    }
+  }
   const statusLabel = (status?: string) => {
     const known = STATUSES.find((value) => value === status);
     return known ? t(`status_${known}`) : status ?? t('unknown');
@@ -198,6 +261,58 @@ export function NodeCommandsDialog({ nodes, open, onOpenChange }: {
         {stopsAgent && <p role="alert" className="text-sm text-md-error">{t('agentStopWarning')}</p>}
         <Button disabled={busy || !canWrite || !nodes.length || nodes.some((node) => !node.mac)} loading={busy}
           onClick={() => { if (readOnly) void dispatch(selected); else setConfirmation(selected); }}>{t('send')}</Button>
+        {nodes.length === 1 && canRead && <section className="space-y-3 border-t border-md-outline-variant pt-4" aria-labelledby="admin-service-controls-title">
+          <div className="flex items-center gap-2">
+            <Settings2 className="size-4 text-md-primary" aria-hidden="true" />
+            <h3 id="admin-service-controls-title" className="text-sm font-600">{t('serviceControls')}</h3>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('serviceControlsDesc')}</p>
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            {serviceError ? `${t('serviceStatusUnavailable')} · ${serviceError}` : serviceSnapshot?.sampled_at
+              ? t('serviceStatusSample', { time: fmt.dateTime(serviceSnapshot.sampled_at) })
+              : t('serviceStatusUnknown')}
+            {serviceSnapshot?.sampled_at && serviceStale ? ` · ${t('serviceStatusStale')}` : ''}
+          </p>
+          <div className="max-h-80 space-y-4 overflow-y-auto pr-1">
+            {SERVICE_GROUPS.map((group) => (
+              <div key={group.key} className="space-y-2">
+                <p className="text-xs font-600 uppercase tracking-wide text-muted-foreground">{t(`serviceGroup_${group.key}`)}</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {group.services.map((serviceName) => {
+                    const state = serviceSnapshot?.services?.find((item) => item.name === serviceName);
+                    const unknown = !!serviceError || serviceStale || !state;
+                    const statusClass = unknown ? 'text-muted-foreground' : state.active_state === 'active' ? 'text-green-600' : state.active_state === 'failed' ? 'text-md-error' : 'text-muted-foreground';
+                    return (
+                      <div key={serviceName} className="rounded-lg border border-md-outline-variant bg-md-surface-container-low p-2.5">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-500">{t(`service_${serviceName.replaceAll('.', '_')}`)}</span>
+                          <span className={`text-xs ${statusClass}`}>
+                            {unknown ? t('serviceStatusUnknown') : state.load_state === 'not-found' ? t('serviceStatusNotFound') : `${state.active_state} / ${state.sub_state}`}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {SERVICE_OPERATIONS.map((operationName) => {
+                            const key = `${serviceName}:${operationName}`;
+                            const Icon = operationName === 'start' ? Play : operationName === 'stop' ? Square : operationName === 'restart' ? RotateCw : Activity;
+                            return (
+                              <Button key={operationName} type="button" variant={operationName === 'restart' ? 'secondary' : 'ghost'} size="sm"
+                                className="h-8 gap-1 px-2 text-xs" disabled={!canWrite || busy}
+                                onClick={() => runService(serviceName, operationName)}
+                                title={t(`serviceOp_${operationName}`)}>
+                                <Icon className="size-3.5" aria-hidden="true" />
+                                <span className="sr-only sm:not-sr-only">{t(`serviceOp_${operationName}`)}</span>
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>}
         {batch.length > 0 && <section className="space-y-2" aria-label={t('latestBatch')} aria-live="polite">
           <h3 className="text-sm font-semibold">{t('latestBatch')}</h3>
           <p className="text-xs text-muted-foreground">{t('queuedNotice')}</p>
@@ -231,7 +346,7 @@ export function NodeCommandsDialog({ nodes, open, onOpenChange }: {
         <p className="break-all text-sm font-semibold">{confirmation && commandLabel(confirmation)}</p>
         {targets}
         <p className="text-sm text-md-error">{t('disruptiveWarning')}</p>
-        {stopsAgent && <p className="text-sm text-md-error">{t('agentStopWarning')}</p>}
+        {confirmationStopsAgent && <p className="text-sm text-md-error">{t('agentStopWarning')}</p>}
         <AlertDialogFooter>
           <AlertDialogCancel>{common('cancel')}</AlertDialogCancel>
           <AlertDialogAction destructive disabled={!canWrite} onClick={() => { if (confirmation) void dispatch(confirmation); }}>{t('confirmSend')}</AlertDialogAction>

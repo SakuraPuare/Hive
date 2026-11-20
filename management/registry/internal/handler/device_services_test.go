@@ -36,6 +36,56 @@ func TestNormalizeServiceStates(t *testing.T) {
 	}
 }
 
+func TestAdminDeviceServicesSnapshot(t *testing.T) {
+	resetDB(t)
+	mac := "aabbccddeeff"
+	insertTestNode(t, mac)
+	path := "/admin/nodes/" + mac + "/services"
+	resp := doJSON("GET", path, nil, nil)
+	assertStatus(t, resp, http.StatusUnauthorized)
+	resp.Body.Close()
+	resp = doJSON("GET", "/admin/nodes/112233445566/services", nil, adminCookie())
+	assertStatus(t, resp, http.StatusNotFound)
+	resp.Body.Close()
+
+	resp = doJSON("GET", path, nil, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	var initial model.DeviceServicesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&initial); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if initial.SampledAt != nil || len(initial.Services) != len(serviceControlServices) {
+		t.Fatalf("legacy node invented a sample: %+v", initial)
+	}
+
+	sample := []model.ServiceStatus{{Name: "xray", ActiveState: "active", SubState: "running", LoadState: "loaded"}}
+	resp = doBearer("POST", "/nodes/heartbeat", map[string]any{"mac": mac, "services": sample}, deviceToken(t, mac))
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	resp = doJSON("GET", path, nil, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	var result model.DeviceServicesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if result.SampledAt == nil {
+		t.Fatal("missing sample time")
+	}
+	for _, state := range result.Services {
+		if state.Name == "xray" && (state.ActiveState != "active" || state.SubState != "running") {
+			t.Fatalf("xray: %+v", state)
+		}
+	}
+
+	mustExec(t, "UPDATE nodes SET service_states = ?, services_sampled_at = ? WHERE mac = ?", `{"bad":1}`, time.Now().UTC().Format(time.RFC3339), mac)
+	resp = doJSON("GET", path, nil, adminCookie())
+	assertStatus(t, resp, http.StatusInternalServerError)
+	resp.Body.Close()
+}
+
 func TestPortalDeviceServicesHeartbeat(t *testing.T) {
 	resetDB(t)
 	cid := insertTestCustomer(t, "service-owner@example.com")

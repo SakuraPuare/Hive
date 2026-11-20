@@ -1156,6 +1156,41 @@ paths:
       summary: Enable a trusted exit server and issue or rotate its credential
       tags:
         - admin
+  "/admin/nodes/{mac}/services":
+    get:
+      description: 状态随节点约60秒心跳更新；读取不会下发命令。
+      operationId: AdminDeviceServices
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/model.DeviceServicesResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - AdminSessionCookie: []
+      summary: 设备最新服务状态快照（管理员）
+      tags:
+        - admin
   "/admin/nodes/{mac}/unassign":
     post:
       description: 管理员解除设备归属，恢复未认领状态（认领码重新生效）。

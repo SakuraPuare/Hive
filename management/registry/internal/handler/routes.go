@@ -63,6 +63,7 @@ func (h *Handler) RegisterRoutes() *http.ServeMux {
 	// 设备远程命令（管理员下发/查历史）
 	mux.HandleFunc("POST /admin/nodes/{mac}/commands", perm("node:write")(h.HandleAdminEnqueueCommand))
 	mux.HandleFunc("GET /admin/nodes/{mac}/commands", perm("node:read")(h.HandleAdminListCommands))
+	mux.HandleFunc("GET /admin/nodes/{mac}/services", perm("node:read")(h.HandleAdminDeviceServices))
 	// SSH 命令生成所需的全局配置（FRP 服务器地址；不含 token）
 	mux.HandleFunc("GET /admin/ssh-config", perm("node:read")(h.HandleAdminSSHConfig))
 

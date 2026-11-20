@@ -51,6 +51,34 @@ func normalizeServiceStates(states []model.ServiceStatus) ([]model.ServiceStatus
 	return result, true
 }
 
+func (h *Handler) readServiceSnapshot(w http.ResponseWriter, mac string) (model.DeviceServicesResponse, bool) {
+	var row struct {
+		ServiceStates     *string
+		ServicesSampledAt *string
+	}
+	if err := h.DB.Table("nodes").Select("service_states, services_sampled_at").Where("mac = ?", mac).Take(&row).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return model.DeviceServicesResponse{}, false
+	}
+	states, _ := normalizeServiceStates(nil)
+	response := model.DeviceServicesResponse{Services: states}
+	if row.ServiceStates != nil && row.ServicesSampledAt != nil {
+		var stored []model.ServiceStatus
+		if err := json.Unmarshal([]byte(*row.ServiceStates), &stored); err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "invalid stored service snapshot")
+			return model.DeviceServicesResponse{}, false
+		}
+		if normalized, ok := normalizeServiceStates(stored); ok {
+			response.Services = normalized
+			response.SampledAt = row.ServicesSampledAt
+		} else {
+			h.jsonErr(w, http.StatusInternalServerError, "invalid stored service snapshot")
+			return model.DeviceServicesResponse{}, false
+		}
+	}
+	return response, true
+}
+
 // HandlePortalDeviceServices godoc
 // @Summary      我的设备最新服务状态快照
 // @ID           PortalDeviceServices
@@ -68,29 +96,39 @@ func (h *Handler) HandlePortalDeviceServices(w http.ResponseWriter, r *http.Requ
 	if _, ok := h.ownedNode(w, mac, customerID(r)); !ok {
 		return
 	}
-	var row struct {
-		ServiceStates     *string
-		ServicesSampledAt *string
+	response, ok := h.readServiceSnapshot(w, mac)
+	if !ok {
+		return
 	}
-	if err := h.DB.Table("nodes").Select("service_states, services_sampled_at").Where("mac = ?", mac).Take(&row).Error; err != nil {
+	h.jsonOK(w, response)
+}
+
+// HandleAdminDeviceServices godoc
+// @Summary      设备最新服务状态快照（管理员）
+// @ID           AdminDeviceServices
+// @Description  状态随节点约60秒心跳更新；读取不会下发命令。
+// @Tags         admin
+// @Security     AdminSessionCookie
+// @Produce      json
+// @Param        mac path string true "设备 MAC"
+// @Success      200 {object} model.DeviceServicesResponse
+// @Failure      404 {object} ErrorResponse
+// @Failure      500 {object} ErrorResponse
+// @Router       /admin/nodes/{mac}/services [get]
+func (h *Handler) HandleAdminDeviceServices(w http.ResponseWriter, r *http.Request) {
+	mac := r.PathValue("mac")
+	var count int64
+	if err := h.DB.Raw("SELECT COUNT(*) FROM nodes WHERE mac = ?", mac).Scan(&count).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
-	states, _ := normalizeServiceStates(nil)
-	response := model.DeviceServicesResponse{Services: states}
-	if row.ServiceStates != nil && row.ServicesSampledAt != nil {
-		var stored []model.ServiceStatus
-		if err := json.Unmarshal([]byte(*row.ServiceStates), &stored); err != nil {
-			h.jsonErr(w, http.StatusInternalServerError, "invalid stored service snapshot")
-			return
-		}
-		if normalized, ok := normalizeServiceStates(stored); ok {
-			response.Services = normalized
-			response.SampledAt = row.ServicesSampledAt
-		} else {
-			h.jsonErr(w, http.StatusInternalServerError, "invalid stored service snapshot")
-			return
-		}
+	if count == 0 {
+		h.jsonErr(w, http.StatusNotFound, "node not found")
+		return
+	}
+	response, ok := h.readServiceSnapshot(w, mac)
+	if !ok {
+		return
 	}
 	h.jsonOK(w, response)
 }

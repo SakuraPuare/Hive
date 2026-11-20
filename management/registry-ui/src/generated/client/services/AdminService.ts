@@ -65,6 +65,7 @@ import type { model_Announcement } from '../models/model_Announcement';
 import type { model_AuditLog } from '../models/model_AuditLog';
 import type { model_CustomerSubscription } from '../models/model_CustomerSubscription';
 import type { model_DeviceCommand } from '../models/model_DeviceCommand';
+import type { model_DeviceServicesResponse } from '../models/model_DeviceServicesResponse';
 import type { model_Line } from '../models/model_Line';
 import type { model_Node } from '../models/model_Node';
 import type { model_NodeStatusCheck } from '../models/model_NodeStatusCheck';
@@ -961,6 +962,32 @@ export class AdminService {
                 400: `Bad Request`,
                 404: `Not Found`,
                 409: `Conflict`,
+            },
+        });
+    }
+    /**
+     * 设备最新服务状态快照（管理员）
+     * 状态随节点约60秒心跳更新；读取不会下发命令。
+     * @returns model_DeviceServicesResponse OK
+     * @throws ApiError
+     */
+    public static adminDeviceServices({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<model_DeviceServicesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/admin/nodes/{mac}/services',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
             },
         });
     }
