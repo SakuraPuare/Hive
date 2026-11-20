@@ -16,7 +16,7 @@ cp .env.example .env && nano .env   # 填入所有必填项
 bash management/setup-vps.sh
 ```
 
-脚本会自动完成：Docker、Ansible、Go 安装、hive-registry 编译安装、Prometheus + Grafana 启动、cron 配置。
+脚本会自动完成：nginx（覆盖为 `management/nginx/nginx.conf`）、Docker、Ansible、Go、MySQL 库和 `'hive'@'127.0.0.1'`、hive-registry 编译安装、Node.js、registry-ui 构建并放到 `/var/www/hive-ui`、Prometheus + Grafana + Alertmanager，以及每分钟刷新 Prometheus 目标的 cron。
 
 下面是各步骤的手动说明（供参考或排障）：
 
@@ -41,18 +41,20 @@ mysql -u root -p
 
 # 创建数据库和用户
 CREATE DATABASE hive_registry CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'hive'@'localhost' IDENTIFIED BY 'CHANGE_ME_DB_PASSWORD';
-GRANT ALL PRIVILEGES ON hive_registry.* TO 'hive'@'localhost';
+CREATE USER 'hive'@'127.0.0.1' IDENTIFIED BY 'CHANGE_ME_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON hive_registry.* TO 'hive'@'127.0.0.1';
 FLUSH PRIVILEGES;
 EXIT;
 ```
+
+`MYSQL_HOST` 默认是 `127.0.0.1`，走的是 TCP。`'hive'@'localhost'` 是另一条账号，TCP 连不上。`setup-vps.sh` 创建的就是 `'hive'@'127.0.0.1'`。
 
 ### 2.1 编译并安装二进制
 
 `setup-vps.sh` 会自动安装 Go（如已安装则跳过）并编译安装 hive-registry。手动步骤如下：
 
 ```bash
-# 安装 Go 1.22+（若尚未安装）
+# 安装 Go 1.22.5（若尚未安装）。脚本按 dpkg 架构选择 amd64 或 arm64，不要在 ARM 管理机上下 amd64 包。
 wget -q https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
 tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
@@ -73,10 +75,14 @@ mv /usr/local/bin/hive-registry.new /usr/local/bin/hive-registry
 ### 2.2 创建环境变量文件
 
 ```bash
+install -d -m 0700 -o nobody /var/lib/hive-registry/ota
+
 cat > /etc/hive-registry.env << 'EOF'
+OTA_ARTIFACT_DIR=/var/lib/hive-registry/ota
+OTA_RETENTION_DAYS=30
 LISTEN_ADDR=127.0.0.1:8080
 
-# MySQL 连接
+# MySQL 连接（对应 .env 里的 REGISTRY_MYSQL_*）
 MYSQL_HOST=127.0.0.1
 MYSQL_PORT=3306
 MYSQL_USER=hive
@@ -93,13 +99,26 @@ XRAY_PATH=ray
 # Cloudflare 优选地址（可选，留空则订阅直连各节点自己的隧道域名）
 # 只替换 TCP 拨号地址：TLS SNI 与 WebSocket Host 仍是节点自己的域名，
 # 由 Cloudflare 按 SNI 把连接路由到对应隧道。所有节点必须同一 CF zone。
-CF_PREFERRED_HOST=cf.example.com
+CF_PREFERRED_HOST=
 
-# 管理操作认证（PATCH/DELETE 接口，留空关闭认证）
-API_SECRET=CHANGE_ME_ADMIN_SECRET
+# 管理面板生成 SSH 命令用；留空则不填。对应 .env 的 FRP_SERVER_ADDR。
+FRP_SERVER_ADDR=
+
+# 管理接口 Bearer。留空则这些接口拒绝，不会变成匿名放行。
+# 若同时设置遗留的 API_SECRET，两者必须不同，否则进程直接退出。
+# setup-vps.sh 未提供时会 openssl rand -hex 32，重跑时复用已写入的值。
+ADMIN_API_SECRET=CHANGE_ME_ADMIN_SECRET
+ADMIN_USER=admin
+ADMIN_PASS=CHANGE_ME_ADMIN_PASSWORD
+# 非 HIVE_ENV=dev 时必填，否则 hive-registry 拒绝启动。对应 .env 的 REGISTRY_ADMIN_SESSION_SECRET。
+ADMIN_SESSION_SECRET=CHANGE_ME_SESSION_SECRET
+CORS_ALLOW_ORIGINS=
+ADMIN_COOKIE_SAMESITE=lax
 EOF
 chmod 600 /etc/hive-registry.env
 ```
+
+服务以 `User=nobody` 运行，OTA 目录要事先交给 `nobody`。`.env` 里的 `REGISTRY_API_SECRET` 不会被 `setup-vps.sh` 写进这个文件；管理自动化用的是上面的 `ADMIN_API_SECRET`。旧的 `API_SECRET` 只在 `/subscription` 和 `/subscription/clash` 上还能用。
 
 ### 2.3 systemd 服务
 
@@ -134,22 +153,22 @@ systemctl status hive-registry
 ### 2.4 验证
 
 ```bash
-# 健康检查（含 DB 连通性）—— 直连 Go 服务，路径无 /api 前缀
-curl -H "Authorization: Bearer <API_SECRET>" http://127.0.0.1:8080/health
+# 健康检查（含 DB 连通性）—— 直连 Go 服务，无 /api 前缀，也不校验 Bearer
+curl -sf http://127.0.0.1:8080/health
 # → {"status":"ok"}
 
-# 节点列表（空）
-curl -H "Authorization: Bearer <API_SECRET>" http://127.0.0.1:8080/nodes
+# 节点列表（空）。管理接口认 ADMIN_API_SECRET，不认旧的 API_SECRET
+curl -H "Authorization: Bearer <ADMIN_API_SECRET>" http://127.0.0.1:8080/nodes
 # → []
 
-# 通过 nginx（外部路径，含 /api 前缀）
-curl -H "Authorization: Bearer <API_SECRET>" http://localhost/api/nodes
+# 通过 nginx：/api/ 会被剥掉再转给 Go
+curl -H "Authorization: Bearer <ADMIN_API_SECRET>" http://localhost/api/nodes
 
-# 控制台 Dashboard
-curl -s -H "Authorization: Bearer <API_SECRET>" http://127.0.0.1:8080/ | grep -o 'Total:.*'
+# 管理界面是 nginx 上的静态前端，不是 Go 进程的 HTML
+curl -sf -o /dev/null -w '%{http_code}\n' http://localhost/
 ```
 
-API 完整规范见 [docs/NODE-REGISTRY-API.md](../../docs/NODE-REGISTRY-API.md)。
+API 完整规范见 [Node Registry API](/NODE-REGISTRY-API)。
 
 ---
 
@@ -162,36 +181,39 @@ echo '[]' > /opt/hive/management/prometheus/targets/nodes.json
 
 cd /opt/hive/management
 
-# 修改 docker-compose.yml 里的 GF_SECURITY_ADMIN_PASSWORD（或在 .env 中设置）
-nano docker-compose.yml
-
+# 密码取仓库根目录 .env 的 GRAFANA_PASSWORD（默认 changeme）
 docker compose up -d
 docker compose ps
 ```
 
+`docker compose up -d` 会启动 Prometheus（只绑 `127.0.0.1:4230`）、Grafana（host 网络，端口 `4231`，默认听所有网卡）和 Alertmanager（只绑 `127.0.0.1:9093`）。
+
 ### 3.1 定时更新 Prometheus 节点列表
 
-`setup-vps.sh` 会自动创建 `/etc/cron.d/hive-targets`。手动写入：
+`setup-vps.sh` 会自动创建 `/etc/cron.d/hive-targets`，权限 `0600`。手动写入时换成实际的 `ADMIN_API_SECRET`：
 
 ```bash
-TARGETS_FILE="/opt/hive/management/prometheus/targets/nodes.json"
-AUTH_HEADER='-H "Authorization: Bearer <API_SECRET>"'   # 若无认证则删除此行
-
-cat > /etc/cron.d/hive-targets << EOF
-* * * * * root curl -sf ${AUTH_HEADER} -o ${TARGETS_FILE} http://127.0.0.1:8080/prometheus-targets
+cat > /etc/cron.d/hive-targets << 'EOF'
+* * * * * root curl -sf -H "Authorization: Bearer <ADMIN_API_SECRET>" -o /opt/hive/management/prometheus/targets/nodes.json http://127.0.0.1:8080/prometheus-targets
 EOF
-chmod 0644 /etc/cron.d/hive-targets
+chmod 0600 /etc/cron.d/hive-targets
 ```
 
-> **注意**：cron 直连 Go 服务（`127.0.0.1:8080`），路径**无** `/api` 前缀。
+> cron 直连 Go 服务（`127.0.0.1:8080`），路径没有 `/api`。`/prometheus-targets` 要 `ADMIN_API_SECRET`（或带 `prometheus:read` 的会话）。旧的 `API_SECRET` 会得到 401。
 
-### 3.2 Grafana 配置
+### 3.2 从浏览器访问
 
-Grafana 监听 `127.0.0.1:3000`，通过 Tailscale IP 访问（不对公网开放）。
+`setup-vps.sh` 把 `management/nginx/nginx.conf` 装成 `/etc/nginx/nginx.conf`。它在 80 端口反代。Prometheus 和 Alertmanager 只绑在本机回环地址上，经 nginx 才能从外面访问；Grafana 自己听 `4231`，子路径是 `/grafana/`：
 
-1. 浏览器打开 `http://<Tailscale-IP>:3000`
-2. 添加 Prometheus 数据源：URL 填 `http://localhost:9090`
-3. 导入 Dashboard（推荐 Node Exporter Full，ID: 1860）
+| 浏览器路径 | 上游 |
+|------------|------|
+| `/` | `/var/www/hive-ui`（registry-ui 静态导出） |
+| `/api/` | `127.0.0.1:8080`（去掉 `/api` 前缀） |
+| `/prometheus/` | `127.0.0.1:4230` |
+| `/grafana/` | `127.0.0.1:4231`（`GF_SERVER_SERVE_FROM_SUB_PATH=true`） |
+| `/alertmanager/` | `127.0.0.1:9093` |
+
+Grafana 用户是 `admin`，密码是 `.env` 里的 `GRAFANA_PASSWORD`。数据源已经由 `management/grafana/provisioning/datasources/prometheus.yml` 指向 `http://localhost:4230`，并且 `editable: false`。导入 Node Exporter Full（ID 1860）时选这份已有的 Prometheus 数据源。页面在 `http://<主机>/grafana/`，本机也可以直接开 `http://127.0.0.1:4231/grafana/`。数据源 URL 用 `http://localhost:4230`。
 
 ---
 
@@ -273,9 +295,11 @@ systemctl enable --now cloudflared-registry
 ### 4.6 验证
 
 ```bash
-curl https://registry.yourdomain.com/
-# 应看到 Node Registry 控制台 HTML
+curl -sf https://registry.yourdomain.com/health
+# → {"status":"ok"}
 ```
+
+上面的 ingress 指到 Go 的 `127.0.0.1:8080`，所以健康检查走 `/health`，管理界面仍在 nginx 的 `/`。节点走这条隧道时，`NODE_REGISTRY_URL` 填 `https://registry.yourdomain.com`：节点会自己拼接 `/nodes/...`。
 
 ---
 
@@ -286,10 +310,11 @@ Ansible 通过 Tailscale mesh 管理所有节点，不需要知道节点的公�
 ```bash
 apt install -y ansible
 
-# 安装 Tailscale inventory 插件
+# setup-vps.sh 会安装 community.general。它不是 Tailscale inventory 插件
+# （community.general.tailscale 这个插件不存在），仓库里的 playbook 也只用 ansible.builtin。
 ansible-galaxy collection install community.general
 
-# 安装 Tailscale（管理服务器也加入 tailnet，用于 SSH 到节点）
+# 管理服务器加入 tailnet，用于 SSH 到节点
 curl -fsSL https://tailscale.com/install.sh | sh
 tailscale up --accept-dns=false
 ```
@@ -298,27 +323,7 @@ tailscale up --accept-dns=false
 
 ## 六、把 Ansible 配好
 
-```bash
-mkdir -p /opt/hive/ansible/{inventory,playbooks,roles}
-
-cat > /opt/hive/ansible/ansible.cfg << 'EOF'
-[defaults]
-inventory         = inventory/tailscale.py
-host_key_checking = False
-remote_user       = root
-private_key_file  = ~/.ssh/id_ed25519
-stdout_callback   = yaml
-
-[ssh_connection]
-ssh_args = -o ConnectTimeout=10 -o StrictHostKeyChecking=no
-EOF
-
-# Tailscale 没有 community.general 的 inventory 插件；用仓库自带的脚本
-# 从 `tailscale status --json` 生成 tag:hive 节点清单。
-install -m 0755 ansible/inventory/tailscale.py /opt/hive/ansible/inventory/tailscale.py
-```
-
-### 测试 Ansible 连通性（等设备上线后）
+克隆到 `/opt/hive` 之后，直接用仓库里的 `ansible/ansible.cfg` 和 `ansible/inventory/tailscale.py`。
 
 ```bash
 cd /opt/hive/ansible
@@ -327,12 +332,18 @@ ansible hive_nodes -m ping
 ansible hive_nodes -m command -a "uptime"
 ```
 
+`ansible/ansible.cfg` 把 inventory 指到 `inventory/tailscale.py`：`remote_user=root`、`host_key_checking=False`、`forks=20`、`timeout=30`，SSH 打开 pipelining。脚本从本机 `tailscale status --json` 读取带 `tag:hive` 的节点；测试时可以把一份 JSON 放到 `HIVE_TAILSCALE_STATUS`。
+
 ---
 
 ## 七、记录填入 .env 的信息
 
 ```
+# 第四节的隧道指到 127.0.0.1:8080：节点会再拼接 /nodes/...
 NODE_REGISTRY_URL=https://registry.yourdomain.com
+
+# 节点改走本机 nginx 时，填到 /api 这一级（与 .env.example 的注释一致），末尾不加 /
+# NODE_REGISTRY_URL=https://registry.yourdomain.com/api
 ```
 
 ---
@@ -340,23 +351,25 @@ NODE_REGISTRY_URL=https://registry.yourdomain.com
 ## 八、整体验证清单
 
 ```bash
-# Node Registry 本地可用（路径无 /api 前缀）
-curl -H "Authorization: Bearer <API_SECRET>" http://127.0.0.1:8080/health
-curl -H "Authorization: Bearer <API_SECRET>" http://127.0.0.1:8080/nodes
+# Node Registry 本地可用（路径无 /api 前缀）。/health 不校验 Bearer
+curl -sf http://127.0.0.1:8080/health
+curl -H "Authorization: Bearer <ADMIN_API_SECRET>" http://127.0.0.1:8080/nodes
 
-# Node Registry 通过 nginx（含 /api 前缀）
-curl -H "Authorization: Bearer <API_SECRET>" http://localhost/api/health
+# 通过 nginx（含 /api 前缀；管理界面在 /）
+curl -sf http://localhost/api/health
+curl -H "Authorization: Bearer <ADMIN_API_SECRET>" http://localhost/api/nodes
+curl -sf -o /dev/null -w '%{http_code}\n' http://localhost/
 
-# Node Registry 通过 CF Tunnel 全球可用
-curl -H "Authorization: Bearer <API_SECRET>" https://registry.yourdomain.com/api/nodes
+# 第四节的 CF Tunnel 直连 Go 时，路径同样没有 /api
+curl -sf https://registry.yourdomain.com/health
+curl -H "Authorization: Bearer <ADMIN_API_SECRET>" https://registry.yourdomain.com/nodes
 
-# Prometheus 在跑
-curl http://127.0.0.1:4230/-/healthy
+# Prometheus / Grafana / Alertmanager 在跑
+curl -sf http://127.0.0.1:4230/-/healthy
+curl -sf http://127.0.0.1:4231/grafana/api/health
+curl -sf http://127.0.0.1:9093/-/healthy
 
-# Grafana 在跑
-curl http://127.0.0.1:4231/api/health
-
-# cron 已安装
+# cron 已安装（权限 0600）
 cat /etc/cron.d/hive-targets
 
 # 节点列表更新到 Prometheus（有节点上线后）

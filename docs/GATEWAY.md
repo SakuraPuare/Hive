@@ -21,9 +21,9 @@
 `hive-gateway.sh` 开机自动探测有线网卡：
 
 - **WAN 口**：优先使用 `GATEWAY_WAN_IFACE` 指定的口；未指定时依次选择当前持有默认路由的有线口、命名为 `wan` 的有线口、第一个已 up 的有线口，最后回退到第一个有线口。R3S LTS 的 `lan` 在 sysfs 字母排序中可能先出现，因此无默认路由时仍优先选命名为 `wan` 的口，不按枚举顺序把 `lan` 当成 WAN。
-- **LAN 口**：WAN 之外的有线口，配静态 `10.42.2.1/24` + NetworkManager `method=shared`（自带 dnsmasq 发 DHCP + NAT）。可用 `GATEWAY_LAN_IFACE` 指定。
+- **LAN 口**：WAN 之外的有线口，NetworkManager `method=shared`（自带 dnsmasq 发 DHCP + NAT）。第一块是静态 `10.42.2.1/24`；还有更多有线 LAN 时接着用 `10.42.3.1/24`、`10.42.4.1/24`。`GATEWAY_LAN_IFACE` 指定时只用这一块。
 
-> LAN 网段 `10.42.2.x` 起，避开 WiFi 热点占用的 `10.42.0.x`（2.4G）和 `10.42.1.x`（5G）。
+> 网段从 `10.42.2.0/24` 起，避开 WiFi 热点的 `10.42.0.0/24`（2.4G）和 `10.42.1.0/24`（5G）。
 
 下游设备插上 LAN 口即自动拿到 IP、流量自动透明代理。MOTD 会显示 WAN/LAN 口和面板地址。
 
@@ -74,7 +74,7 @@
 - 客户门户（`/portal/devices`）和管理端网关页都能改，客户只能改自己名下、`gateway_enabled=1` 的设备；管理端写入非法值 400。
 - 客户切换需要代理的方向时，已绑定套餐必须有对应上游；`direct` 不要求上游，可保留订阅绑定并切成全直连。
 
-`gateway_direction` 在读取时先归一化（trim + 小写，非 `domestic|overseas|global|direct` 一律按 `domestic`），管理端写入非法值直接 400。否则 `Overseas` 这类非规范值会让"分流规则"和"上游池"各自落到默认分支，产出规则=境内、上游=境内节点的自相矛盾配置。
+读取时先做 trim + 小写。`auto`、`domestic`、`overseas`、`global`、`direct` 都保留，`auto` 再按有效国家收成具体方向；除此之外才落到 `domestic`。管理端写入非法值返回 400。`Overseas` 这种未归一化的值会让分流规则和上游池各自走默认分支，配出「规则按境内、上游却是境内节点」。
 
 面板里每个节点可配 `gateway_upstream_mode`：
 
@@ -91,7 +91,7 @@ registry 的 `nodes.subscription_sync` 记录节点是否接受订阅 uuid：
 
 - 默认 `0`（旧镜像）；这类节点在网关配置里改用**节点自身 `xray_uuid`**，链路可用但不计费（旧节点本来也不上报计费）。
 - 节点只要向 `/nodes/{mac}/xray-users` **POST** 过计费快照（只有新 agent 会 POST），就会被自动置 `1`，网关随即切回订阅 uuid 并按订阅计费——旧节点升级镜像后无需人工改标志。
-- 管理员也可通过 `PATCH /admin/nodes/{mac}` 显式设置 `subscription_sync`。
+- 管理员也可通过 `PATCH /nodes/{mac}`（`node:write`：会话 Cookie 或 `ADMIN_API_SECRET`）显式设置 `subscription_sync`。旧的共享 `API_SECRET` 不能调这条管理接口。
 
 ## 可视化面板（MetaCubeXD）
 
@@ -122,35 +122,41 @@ Mihomo 只接管 **LAN/AP 的转发流量**（`prerouting`），本机自身出�
 
 数据面：
 
-1. `hive-gateway-route.service` 只在 LAN/AP `iifname` 上安装 tproxy：`fib daddr type local return`，TCP/UDP `tproxy to :7893` + `meta mark 0x2`；配套 `ip rule fwmark 0x2 lookup 100` 和 table 100 的 `local 0.0.0.0/0 dev lo`（v4/v6）。
+1. `hive-gateway-route.service` 只在 LAN/AP `iifname` 上安装 tproxy。先 `return` 发往本机的包（`fib daddr type local`）、广播/组播，以及 UDP 67/68/546/547（DHCP 与 RA/ND），再对剩余 TCP/UDP `tproxy to :7893` + `meta mark 0x2`。配套 `ip rule fwmark 0x2 lookup 100` 和 table 100 的 `local 0.0.0.0/0 dev lo`（v4/v6）。mark 与表号可用 `HIVE_GATEWAY_TPROXY_MARK`、`HIVE_GATEWAY_TPROXY_TABLE` 覆盖，默认就是 `0x2` 和 `100`。
 2. **源地址校验例外**：Tailscale 会把 `net.ipv4.conf.all.src_valid_mark` 置 1，内核 `fib_validate_source()` 于是用包上的 mark 再查一次客户端源地址；这条伪流带 `iif=lo`，会命中 table 100 的 `local default`，把包判成 `IP_LOCAL_SOURCE` 丢掉（现象：nft counter 一直涨，mihomo 一条日志都没有，客户端全超时）。脚本因此加 `ip rule iif lo fwmark 0x2 lookup main pref 90`（v4/v6），让校验走 main 表。
 3. **ufw 放行**：tproxy 投递回来的客户端包带着原目的地址走 `LOCAL_IN`，而 ufw 的 INPUT 策略是 DROP；在一个 nft base chain 里 `accept` 不会跳过同 hook 的另一条 base chain（实测 `[UFW BLOCK] ... DPT=443 MARK=0x2`）。脚本把 `-A ufw-before-input -m mark --mark 0x2 -j ACCEPT` 写进 `/etc/ufw/before.rules` 与 `before6.rules`（ufw 每次 reload、热点每次启停都会重建自己的链），并立即插一条同样的 INPUT 规则；`hive-test.sh` 的 `gateway-tproxy-ufw` 项检查它。
 4. 客户端 DNS 由 dnsmasq 在网关地址上应答：`fib daddr type local return` 保证发往网关自身的解析不进入 tproxy。
 5. fake-IP 只服务客户端；本机解析器不再被 mihomo 接管。Xray 出口仍保留自己的 DoH，域名解析不依赖宿主 resolver。
-6. 直连兜底：blocked 配置（无有效订阅/无可用上游）对热点源网段 `DIRECT`、其余 `MATCH,直连`，不代理也不断网；mihomo 停止时 `hive-gateway-route` 通过 `PartOf` 一并停止，规则撤掉后客户端直连。TUN 时代的源/进程白名单仍由兜底配置生成，但 tproxy 下不会命中，属于历史兜底。
+6. 直连兜底：没有可用上游时不代理，下游仍然出网。registry 的 blocked 响应把 CN 规则和 `MATCH` 都写成 `直连`，不单独写热点网段。节点在租约到期或同步失败时改写的那份才会加上 `SRC-IP-CIDR,10.42.0.0/24,DIRECT` 和 `10.42.1.0/24`。tproxy 下，TUN 时代的源地址/进程白名单不会命中。mihomo 停止时 `hive-gateway-route` 因 `PartOf=hive-mihomo.service` 一并停止，规则撤掉后客户端直连。
 
 ## 无有效订阅时的直连兜底
 
 客户解绑、管理员解除/变更设备所有者、再次认领时，会同步清空原有订阅绑定并重置所有者出口偏好；重复分配给同一客户则保留其绑定与偏好。已归属客户的网关只接受该客户的订阅，遗留的跨客户绑定也会被配置接口拒绝。无主的运营方网关仍允许管理员显式绑定客户订阅；认领后必须由新所有者重新绑定。撤销配置在下次同步生效，失联时由现有短租约到期机制触发兜底。
 
-**订阅只决定“能不能走代理”，不决定“有没有网”。** 未绑定、订阅失效或没有互补方向的上游时，registry 返回 `X-Hive-Access: blocked`，配置里去掉全部代理，规则整体换成直连：
+**订阅只决定“能不能走代理”，不决定“有没有网”。** 未绑定、订阅失效或没有互补方向的上游时，registry 返回 `X-Hive-Access: blocked`，响应里不写上游节点。这份配置仍用 `gateway_clash.yaml.tmpl`：CN 规则和 `MATCH` 都是 `直连`，并保留历史的 TUN 源地址规则和 `PROCESS-NAME`（`curl`、`xray`、`cloudflared`、`warp-svc`、`easytier-core`、`frpc`、`tailscaled`，目标是代理组名 `直连`）。模板里没有 `10.42.0.0/24` / `10.42.1.0/24`，热点靠 `MATCH,直连`。
+
+节点侧 `hive_gateway_direct_config` 只在租约到期或同步失败时动手。它留下已有的 `proxies` 段，把 `rules` 换成下面这份（地址是配置里的 `tun.inet4-address` / `inet6-address`，没有 `tun:` 时用 mihomo 默认 `198.18.0.1/32` 和 `fdfe:dcba:9876::1/128`），然后重启 mihomo。这里的 `PROCESS-NAME` 用关键字 `DIRECT`，并显式放行两个热点网段；名单里没有 `warp-svc`。
 
 ```yaml
 rules:
-  - SRC-IP-CIDR,198.18.0.1/32,DIRECT            # 本机出站 v4：源地址就是 TUN 地址
-  - SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT    # 本机出站 v6（auto-route 也接管 ::/1）
-  - PROCESS-NAME,curl,DIRECT                    # 能匹配时的精确白名单
-  - …（xray / cloudflared / easytier-core / frpc / tailscaled）
+  - SRC-IP-CIDR,198.18.0.1/32,DIRECT            # 无 tun: 时的默认 v4 源地址
+  - SRC-IP-CIDR,fdfe:dcba:9876::1/128,DIRECT    # 无 tun: 时的默认 v6 源地址
+  - PROCESS-NAME,curl,DIRECT
+  - PROCESS-NAME,xray,DIRECT
+  - PROCESS-NAME,cloudflared,DIRECT
+  - PROCESS-NAME,easytier-core,DIRECT
+  - PROCESS-NAME,frpc,DIRECT
+  - PROCESS-NAME,tailscaled,DIRECT
   - SRC-IP-CIDR,10.42.0.0/24,DIRECT             # WiFi 热点客户端（2.4G）
   - SRC-IP-CIDR,10.42.1.0/24,DIRECT             # WiFi 热点客户端（5G）
   - MATCH,直连
 ```
 
-节点侧 `hive_gateway_direct_config` 在租约到期/同步失败时写同一份兜底配置并重启 mihomo；`hive_gateway_release_forward` 只负责删掉旧固件遗留的 `FORWARD --comment hive-subscription -j DROP`，不再安装新的 DROP。`hive-clash-sync`、`hive-gateway-prepare`、`hive-subscription-guard` 每次运行都会幂等清理这条旧规则，升级后的第一次启动即恢复转发。tproxy 下这些 TUN 时代的源/进程规则不会命中，属于历史兜底，真正生效的是 `MATCH,直连`。
+`hive_gateway_release_forward` 只删旧固件留下的 `FORWARD --comment hive-subscription -j DROP`，不再安装新的 DROP。`hive-clash-sync`、`hive-gateway-prepare`、`hive-subscription-guard` 每次运行都会幂等清理这条旧规则。tproxy 下上面的 TUN 源地址和进程规则不会命中，真正生效的是 `MATCH,直连` 以及节点侧那两条热点网段。
 
 `hive_gateway_direct_config` 仍强制 `respect-rules: false`（兼容旧交付配置里的 `true`），避免 mihomo 自己的 DoH 被规则引擎接管。
 
-**WiFi 热点**：AP 是与代理网关独立的共享上网功能，没有订阅配置时连上热点也要有网。mihomo 不运行/无配置时 `hive-gateway-route` 不安装 tproxy 规则，热点客户端直连；dnsmasq 在 1053 不在听时改用公共 DNS（`hive-hotspot-dns`）。mihomo 正常时 dnsmasq 转发到 1053，客户端拿 fake-IP，连接被 tproxy 接管；兜底配置里的 `SRC-IP-CIDR,10.42.0.0/24`、`10.42.1.0/24,DIRECT` 让热点始终能出网。热点脚本仍保留“旧 `hive-subscription` DROP 存在时插双向放行”的兼容分支，只用于升级窗口。细节见 [HOTSPOT.md](HOTSPOT.md)。
+**WiFi 热点**：AP 是与代理网关独立的共享上网功能，没有订阅配置时连上热点也要有网。mihomo 不运行/无配置时 `hive-gateway-route` 不安装 tproxy 规则，热点客户端直连；dnsmasq 在 1053 不在听时改用公共 DNS（`hive-hotspot-dns`）。mihomo 正常时 dnsmasq 转发到 1053，客户端拿 fake-IP，连接被 tproxy 接管。registry 的 blocked 配置用 `MATCH,直连` 放行热点；节点侧那份兜底才写 `SRC-IP-CIDR,10.42.0.0/24` 和 `10.42.1.0/24` 的 `DIRECT`。热点脚本仍保留“旧 `hive-subscription` DROP 存在时插双向放行”的兼容分支，只用于升级窗口。细节见 [HOTSPOT.md](HOTSPOT.md)。
 
 **Tailscale 域名必须排除出 fake-IP**：`tailscaled` 的控制面连接绑定在物理网卡地址上（`--accept-dns=false` 也一样），实测 `SYN-SENT 192.168.5.222:36686 -> 198.18.0.20:443`——fake-IP 只有"源地址 198.18.0.1、走 TUN"的流量才有反向映射，绑定端0 的 SYN 直接出公网，于是注册 10s 超时、节点永远进不了 tailnet。安装配置时会向 `dns.fake-ip-filter` 补 `'+.tailscale.com'`/`'+.tailscale.io'`（真实地址仍按域名走规则分流）。
 
@@ -159,13 +165,14 @@ rules:
 ## 配置项（`/etc/hive/config.env`）
 
 ```bash
-GATEWAY_ENABLED=on              # on/off，默认 on
+GATEWAY_ENABLED=on              # 默认 on。off/0/false/no 关闭拓扑；tproxy 只在值正好是 on 时安装
 GATEWAY_WAN_IFACE=              # WAN 口名，留空自动探测
-GATEWAY_LAN_IFACE=              # LAN 口名，留空自动
-GATEWAY_DASHBOARD_PORT=9090     # 面板端口，默认 9090
+GATEWAY_LAN_IFACE=              # LAN 口名，留空则 WAN 以外的有线口都作 LAN
+HIVE_GATEWAY_TPROXY_MARK=0x2    # hive-gateway-route 的 fwmark，默认 0x2
+HIVE_GATEWAY_TPROXY_TABLE=100   # 对应的策略路由表，默认 100
 ```
 
-分流方向与上游节点不在这里配，由 registry 面板下发（动态、按节点）。
+面板端口不在 `config.env` 里。下发配置的 `external-controller` 固定是 `0.0.0.0:9090`。分流方向与上游节点由 registry 按节点下发。
 
 ## 工作流程
 
@@ -173,14 +180,16 @@ GATEWAY_DASHBOARD_PORT=9090     # 面板端口，默认 9090
 LAN/WiFi 设备
    │ (网关 = 本节点，DHCP 自动下发)
    ▼
-[本节点] Mihomo (TUN + auto-route，只接管转发流量)
+[本节点] Mihomo（tproxy-port 7893，只接管 LAN/AP 转发流量）
    │   ├─ 命中"直连"规则 ───────────────► 本机 WAN 直接出
    │   └─ 命中"代理"规则 ─► VLESS-WS ─► [其它 Hive 节点] Xray 出口 ─► 出网
    │
    └─ Clash API ──► MetaCubeXD 面板 (http://<lan-ip>:9090/ui)
 
 配置来源：registry 按节点 direction/上游 生成 Mihomo 配置
-          → hive-clash-sync 每 ~1 分钟拉取 + 热重载（不断流）
+          → hive-clash-sync 在上次运行结束后约 15 秒再拉一次
+            文件有变化时 systemctl restart hive-mihomo（已有隧道会断）
+            文件未变且 mihomo 在跑则不重启
 ```
 
 ## 服务与脚本
@@ -192,7 +201,7 @@ LAN/WiFi 设备
 | `hive-xray-prepare.service` | root oneshot：生成 Xray 配置并设成 `root:xray 640` |
 | `hive-gateway-route.service` | nft tproxy（仅 LAN/AP）+ fwmark 0x2 ip rule；随 mihomo 停止 |
 | `hive-mihomo.service` | 跑 Mihomo（`tproxy-port: 7893`，无 TUN） |
-| `hive-clash-sync` + `.timer` | 每 ~1 分钟从 registry 拉配置并热重载 |
+| `hive-clash-sync` + `.timer` | `OnUnitInactiveSec=15s` 拉取 `/nodes/{mac}/clash-config`；内容有变化才重启 mihomo |
 | `/etc/mihomo/config.yaml` | Mihomo 运行配置（首启用内置兜底，sync 后被 registry 下发覆盖） |
 
 ## 故障排查
@@ -211,11 +220,11 @@ ip rule show | grep 'fwmark 0x2 lookup 100'
 ps -o user= -C xray                   # 必须是 xray，不是 root
 ```
 
-- **下游设备拿不到 IP**：检查 LAN 口 NM 连接 `nmcli connection show | grep hive-lan`，及 `method=shared` 是否激活。接口角色变化后旧 `hive-lan-*` 连接会被 `hive-gateway.sh` 删除；若手动改过接口用途，确认 WAN 口上没有任何 `method=shared` 的连接。
+- **下游设备拿不到 IP**：检查 LAN 口 NM 连接 `nmcli connection show | grep hive-lan`，及 `method=shared` 是否激活。接口角色变化后旧 `hive-lan-*` 连接会被 `hive-gateway.sh` 删除；若手动改过接口用途，确认 WAN 口上没有任何 `method=shared` 的连接。`nft list table inet hive_gateway` 的 prerouting 应在 tproxy 之前放行广播/组播和 UDP 67/68/546/547；这些包被吃掉时 dnsmasq 收不到 DHCP。
 - **`hive-clash-sync` 每 15s 失败 + mihomo 反复重启 + `allocate-easytier` 六连败**：先看 `journalctl -u provision-node`。
   - `!!! FATAL: 设备 … 没有 device credential`：该 MAC 还没签发凭证，按 [Provision 文档](/PROVISION) 第六节写入 `/etc/hive/device-token`。
   - `invalid device credential`（http=401）：token 被轮换/吊销，重新签发。
-  - 以上都不是的话，检查 `/etc/mihomo/config.yaml` 的 `rules` 第一条是否仍是 `SRC-IP-CIDR,<tun 地址>/32,DIRECT`；丢了它就会出现 `SSL ... unexpected eof` 这类"连 TLS 都握不完"的现象。
+  - 本机出站不进 tproxy。缺历史规则 `SRC-IP-CIDR,198.18.0.1/32,DIRECT` 不会单独造成上述 TLS 失败。同步日志里的 `invalid gateway configuration` 表示拉下来的 YAML 没通过 `mihomo -t`。
 - **流量没走代理**：看 `/etc/mihomo/config.yaml` 的 `rules` 和上游池是否非空；`gateway_direction` 是否配对（境内应 `domestic`）。
 - **面板打不开**：确认 `:9090` 可达、`/var/www/metacubexd` 非空（由 `download-binaries.sh` 预置）。
 - **配置不更新**：`systemctl start hive-clash-sync` 手动触发；检查 `NODE_REGISTRY_URL` 可达。

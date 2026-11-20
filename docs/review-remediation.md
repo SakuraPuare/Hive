@@ -1,10 +1,10 @@
 # 仓库审查修复与升级
 
-本次对应 2026-10-26 审查中的 21 项问题。后续订阅与 OTA 修复合并后，代码包含数据库迁移 21–29；部署时自动执行。可信出口身份隔离与历史计数回收的配套升级步骤见 [订阅授权与计费](subscription-enforcement.md)。升级前备份数据库、节点运行配置和现有发布文件。
+本次对应 2026-10-26 审查中的 21 项问题。当时合并订阅与 OTA 修复后，相关数据库迁移是 21–29，部署时自动执行。Registry 启动还会继续执行此后的待运行迁移，当前代码定义到 migration 39。可信出口身份隔离与历史计数回收的配套升级步骤见 [订阅授权与计费](subscription-enforcement.md)。升级前备份数据库、节点运行配置和现有发布文件。
 
 ## 设备凭证与旧节点迁移
 
-共享 `API_SECRET` / `REGISTRY_API_SECRET` 不再用于设备认证或管理认证。管理 Cookie 保持有效；自动化脚本改用单独的服务端 `ADMIN_API_SECRET`，不能复用旧设备密钥，也不接受 URL 中的 token。
+共享 `API_SECRET` / `REGISTRY_API_SECRET` 不再用于设备认证或普通管理认证。管理 Cookie 保持有效；自动化脚本改用单独的服务端 `ADMIN_API_SECRET`，不能复用旧设备密钥。查询串 `?token=` 只在 Registry 的 `GET /subscription` 与 `GET /subscription/clash` 上代替 `Authorization` 头，这两条路由也仍接受遗留的 `API_SECRET`。其他权限接口只认请求头里的 `ADMIN_API_SECRET` 或会话 Cookie：查询串 token 会被拒绝，遗留共享密钥在这些接口上也不能通过。
 
 由持有 `node:write` 权限的管理员为每台设备调用：
 
@@ -20,9 +20,9 @@ Cookie: hive_admin_session=...
 旧设备升级步骤：
 
 1. 先部署新 Registry，使用管理会话逐台签发 token。
-2. 通过现有可信 SSH 通道安装 token、更新后的设备脚本及 SSH host key 服务单元。旧共享凭证在新 Registry 上会被拒绝，因此首次迁移不能依赖旧命令代理或旧 OTA 轮询。
+2. 通过现有可信 SSH 通道安装 token、更新后的设备脚本及 SSH host key 服务单元。设备接口不再接受旧共享凭证，因此首次迁移不能依赖旧命令代理或旧 OTA 轮询。
 3. 在设备本地运行 `systemctl daemon-reload`，再运行 `/usr/local/bin/hive-migrate-identity`。脚本随机生成并持久化 Xray UUID，更新注册信息和本机配置，轮换旧 SSH Ed25519 主机密钥，更新默认热点密码与 Mihomo 控制密钥。重跑会保留新生成的身份。
-4. 记录新 SSH 指纹及 Wi-Fi 密码，验证设备注册、命令轮询和网关配置。可信出口另按 [订阅升级说明](subscription-enforcement.md) 安装独立服务器密钥，验证 Xray 同步；普通客户网关应停止出口 Xray。用户主动设置的热点密码会保留；如需轮换此类密码，使用热点配置功能。
+4. 记录新 SSH 指纹及 Wi-Fi 密码，验证设备注册、命令轮询和网关配置。可信出口另按 [订阅升级说明](subscription-enforcement.md) 安装独立服务器密钥，验证 Xray 同步。普通客户网关保留 Xray：没有 `/etc/hive/server-token` 时，用 `/etc/hive/device-token` 调用 `POST /nodes/{mac}/xray-users` 回退计费。用户主动设置的热点密码会保留；如需轮换此类密码，使用热点配置功能。
 5. 管理服务及设备全部迁移后，撤销旧共享密钥及曾经暴露给旧镜像的管理自动化凭证。
 
 SSH 指纹和默认 Wi-Fi 密码会变化。未迁移设备会失去 Registry API 访问能力；必须安排维护窗口并保留可信的本地/SSH 管理通道。这里提供的是迁移代码和步骤，仓库修改不会自动更新线上设备。
@@ -35,7 +35,7 @@ SSH 指纹和默认 Wi-Fi 密码会变化。未迁移设备会失去 Registry AP
 
 旧订单没有余额抵扣字段和开通关系，迁移不能可靠地从“原价减应付”反推出余额，因为其中可能包含优惠码。旧 pending 订单的历史扣款需要根据审计/支付记录核对后补录 `balance_deducted`；旧 paid 订单退款前须核对并补录 `order_fulfillments` 中的订阅和返利关联，接口在缺失关联时返回 409。不得凭金额差自动补录或退款。
 
-订阅到期/超量不会禁用账号的门户访问；历史 `suspended` 客户仍可登录、续费和提交工单。`banned` 与 `deleted` 阻止门户访问。已归属客户或已绑定订阅的网关没有有效套餐时返回 REJECT 配置，不会切换到节点免费 UUID。
+订阅到期/超量不会禁用账号的门户访问；历史 `suspended` 客户仍可登录、续费和提交工单。`banned` 与 `deleted` 阻止门户访问。已归属客户或已绑定订阅的网关没有有效套餐时返回直连兜底（响应头 `X-Hive-Access: blocked`，规则为 `MATCH,直连`），不写入上游凭证，也不改用节点自身 UUID。
 
 ## OTA 与发布
 
@@ -59,7 +59,7 @@ go vet ./...
 
 ## 订阅授权后续修复
 
-订阅计费已改为可信出口服务器使用独立凭据同步实际用量，客户设备不参与计费上报；同时增加短期授权、旧连接关闭、共享订阅隔离和历史计数回收。部署时请同时执行 [订阅升级说明](subscription-enforcement.md)，不能仅升级管理后台。
+短期授权、出口开关、设备数限制、回退计费和历史计数回收的当前行为与升级步骤见 [订阅授权与计费](subscription-enforcement.md)。Registry 与节点脚本必须一起升级，不能只更新管理后台。
 
 ## 完整范围审查修复（2026-11-11）
 

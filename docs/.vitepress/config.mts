@@ -15,7 +15,7 @@ export default defineConfig({
         text: '入门',
         items: [
           { text: '概览', link: '/' },
-          { text: '快速参考', link: '/quick-reference' },
+          { text: '文档索引', link: '/quick-reference' },
           { text: '构建镜像', link: '/BUILD' },
           { text: '首次启动（Provision）', link: '/PROVISION' },
         ],
@@ -53,6 +53,8 @@ export default defineConfig({
           { text: '管理 VPS（Registry + 监控）', link: '/management/02-china-vps' },
           { text: 'Cloudflare 凭证', link: '/management/03-cloudflare-tokens' },
           { text: 'Tailscale OAuth', link: '/management/04-tailscale-key' },
+          { text: '发布与回滚', link: '/management/08-deploy-and-rollback' },
+          { text: '数据库迁移、备份与恢复', link: '/management/08-db-migration-backup' },
           { text: 'Kubernetes 部署（Zadig）', link: '/DEPLOY-K8S' },
         ],
       },

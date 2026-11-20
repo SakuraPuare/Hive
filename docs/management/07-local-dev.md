@@ -43,11 +43,13 @@
 
 ## 三、启动 MySQL
 
-先起一个本地 MySQL 容器：
+下文命令默认在仓库根目录执行。
+
+先起一个本地 MySQL 容器。root 密码用 `123456`，与 `management/registry/dev/seed-local-demo.sh` 的默认账号一致；应用账号是 `hive` / `hive`，给后面的 `go run .` 使用。
 
 ```bash
 docker run --name hive-mysql \
-  -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_ROOT_PASSWORD=123456 \
   -e MYSQL_DATABASE=hive_registry \
   -e MYSQL_USER=hive \
   -e MYSQL_PASSWORD=hive \
@@ -58,14 +60,16 @@ docker run --name hive-mysql \
 说明：
 
 - 数据库名：`hive_registry`
-- 用户名：`hive`
-- 密码：`hive`
+- root 密码：`123456`（灌演示数据时的默认账号）
+- 应用用户：`hive` / `hive`（registry 进程使用）
 
 如果容器已经存在，可直接：
 
 ```bash
 docker start hive-mysql
 ```
+
+已有容器会保留创建时的 root 密码。密码不是 `123456` 时，按「五、插入本地演示数据」用 `hive` / `hive` 灌数据，或者 `docker rm -f hive-mysql` 后按上面的命令重建。
 
 ---
 
@@ -74,7 +78,7 @@ docker start hive-mysql
 进入后端目录：
 
 ```bash
-cd ~/hive/management/registry
+cd management/registry
 ```
 
 设置本地开发环境变量：
@@ -95,7 +99,8 @@ export API_SECRET=dev-api-secret
 export CORS_ALLOW_ORIGINS=http://127.0.0.1:3000
 export ADMIN_COOKIE_SAMESITE=lax
 
-# 节点探测（可选，不配置则探测循环会静默失败）
+# 节点探测（可选）。未设置时默认请求 http://127.0.0.1:4230。
+# 本地没有 Prometheus 时，探测循环仍会启动；查询失败只记日志，不影响 API。
 # export PROMETHEUS_URL=http://127.0.0.1:4230
 ```
 
@@ -105,11 +110,13 @@ export ADMIN_COOKIE_SAMESITE=lax
 go run .
 ```
 
+未设置 `HIVE_ENV=dev` 时，`ADMIN_SESSION_SECRET` 为空会在启动阶段直接退出。`ADMIN_PASS` 为空则跳过初始管理员；用户表一直为空时也就没有可登录账号。
+
 后端第一次启动时会自动：
 
 - 建表
+- 在用户表为空且已设置 `ADMIN_PASS` 时创建 `superadmin`
 - 初始化 RBAC
-- 在用户表为空时创建默认管理员
 
 健康检查：
 
@@ -121,42 +128,35 @@ curl http://127.0.0.1:8080/health
 
 ## 五、插入本地演示数据
 
-后端启动并完成建表后，执行：
+后端启动并完成建表后，在 `management/registry` 执行：
 
 ```bash
-cd ~/hive/management/registry
 make seed-local-demo
 ```
 
-如果你本地数据库账号密码不是文档里的示例值，先显式传入：
+这会运行 `management/registry/dev/seed-local-demo.sh`。脚本默认使用：
+
+- 用户 `root`，密码 `123456`
+- 库 `hive_registry`
+- 容器名 `hive-mysql`（只有走 Docker 回退时才用到）
+
+本机有 `mariadb` 或 `mysql` 客户端时，脚本用该客户端连接 `127.0.0.1:3306`。没有客户端时，对正在运行的 `hive-mysql` 执行 `docker exec`。
+
+root 密码不是 `123456` 时，改用容器里的应用账号：
 
 ```bash
-cd ~/hive/management/registry
-MYSQL_USER=root MYSQL_PASSWORD=123456 make seed-local-demo
+MYSQL_USER=hive MYSQL_PASSWORD=hive make seed-local-demo
 ```
 
 默认会插入：
 
-- 4 个演示节点
-- 2 个演示订阅分组
-- 2 条演示线路（日本家宽、亚洲优化）
+- 4 个演示节点。`location` 为 `JP-Tokyo`、`HK-HongKong`、`SG-Singapore`、`US-LosAngeles`，主机名是 `hive-cc0001` 到 `hive-cc0004`
+- 2 个演示订阅分组：`Demo Starter`、`Demo Asia`
+- 2 条演示线路：`日本家宽`、`亚洲优化`
 
-数据文件在：
+数据文件在 `management/registry/dev/seed-local-demo.sql`。
 
-- `management/registry/dev/seed-local-demo.sql`
-
-脚本在：
-
-- `management/registry/dev/seed-local-demo.sh`
-
-默认演示节点包括：
-
-- `JP-Tokyo`
-- `HK-HongKong`
-- `SG-Singapore`
-- `US-LosAngeles`
-
-其中故意保留了一个 `tailscale_ip = pending` 的节点，用来模拟离线或未接入场景。
+`US-LosAngeles` 这一行的 `tailscale_ip` 是 `pending`，`enabled` 为 0，`status` 为 `maintenance`，`note` 为 `Demo Offline`。后台节点列表优先显示 `note`，另外三行是 `Demo Residential`、`Demo Optimized`、`Demo Premium`。
 
 ---
 
@@ -165,7 +165,7 @@ MYSQL_USER=root MYSQL_PASSWORD=123456 make seed-local-demo
 进入前端目录：
 
 ```bash
-cd ~/hive/management/registry-ui
+cd management/registry-ui
 ```
 
 指定 API 地址并启动开发服务器：
@@ -256,7 +256,7 @@ docker rm -f hive-mysql
 如果表结构没变，只想重新插入演示数据：
 
 ```bash
-cd ~/hive/management/registry
+cd management/registry
 make seed-local-demo
 ```
 
@@ -286,7 +286,7 @@ Generic Error: status: 405; status text: Method Not Allowed
 3. 停掉前端，重新执行：
 
 ```bash
-cd ~/hive/management/registry-ui
+cd management/registry-ui
 NEXT_PUBLIC_API_BASE=http://127.0.0.1:8080 \
   npm run dev -- --hostname 127.0.0.1 --port 3000
 ```

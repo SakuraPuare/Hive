@@ -1,291 +1,191 @@
 # Hive Network fail2ban 入侵防护配置
 
-本文档介绍 Hive Network 节点的 fail2ban 入侵检测和防护配置。
+本文档介绍 Hive Network 节点的 fail2ban 入侵检测和防护。监狱、白名单和封禁动作由 `/usr/local/bin/setup-fail2ban.sh` 写入，管理命令以 `/usr/local/bin/hive-fail2ban` 为准。
 
 ## 🛡️ fail2ban 概述
 
-fail2ban 是一个入侵防护系统，通过监控日志文件来检测恶意行为并自动封禁攻击者 IP。
+fail2ban 读取 systemd 日志（默认 `backend = systemd`），命中后用 UFW 封禁来源地址。
 
 ### 主要功能
 
-- **SSH 暴力破解防护**：自动封禁多次 SSH 登录失败的 IP
-- **端口扫描检测**：检测并阻止端口扫描行为
-- **系统服务保护**：保护 sudo、系统认证等服务
-- **与 UFW 集成**：自动添加/移除防火墙规则
-- **白名单保护**：确保信任网络不被误封
+- **SSH 暴力破解防护**：`sshd` 与 `sshd-aggressive`
+- **端口扫描检测**：`hive-portscan` 匹配一组常见目的端口上的内核 / UFW BLOCK 记录
+- **PAM 认证失败**：`pam-generic` 覆盖 sudo、su、login 等
+- **与 UFW 集成**：`banaction = ufw`，封禁行是 `ufw insert 1 deny from <ip> to any`
+- **白名单**：回环、私网、Tailscale CGNAT、链路本地，以及已配置时解析出的 EasyTier 中继地址
 
 ## 📂 相关文件
 
 ```
-/usr/local/bin/setup-fail2ban.sh           # fail2ban 初始化脚本
-/usr/local/bin/hive-fail2ban                # fail2ban 管理工具
-/etc/systemd/system/hive-fail2ban.service  # 系统服务配置
-/etc/fail2ban/jail.d/hive-*.conf           # Hive 自定义监狱配置
-/etc/fail2ban/filter.d/hive-*.conf         # Hive 自定义过滤器
-/var/lib/hive/fail2ban-configured          # 配置完成标记文件
+/usr/local/bin/setup-fail2ban.sh            # 写入监狱、过滤器和 UFW 动作
+/usr/local/bin/hive-fail2ban                 # 管理工具（必须 root）
+/etc/systemd/system/hive-fail2ban.service   # 一次性配置服务
+/etc/fail2ban/jail.d/hive-*.conf            # 脚本生成的监狱
+/etc/fail2ban/filter.d/hive-suspicious.conf # 端口扫描过滤器
+/etc/fail2ban/action.d/ufw.conf             # 脚本写入的 UFW 封禁动作
+/etc/logrotate.d/fail2ban                   # 日志轮转（只允许这一份）
+/var/lib/hive/fail2ban-configured           # 配置完成标记
 ```
 
+`hive-fail2ban.service` 是 oneshot。单元条件是标记文件尚不存在（`ConditionPathExists=!/var/lib/hive/fail2ban-configured`），因此只跑一次 `setup-fail2ban.sh`，成功后由 `ExecStartPost` 创建标记。它排在 `ufw.service`、`hive-firewall.service` 之后，`ssh.service` 之前。持续运行的守护进程是 `fail2ban.service`。
+
+再次执行 `setup-fail2ban.sh` 会整份覆盖 `jail.d/hive-*.conf`、`filter.d/hive-suspicious.conf` 和 `action.d/ufw.conf`。标记还在时，手工修改会保留；删掉标记或再跑脚本会覆盖这些文件。脚本还会把 `/etc/default/ufw` 里的 `IPV6=no` 改成 `IPV6=yes`，并删除旧的 `/etc/logrotate.d/fail2ban-hive`。两份轮转指向同一个日志时，logrotate 报 duplicate log entry 并以失败退出。
+
 ## 🚫 保护策略
+
+`hive-defaults.conf` 的默认值：`bantime = 3600`、`findtime = 600`、`maxretry = 5`、`backend = systemd`、`banaction = ufw`、`action = %(action_)s`。下面没写明的项沿用这些默认值。
+
+SSH 两座监狱写了 `logpath = %(sshd_log)s`，但没有改 `backend`。`hive-portscan` 同样沿用 `systemd`，同时在配置里写了文件路径（见下）。
 
 ### SSH 保护
 
 | 监狱 | 最大重试 | 封禁时间 | 查找时间 | 说明 |
 |------|----------|----------|----------|------|
-| sshd | 3 次 | 2 小时 | 10 分钟 | 标准 SSH 保护 |
-| sshd-aggressive | 2 次 | 24 小时 | 5 分钟 | 严格模式 |
+| sshd | 3 次 | 2 小时（7200） | 10 分钟（600） | `filter = sshd`，`port = ssh` |
+| sshd-aggressive | 2 次 | 24 小时（86400） | 5 分钟（300） | `filter = sshd[mode=aggressive]` |
 
-### 系统服务保护
+### PAM 认证
 
-| 监狱 | 最大重试 | 封禁时间 | 保护目标 |
-|------|----------|----------|----------|
-| systemd-login | 5 次 | 1 小时 | 系统登录 |
-| sudo-auth | 3 次 | 1 小时 | sudo 认证 |
-| systemd-auth | 5 次 | 30 分钟 | 系统认证 |
+| 监狱 | 最大重试 | 封禁时间 | 查找时间 | 说明 |
+|------|----------|----------|----------|------|
+| pam-generic | 5 次 | 1 小时（3600） | 10 分钟（默认 600） | 标准过滤器 `pam-generic`，并再次指定 `backend = systemd` |
 
-### 网络安全
+脚本注释写明这座监狱涵盖 sudo、su、login。当前配置里没有 `systemd-login`、`sudo-auth`、`systemd-auth`。这些名字对应的过滤器文件不存在；旧节点若仍启用它们，fail2ban 会因找不到 filter 而启动失败，处理见 [故障排查](/TROUBLESHOOTING)。
 
-| 监狱 | 最大重试 | 封禁时间 | 检测内容 |
-|------|----------|----------|----------|
-| hive-portscan | 10 次 | 1 小时 | 端口扫描 |
+### 端口扫描
 
-### 白名单网络
+| 监狱 | 最大重试 | 封禁时间 | 查找时间 | 说明 |
+|------|----------|----------|----------|------|
+| hive-portscan | 10 次 | 1 小时（3600） | 1 分钟（60） | 过滤器 `hive-suspicious` |
 
-以下网络不会被 fail2ban 封禁：
-- `127.0.0.1/8` - 本地回环
-- `192.168.0.0/16` - 本地网络
-- `10.0.0.0/8` - 私有网络
-- `172.16.0.0/12` - 私有网络
-- `100.0.0.0/8` - Tailscale 网络
+`filter.d/hive-suspicious.conf` 有两条 `failregex`。第一条匹配含 `kernel:`、`IN=`、`OUT=`、`MAC=`、`SRC=` 且 `DPT` 属于下列端口的行；第二条匹配含 `UFW BLOCK`、`SRC=` 且 `DPT` 属于同一组端口的行。端口是 22、23、25、53、80、110、143、443、993、995、3389、5432、5900。监狱的 `logpath` 写成 `/var/log/kern.log` 和 `/var/log/ufw.log`。
+
+### 白名单
+
+`ignoreip` 由脚本拼出：
+
+- `127.0.0.1/8`、`::1`
+- `192.168.0.0/16`、`10.0.0.0/8`、`172.16.0.0/12`
+- `100.64.0.0/10`（Tailscale 使用的 CGNAT；不是 `100.0.0.0/8`）
+- `fe80::/10`
+
+`EASYTIER_PEERS` 非空时，脚本去掉协议和端口，用 `getent hosts` 解析每个中继主机并追加进白名单；解析不到就原样追加该主机字段。未设置则跳过。防火墙脚本解析中继时改走 DoH，以免命中 mihomo 的 fake-IP；fail2ban 这里仍是 `getent hosts`。
 
 ## 🛠️ fail2ban 管理
 
-### 查看状态
+`hive-fail2ban` 的每条子命令都要求 root，并且要求 `fail2ban` 处于 active。服务没在跑时，工具只提示 `systemctl start fail2ban` 然后退出。不带参数等同于 `status`。
 
 ```bash
-# 查看整体状态
-hive-fail2ban status
-
-# 查看所有监狱状态
-hive-fail2ban jails
-
-# 查看被封禁的 IP
-hive-fail2ban banned
-```
-
-### IP 管理
-
-```bash
-# 解封特定 IP
-sudo hive-fail2ban unban 203.0.113.100
-
-# 查看 fail2ban 日志
-hive-fail2ban logs
-
-# 实时监控日志
-sudo tail -f /var/log/fail2ban.log
-```
-
-### 配置管理
-
-```bash
-# 测试配置
-sudo hive-fail2ban test
-
-# 重新加载配置
-sudo hive-fail2ban reload
-
-# 检查服务状态
+sudo hive-fail2ban status     # 服务状态、监狱概览、配置路径
+sudo hive-fail2ban jails      # 逐个监狱的 fail2ban-client status
+sudo hive-fail2ban banned     # 各监狱当前封禁地址
+sudo hive-fail2ban logs       # 最近 50 条
+sudo hive-fail2ban test       # fail2ban-client --test，并检查 hive-* 过滤器
+sudo hive-fail2ban reload     # fail2ban-client reload
 sudo systemctl status fail2ban
+```
+
+`logs` 在 `/var/log/fail2ban.log` 存在时输出该文件末尾 50 行，否则使用 `journalctl -u fail2ban --lines=50`。
+
+### 解封
+
+`unban` 只接受点分 IPv4，不接受 CIDR，也不接受 IPv6。它在每个监狱上执行 `fail2ban-client unban <IP>`；若 `ufw status` 里还有该地址，再执行 `ufw --force delete deny from <IP>`。
+
+```bash
+sudo hive-fail2ban unban 203.0.113.100
+```
+
+自定义 UFW 动作的 `actionstop` 是空的。`systemctl stop fail2ban` 不会撤掉已经写入 UFW 的 deny，已封地址仍要 `unban` 或 `ufw delete`。
+
+跟踪新日志：
+
+```bash
+sudo tail -f /var/log/fail2ban.log
+sudo journalctl -u fail2ban -f
 ```
 
 ## 🔧 高级配置
 
-### 修改封禁策略
-
-编辑相应的配置文件：
+手工修改会被下一次 `setup-fail2ban.sh` 覆盖。标记文件还在时，重启不会自动重跑脚本。
 
 ```bash
-# SSH 保护设置
 sudo nano /etc/fail2ban/jail.d/hive-ssh.conf
-
-# 系统服务保护
 sudo nano /etc/fail2ban/jail.d/hive-services.conf
-
-# 端口扫描检测
 sudo nano /etc/fail2ban/jail.d/hive-suspicious.conf
-```
-
-### 自定义白名单
-
-编辑基础配置：
-
-```bash
 sudo nano /etc/fail2ban/jail.d/hive-defaults.conf
 ```
 
-添加信任的 IP 或网段到 `ignoreip` 列表：
+追加白名单时保留脚本生成的地址段，只在末尾加上管理地址，然后 `sudo hive-fail2ban reload`。
 
 ```ini
 [DEFAULT]
-ignoreip = 127.0.0.1/8
-           ::1
-           192.168.0.0/16
-           10.0.0.0/8
-           172.16.0.0/12
-           100.0.0.0/8
-           YOUR_OFFICE_IP/32
+ignoreip = 127.0.0.1/8 ::1 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 100.64.0.0/10 fe80::/10 YOUR_OFFICE_IP
 ```
 
 ### 邮件通知
 
-如需启用邮件通知，编辑默认配置：
-
-```bash
-sudo nano /etc/fail2ban/jail.d/hive-defaults.conf
-```
-
-取消注释并配置邮件设置：
+默认 `action = %(action_)s`，只封禁、不发信。脚本里下面三行是注释，仓库没有启用邮件：
 
 ```ini
-[DEFAULT]
-destemail = admin@yourdomain.com
-sender = fail2ban@hive-node
-mta = sendmail
-action = %(action_mw)s
+# destemail = admin@yourdomain.com
+# sender = fail2ban@hive-node
+# mta = sendmail
 ```
 
-## 🔍 日志监控
+要发信，在 `hive-defaults.conf` 里填写这三项，并把 `action` 改成 fail2ban 自带的 `%(action_mw)s`。
 
-### 实时监控
-
-```bash
-# 监控 fail2ban 活动
-sudo tail -f /var/log/fail2ban.log
-
-# 监控特定监狱
-sudo fail2ban-client tail sshd
-
-# 监控系统认证日志
-sudo journalctl -f -u ssh
-```
-
-### 日志分析
+## 🔍 日志
 
 ```bash
-# 查看最近封禁记录
 sudo grep "Ban " /var/log/fail2ban.log | tail -10
-
-# 查看解封记录
 sudo grep "Unban " /var/log/fail2ban.log | tail -10
-
-# 统计攻击源
 sudo grep "Ban " /var/log/fail2ban.log | awk '{print $8}' | sort | uniq -c | sort -nr
 ```
 
+轮转使用镜像里的 `/etc/logrotate.d/fail2ban`：`daily`、`rotate 30`、`compress`、`missingok`、`notifempty`，新建文件 `0640 root adm`，轮转后执行 `fail2ban-client flushlogs`。不要再放一份 `fail2ban-hive`。脚本会把这份配置的权限收成 `0644`，因为 logrotate 拒绝 group/other 可写的配置。
+
 ## ⚠️ 安全注意事项
 
-### 1. 避免自我封锁
+用来登录的地址应留在 `ignoreip` 里。已经被封时：
 
-确保管理 IP 在白名单中：
+1. **物理控制台**：`sudo hive-fail2ban unban <IPv4>`
+2. **其他通道**：Tailscale 主机名是 `hive-<mac6>`（`provision-node.sh` 设置，MagicDNS 可解析）。FRP 使用 `ssh -p <frp_port> root@<vps-ip>`。白名单含 `100.64.0.0/10`，经 Tailscale 进来的源地址不会被这座 fail2ban 封禁。
+3. **停守护进程不能解封**：`sudo systemctl stop fail2ban` 留下的 UFW deny 仍然生效，见上一节。
 
-```bash
-# 添加当前 IP 到白名单
-current_ip=$(curl -s ifconfig.me)
-sudo nano /etc/fail2ban/jail.d/hive-defaults.conf
-# 在 ignoreip 中添加 $current_ip
-```
-
-### 2. 紧急解封
-
-如果被误封，可通过以下方式解封：
-
-1. **物理控制台访问**：
-   ```bash
-   sudo hive-fail2ban unban YOUR_IP
-   ```
-
-2. **通过其他管理通道**：
-   - Tailscale: `ssh root@hive-a4b2c1`
-   - FRP: `ssh -p 12345 root@your-vps`
-
-3. **临时禁用 fail2ban**：
-   ```bash
-   sudo systemctl stop fail2ban
-   ```
-
-### 3. 配置测试
-
-修改配置后务必测试：
-
-```bash
-# 测试配置语法
-sudo hive-fail2ban test
-
-# 重新加载配置
-sudo hive-fail2ban reload
-```
-
-### 4. 日志轮转
-
-fail2ban 日志已配置自动轮转：
-- 保留 30 天
-- 每日轮转
-- 自动压缩
+改完配置后执行 `sudo hive-fail2ban test`，再 `sudo hive-fail2ban reload`。
 
 ## 🆘 故障排除
 
 ### fail2ban 无法启动
 
-1. **检查配置语法**：
-   ```bash
-   sudo fail2ban-client --test
-   ```
+```bash
+sudo fail2ban-client --test
+sudo journalctl -u fail2ban -f
+sudo systemctl status ufw
+```
 
-2. **检查依赖服务**：
-   ```bash
-   sudo systemctl status ufw
-   sudo systemctl status rsyslog
-   ```
+日志若是找不到 `/etc/fail2ban/filter.d/systemd-login.conf`，说明还在用旧的 `hive-services.conf`。当前脚本只启用 `pam-generic`。临时处理和重装步骤见 [故障排查](/TROUBLESHOOTING)。
 
-3. **查看详细错误**：
-   ```bash
-   sudo journalctl -u fail2ban -f
-   ```
+### 监狱没有命中
 
-### 监狱无法启动
+默认 `backend` 是 systemd，先看 `journalctl -u fail2ban`，不要先假设一定有 `/var/log/auth.log` 或 rsyslog。`hive-portscan` 的配置还写了 `/var/log/kern.log` 和 `/var/log/ufw.log`。手头有对应日志时，可以用 `fail2ban-regex` 试过滤器：
 
-1. **检查日志文件**：
-   ```bash
-   # 确保日志文件存在且可读
-   ls -la /var/log/auth.log
-   ls -la /var/log/kern.log
-   ```
+```bash
+sudo fail2ban-regex /var/log/ufw.log /etc/fail2ban/filter.d/hive-suspicious.conf
+```
 
-2. **检查过滤器**：
-   ```bash
-   sudo fail2ban-regex /var/log/auth.log /etc/fail2ban/filter.d/sshd.conf
-   ```
+### 误封
 
-### 误封问题
-
-1. **检查白名单**：
-   ```bash
-   sudo fail2ban-client get sshd ignoreip
-   ```
-
-2. **查看封禁原因**：
-   ```bash
-   sudo grep "YOUR_IP" /var/log/fail2ban.log
-   ```
-
-3. **立即解封**：
-   ```bash
-   sudo hive-fail2ban unban YOUR_IP
-   ```
+```bash
+sudo fail2ban-client get sshd ignoreip
+sudo grep "YOUR_IP" /var/log/fail2ban.log
+sudo hive-fail2ban unban YOUR_IP
+```
 
 ## 📊 性能影响
 
 fail2ban 对系统性能影响极小：
+
 - **CPU 使用**：< 1%
 - **内存使用**：~10-20MB
 - **磁盘 I/O**：仅日志读取
@@ -296,7 +196,8 @@ fail2ban 对系统性能影响极小：
 - [fail2ban 官方文档](https://www.fail2ban.org/wiki/index.php/Manual)
 - [fail2ban 配置示例](https://github.com/fail2ban/fail2ban/tree/master/config)
 - [UFW 与 fail2ban 集成](https://help.ubuntu.com/community/Fail2ban)
+- 本仓库的防火墙策略见 [防火墙（UFW）](/FIREWALL)，总览见 [安全概述](/SECURITY-SUMMARY)
 
 ---
 
-**注意**：fail2ban 配置涉及网络安全，修改前请确保理解各项设置的含义，并做好白名单和应急访问预案。
+**注意**：fail2ban 配置涉及网络安全。修改前确认白名单和应急访问通道；`setup-fail2ban.sh` 会覆盖 `hive-*.conf`。

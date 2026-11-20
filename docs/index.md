@@ -3,33 +3,33 @@ layout: home
 
 hero:
   name: "Hive"
-  text: "规模化边缘节点基础设施"
-  tagline: "同一镜像，任意数量。设备上电两分钟后自主完成注册、配置与接入——集群规模与运维成本彻底解耦。"
+  text: "Rockchip 边缘节点与网关"
+  tagline: "同一镜像刷写多台设备。首次启动选用有线网卡 MAC 作为身份，没有设备凭证时向 Registry 登记，并接上管理通道。"
   actions:
     - theme: brand
       text: 开始部署 →
       link: /BUILD
     - theme: alt
-      text: 了解架构
+      text: 首次启动
       link: /PROVISION
 
 features:
   - icon: 🔌
-    title: 零配置部署
-    details: 同一镜像刻录至任意数量的设备。首次上电自动完成身份生成、隧道建立与服务初始化，集群从 1 台扩展至 100 台的边际成本趋近于零。
+    title: 同一镜像首启
+    details: 出厂镜像不含设备凭证。首启把主机名设为 hive-<mac6>；若已配置 Registry 且还没有 /etc/hive/device-token，会向 /nodes/enroll 登记并写入该文件。登记被拒绝时，需管理员为该 MAC 轮换凭证后再启动。
   - icon: 🌐
-    title: 三层冗余管理
-    details: Tailscale mesh 为主管理面，EasyTier P2P 作热备，FRP 应急隧道兜底。三通道互为冗余，单点故障不影响对整个集群的控制权。
+    title: 三层管理通道
+    details: Tailscale 是主管理面，EasyTier 作备用，FRP 提供应急 SSH。EasyTier 地址由 Registry 按 MAC 在 172.20.0.0/16 分配，同一 MAC 再次登记成功后领回原地址。FRP 端口由完整 MAC 的 MD5 映射到 10000–59999。
   - icon: 🔑
-    title: 确定性节点标识
-    details: 主机名、SSH 指纹、服务密钥均由网卡 MAC 确定性派生。重新烧录后节点身份不变，无需更新 known_hosts 或重新分发配置。
+    title: 重刷后的身份
+    details: 主机名随有线网卡 MAC 重算，重刷后不变。SSH 主机密钥和节点 xray UUID 在首启随机生成，并保存在数据分区。整卡重刷会换新的 SSH 主机密钥和 xray UUID，指纹变化后需要更新 known_hosts；只切换 A/B 根文件系统时这两项保留。
   - icon: 📊
-    title: 统一可观测性
-    details: Prometheus + Grafana 全量指标覆盖，Node Registry 动态服务发现。新节点上线后自动纳入监控，无需手工注册。
+    title: 注册后的监控
+    details: Registry 的 /prometheus-targets 提供 Prometheus file_sd 目标，只包含已启用、状态为 active、且 Tailscale 地址已就绪的节点。EasyTier 地址落在 172.20.0.0/16 时，还会加入该地址上的 node_exporter。Grafana 展示 Prometheus 抓到的指标。
   - icon: 🛡️
-    title: 纵深安全防护
-    details: UFW 默认拒绝全部入站，fail2ban 实时封禁暴力破解，auditd 记录关键变更，unattended-upgrades 自动应用安全补丁。生产级防护，开箱即用。
-  - icon: ⚡
-    title: ARM64 原生
-    details: 专为 Rockchip ARM SoC 裁剪，全链路 arm64 静态二进制，无运行时依赖。典型空载内存占用低于 200 MB。
+    title: 节点安全基线
+    details: UFW 默认拒绝入站和转发、允许出站。fail2ban 封禁 SSH 暴力破解和端口扫描。镜像安装并启用 auditd。unattended-upgrades 只安装发行版安全更新，且不自动重启。
+  - icon: 📡
+    title: 热点与局域网网关
+    details: 至少两个有线口时，默认把 WAN 以外的口配成 LAN，下游经 Mihomo 做透明代理。只有一个有线口时不配置这套转发。检测到可做 AP 的无线网卡会自动开热点；默认 SSID 来自身份 MAC，密码写在 /etc/hive/default-hotspot-psk，整卡重刷且未保留数据分区后会变。
 ---

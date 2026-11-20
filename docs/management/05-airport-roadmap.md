@@ -1,395 +1,147 @@
-# Hive 自有节点平台管理系统规划
+# Hive 自有节点平台：现状与未做项
 
-本文基于当前 `management/registry` 与 `management/registry-ui` 的实现现状整理，目标不是再做一个通用第三方平台，而是把 Hive 演进成一套“自有设备节点接入、集中编排、按用户分发订阅”的管理系统。
+本文按当前 `management/registry` 与 `management/registry-ui` 的实现整理。计费、租约和订阅失效见 [subscription-enforcement.md](../subscription-enforcement.md)，网关见 [GATEWAY.md](../GATEWAY.md)。
 
----
-
-## 一、先给结论
-
-当前系统已经具备了一个可用的 **节点注册中心 + 管理后台 + 基础订阅导出** 雏形，但还不能算完整的“平台系统”。
-
-它现在更偏向：
-
-- 设备自动注册与节点资产台账
-- 管理员查看和维护节点
-- 导出全量订阅或公开分组订阅
-- 基础运维与权限管理
-
-它还缺少平台核心能力：
-
-- 面向终端用户的账户、套餐、到期、流量、设备数控制
-- 基于用户权限动态生成订阅
-- 线路/入口/节点策略编排
-- 节点真实在线状态与质量数据
-- 用户侧门户、自助订阅、公告与工单
-
-所以建议把后续工作拆成两条主线并行设计：
-
-- **节点控制面**：设备如何接入、上报、分组、上下线、打标签、健康检查
-- **业务交付面**：用户买到什么、能看见哪些线路、如何生成订阅、如何限制使用
+[06-v1-compatible-infra-roadmap.md](./06-v1-compatible-infra-roadmap.md) 写的是「边缘节点停在 `v1.0.0`、服务端先不做心跳和套餐」时的约束。当前 Registry 已经越过那条边界，以本页和订阅授权文档为准。
 
 ---
 
-## 二、当前已经有的能力
+## 一、结论
 
-### 1. 节点侧与注册中心
+系统已经不只是节点资产表。节点控制面、线路、套餐、客户订阅和客户门户都在代码里，管理后台也有对应页面。
 
-- 节点可以通过 `POST /nodes/register` 幂等注册自身信息
-- 已保存节点基础字段：`mac`、`hostname`、`cf_url`、`tunnel_id`、`tailscale_ip`、`easytier_ip`、`frp_port`、`xray_uuid`、`location`、`note`
-- 支持节点列表、节点详情、节点编辑、节点删除
-- 节点注册时会自动写 `registered_at`、`last_seen`
-- 删除节点时会尝试同步移除 UFW 放行的 FRP 端口
+它现在能做：
 
-### 2. 订阅能力
+- 设备注册、enroll、心跳，以及按心跳 / Prometheus 判断在线
+- 线路、订阅分组、套餐，以及按客户订阅签发 Clash/Mihomo 与 VLESS
+- 客户注册登录、下单、工单、公告、认领设备、邀请返利
+- 管理员 RBAC、审计、订单与优惠码
 
-- 已支持全量 VLESS 订阅导出
-- 已支持全量 Clash/Mihomo YAML 导出
-- 已支持“订阅分组”模型：一个分组绑定多台节点
-- 已支持公开订阅链接 `GET /s/{token}`
-- 节点名展示已经能使用 `location` + `note` + `hostname`
+它还没有：
 
-### 3. 管理后台
-
-- 已有登录、登出、当前用户信息接口
-- 已有用户管理、角色管理、权限管理、审计日志
-- 已有 Dashboard、节点列表、节点详情、订阅页、用户页、角色页、审计页
-- 前后端 OpenAPI 已打通，UI 已不是纯静态页面
-
-### 4. 运维辅助
-
-- 已支持 Prometheus targets 导出
-- 已支持标签打印页
-- 已有比较完整的部署文档、provision 文档、节点运维文档
+- 节点排水（drain）、节点标签
+- 独立的入口（inbound）对象
+- sing-box、Shadowrocket、Surge、Hiddify 的专用订阅模板
+- 第三方支付回调
+- 心跳里的镜像版本、xray 版本、ASN、带宽
 
 ---
 
-## 三、当前系统的边界
+## 二、节点控制面
 
-当前系统本质上只有两层模型：
+### 接入
 
-- **节点**
-- **管理员**
+- `POST /nodes/enroll`：设备先保存 64 位 token，再调用 enroll。服务端只存哈希；相同 token 可以重试拿回丢失的响应，不同 token 不能轮换凭据。同一 IP 每分钟 20 次。
+- `POST /nodes/register`：按 MAC 幂等注册或更新，调用方要带设备凭据。必填 `mac`、`hostname`、`cf_url`、`xray_uuid`，还可带 `mac6`、`tunnel_id`、`frp_port`、`mesh_tunnel_id`、`mesh_ip`、`tailscale_ip`。首次写入 `registered_at`；每次注册都更新 `last_seen`。Tailscale 地址为空时首次记为 `pending`。EasyTier 地址由 Registry 按 MAC 分配，不在请求体里。认领码只铸造一次，明文只在当次响应里返回。
+- `POST /admin/nodes/{mac}/credential`：管理员签发设备凭据（`node:write`）。
 
-订阅虽然已经存在，但它还是“管理员视角的节点清单导出”，不是“用户视角的线路交付”。
+### 心跳与在线
 
-这意味着现在的订阅能力更像：
+- `POST /nodes/heartbeat` 使用设备凭据。它更新 `last_seen`；`country` 非空才覆盖，避免旧 agent 把已有国家抹掉。
+- 请求体可以带 `cpu_pct`、`mem_pct`、`disk_pct`、`uptime_sec`、`services`、`addresses`。服务状态和地址快照缺省时不新造样本。
+- 心跳把 `node_status_checks` 标为 `online`，并写入 CPU、内存、磁盘、运行时间。`latency_ms` 在心跳里写成空。
+- Prometheus 探测（`job="hives"`，约 60 秒）补抓取延迟和同类指标。节点只有心跳、Prometheus 没有序列时，5 分钟内的状态行保持不动，更老的行才标 `offline`。
+- `last_seen` 会随心跳更新，不再只靠注册。节点列表里的 `probe_status` 来自 `node_status_checks`，没有记录时是 `unknown`。
 
-- 我把哪些节点塞进一个分组
-- 然后生成一个公开链接给别人用
+心跳不包含镜像版本、xray 版本、ASN 或带宽。延迟是 Prometheus 的 `scrape_duration_seconds`，不是对节点做的拨测 RTT。
 
-而不是：
+### 管理员能改的节点字段
 
-- 某个用户买了什么套餐
-- 这个套餐可以访问哪些线路
-- 这个用户的订阅何时过期
-- 是否限制设备数 / 流量 / 速率
-- 他的订阅是否需要单独禁用或重置
+`PATCH /nodes/{mac}` 允许：`location`、`note`、`tailscale_ip`、`easytier_ip`、`frp_port`、`enabled`、`status`、`weight`、`region`、`mesh_tunnel_id`、`mesh_ip`、`gateway_enabled`、`gateway_direction`、`gateway_upstream_mode`、`gateway_upstream_nodes`、`bound_subscription_id`、`exit_enabled`、`exit_direction`、`subscription_sync`、`country_override`。
 
----
+- `exit_direction` 只能是 `overseas`（出海）或 `domestic`（回国）。
+- `gateway_direction` 可以是 `auto`、`domestic`、`overseas`、`global`、`direct`。
+- `weight` 能保存。网关挑选上游时按 `weight` 从高到低、再按 `hostname` 排序；订阅导出不按 `weight` 取舍节点。
+- 实际是否作为 Xray 出口：`exit_enabled && owner_exit_enabled && enabled && status == active`。`owner_exit_enabled` 由设备所有者在门户修改，不在上面的管理员字段列表里。
 
-## 四、离“平台系统”还缺哪些核心能力
+删除节点只删除节点行和 `device_credentials`，并写审计。不会改 UFW 上的 FRP 放行。
 
-### 1. 用户与套餐域模型缺失
+### 远程操作与 OTA
 
-当前没有下面这些关键对象：
+- 管理端把命令放进 `node_commands`，设备用 `GET /nodes/{mac}/commands` 拉取，再用 `POST /nodes/{mac}/commands/{id}/ack` 回执。
+- 单节点的服务状态来自最近一次心跳，不是实时 RPC：`GET /admin/nodes/{mac}/services`。只选一台设备时，后台用这份明细，不再走批量用的通用服务下拉；多台设备仍用原来的批量服务命令。
+- OTA 包、分片上传和 rollout 在 `/admin/ota/*`。设备用 `GET /nodes/{mac}/ota-version`、`POST /nodes/{mac}/ota-ack` 和 `GET /nodes/{mac}/ota-bundle/{sha}` 配合升级。
+- 管理后台页面：节点、节点状态、网关、OTA。
 
-- 终端用户
-- 套餐 / 产品
-- 订单 / 开通记录
-- 到期时间
-- 流量额度与重置周期
-- 最大设备数
-- 用户级订阅令牌
-- 用户级禁用 / 封禁状态
-
-这是最核心的缺口。没有这层，系统只能给管理员发全量或分组订阅，不能运营真实用户。
-
-### 2. 节点控制面还太薄
-
-当前节点模型更像静态资产表，还不是动态控制面。
-
-缺少的能力包括：
-
-- 心跳上报接口
-- 节点真实在线状态判定
-- 节点出口 IP / 国家 / ASN / 带宽信息
-- 节点版本信息（镜像版本、xray 版本、配置版本）
-- 节点负载、延迟、丢包、拨测结果
-- 节点启用 / 禁用 / 排水（drain）状态
-- 节点标签、权重、容量、优先级
-- 节点所属入口、线路、区域的归属关系
-
-尤其要注意：现在的 `last_seen` 主要依赖注册和管理更新，并不是可靠心跳。
-
-### 3. 线路编排模型缺失
-
-平台不是直接把“节点列表”发给用户，而是把“线路”发给用户。
-
-建议补齐以下对象：
-
-- 区域 `region`
-- 线路 `line`
-- 入口 `inbound`
-- 节点-线路映射 `line_nodes`
-- 线路策略：权重、优先级、测速策略、回退策略
-
-这样才能表达：
-
-- 日本家宽
-- 香港优化
-- 新加坡低倍率
-- 美国流媒体
-- 仅高级套餐可见
-
-当前的 `subscription_groups` 可以保留，但更适合逐步演进为“线路分组”的过渡实现，而不是最终业务模型。
-
-### 4. 用户级订阅分发缺失
-
-当前订阅导出是：
-
-- 全量订阅
-- 公开分组订阅
-
-缺少的是：
-
-- 用户专属订阅链接
-- 用户专属 token 重置
-- 到期后自动失效
-- 按套餐筛选节点
-- 按客户端生成不同格式
-- 按平台差异输出不同配置项
-
-如果不补这一层，后面用户数量一上来，分组 token 会非常难管。
-
-### 5. 客户端兼容能力不足
-
-当前只覆盖：
-
-- VLESS 链接
-- Clash/Mihomo YAML
-
-后面至少要规划：
-
-- sing-box
-- v2rayN / v2rayNG
-- Shadowrocket
-- Surge
-- Hiddify
-
-不是所有客户端都吃同一份配置，最终要做“订阅模板”。
-
-### 6. 风控、审计、运营侧还不够
-
-当前已有基础 RBAC 和审计，但还不够支撑正式平台运营。
-
-还需要：
-
-- 用户操作审计
-- 订阅访问日志
-- token 使用日志
-- 登录失败限制、频率限制
-- 节点变更审计
-- 分组 / 线路变更审计
-- 管理操作回滚能力
-
-### 7. 用户侧产品界面不存在
-
-当前 `registry-ui` 是管理员后台，不是用户门户。
-
-还缺：
-
-- 用户注册 / 登录
-- 用户首页
-- 套餐与到期信息
-- 一键复制订阅
-- 使用说明
-- 公告页
-- 工单 / 联系支持
+代码里没有 `drain` 状态，也没有节点标签表。
 
 ---
 
-## 五、建议的新域模型
+## 三、线路、分组与订阅
 
-建议后续按下面的核心对象扩展，而不是继续把所有逻辑堆在 `nodes` 和 `subscription_groups` 上。
+面向用户的交付单位已经是线路和套餐，不再是「把节点清单公开出去」。
 
-### 节点控制面
+| 对象 | 作用 |
+|------|------|
+| `lines` / `line_nodes` | 线路：名称、区域、排序、启用、备注，以及绑定的节点。公开 token 可重置。 |
+| `plans` / `plan_lines` | 套餐：流量、速率、设备数、天数、价格、启用、排序，以及可访问线路。 |
+| `subscription_groups` | 仍保留的节点分组，导出时同样要带客户订阅 token。 |
+| `customer_subscriptions` | 客户订阅实例：独立 token、独立 Xray UUID、流量、设备数、起止时间和状态。 |
 
-- `nodes`：设备节点主表，保留现有基础字段
-- `node_heartbeats`：节点心跳与运行快照
-- `node_tags`：节点标签
-- `node_metrics`：延迟、丢包、出口信息、健康状态
-- `inbounds`：入口定义，描述域名、协议、传输层参数
-- `lines`：面向用户展示的线路
-- `line_nodes`：线路与节点的绑定关系
+导出格式只有 Clash/Mihomo YAML 和 VLESS 链接。
 
-### 业务交付面
+- 管理员全量：`GET /subscription`、`GET /subscription/clash`（`subscription:read`）。
+- 客户订阅：`GET /c/{token}`、`GET /c/{token}/vless` 是出海；`GET /c/{token}/domestic`、`GET /c/{token}/domestic/vless` 是回国。两份配置不能合成一份。
+- 线路：`GET /l/{token}`、`GET /l/{token}/vless`。分组：`GET /s/{token}`。查询参数 `subscription` 必须是 64 位客户订阅 token，否则 401。`direction` 省略时按出海；只有 `overseas` 和 `domestic` 合法。结果是线路或分组、套餐和已启用出口的交集，并使用客户 UUID。
+- 已认领设备的主人有一份免费订阅：`GET /d/{token}`、`GET /d/{token}/vless`，只含这一台设备。门户通过 `GET /portal/devices/{mac}/subscription-access` 取 token。
 
-- `customers`：终端用户
-- `plans`：套餐
-- `customer_subscriptions`：用户已开通的套餐实例
-- `subscription_tokens`：用户订阅令牌
-- `plan_lines`：套餐可访问线路
-- `device_bindings`：设备数限制与设备记录
-- `usage_rollups`：流量统计与周期汇总
+重置客户订阅 token 会同时轮换 UUID。过期、停用或超额时，导出会退成无节点的直连配置，避免继续下发节点凭据。设备数限制在出口按在线源 IP 执行。细节、升级步骤和信任边界都在 [subscription-enforcement.md](../subscription-enforcement.md)。
 
-### 运营与支撑
-
-- `announcements`：公告
-- `tickets`：工单
-- `operation_logs`：比现有 audit 更细的领域日志
+没有单独的 `inbounds` 表，也没有 sing-box、Shadowrocket、Surge、Hiddify 模板。
 
 ---
 
-## 六、推荐路线图
+## 四、客户、订单与门户
 
-### Phase 0：把现在的 Registry 先做稳
+### 管理端
 
-目标：让当前系统从“资产表”升级成“可依赖的节点控制台”。
+客户、套餐、订阅、订单、优惠码、工单、公告都有接口和页面。
 
-建议实现：
+- 客户：列表、创建、详情、修改、删除、重置密码、封禁与解封。
+- 订阅：开通、修改、删除、重置 token、重置流量，以及 `activate` / `suspend` / `expire`。
+- 订单：`GET /admin/orders`、`PATCH /admin/orders/{id}/status`。把状态改成 `paid` 会续期同一套餐的已有订阅，没有则创建。
+- 优惠码：折扣比例或金额、次数、有效期、启用。
+- 邀请返利：`GET /admin/referrals`、`PATCH /admin/referrals/{id}`。
+- 流量汇总：`GET /admin/traffic/summary`，以及按客户查看流量。
 
-- 新增节点心跳接口，例如 `POST /nodes/{mac}/heartbeat`
-- 心跳上报运行状态、版本、出口 IP、延迟、负载摘要
-- 节点增加字段：`status`、`enabled`、`drain`、`weight`、`tags`
-- 节点列表支持按状态、地区、标签筛选
-- 订阅分组的增删改操作补审计日志
-- 管理员认证与设备认证分离，不再共享同一套简化口令思路
-- 统一修正文档与实现中的遗留描述
+客户下单走 `POST /portal/orders`，可以带 `use_balance` 用余额抵扣。没有支付宝、微信或 Stripe 一类支付回调；未付清的订单由管理员改状态。
 
-完成标志：
+### 客户门户
 
-- 不用猜测节点是否在线
-- 节点故障、失联、停用、排水可视化
-- 现有订阅分组可以被稳定维护
+门户与管理员后台分开，导航也是另一套。
 
-### Phase 1：建立“线路”模型
+- 公开：`POST /portal/register`、`POST /portal/login`、`POST /portal/logout`、`GET /portal/plans`、`GET /portal/announcements`、忘记密码与重置密码。管理员登录、客户门户登录和重置密码按 IP 共用每分钟 5 次；忘记密码另计，每分钟 3 次。
+- 登录后：资料、订阅、下单与订单、工单、邀请返利。
+- 我的设备：认领、解绑、出口开关、网关、绑定或解绑订阅、命令、服务快照、地址、仪表盘。地址接口只返回 LAN 和出口地址，不返回 Tailscale、EasyTier、mesh、FRP 或节点凭据。
 
-目标：从“节点导出”切到“线路交付”。
-
-建议实现：
-
-- 新增 `lines`、`line_nodes`、`inbounds`
-- 节点可属于多个线路
-- 线路可设置名称、区域、展示顺序、权重、可见性
-- 支持线路启用 / 禁用
-- 订阅从“遍历所有节点”改为“遍历用户可见线路”
-- 前端新增线路管理页
-
-完成标志：
-
-- 运营上可以说“给用户开日本、香港、美国线路”
-- 不再直接暴露底层节点分组给业务层
-
-### Phase 2：补齐用户、套餐、订阅授权
-
-目标：让系统第一次真正具备“平台”业务能力。
-
-建议实现：
-
-- 新增终端用户体系
-- 新增套餐、套餐周期、到期时间
-- 新增套餐可访问线路映射
-- 新增用户专属订阅 token
-- 用户订阅链接支持重置、禁用、过期
-- 支持设备数限制
-- 支持倍率、流量额度、重置周期
-
-完成标志：
-
-- 每个用户看到的订阅内容都不同
-- 线路权限和套餐绑定
-- 过期用户自动失效
-
-### Phase 3：做用户门户与客户端适配
-
-目标：完成基本可运营闭环。
-
-建议实现：
-
-- 用户登录 / 控制台页面
-- 订阅复制、导入说明、客户端教程
-- 公告与通知
-- 多格式订阅模板
-- 按客户端类型生成差异化配置
-
-完成标志：
-
-- 用户不需要管理员手工发链接
-- 前台可以独立服务用户
-
-### Phase 4：再决定是否做商业化闭环
-
-如果你只是做内部或小范围定向分发，这一阶段可以后置。
-
-如果要做完整平台运营，再补：
-
-- 订单
-- 支付回调
-- 优惠码
-- 邀请返利
-- 工单
-- 风控与封禁
+门户页面：首页、套餐、设备、订单、工单、邀请、公告、账号。
 
 ---
 
-## 七、建议的最小可行版本（MVP）
+## 五、权限、审计与运维出口
 
-如果你希望最快做出“能用的平台版”，我建议第一批只做下面 6 件事：
+管理员登录、登出、当前用户、用户、角色、权限、审计日志都在。管理员登录限流与设备 enroll、客户忘记密码是分开的。
 
-1. 节点心跳与真实在线状态
-2. 线路模型 `lines + line_nodes`
-3. 终端用户与套餐
-4. 套餐可访问线路映射
-5. 用户专属订阅 token
-6. 用户门户里的“我的订阅”
-
-做到这一步，系统就已经从“节点管理后台”升级为“可交付的自有节点平台”。
+- 客户登录失败会写审计，并有 `GET /admin/risk-events`（`customer:read`）。管理后台侧边栏没有风控事件页。
+- 订阅请求有 Prometheus 计数。代码里没有按 token 保存的访问日志表。
+- `GET /prometheus-targets`、`GET /labels`、`GET /health`、`GET /metrics` 仍在。
+- `GET /admin/ssh-config` 只返回生成 SSH 命令用的 FRP 服务器地址，不含 token。
 
 ---
 
-## 八、对当前代码库的直接建议
+## 六、还没做、以及不必再单独立项的部分
 
-### 后端 `management/registry`
+旧草案里的这些对象已经用现有表落地，不必再平行做一套：
 
-- 保留现有 `nodes`、`users`、`roles`、`subscription_groups`
-- 不建议继续把“平台业务”直接叠加在 `subscription_groups`
-- 先补心跳、状态、线路、用户授权 4 条主链路
-- 订阅生成逻辑要从“查全部节点”改成“查用户授权的线路及节点”
+- 心跳快照在 `node_status_checks`，服务和地址在节点行上，没有独立心跳历史表
+- 线路是 `lines` / `line_nodes`，套餐授权是 `plan_lines`
+- 终端用户是 `customers`，订阅令牌在 `customer_subscriptions`
+- 公告、工单、优惠码、邀请返利、客户门户都已有页面
 
-### 前端 `management/registry-ui`
+仍然没有、后续要做才需要新设计的：
 
-- 现有页面适合作为管理员后台继续扩展
-- 后续新增页面优先级建议是：`lines`、`customers`、`plans`、`subscriptions`、`node-health`
-- 用户门户建议单独做，不要和管理员后台强耦合到同一导航模型里
-
----
-
-## 九、推荐的执行顺序
-
-如果按工程效率排序，我建议这样做：
-
-1. 先整理数据模型和接口，不急着先堆 UI
-2. 先把节点心跳与线路模型补上
-3. 再做用户、套餐、订阅授权
-4. 最后补用户门户和商业化能力
-
-原因很简单：
-
-- 没有心跳，节点状态不可靠
-- 没有线路模型，套餐授权没法表达
-- 没有用户授权，订阅系统只是分组导出
-
----
-
-## 十、下一步建议
-
-如果继续往下做，最合理的下一步不是直接改页面，而是先产出一版更细的设计稿，至少包括：
-
-- 数据库 ER 图
-- 新增表结构草案
-- API 列表
-- 管理端页面结构
-- 用户端页面结构
-- 订阅生成规则
-
-这部分我可以继续直接帮你做，并且下一轮可以进入“可实现级别”的设计，把每个表、每个接口、每个页面拆到开发任务单。
+1. 节点排水和标签。
+2. 独立入口对象，以及按客户端区分的订阅模板。
+3. 第三方支付回调。当前闭环是余额抵扣加上管理员确认付款。
+4. 心跳上报版本、ASN、带宽，或真正的拨测延迟。
+5. 风控事件的管理页，以及按 token 的订阅访问日志。

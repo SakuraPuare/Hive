@@ -1,8 +1,8 @@
 # Hive OTA 升级方案调研
 
-> 状态：调研 / 决策文档（非实现）
-> 更新：2026-06-17
-> 范围：Hive 边缘节点（NanoPi Zero2 / RK3528、NanoPi R3S / RK3566、Orange Pi 4 LTS / RK3399），约 11 节点，Tailscale 组网，已有 Go registry 后端。
+> 状态：历史调研，写于 2026-06-17，不是当前实现。
+> 当前行为以 [OTA.md](./OTA.md) 为准：签名的 application / firmware 包，以及 NanoPi Zero2、R28S、R3S LTS 的引导 A/B。
+> 下文是当时的架构约束和方案比较。第 2 节的「现状」和第 6 节的建议已经与后来的实现不同，不要当成现网事实。
 
 ## 1. 目标
 
@@ -35,7 +35,7 @@
 ### 2.2 首次部署（provisioning）
 
 - `provision-node.service`（Type=oneshot，`ConditionPathExists=!/etc/hive/provisioned`）→ `/usr/local/bin/provision-node.sh`。
-- 基于 MAC 确定性生成身份：hostname、SSH host key、xray UUID、FRP 端口、EasyTier IP。
+- 2026-06 的记录曾按 MAC 确定性生成 hostname、SSH host key、xray UUID、FRP 端口和 EasyTier IP。这不是现行行为。现行见 [PROVISION.md](./PROVISION.md)：主机名仍是 `hive-<mac6>`；SSH host key 与 xray UUID 首启随机，并随数据分区保留；FRP `remotePort` 为 MAC 的 md5 前 8 位十六进制 `% 50000`，范围 10000–59999；EasyTier 由 Registry 在 `172.20.0.0/16` 发号。
 - 创建 CF Tunnel / DNS、加入 Tailscale（OAuth → pre-auth key）、起核心服务、`POST /api/nodes/register` 上报，最后 `touch /etc/hive/provisioned` 自禁用。
 - **重要复用点**：节点已有一套幂等的"下载二进制 → 配置 → 起服务"的 first-boot 编排逻辑。OTA 的二进制替换可沿用同一套模式。
 

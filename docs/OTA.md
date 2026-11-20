@@ -31,7 +31,7 @@ Hive 支持两类签名更新包，均通过后台「OTA 更新」上传并分�
 
 **1 GB / 2 GB 是运行内存，引导载荷占用的是 TF 卡存储。** 本批设备均使用 32 GB 或 64 GB TF 卡，使用同一板型出厂镜像。首次启动的 `hive-data-grow` 校验 GPT、两个分区名称与边界，仅扩大最后的数据分区并调整 ext4；根文件系统、设备标识和分区 UUID 不变。写入 GPT 后中断可在下次启动继续扩展文件系统；不允许改动非 Hive 分区或已挂载的数据分区。
 
-`hive-memory-generator` 按实际 `MemTotal` 在每次启动及 `daemon-reload` 时生成临时服务配置，低于 1.5 GiB 的设备使用 1 GB 档位：Xray 的 `MemoryHigh/MemoryMax` 为 160/224 MiB，Mihomo 为 192/256 MiB，Go 软内存限制分别为 128/160 MiB，部分管理代理也配置较低的 Go 软限制。2 GB 档位分别为 200/300 MiB、384/512 MiB。这些限额用于约束进程，不能保证所有服务满负载同时运行不发生 OOM；验收应观察实际内存峰值、重启和吞吐。管理员可通过 `/etc/systemd/system/<service>.d/90-local-memory.conf` 覆盖。内存环境变量在进程下次启动后生效。
+`hive-memory-generator` 按实际 `MemTotal` 在每次启动及 `daemon-reload` 时生成临时服务配置，低于 1.5 GiB 的设备使用 1 GB 档位：Xray 的 `MemoryHigh/MemoryMax` 为 160/224 MiB，Mihomo 为 192/256 MiB，Go 软内存限制分别为 128/160 MiB；cloudflared 与 tailscaled 只设 Go 软限制 64 MiB，frpc 与 xray-exporter 为 32 MiB。2 GB 档位的 Xray 为 200/300 MiB、Go 软限制 192 MiB，Mihomo 为 384/512 MiB、Go 软限制 320 MiB，不再给上述管理代理单独设 Go 软限制。这些限额用于约束进程，不能保证所有服务满负载同时运行不发生 OOM；验收应观察实际内存峰值、重启和吞吐。管理员可通过 `/etc/systemd/system/<service>.d/90-local-memory.conf` 覆盖。内存环境变量在进程下次启动后生效。
 
 OTA 下载与解包暂存于磁盘 `/var/lib/hive`，不把整个固件包装进内存。首次注册优先选择设备树 `ethernet0` 对应的物理有线网卡，避免 R28S 无线或隧道接口先出现造成身份选择变化；已经完成初始化的设备继续使用持久化身份。
 
@@ -111,11 +111,11 @@ make build-ota VERSION=1.0.0
   --health-hook /path/to/check-my-service.sh
 ```
 
-默认包包含应用脚本和服务单元，启用 OTA 恢复服务和订阅守护，不覆盖设备 Token、SSH 密钥和个性化运行配置。
+默认包收录 `usr/local/bin`、`usr/lib/systemd/system-generators`、`etc/systemd/system`、`etc/NetworkManager/dispatcher.d`、`etc/update-motd.d` 和 `var/www` 里的应用文件，启用 `hive-ota-recover.service`、`hive-updater.timer`、`hive-subscription-guard.timer`、`hive-xray-sync.timer` 和 `hive-clash-sync.timer`，并重启订阅守护以及 Xray、Mihomo 同步定时器。不覆盖设备 Token、SSH 密钥和个性化运行配置。
 
 `hive-updater --url`（Registry 的 `ota-update` 指令走这条手动路径）只能装应用包。固件包含引导载荷，必须经 Registry 的发布任务（`ota-version` 轮询返回 `kind=firmware` 与 `assignment_token`）下发：手动路径没有 assignment token，写不出重启后要发的完成回执，所以 `hive-updater` 在动盘之前直接拒绝。
 
-启动/恢复关键文件不接受应用包，`build-ota.sh` 打包和 `hive-ota-transaction` 安装前各拦一次（签名包同样拒绝）：`boot/**`、`usr/lib/hive/**`、`usr/lib/modules/**`、`usr/lib/systemd/system/**`、`usr/local/bin/hive-data`、`hive-data-grow`、`hive-board`、`hive-node-info`、`hive-firmware`，以及 `hive-data.service*`、`hive-ota-recover.service*`、`hive-firmware-confirm.service*`（前缀匹配，覆盖 `.d/` drop-in 与 `.wants/` 链接这类侧路径），以及 `usr/local/bin/hive-ota-transaction` 与 `var/lib/hive/ota-transaction/**`（安装前由引擎写入，包内容覆盖 `recover.sh`/`paths.json` 会让开机回滚跑包带来的副本；引擎自身的源头同样不能替换，否则 `ota_prepare` 后续每次复制出的 `recover.sh` 都来自包内容）。回滚备份和事务标记都在 `/var/lib/hive`，该路径由 `hive-data` 从数据分区 bind 挂载；一旦这些文件被坏包替换，数据分区挂不上、回滚脚本永远跑不到，设备只会无限重启。除引擎自管的 `ota-transaction` 目录外，这些文件只能随 firmware 包更新。firmware 包不走应用包的事务，而是走 `hive-firmware` 自己的安装路径：只允许写 `boot/Image`、`boot/uInitrd`、`boot/dtb/**`、`usr/lib/modules/**`、`usr/lib/firmware/**`，其余路径一律拒绝。
+启动/恢复关键文件不接受应用包，`build-ota.sh` 打包和 `hive-ota-transaction` 安装前各拦一次（签名包同样拒绝）：`boot/**`、`usr/lib/hive/**`、`usr/lib/modules/**`、`usr/lib/systemd/system/**`、`usr/local/bin/hive-data`、`hive-data-grow`、`hive-board`、`hive-node-info`、`hive-firmware`，以及 `hive-data.service*`、`hive-ota-recover.service*`、`hive-firmware-confirm.service*`（前缀匹配，覆盖 `.d/` drop-in 与 `.wants/` 链接这类侧路径），以及 `usr/local/bin/hive-ota-transaction` 与 `var/lib/hive/ota-transaction/**`（安装前由引擎写入，包内容覆盖 `recover.sh`/`paths.json` 会让开机回滚跑包带来的副本；引擎自身的源头同样不能替换，否则 `ota_prepare` 后续每次复制出的 `recover.sh` 都来自包内容）。回滚备份和事务标记都在 `/var/lib/hive`，该路径由 `hive-data` 从数据分区 bind 挂载；一旦这些文件被坏包替换，数据分区挂不上、回滚脚本永远跑不到，设备只会无限重启。这些路径里，firmware 包实际会写的只有引导载荷、内核模块、固件 blob 和 `usr/lib/hive/boot-payload.json`。`hive-data`、`hive-data-grow`、`hive-board`、`hive-node-info`、`hive-firmware`、`hive-ota-transaction`、`usr/lib/systemd/system/**`、其余 `usr/lib/hive/**`，以及上面三个 unit 前缀，应用包和 firmware 包都不接受，只能随出厂镜像的根文件系统更换。`ota-transaction` 目录由引擎在安装前自己写入。firmware 包不走应用包的事务，而是走 `hive-firmware` 自己的安装路径：只允许写 `boot/Image`、`boot/uInitrd`、`boot/dtb/**`、`usr/lib/modules/**`、`usr/lib/firmware/**`，以及记录板型、布局和版本的 `usr/lib/hive/boot-payload.json`，其余路径一律拒绝。
 
 此外，应用包里的 `etc/systemd/system/**` 单元若声明 `FailureAction=`/`JobTimeoutAction=` 为 `reboot|poweroff|halt` 系列，`hive-updater` 在写入前直接拒绝：那会让任意服务故障变成整机重启，而用户态没有任何恢复入口。
 
@@ -212,7 +212,7 @@ make build-ab VERSION=1.1.0
 # 上传 output/ota/hive-firmware-nanopi-zero2-v1.1.0.tar.gz；无需再 dd 整盘镜像
 ```
 
-设备验证签名、板型、布局和包内每个文件的 SHA256 后，把 `boot/Image`、`boot/uInitrd` 与 `boot/dtb/**` 写进未激活字母（`/boot/Image.<候选字母>`、`/boot/uInitrd.<候选字母>`、`/boot/dtb.<候选字母>/`），内核模块和固件 blob 原地增补——`/usr/lib/modules/<内核版本>/` 天然按版本隔离，旧字母的内核仍用自己的目录。写入后逐个读回计算 SHA256，任何不匹配都不设置候选字母。包内出现 `boot/Image`、`boot/uInitrd`、`boot/dtb/**`、`usr/lib/modules/**`、`usr/lib/firmware/**` 之外的路径直接拒绝：用户态变更必须走带文件级回滚的应用包，否则等于在同一棵树上开第二条更弱的更新通道。最后通过一次冗余环境更新设置候选字母及 **3 次试启动**，然后重启。
+设备验证签名、板型、布局和包内每个文件的 SHA256 后，把 `boot/Image`、`boot/uInitrd` 与 `boot/dtb/**` 写进未激活字母（`/boot/Image.<候选字母>`、`/boot/uInitrd.<候选字母>`、`/boot/dtb.<候选字母>/`），内核模块、固件 blob 和 `usr/lib/hive/boot-payload.json` 原地写入——`/usr/lib/modules/<内核版本>/` 天然按版本隔离，旧字母的内核仍用自己的目录。写入后逐个读回计算 SHA256，任何不匹配都不设置候选字母。包内出现 `boot/Image`、`boot/uInitrd`、`boot/dtb/**`、`usr/lib/modules/**`、`usr/lib/firmware/**`、`usr/lib/hive/boot-payload.json` 之外的路径直接拒绝：用户态变更必须走带文件级回滚的应用包，否则等于在同一棵树上开第二条更弱的更新通道。最后通过一次冗余环境更新设置候选字母及 **3 次试启动**，然后重启。
 
 模块目录按内核版本命名，所以跨内核版本升级时两个字母各自持有自己的 `/usr/lib/modules/<版本>/`，回退字母不受影响；只有**同一内核版本重新构建**（改了配置或补丁）时新模块会覆盖旧目录，两个字母共用这份新模块——此时回退能救回引导失败，救不回「新模块与旧内核不匹配」这类问题，需要切回旧版本固件包。`/usr/lib/firmware` 同理。
 
@@ -220,7 +220,7 @@ U-Boot 在每次试启动前先持久化扣减尝试次数。新内核/DTB/initr
 
 确认字母自身无法加载（`/boot/Image.<字母>`、`/boot/uInitrd.<字母>` 或 DTB 读不出来）时，引导脚本不改写任何槽变量，先尝试另一个字母一次，再 `bootflow scan -lb` 兜底，仍失败才复位；重复启动做出的仍是同一个决定，不会因为反复复位而更坏。环境不可写（`saveenv` 失败）时不再 `reset`：初始化失败直接启动出厂字母，试启动计数无法持久化时退回已确认字母不启动未记录的候选，A/B 记录降级但不进入复位循环。
 
-`hive-firmware-confirm.service` 验证当前字母确实带着本次安装的载荷（比对 `/boot/Image.<字母>` 的 SHA256）、NetworkManager/Nginx/Xray/Cloudflared/EasyTier 服务、OTA 与订阅守护定时器、携带设备凭证的 Registry 连接。也可安装可执行的 `/etc/hive/firmware-health-check` 增加实际业务检查。只有这些检查通过才把该字母标记为已确认；如果回到了旧字母，则恢复旧版本记录并上报 `rolled_back`。管理服务在试启动期间持续失联也会导致回切。
+`hive-firmware-confirm.service` 验证当前字母确实带着本次安装的载荷（比对 `/boot/Image.<字母>` 的 SHA256）、NetworkManager、Nginx、Cloudflared、EasyTier，以及 `hive-subscription-guard.timer`、`hive-updater.timer`、`hive-command-agent.timer`，再用设备凭证探测 Registry。存在 `/etc/hive/cloudflare-unavailable` 时跳过 Cloudflared：没有凭证的节点不会启用该服务，把它算进健康检查会让试启动永远失败。Xray 只在安装了非空 `/etc/hive/server-token` 的可信出口上要求处于运行中；普通节点可以按兼容策略关掉 Xray，确认阶段不因此失败。也可安装可执行的 `/etc/hive/firmware-health-check`（限时 60 秒）增加实际业务检查。只有这些检查通过才把该字母标记为已确认；如果回到了旧字母，则恢复旧版本记录并上报 `rolled_back`。管理服务在试启动期间持续失联也会导致回切。
 
 回切分支先删掉 `firmware-pending.json` 再清理其余状态：该文件是确认服务的 `ConditionPathExists` 门控，先失败退出会配合 `FailureAction=reboot` 变成无限重启，而环境不可写时 `hive_pending` 根本清不掉。清环境失败只记警告并继续回切。
 

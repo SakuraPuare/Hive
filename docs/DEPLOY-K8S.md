@@ -27,15 +27,16 @@ docker build -t <registry>/hive-registry-ui:<tag> management/registry-ui
 
 | 变量 | 说明 |
 |------|------|
-| `PORT` / `LISTEN_ADDR` | 监听端口，默认 8080 |
-| `MYSQL_HOST/PORT/USER/PASSWORD/DB` | MySQL 连接，DB 默认 `hive_registry` |
-| `API_SECRET` | 管理 API（PATCH/DELETE）Bearer 密钥；非 `HIVE_ENV=dev` 时必填 |
-| `ADMIN_USER` / `ADMIN_PASS` | 超管引导账号 |
-| `ADMIN_SESSION_SECRET` | 管理端 session 签名密钥；非 dev 必填 |
+| `PORT` / `LISTEN_ADDR` | 监听地址。`LISTEN_ADDR` 优先；未设置时为 `:` 加 `PORT`（`PORT` 默认 8080） |
+| `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DB` | MySQL 连接。默认 host `127.0.0.1`、端口 `3306`、用户 `hive`、库 `hive_registry` |
+| `ADMIN_SESSION_SECRET` | 管理端 session 签名密钥。`HIVE_ENV` 不是 `dev` 时必填，否则进程退出 |
+| `ADMIN_API_SECRET` | 自动化 Bearer。非空且与 `API_SECRET` 不同时，可用于所有带权限的管理接口 |
+| `API_SECRET` | 旧共享密钥。只在 `GET /subscription` 与 `GET /subscription/clash` 上仍被接受（Header，或这两条路径的 `?token=`）。不能当作 PATCH/DELETE 的管理密钥。留空不会关闭认证 |
+| `ADMIN_USER` / `ADMIN_PASS` | 超管引导账号。用户名默认 `admin` |
 | `CORS_ALLOW_ORIGINS` | 跨域调试用，同域 ingress 部署可留空 |
 | `FRP_SERVER_ADDR` | FRP 服务器地址，用于管理面板生成 `ssh -p <frp_port>` 应急命令；留空则不显示 FRP 命令 |
 
-> 非 `HIVE_ENV=dev` 时若缺 `API_SECRET` / `ADMIN_SESSION_SECRET`，进程会 fail-fast 退出。
+> `HIVE_ENV` 不是 `dev` 时，缺 `ADMIN_SESSION_SECRET` 会 fail-fast 退出；若此时 `ADMIN_API_SECRET` 非空且与 `API_SECRET` 相同，进程也会直接退出。`API_SECRET` 不是启动必填项。`HIVE_ENV=dev` 会跳过这两项检查。
 
 ## 网络
 

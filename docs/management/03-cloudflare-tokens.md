@@ -37,6 +37,8 @@
 5. 点击 **Continue to summary → Create Token**
 6. **立刻复制**，只显示一次
 
+同一 Token 还会调用 Account 的 WARP Connector 接口（`/accounts/{account_id}/warp_connector`），创建或复用名为 `hive-<mac6>` 的 Cloudflare Mesh。这一步失败只记日志，不中断首次启动。
+
 ---
 
 ## CF_DOMAIN
@@ -47,7 +49,7 @@
 CF_DOMAIN=yourdomain.com
 ```
 
-节点的实际 URL 会自动拼成 `edge-<mac6>.yourdomain.com`。
+节点的实际 URL 会自动拼成 `hive-<mac6>.yourdomain.com`。`<mac6>` 是有线网卡 MAC 去掉冒号后的末 6 位。
 
 ---
 

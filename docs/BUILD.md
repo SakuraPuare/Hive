@@ -11,7 +11,7 @@
 | 项目 | 最低要求 | 推荐 |
 |------|----------|------|
 | 操作系统 | Ubuntu 22.04 / Debian 12 | Ubuntu 22.04 LTS |
-| CPU 核数 | 4 核 | 8 核以上（ccache 加速后影响不大） |
+| CPU 核数 | 4 核 | 8 核以上（冷编译仍随核数变化） |
 | 内存 | 8 GB | 16 GB（可启用 tmpfs 加速） |
 | 磁盘空间 | 50 GB | 100 GB SSD |
 | 网络 | 可访问 GitHub | 国际出口带宽越大越快 |
@@ -19,16 +19,13 @@
 ### 主机依赖
 
 ```bash
-# Armbian 构建系统依赖
+# Armbian 构建系统依赖（ccache 包在这里；能否加速取决于 build.sh 传入的扩展，见「ccache」）
 sudo apt install -y \
     git curl wget jq \
     build-essential python3 \
     ccache unzip zip \
     qemu-user-static binfmt-support \
     debootstrap
-
-# 可选：ccache 加速（推荐，第二次构建节约 60%+ 时间）
-sudo apt install -y ccache
 ```
 
 ### 网络凭证准备
@@ -119,20 +116,15 @@ LTS 设备树由 Armbian 的 6.18 patch 目录提供，不是 Linux 6.18 原生�
 ./scripts/download-binaries.sh
 ```
 
-会下载以下二进制到 overlay 目录：
+脚本把 GitHub Releases 的当前 latest 放进 overlay，不接受 `XRAY_VER`、`CLOUDFLARED_VER` 这类版本变量：
 
-| 软件 | 说明 |
+| 落点 | 内容 |
 |------|------|
-| `xray` | WebSocket 流量转发核心 |
-| `cloudflared` | Cloudflare Tunnel 客户端 |
-| `frpc` | FRP 客户端（SSH 应急隧道） |
-| `easytier-core` | P2P mesh 网络 |
+| `overlay/usr/local/bin/` | `xray`、`frpc`、`easytier-core`、`mihomo`、`xray-exporter` |
+| `overlay/var/www/metacubexd/` | metacubexd 静态面板 |
+| `overlay/var/cache/hive-debs/` | cloudflared 与 Cloudflare WARP 的当前 arm64 deb（按官方 Packages 索引） |
 
-下载均来自各项目 GitHub Releases，可通过环境变量指定版本：
-
-```bash
-XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
-```
+xray、frpc、easytier、mihomo 先解析各仓库 `releases/latest` 的 tag，再按版本化文件名写入 `~/.cache/hive-binaries`（`BIN_CACHE_DIR` 可改目录，`BIN_CACHE_REFRESH=1` 强制重下）。tag 解析失败且没有缓存时，对应组件下载失败。cloudflared / WARP 的 deb 版本来自官方索引，不是写死的版本号。
 
 ### 构建下载加速（大陆网络）
 
@@ -144,7 +136,7 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 | mainline 内核 git 源 | `mirrors.tuna.tsinghua.edu.cn/git/linux-stable.git` | 同上（等价于 `MAINLINE_MIRROR=tuna`） |
 | u-boot / kernel 裸树包 | `ghcr.io`（411 MiB / 331 MiB，full 3.7 GiB） | `scripts/fetch-gitballs.sh` 预取，走 `ghcr.nju.edu.cn` |
 | rootfs 缓存包 | `ghcr.io/armbian/os/rootfs-arm64-trixie-cli`（约 252 MiB） | 同上，按框架打印的 tag 预取 |
-| GitHub Releases 二进制（xray/mihomo/frp/easytier/xray-exporter）、厂商内核分支、rkbin | `github.com` | 直连；`download-binaries.sh` 用 `~/.cache/hive-binaries` 持久缓存（缓存键带版本） |
+| GitHub Releases 二进制（xray/mihomo/frp/easytier/xray-exporter/metacubexd）、厂商内核分支、rkbin | `github.com` | 直连；`download-binaries.sh` 用 `~/.cache/hive-binaries` 持久缓存（缓存键带版本） |
 | Tailscale apt 源 | `pkgs.tailscale.com`（13 MiB） | `customize-image.sh` 改用 `mirrors.ustc.edu.cn/tailscale/debian`（备 `mirror.nju.edu.cn`），签名 keyring 仍取官方 3 KB |
 | Cloudflare WARP | `pkg.cloudflareclient.com`（77 MiB，**没有任何国内镜像**） | `download-binaries.sh` 预取 deb 到 overlay，构建时本地安装 |
 | cloudflared | `pkg.cloudflare.com/cloudflared`（18.3 MiB deb，**没有国内镜像**） | 优先 apt 装（`any` 套件）；apt 拉不到时回落到 `download-binaries.sh` 预取的同一份 deb |
@@ -197,9 +189,9 @@ XRAY_VER=v26.2.6 CLOUDFLARED_VER=2026.2.0 ./scripts/download-binaries.sh
 2. 渲染配置模板（`config.env`, `frpc.toml`）
 3. 同步 userpatches 到 Armbian build 目录
 4. 预取 GHCR 上的 u-boot / kernel 裸树包与 rootfs 缓存包（见上节，幂等）
-5. 调用 `compile.sh` 完成完整构建
+5. 调用 `compile.sh`，并传入 `ENABLE_EXTENSIONS=ccache`
 
-首次构建约需 30-90 分钟（视机器性能）。后续构建因 ccache 缓存通常只需 10-20 分钟。
+内核在 ccache 没有命中时，脚本注释里的一次实测大约 66 分钟。`build.sh` 现已传入 `ENABLE_EXTENSIONS=ccache`，缓存开始命中之后编译段会缩短。只安装 ccache、仍传 `USE_CCACHE=yes` 时，编译不会进缓存。
 
 > **A/B 构建（`HIVE_AB=yes`）的两条缓存陷阱**，改构建流程前先看：
 > 1. `u-boot` 的 artifact 缓存键里没有 `HIVE_AB`（`lib/functions/artifacts/artifact-uboot.sh` 的
@@ -295,12 +287,11 @@ echo "所有 SD 卡烧录完成"
 | 组件 | 版本/说明 |
 |------|-----------|
 | Debian | trixie (Debian 13) |
-| Kernel | Rockchip vendor kernel（优化版） |
+| Kernel | 随 profile：`nanopi-zero2`、`nanopi-r3s`、`nanopi-r3s-lts`、`orangepi4-lts` 为 `current`（`linux-rockchip64-current`，6.18）；只有 `nanopi-r28s` 为 `vendor`（`linux-rk35xx-vendor`，6.1） |
 | nginx | 反向代理（监听 10077，WebSocket → xray） |
-| xray | 最新 arm64 版（WebSocket 转发，监听 10079） |
-| cloudflared | 最新 arm64 版 |
-| frpc | 0.67.0 arm64 |
-| easytier-core | v2.4.5 arm64 |
+| xray | WebSocket 转发，监听 10079；版本是 `download-binaries.sh` 解析到的 GitHub Releases latest |
+| frpc、easytier-core、mihomo、xray-exporter | 同样取 GitHub Releases latest |
+| cloudflared | 官方 apt（套件 `any`）；apt 失败时用预取的 deb |
 | Tailscale | 官方 apt 源安装 |
 | 防火墙 | UFW + fail2ban（UFW 日志默认关闭） |
 | 监控 | Prometheus Node Exporter |
@@ -329,12 +320,21 @@ rm -rf armbian-build/build/output/
 ./scripts/build.sh
 ```
 
-### ccache 统计
+### ccache
+
+`./scripts/build.sh` 调用 `compile.sh` 时传入 `ENABLE_EXTENSIONS=ccache`，并在每次构建前把同一份配置写到两处：
+
+- `armbian-build/build/cache/ccache/ccache.conf`
+- root 的 ccache 目录（`compile.sh` 提权后，内核和 u-boot 读的是 `${CCACHE_DIR:-$HOME/.cache/ccache}/ccache.conf`，默认即 `/root/.cache/ccache`）
+
+配置为 `max_size = 30G`、`sloppiness = time_macros,include_file_mtime,include_file_ctime,file_macro,locale`、`hash_dir = false`、`compiler_check = content`。Armbian 26.11 把入口从 `USE_CCACHE` 换成 compile-cache 扩展：`USE_CCACHE=yes` 只会打出 `USE_CCACHE / PRIVATE_CCACHE are ignored`，编译不经过 ccache，只剩链接。没有扩展时，`cache/ccache` 里测到 2668 次调用全部 uncacheable、命中 0。换上扩展后，u-boot 编译的 731 次调用走 ccache（首轮全 miss，65s→48s），之后的构建才会开始命中。
 
 ```bash
-ccache -s    # 查看命中率和缓存大小
-ccache -C    # 清空缓存（通常不需要）
+ccache -s -d armbian-build/build/cache/ccache
+sudo ccache -s -d /root/.cache/ccache
 ```
+
+对不带 `-d` 的默认目录执行 `ccache -C` 清不到这两处。
 
 ### 磁盘空间不足
 
@@ -351,20 +351,17 @@ rm -rf armbian-build/build/cache/
 
 ---
 
-## 六、二次构建（仅更新脚本）
+## 六、再次构建
 
-如果只修改了脚本（不改内核或依赖），可以避免完整重编译：
+改过 userpatches 或脚本后，直接再跑 `build.sh`。它会 `rsync -a --delete` 把 `armbian-build/userpatches/` 同步进框架，并带上 `ENABLE_EXTENSIONS=ccache`、`KERNEL_CONFIGURE=no`、`BUILD_DESKTOP=no`。
 
 ```bash
-# 更新 userpatches
-rsync -a armbian-build/userpatches/ armbian-build/build/userpatches/
-
-# 重跑 customize-image 阶段（Armbian 支持 --skip-kernel）
-cd armbian-build/build
-./compile.sh build BOARD=nanopi-zero2 BRANCH=vendor RELEASE=trixie \
-    SKIP_EXTERNAL_TOOLCHAINS=yes \
-    COMPRESS_OUTPUTIMAGE=yes
+./scripts/build.sh nanopi-zero2
 ```
+
+板型和分支由 profile 决定。额外参数里如果出现 `BOARD=`、`BRANCH=` 或 `HIVE_AB=`，脚本会退出。默认的 `nanopi-zero2` 是 `BRANCH=current`；只有 `./scripts/build.sh nanopi-r28s` 使用 `vendor`。
+
+手工调用 `compile.sh` 时也要带 `ENABLE_EXTENSIONS=ccache`。`USE_CCACHE=yes` 在 Armbian 26.11 上不会让编译进入 ccache。
 
 ---
 

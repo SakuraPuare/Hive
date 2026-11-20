@@ -11,7 +11,7 @@
 | 方式 | 命令 | 可用条件 |
 |------|------|----------|
 | **Tailscale**（推荐）| `ssh root@hive-<mac6>` | Tailscale 网络正常 |
-| **EasyTier** | `ssh root@10.x.x.x` | EasyTier mesh 正常 |
+| **EasyTier** | `ssh root@172.20.x.x` | EasyTier mesh 正常（Registry 在 `172.20.0.0/16` 按 MAC 发号） |
 | **FRP**（应急） | `ssh -p <frp_port> root@<vps-ip>` | FRP VPS 可达 |
 
 ### 获取节点连接信息
@@ -21,7 +21,7 @@
 ```
  Connection Info:
  Tailscale        : ssh root@hive-a4b2c1
- EasyTier         : ssh root@10.164.178.193
+ EasyTier         : ssh root@172.20.1.5
  FRP              : ssh -p 23456 root@vps.example.com
  CF Proxy         : https://hive-a4b2c1.example.com
 ```
@@ -67,8 +67,8 @@ ssh-copy-id root@hive-a4b2c1
 # 查看 EasyTier 节点列表（在任意已接入节点上执行）
 easytier-core --version
 
-# SSH 到 EasyTier IP（从 /etc/hive/node-info 获取）
-ssh root@10.164.178.193
+# SSH 到 EasyTier IP（从 /etc/hive/node-info 获取，地址在 172.20.0.0/16）
+ssh root@172.20.1.5
 ```
 
 ### FRP SSH（应急）
@@ -155,20 +155,18 @@ Hive 的无线网卡只做 AP：非 AP 模式（station/monitor 或无法读取�
 
 ### 管理员单机控制与群控
 
-管理员可在「节点管理」的行菜单或节点详情页打开节点控制；勾选多个节点后，
-通过「控制选中节点」对选中设备下发同一命令。支持重启设备、同步配置、重启 Xray/Mihomo，
-以及白名单服务的启动、停止、重启和状态查询，不支持任意 shell 命令。
-热点只暴露一个 `hive-hotspot` 逻辑服务：状态合并 2.4G NetworkManager AP 与
-5G hostapd；启动/重启重新执行热点配置，停止会同时关闭两个频段。
-不再单独列出 `hive-hotspot-5g`。
+节点列表行菜单的「节点控制」，或节点详情页的「控制节点」，打开的是这一台的控制对话框。勾选多台后点「控制选中节点」，对选中设备下发同一条命令。这个对话框只能下发：重启设备、同步配置、重启 Xray、重启 Mihomo，以及服务的启动、停止、重启、查看状态。不能下发任意 shell。
 
-写操作需要 `node:write` 权限并明确确认目标设备；命令历史读取需要 `node:read`。
-批量下发最多同时处理 5 台，逐设备显示下发失败、排队、已发送、执行成功、失败或过期。
-下发成功仅代表进入队列，不代表执行成功；设备在下一个 agent 周期执行并回传结果。
-离线设备恢复前可能超时，命令队列有效期为 10 分钟；前端不会自动重试写操作。
+单台和多台的服务控制入口不同：
 
-控制对话框打开时每 2 秒刷新执行结果，可展开查看实际输出。关闭对话框后停止刷新。
-停止 `hive-command-agent.timer` 会中断后续心跳和命令拉取，需要通过 SSH 等其他通道恢复。
+- 单台时，命令下拉里没有「服务控制」。下方「软件服务控制」按代理与隧道、网关与热点、安全防护、系统服务、同步与自动化分组列出白名单服务，每项可点启动、停止、重启或状态。卡片上的字来自 `GET /api/admin/nodes/{mac}/services`（直连 registry 时去掉 `/api`），是心跳快照，不是打开页面对设备实时执行 `systemctl`。具备 `node:read` 且对话框开着时约每 5 秒重读。没有采样、读取失败，或采样超过 150 秒，卡片状态显示未知；有采样时间且超过 150 秒时另外提示已过期。`load_state` 为 `not-found` 显示未安装，`sub_state` 为 `not-applicable` 显示未启用（当前拓扑）。
+- 多台时仍用命令下拉里的「服务控制」，再选服务和操作，然后点「下发命令」。不显示逐服务面板。
+
+两边的名单都不含 `hive-hotspot-5g`。热点只暴露一个 `hive-hotspot` 逻辑服务：状态合并 2.4G NetworkManager AP 与 5G hostapd；启动或重启会重新执行热点配置，停止会同时关闭两个频段。
+
+「查看状态」直接入队，不弹确认；它下发的仍是上一节的 `service-control` status，结果在命令历史里。重启设备、同步配置、重启 Xray、重启 Mihomo，以及服务的启动、停止、重启，需要 `node:write`，并在确认框里核对目标。没有 `node:write` 时，只要有 `node:read` 仍可看命令历史和服务快照。对话框里的历史读取和下发共用最多 5 个在途请求，多出来的目标排队，不是只能勾选 5 台。逐设备显示入队失败、正在入队、待执行、已发送、已完成、执行失败或已过期。入队成功只表示进了队列；设备在下一个 agent 周期执行并回传。重启类命令显示已完成，只表示设备已接受并安排重启，不是已经验证重启成功。离线设备恢复前可能过期，队列有效期 10 分钟。前端不会自动重试写操作。
+
+对话框打开时约每 2 秒刷新命令历史和本批结果，可查看参数和回传输出。关闭后停止刷新。停止 `hive-command-agent.timer` 会中断后续心跳和命令拉取，需要通过 SSH 等其他通道恢复。
 
 
 ### 一键自测
@@ -287,42 +285,35 @@ curl https://registry.example.com/api/subscription
 
 ## 六、批量操作（Ansible）
 
-在管理服务器上执行：
+在管理服务器上执行。清单是 `inventory/tailscale.py`：读本机 `tailscale status --json`，把带 `tag:hive` 的节点放进组 `hive_nodes`。
 
 ```bash
 cd /opt/hive/ansible
 
 # 测试连通性
-ansible all -m ping
+ansible hive_nodes -m ping
 
 # 查看所有节点 xray 状态
-ansible all -m command -a "systemctl status xray --no-pager"
+ansible hive_nodes -m command -a "systemctl status xray --no-pager"
 
 # 批量重启 xray
-ansible all -m systemd -a "name=xray state=restarted"
-
-# 批量推送新 xray 配置
-ansible-playbook playbooks/update-xray.yml
+ansible hive_nodes -m systemd -a "name=xray state=restarted"
 
 # 批量查看节点版本
-ansible all -m command -a "xray --version"
+ansible hive_nodes -m command -a "xray --version"
 
 # 批量查看节点在线时长
-ansible all -m command -a "uptime"
+ansible hive_nodes -m command -a "uptime"
 ```
 
-### 常用 playbook
+仓库里没有 `playbooks/update-xray.yml`。配置重拉用管理面板的「同步配置」（动作 `resync`，重新执行 `hive-xray-sync` 与 `hive-clash-sync`）。
 
-```bash
-# 检查所有服务状态
-ansible-playbook playbooks/service-status.yml
+现有 playbook 的 `hosts` 仍写成 `tag_hive`，和 inventory 组名 `hive_nodes` 不一致，直接 `ansible-playbook` 会匹配不到主机：
 
-# 批量重启所有服务
-ansible-playbook playbooks/restart-services.yml
-
-# Ping 测试
-ansible-playbook playbooks/ping.yml
-```
+- `ping.yml`：ping，并打印 `/etc/hive/node-info`。
+- `service-status.yml`：只查看 xray、cloudflared、tailscaled、easytier、frpc、prometheus-node-exporter。
+- `restart-services.yml`：必须带 `-e service=<单元名>` 才重启那一个单元，并要求结束后 `ActiveState=active`；不传 `service` 则什么都不做。
+- `upgrade-from-v1.0.yml`：把 v1.0.0 节点的 sysctl 与 apt 源写成当前布局，不是日常重启。
 
 ---
 
@@ -330,20 +321,22 @@ ansible-playbook playbooks/ping.yml
 
 ### Prometheus 抓取
 
-Prometheus 通过 Node Registry 动态发现节点，target 格式为 `hostname:9100`（依赖 Tailscale MagicDNS 解析）。
+Prometheus 在管理服务器上只听 `127.0.0.1:4230`。节点列表来自 Node Registry 的 `GET /prometheus-targets`（file_sd）。只包含 `enabled = 1`、`status = active`，且 `tailscale_ip` 既非空也不是 `pending` 的节点。每台先有一条 `hostname:9100`，标签 `transport=tailscale`，靠 Tailscale MagicDNS 解析。`easytier_ip` 以 `172.20.` 开头时再追加一条 `easytier_ip:9100`，`transport=easytier`。其余标签是 `hostname`、`cf_url`、`location`、`mac6`。
 
 ```bash
-# 在管理服务器查看节点列表
-curl http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job, instance, health}'
+# 在管理服务器上查看抓取目标
+curl -sf http://127.0.0.1:4230/api/v1/targets | jq '.data.activeTargets[] | {job, instance, health}'
 ```
 
 ### Grafana 仪表板
 
-通过 Tailscale 访问管理服务器的 Grafana：
+Grafana 使用 host 网络，HTTP 端口是 `4231`（`GF_SERVER_HTTP_PORT`）。`GF_SERVER_SERVE_FROM_SUB_PATH=true`，页面挂在 `GF_SERVER_ROOT_URL` 的路径下，默认是 `/grafana`。经 Tailscale 访问管理服务器：
 
 ```
-http://<管理服务器 Tailscale IP>:3000
+http://<管理服务器 Tailscale IP>:4231/grafana/
 ```
+
+改过 `GRAFANA_ROOT_URL` 时，路径跟那个 URL 走。
 
 常用面板：
 - **Node Exporter Full**（Dashboard ID: 1860）— CPU、内存、网络、磁盘
@@ -359,15 +352,16 @@ curl http://127.0.0.1:9100/metrics | grep -E "^node_(cpu|memory|network).*{" | h
 ### Prometheus targets 手动更新（管理服务器）
 
 ```bash
-# 通过 Node Registry 接口刷新（无需 cron）
-curl -sf -H "Authorization: Bearer <API_SECRET>" \
+# 直连本机 registry（无 /api 前缀）。需要 ADMIN_API_SECRET，
+# 或带 prometheus:read 的管理会话。旧共享 API_SECRET 和 ?token= 会 401。
+curl -sf -H "Authorization: Bearer ${ADMIN_API_SECRET}" \
     http://127.0.0.1:8080/prometheus-targets \
     > /opt/hive/management/prometheus/targets/nodes.json
 
 # 通知 Prometheus 热重载
 curl -sf -X POST http://127.0.0.1:4230/-/reload
 
-# 通过 Tailscale API 动态发现（update-targets.sh 脚本）
+# 另一条来源：用 Tailscale API 写同一个 targets 文件（脚本里也会请求上面的 reload）
 /opt/hive/management/scripts/update-targets.sh
 ```
 
