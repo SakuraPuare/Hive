@@ -293,6 +293,9 @@ export function NodeCommandsDialog({ nodes, open, onOpenChange }: {
                             {unknown ? t('serviceStatusUnknown') : state.load_state === 'not-found' ? t('serviceStatusNotFound') : state.sub_state === 'not-applicable' ? t('serviceStatusNotApplicable') : `${state.active_state} / ${state.sub_state}`}
                           </span>
                         </div>
+                        {serviceName === 'hive-gateway' && state?.sub_state === 'not-applicable' && (
+                          <p className="mb-2 text-xs text-muted-foreground">{t('serviceGatewayHotspotHint')}</p>
+                        )}
                         <div className="flex flex-wrap gap-1.5">
                           {SERVICE_OPERATIONS.map((operationName) => {
                             const key = `${serviceName}:${operationName}`;

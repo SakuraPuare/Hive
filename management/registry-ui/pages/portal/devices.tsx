@@ -770,6 +770,9 @@ export default function PortalDevicesPage() {
                               </span>;
                             })()}
                           </div>
+                          {service === 'hive-gateway' && serviceSnapshot?.services.find((s) => s.name === service)?.sub_state === 'not-applicable' && (
+                            <p className="mb-2 text-xs text-muted-foreground">{t('serviceGatewayHotspotHint')}</p>
+                          )}
                           <div className="flex flex-wrap gap-1.5">
                             {SERVICE_OPERATIONS.map((operation) => {
                               const key = `${service}:${operation}`;
