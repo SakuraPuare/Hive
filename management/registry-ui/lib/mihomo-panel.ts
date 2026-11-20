@@ -1,6 +1,5 @@
 export type MihomoNetwork =
   | 'wan' | 'lan' | 'physical' | 'hotspot5g' | 'hotspot2g'
-  | 'easytier' | 'tailscale' | 'mesh'
   | 'lan-fallback' | 'hotspot5g-fallback' | 'hotspot2g-fallback';
 
 export type DashboardInfo = {

@@ -114,15 +114,11 @@ func (h *Handler) HandlePortalDeviceAddresses(w http.ResponseWriter, r *http.Req
 		return
 	}
 	result := model.DeviceAddressesResponse{
-		Hostname:    node.Hostname,
-		MAC:         node.MAC,
-		LastSeen:    node.LastSeen,
-		LAN:         []model.LANAddress{},
-		TailscaleIP: knownAddress(node.TailscaleIP),
-		EasytierIP:  knownAddress(node.EasytierIP),
-		MeshIP:      knownAddress(node.MeshIP),
-		CFURL:       knownAddress(node.CFURL),
-		FRP:         model.DeviceFRPAddress{Host: knownAddress(h.Config.FRPServerAddr), Port: node.FRPPort},
+		Hostname: node.Hostname,
+		MAC:      node.MAC,
+		LastSeen: node.LastSeen,
+		LAN:      []model.LANAddress{},
+		CFURL:    knownAddress(node.CFURL),
 	}
 	if row.AddressSnapshot != nil && row.AddressesSampledAt != nil {
 		var sample model.DeviceAddressSnapshot

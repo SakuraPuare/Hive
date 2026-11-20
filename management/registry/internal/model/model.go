@@ -442,22 +442,15 @@ type DeviceAddressSnapshot struct {
 	Egress DeviceEgress `json:"egress"`
 }
 
-type DeviceFRPAddress struct {
-	Host string `json:"host"`
-	Port int    `json:"port"`
-}
-
 // DeviceAddressesResponse contains addresses only, never node credentials.
+// Overlay and tunnel details (Tailscale/EasyTier/mesh/FRP) are operator-only
+// and deliberately absent here.
 type DeviceAddressesResponse struct {
-	Hostname    string           `json:"hostname"`
-	MAC         string           `json:"mac"`
-	LastSeen    string           `json:"last_seen"`
-	SampledAt   *string          `json:"sampled_at"`
-	LAN         []LANAddress     `json:"lan"`
-	TailscaleIP string           `json:"tailscale_ip"`
-	EasytierIP  string           `json:"easytier_ip"`
-	MeshIP      string           `json:"mesh_ip"`
-	CFURL       string           `json:"cf_url"`
-	FRP         DeviceFRPAddress `json:"frp"`
-	Egress      DeviceEgress     `json:"egress"`
+	Hostname  string       `json:"hostname"`
+	MAC       string       `json:"mac"`
+	LastSeen  string       `json:"last_seen"`
+	SampledAt *string      `json:"sampled_at"`
+	LAN       []LANAddress `json:"lan"`
+	CFURL     string       `json:"cf_url"`
+	Egress    DeviceEgress `json:"egress"`
 }

@@ -117,13 +117,16 @@ GET /api/portal/devices/{mac}/services
 
 ### Mihomo 面板地址与一键连接
 
-「我的设备 → Mihomo 面板」按网络分别展示 WAN 上联接口、LAN、2.4G/5G 热点、
-EasyTier、Tailscale 和 Cloudflare Mesh 地址。WAN 是物理接口在主路由表中的默认路由角色，
+「我的设备 → Mihomo 面板」只展示设备物理网络的 WAN 上联接口、LAN、2.4G/5G 热点；
+Tailscale、EasyTier、Cloudflare Mesh 和 FRP 属于管理通道，不在客户 API 或页面暴露。
+WAN 是物理接口在主路由表中的默认路由角色，
 可能是家庭路由器分配的私网地址；旧样本无法确定角色时明确标为物理接口，不猜测 WAN。
 缺少快照时的固定网关地址仅作为默认候选，不代表热点已经启动。
 
 「一键打开」在节点自己的 MetaCubeXD 地址中使用 `#/?hostname=…&port=9090&http=true&secret=…`
-自动连接后端，IPv6 正确加方括号。密钥位于 URL fragment，不发送给 HTTP 静态资源服务器；
+自动连接后端。面板候选只列 IPv4：节点公网 IPv6 默认被 UFW 拦截入向 9090，
+列出会生成打不开的链接；IPv6 仍可在设备地址页作为观测信息查看。
+密钥位于 URL fragment，不发送给 HTTP 静态资源服务器；
 仍会存在于浏览器地址/历史中，勿分享完整链接。页面不在链接文字中显示密钥。
 
 需要从对应网络访问该地址；WAN 候选不保证从公网可达。观测公网出口只用于展示，
@@ -451,9 +454,9 @@ journalctl _COMM=sshd --since "24 hours ago" | grep "Accepted\|Failed"
 
 ## 十二、客户设备网络地址
 
-客户门户「我的设备」的独立地址页读取 `GET /api/portal/devices/{mac}/addresses`，仅设备所有者可访问；接口不返回设备凭证、订阅 token 或 Xray UUID，也不会下发命令、重启服务。
+客户门户「我的设备」的独立地址页读取 `GET /api/portal/devices/{mac}/addresses`，仅设备所有者可访问；接口不返回设备凭证、订阅 token、Xray UUID，也不返回 Tailscale/EasyTier/Cloudflare Mesh 地址或 FRP 主机端口，不会下发命令、重启服务。
 
-- `hostname`、`mac`、`last_seen` 为节点身份和最后心跳；`tailscale_ip`、`easytier_ip`、`mesh_ip`、`cf_url` 取注册信息，尚未就绪的 `pending` 显示为空。`frp.host` 使用 registry 的 `FRP_SERVER_ADDR`，`frp.port` 为节点分配端口。
+- `hostname`、`mac`、`last_seen` 为节点身份和最后心跳；`cf_url` 为注册的 Cloudflare 访问链接，尚未就绪的 `pending` 显示为空。
 - `lan` 为 `ip -j address` 中具有 `/sys/class/net/<接口>/device` 的物理网卡 IPv4/IPv6 地址（含前缀长度），最多 32 项；不包含回环、链路本地、虚拟隧道及 fake-IP 地址。
 - `sampled_at` 是 registry 收到网络快照的 RFC3339 时间，与 `last_seen` 独立。旧 agent 不上报时为 `null`、`lan: []`；旧心跳不会刷新已有网络样本。
 - `egress.ipv4` / `egress.ipv6` 为节点分别使用 IPv4/IPv6 HTTPS 请求 Cloudflare trace 的实际 `ip=`。探测禁用环境 HTTP 代理，但仍可能经过系统透明代理、隧道或上游 NAT：这是**节点请求路径所见出口，不保证直连 WAN 地址**。

@@ -21,8 +21,7 @@ const fullAddresses = {
     { interface: 'eth0', address: '2001:db8:1::228', prefix_length: 64 },
     { interface: 'wlan0', address: '10.42.0.1', prefix_length: 24 },
   ],
-  tailscale_ip: '100.64.0.9', easytier_ip: '172.20.1.7', mesh_ip: 'fd00:1::7',
-  cf_url: 'https://device.example.com', frp: { host: '2001:db8:2::1', port: 29918 },
+  cf_url: 'https://device.example.com',
   egress: { ipv4: '203.0.113.9', ipv6: '2001:db8:3::9', sampled_at: '2026-11-20T11:00:00Z' },
 };
 
@@ -55,7 +54,7 @@ describe('DeviceAddressesPage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows and individually copies every address family including bracketed IPv6 FRP', async () => {
+  it('shows and individually copies LAN, Cloudflare and egress addresses without management networks', async () => {
     render(<DeviceAddressesPage />);
     await screen.findByText(fullAddresses.hostname);
     expect(mockFetch).toHaveBeenCalledWith('/api/portal/devices/aabbccddeeff/addresses', {
@@ -63,8 +62,7 @@ describe('DeviceAddressesPage', () => {
     });
     const values = [
       fullAddresses.mac, '192.168.5.228/24', '2001:db8:1::228/64', '10.42.0.1/24',
-      fullAddresses.tailscale_ip, fullAddresses.easytier_ip, fullAddresses.mesh_ip,
-      '[2001:db8:2::1]:29918', fullAddresses.cf_url, fullAddresses.egress.ipv4, fullAddresses.egress.ipv6,
+      fullAddresses.cf_url, fullAddresses.egress.ipv4, fullAddresses.egress.ipv6,
     ];
     for (const value of values) {
       const row = screen.getByText(value).parentElement!.parentElement!;
@@ -84,14 +82,14 @@ describe('DeviceAddressesPage', () => {
 
   it('distinguishes unknown LAN data from a current empty snapshot and blank endpoints', async () => {
     const empty = {
-      ...fullAddresses, last_seen: '', sampled_at: null, lan: [], tailscale_ip: '', easytier_ip: '', mesh_ip: '',
-      cf_url: '', frp: { host: '', port: 0 }, egress: { ipv4: '', ipv6: '', sampled_at: null },
+      ...fullAddresses, last_seen: '', sampled_at: null, lan: [],
+      cf_url: '', egress: { ipv4: '', ipv6: '', sampled_at: null },
     };
     mockFetch.mockResolvedValueOnce(response(empty)).mockResolvedValueOnce(response({ ...empty, sampled_at: fullAddresses.sampled_at }));
     render(<DeviceAddressesPage />);
     await screen.findByText('deviceAddresses.lanUnknown');
     expect(screen.queryByText('deviceAddresses.lanEmpty')).not.toBeInTheDocument();
-    expect(screen.getAllByText('deviceAddresses.unknown').length).toBeGreaterThanOrEqual(7);
+    expect(screen.getAllByText('deviceAddresses.unknown').length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByRole('button', { name: 'deviceAddresses.copyAddress' })).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'deviceAddresses.refresh' }));
     await screen.findByText('deviceAddresses.lanEmpty');

@@ -31,6 +31,65 @@ func (h *Handler) ownedNode(w http.ResponseWriter, mac string, cid uint) (model.
 	return n, true
 }
 
+// PortalDevice is the customer-facing view of a claimed device. Overlay/tunnel
+// addresses, FRP port, Xray credentials, subscription-sync flags and operator
+// bookkeeping (location/note/region/weight, private heartbeat snapshots) stay
+// out; only the fields below reach a portal user.
+type PortalDevice struct {
+	MAC                  string  `json:"mac"`
+	MAC6                 string  `json:"mac6"`
+	Hostname             string  `json:"hostname"`
+	CFURL                string  `json:"cf_url"`
+	ProbeStatus          string  `json:"probe_status"`
+	LastSeen             string  `json:"last_seen"`
+	RegisteredAt         string  `json:"registered_at"`
+	Enabled              bool    `json:"enabled"`
+	Status               string  `json:"status"`
+	ExitEnabled          bool    `json:"exit_enabled"`
+	OwnerExitEnabled     bool    `json:"owner_exit_enabled"`
+	GatewayEnabled       bool    `json:"gateway_enabled"`
+	GatewayDirection     string  `json:"gateway_direction"`
+	GatewayUpstreamMode  string  `json:"gateway_upstream_mode"`
+	GatewayUpstreamNodes string  `json:"gateway_upstream_nodes"`
+	BoundSubscriptionID  *uint   `json:"bound_subscription_id"`
+	Country              string  `json:"country"`
+	CountryOverride      string  `json:"country_override"`
+	ClaimedAt            *string `json:"claimed_at"`
+}
+
+// portalDevice maps an allowlisted subset of a node onto the customer view.
+func portalDevice(n model.Node) PortalDevice {
+	return PortalDevice{
+		MAC:                  n.MAC,
+		MAC6:                 n.MAC6,
+		Hostname:             n.Hostname,
+		CFURL:                n.CFURL,
+		ProbeStatus:          n.ProbeStatus,
+		LastSeen:             n.LastSeen,
+		RegisteredAt:         n.RegisteredAt,
+		Enabled:              n.Enabled,
+		Status:               n.Status,
+		ExitEnabled:          n.ExitEnabled,
+		OwnerExitEnabled:     n.OwnerExitEnabled,
+		GatewayEnabled:       n.GatewayEnabled,
+		GatewayDirection:     n.GatewayDirection,
+		GatewayUpstreamMode:  n.GatewayUpstreamMode,
+		GatewayUpstreamNodes: n.GatewayUpstreamNodes,
+		BoundSubscriptionID:  n.BoundSubscriptionID,
+		Country:              n.Country,
+		CountryOverride:      n.CountryOverride,
+		ClaimedAt:            n.ClaimedAt,
+	}
+}
+
+func portalDevices(nodes []model.Node) []PortalDevice {
+	devices := make([]PortalDevice, 0, len(nodes))
+	for _, n := range nodes {
+		devices = append(devices, portalDevice(n))
+	}
+	return devices
+}
+
 // HandlePortalListDevices godoc
 // @Summary      列出我的设备
 // @ID           PortalListDevices
@@ -38,7 +97,7 @@ func (h *Handler) ownedNode(w http.ResponseWriter, mac string, cid uint) (model.
 // @Tags         portal
 // @Security     CustomerSessionCookie
 // @Produce      json
-// @Success      200 {array}  model.Node
+// @Success      200 {array}  PortalDevice
 // @Failure      500 {object} ErrorResponse
 // @Router       /portal/devices [get]
 func (h *Handler) HandlePortalListDevices(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +110,7 @@ func (h *Handler) HandlePortalListDevices(w http.ResponseWriter, r *http.Request
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
-	h.jsonOK(w, nodes)
+	h.jsonOK(w, portalDevices(nodes))
 }
 
 // HandlePortalGetDevice godoc
@@ -61,7 +120,7 @@ func (h *Handler) HandlePortalListDevices(w http.ResponseWriter, r *http.Request
 // @Security     CustomerSessionCookie
 // @Produce      json
 // @Param        mac path string true "设备 MAC"
-// @Success      200 {object} model.Node
+// @Success      200 {object} PortalDevice
 // @Failure      404 {object} ErrorResponse
 // @Router       /portal/devices/{mac} [get]
 func (h *Handler) HandlePortalGetDevice(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +128,7 @@ func (h *Handler) HandlePortalGetDevice(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	h.jsonOK(w, n)
+	h.jsonOK(w, portalDevice(n))
 }
 
 // PortalClaimRequest is the body for POST /portal/devices/claim.

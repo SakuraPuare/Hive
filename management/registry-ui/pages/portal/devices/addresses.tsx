@@ -18,11 +18,7 @@ interface DeviceAddresses {
   last_seen: string;
   sampled_at: string | null;
   lan: Array<{ interface: string; address: string; prefix_length: number }>;
-  tailscale_ip: string;
-  easytier_ip: string;
-  mesh_ip: string;
   cf_url: string;
-  frp: { host: string; port: number };
   egress: { ipv4: string; ipv6: string; sampled_at: string | null };
 }
 
@@ -123,9 +119,6 @@ export default function DeviceAddressesPage() {
   const lanStale = !!data?.sampled_at && now - Date.parse(data.sampled_at) > 150000;
   const egressStale = !!data?.egress.sampled_at && now - Date.parse(data.egress.sampled_at) > 7200000;
   const sampleTime = (sample: string | null) => sample ? `${fmt.dateTime(sample, t('unknown'))} · ${fmt.relative(sample, t('unknown'))}` : t('unknown');
-  const frpHost = data?.frp.host ?? '';
-  const frp = frpHost && data?.frp.port && data.frp.port > 0
-    ? `${frpHost.includes(':') && !frpHost.startsWith('[') ? `[${frpHost}]` : frpHost}:${data.frp.port}` : '';
 
   return (
     <PageContainer>
@@ -160,17 +153,8 @@ export default function DeviceAddressesPage() {
             </CardContent>
           </Card>
           <Card>
-            <CardHeader><CardTitle>{t('overlay')}</CardTitle></CardHeader>
-            <CardContent>
-              <AddressRow label={t('tailscale')} value={data.tailscale_ip} />
-              <AddressRow label={t('easytier')} value={data.easytier_ip} />
-              <AddressRow label={t('mesh')} value={data.mesh_ip} />
-            </CardContent>
-          </Card>
-          <Card>
             <CardHeader><CardTitle>{t('remoteAccess')}</CardTitle></CardHeader>
             <CardContent>
-              <AddressRow label={t('frp')} value={frp} />
               <AddressRow label={t('cloudflare')} value={data.cf_url} link />
             </CardContent>
           </Card>

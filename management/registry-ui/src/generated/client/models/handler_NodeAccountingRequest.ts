@@ -15,5 +15,9 @@ export type handler_NodeAccountingRequest = {
      */
     generation?: string;
     online?: Array<handler_NodeOnlineDevice>;
+    /**
+     * Agent understands owner-* users; legacy agents default to paid users only
+     */
+    owner_access?: boolean;
 };
 

@@ -11,45 +11,34 @@ import (
 	"hive/registry/internal/model"
 )
 
-func TestDashboardEndpointsDualStackNetworks(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		ip   string
-		url  string
-	}{
-		{"ipv4", "172.20.1.2", "http://172.20.1.2:9090/ui/"},
-		{"ipv6", "fd00::2", "http://[fd00::2]:9090/ui/"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			n := model.Node{EasytierIP: test.ip, TailscaleIP: test.ip, MeshIP: test.ip}
-			sample := model.DeviceAddressSnapshot{LAN: []model.LANAddress{
-				{Interface: "wan", Address: "192.168.1.2", Role: "wan"},
-				{Interface: "wan", Address: "2001:db8::2", Role: "wan"},
-				{Interface: "lan", Address: "10.42.2.1", Role: "lan"},
-				{Interface: "wlan0", Address: "10.42.1.1", Role: "lan"},
-				{Interface: "wlan1", Address: "10.42.0.1", Role: "lan"},
-				{Interface: "duplicate", Address: "192.168.1.2", Role: "wan"},
-			}, Egress: model.DeviceEgress{IPv4: "1.1.1.1", IPv6: "2606:4700:4700::1111"}}
-			got := dashboardEndpoints(n, &sample)
-			want := []DashboardEndpoint{
-				{Network: "easytier", Address: test.ip, URL: test.url},
-				{Network: "tailscale", Address: test.ip, URL: test.url},
-				{Network: "mesh", Address: test.ip, URL: test.url},
-				{Network: "wan", Interface: "wan", Address: "192.168.1.2", URL: "http://192.168.1.2:9090/ui/"},
-				{Network: "wan", Interface: "wan", Address: "2001:db8::2", URL: "http://[2001:db8::2]:9090/ui/"},
-				{Network: "lan", Interface: "lan", Address: "10.42.2.1", URL: "http://10.42.2.1:9090/ui/"},
-				{Network: "hotspot5g", Interface: "wlan0", Address: "10.42.1.1", URL: "http://10.42.1.1:9090/ui/"},
-				{Network: "hotspot2g", Interface: "wlan1", Address: "10.42.0.1", URL: "http://10.42.0.1:9090/ui/"},
-			}
-			if !reflect.DeepEqual(got, want) {
-				t.Fatalf("endpoints = %+v, want %+v", got, want)
-			}
-		})
+func TestDashboardEndpointsIPv4Only(t *testing.T) {
+	sample := model.DeviceAddressSnapshot{LAN: []model.LANAddress{
+		{Interface: "wan", Address: "192.168.1.2", Role: "wan"},
+		{Interface: "wan", Address: "2001:db8::2", Role: "wan"},
+		{Interface: "lan", Address: "10.42.2.1", Role: "lan"},
+		{Interface: "wlan0", Address: "10.42.1.1", Role: "lan"},
+		{Interface: "wlan1", Address: "10.42.0.1", Role: "lan"},
+		{Interface: "duplicate", Address: "192.168.1.2", Role: "wan"},
+	}, Egress: model.DeviceEgress{IPv4: "1.1.1.1", IPv6: "2606:4700:4700::1111"}}
+	got := dashboardEndpoints(&sample)
+	want := []DashboardEndpoint{
+		{Network: "wan", Interface: "wan", Address: "192.168.1.2", URL: "http://192.168.1.2:9090/ui/"},
+		{Network: "lan", Interface: "lan", Address: "10.42.2.1", URL: "http://10.42.2.1:9090/ui/"},
+		{Network: "hotspot5g", Interface: "wlan0", Address: "10.42.1.1", URL: "http://10.42.1.1:9090/ui/"},
+		{Network: "hotspot2g", Interface: "wlan1", Address: "10.42.0.1", URL: "http://10.42.0.1:9090/ui/"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("endpoints = %+v, want %+v", got, want)
+	}
+	for _, endpoint := range got {
+		if strings.Contains(endpoint.Address, ":") {
+			t.Fatalf("IPv6 endpoint leaked: %+v", endpoint)
+		}
 	}
 }
 
 func TestDashboardEndpointsLegacyAndObservedEmpty(t *testing.T) {
-	legacy := dashboardEndpoints(model.Node{}, nil)
+	legacy := dashboardEndpoints(nil)
 	want := []DashboardEndpoint{
 		{Network: "lan-fallback", Address: "10.42.2.1", URL: "http://10.42.2.1:9090/ui/"},
 		{Network: "hotspot5g-fallback", Address: "10.42.1.1", URL: "http://10.42.1.1:9090/ui/"},
@@ -59,20 +48,20 @@ func TestDashboardEndpointsLegacyAndObservedEmpty(t *testing.T) {
 		t.Fatalf("legacy fallback = %+v", legacy)
 	}
 	sample := model.DeviceAddressSnapshot{LAN: []model.LANAddress{{Interface: "wan", Address: "192.168.1.2"}}}
-	observed := dashboardEndpoints(model.Node{}, &sample)
+	observed := dashboardEndpoints(&sample)
 	if len(observed) != 1 || observed[0].Network != "physical" {
 		t.Fatalf("missing role guessed WAN or fabricated AP: %+v", observed)
 	}
-	empty := dashboardEndpoints(model.Node{}, &model.DeviceAddressSnapshot{})
+	empty := dashboardEndpoints(&model.DeviceAddressSnapshot{})
 	if empty == nil || len(empty) != 0 {
 		t.Fatalf("known empty sample fabricated addresses: %+v", empty)
 	}
 }
 
-func TestDashboardEndpointsRejectInvalidOverlayAddresses(t *testing.T) {
+func TestDashboardEndpointsRejectInvalidPhysicalAddresses(t *testing.T) {
 	for _, invalid := range []string{"pending", "PENDING", "example.com", "http://172.20.1.2", "127.0.0.1", "::1", "fe80::1", "fe80::1%eth0", "::ffff:192.168.1.2", "198.18.1.1", "0.0.0.0", "224.0.0.1"} {
-		n := model.Node{EasytierIP: invalid, TailscaleIP: invalid, MeshIP: invalid}
-		if got := dashboardEndpoints(n, &model.DeviceAddressSnapshot{}); len(got) != 0 {
+		sample := model.DeviceAddressSnapshot{LAN: []model.LANAddress{{Interface: "eth0", Address: invalid, Role: "wan"}}}
+		if got := dashboardEndpoints(&sample); len(got) != 0 {
 			t.Fatalf("invalid %q became endpoint: %+v", invalid, got)
 		}
 	}
@@ -88,7 +77,7 @@ func TestPortalDeviceDashboardLegacyAndEmptySnapshot(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 	var legacy DashboardResponse
 	decodeBody(t, resp, &legacy)
-	if legacy.SampledAt != nil || legacy.Egress.SampledAt != nil || !reflect.DeepEqual(legacy.Endpoints, dashboardEndpoints(model.Node{}, nil)) {
+	if legacy.SampledAt != nil || legacy.Egress.SampledAt != nil || !reflect.DeepEqual(legacy.Endpoints, dashboardEndpoints(nil)) {
 		t.Fatalf("legacy dashboard = %+v", legacy)
 	}
 	resp = doBearer("POST", "/nodes/heartbeat", map[string]any{"mac": mac, "addresses": model.DeviceAddressSnapshot{}}, deviceToken(t, mac))
@@ -128,11 +117,24 @@ func TestPortalDeviceDashboardOwnedSnapshot(t *testing.T) {
 	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.MAC != mac || result.Secret != testH.gatewaySecret(mac) || result.SampledAt == nil || !reflect.DeepEqual(result.Egress, sample.Egress) || len(result.Endpoints) != 5 {
+	if result.MAC != mac || result.Secret != testH.gatewaySecret(mac) || result.SampledAt == nil || !reflect.DeepEqual(result.Egress, sample.Egress) || len(result.Endpoints) != 1 {
 		t.Fatalf("dashboard snapshot = %+v", result)
+	}
+	if result.Endpoints[0].Network != "wan" || result.Endpoints[0].Address != "192.168.1.2" {
+		t.Fatalf("physical endpoint missing: %+v", result.Endpoints)
+	}
+	for _, endpoint := range result.Endpoints {
+		if strings.Contains(endpoint.Address, ":") {
+			t.Fatalf("IPv6 endpoint leaked: %+v", endpoint)
+		}
 	}
 	if strings.Contains(string(data), "\"urls\"") || strings.Contains(string(data), "1.1.1.1:9090") || strings.Contains(string(data), "4700::1111]:9090") || strings.Contains(string(data), "10.42.") {
 		t.Fatalf("obsolete/public/fabricated endpoint in %s", data)
+	}
+	for _, overlay := range []string{"172.20.1.2", "100.64.1.2"} {
+		if strings.Contains(string(data), overlay) {
+			t.Fatalf("overlay address %s leaked in %s", overlay, data)
+		}
 	}
 	for _, cookie := range []*http.Cookie{nil, customerCookie(other)} {
 		resp = doJSON("GET", path, nil, cookie)

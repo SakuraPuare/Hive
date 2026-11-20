@@ -78,14 +78,11 @@ func TestNormalizeDeviceAddresses(t *testing.T) {
 
 func TestDeviceAddressesOwnershipAndSnapshot(t *testing.T) {
 	resetDB(t)
-	originalFRPHost := testCfg.FRPServerAddr
-	testCfg.FRPServerAddr = "frp.example.com"
-	t.Cleanup(func() { testCfg.FRPServerAddr = originalFRPHost })
 	cid := insertTestCustomer(t, "addresses-owner@example.com")
 	other := insertTestCustomer(t, "addresses-other@example.com")
 	mac := "aabbccddeeff"
 	portalGatewayNode(t, mac, cid)
-	mustExec(t, "UPDATE nodes SET tailscale_ip = ?, easytier_ip = ?, mesh_ip = ?, cf_url = ?, frp_port = ? WHERE mac = ?", "100.64.1.2", "172.20.1.2", "pending", "https://node.example.com", 22222, mac)
+	mustExec(t, "UPDATE nodes SET tailscale_ip = ?, easytier_ip = ?, mesh_ip = ?, cf_url = ?, frp_port = ?, tunnel_id = ? WHERE mac = ?", "100.64.1.2", "172.20.1.2", "172.20.1.3", "https://node.example.com", 22222, "tunnel-secret-id", mac)
 	path := "/portal/devices/" + mac + "/addresses"
 	get := func() model.DeviceAddressesResponse {
 		t.Helper()
@@ -96,9 +93,9 @@ func TestDeviceAddressesOwnershipAndSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, secret := range []string{"xray_uuid", "token", "claim_code", "tunnel_id", "address_snapshot"} {
+		for _, secret := range []string{"xray_uuid", "token", "claim_code", "tunnel_id", "address_snapshot", "tailscale_ip", "easytier_ip", "mesh_ip", "frp_port"} {
 			if strings.Contains(string(body), secret) {
-				t.Fatalf("secret field leaked: %s", body)
+				t.Fatalf("private field leaked: %s", body)
 			}
 		}
 		var result model.DeviceAddressesResponse
@@ -108,11 +105,8 @@ func TestDeviceAddressesOwnershipAndSnapshot(t *testing.T) {
 		return result
 	}
 	initial := get()
-	if initial.SampledAt != nil || initial.LAN == nil || len(initial.LAN) != 0 || initial.Egress.SampledAt != nil || initial.MeshIP != "" || initial.FRP.Port != 22222 || initial.TailscaleIP != "100.64.1.2" {
+	if initial.SampledAt != nil || initial.LAN == nil || len(initial.LAN) != 0 || initial.Egress.SampledAt != nil || initial.CFURL != "https://node.example.com" {
 		t.Fatalf("initial snapshot: %+v", initial)
-	}
-	if initial.FRP.Host != "frp.example.com" {
-		t.Fatalf("FRP host did not come from registry config: %+v", initial.FRP)
 	}
 	resp := doBearer("POST", "/nodes/heartbeat", map[string]any{"mac": mac, "addresses": addressSample()}, deviceToken(t, mac))
 	assertStatus(t, resp, http.StatusOK)

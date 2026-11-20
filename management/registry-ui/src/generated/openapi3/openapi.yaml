@@ -3263,6 +3263,60 @@ paths:
       summary: 获取客户 VLESS 订阅（出海）
       tags:
         - subscription
+  "/d/{token}":
+    get:
+      description: 仅当前有效归属的单台设备；按设备出口方向分流，不依赖付费套餐。出口关闭时返回无凭据直连配置。
+      operationId: OwnerSubscriptionClash
+      parameters:
+        - description: 设备私密 token
+          in: path
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Clash subscription
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Not Found
+          content:
+            text/plain:
+              schema:
+                type: string
+      summary: 获取自有设备免费 Clash 订阅
+      tags:
+        - subscription
+  "/d/{token}/vless":
+    get:
+      description: 返回单台自有设备的 base64 VLESS 链接；出口关闭时仅返回无凭据说明。
+      operationId: OwnerSubscriptionVless
+      parameters:
+        - description: 设备私密 token
+          in: path
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: VLESS subscription
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Not Found
+          content:
+            text/plain:
+              schema:
+                type: string
+      summary: 获取自有设备免费 VLESS 订阅
+      tags:
+        - subscription
   /health:
     get:
       description: 检查服务和数据库连接是否正常
@@ -4038,7 +4092,7 @@ paths:
             application/json:
               schema:
                 items:
-                  $ref: "#/components/schemas/model.Node"
+                  $ref: "#/components/schemas/handler.PortalDevice"
                 type: array
         "500":
           description: Internal Server Error
@@ -4067,7 +4121,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/model.Node"
+                $ref: "#/components/schemas/handler.PortalDevice"
         "404":
           description: Not Found
           content:
@@ -4077,6 +4131,41 @@ paths:
       security:
         - CustomerSessionCookie: []
       summary: 获取我的单台设备详情
+      tags:
+        - portal
+  "/portal/devices/{mac}/addresses":
+    get:
+      description: LAN为物理接口地址；sampled_at为registry接收时间。egress为节点HTTPS请求所见出口，不保证直连WAN；缓存约一小时，失败保留原样本时间。旧节点无样本为null及空数组。
+      operationId: PortalDeviceAddresses
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/model.DeviceAddressesResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - CustomerSessionCookie: []
+      summary: 我的设备网络地址快照
       tags:
         - portal
   "/portal/devices/{mac}/commands":
@@ -4152,8 +4241,8 @@ paths:
   "/portal/devices/{mac}/dashboard":
     get:
       description: |-
-        返回网关节点 Mihomo 面板的候选地址与 per-node secret。客户在节点
-        WiFi（10.42.x）、EasyTier（172.20.x）或 Tailscale（100.64.x）内时可直接打开。
+        返回网关节点 Mihomo 面板的物理地址候选（WAN/LAN/热点）与 per-node secret。
+        overlay（EasyTier/Tailscale/mesh）地址不下发；不在节点网内时走门户代理接口。
       operationId: PortalDeviceDashboard
       parameters:
         - description: 设备 MAC
@@ -4171,6 +4260,12 @@ paths:
                 $ref: "#/components/schemas/handler.DashboardResponse"
         "404":
           description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
           content:
             application/json:
               schema:
@@ -4314,6 +4409,41 @@ paths:
       summary: 代理节点 Mihomo API（只读）
       tags:
         - portal
+  "/portal/devices/{mac}/services":
+    get:
+      description: 状态随节点约60秒心跳更新；sampled_at为registry接收时间，旧节点无样本为null及unknown。读取不会下发命令。
+      operationId: PortalDeviceServices
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/model.DeviceServicesResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - CustomerSessionCookie: []
+      summary: 我的设备最新服务状态快照
+      tags:
+        - portal
   "/portal/devices/{mac}/subscription":
     delete:
       description: 客户解除网关设备与订阅的绑定；设备下一次同步后去掉全部代理，退化为直连兜底。
@@ -4388,6 +4518,41 @@ paths:
       security:
         - CustomerSessionCookie: []
       summary: 给网关设备下发订阅配置
+      tags:
+        - portal
+  "/portal/devices/{mac}/subscription-access":
+    get:
+      description: 独立于付费套餐和额度；每台自有设备一个私密 token。仅设备当前主人可获取。
+      operationId: PortalDeviceSubscriptionAccess
+      parameters:
+        - description: 设备 MAC
+          in: path
+          name: mac
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.PortalDeviceSubscriptionAccessResponse"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/handler.ErrorResponse"
+      security:
+        - CustomerSessionCookie: []
+      summary: 获取我的设备免费订阅入口
       tags:
         - portal
   "/portal/devices/{mac}/unbind":
@@ -5501,18 +5666,31 @@ components:
         total_upload:
           type: integer
       type: object
+    handler.DashboardEndpoint:
+      properties:
+        address:
+          type: string
+        interface:
+          type: string
+        network:
+          type: string
+        url:
+          type: string
+      type: object
     handler.DashboardResponse:
       properties:
+        egress:
+          $ref: "#/components/schemas/model.DeviceEgress"
+        endpoints:
+          items:
+            $ref: "#/components/schemas/handler.DashboardEndpoint"
+          type: array
         mac:
           type: string
-        secret:
-          description: 面板 API 密钥（per-node，HMAC(server key, mac)）
+        sampled_at:
           type: string
-        urls:
-          description: 直接打开面板的候选地址（需在节点 LAN/mesh 内）
-          items:
-            type: string
-          type: array
+        secret:
+          type: string
       type: object
     handler.EnrollRequest:
       properties:
@@ -5584,6 +5762,10 @@ components:
           items:
             $ref: "#/components/schemas/handler.NodeOnlineDevice"
           type: array
+        owner_access:
+          description: Agent understands owner-* users; legacy agents default to paid
+            users only
+          type: boolean
       type: object
     handler.NodeAccountingState:
       properties:
@@ -5813,6 +5995,47 @@ components:
           example: 1
           type: integer
       type: object
+    handler.PortalDevice:
+      properties:
+        bound_subscription_id:
+          type: integer
+        cf_url:
+          type: string
+        claimed_at:
+          type: string
+        country:
+          type: string
+        country_override:
+          type: string
+        enabled:
+          type: boolean
+        exit_enabled:
+          type: boolean
+        gateway_direction:
+          type: string
+        gateway_enabled:
+          type: boolean
+        gateway_upstream_mode:
+          type: string
+        gateway_upstream_nodes:
+          type: string
+        hostname:
+          type: string
+        last_seen:
+          type: string
+        mac:
+          type: string
+        mac6:
+          type: string
+        owner_exit_enabled:
+          type: boolean
+        probe_status:
+          type: string
+        registered_at:
+          type: string
+        status:
+          type: string
+      type: object
     handler.PortalDeviceExitRequest:
       properties:
         enabled:
@@ -5823,6 +6046,11 @@ components:
       properties:
         gateway_direction:
           example: auto
+          type: string
+      type: object
+    handler.PortalDeviceSubscriptionAccessResponse:
+      properties:
+        token:
           type: string
       type: object
     handler.PortalLoginRequest:
@@ -6530,6 +6758,34 @@ components:
         xray_uuid:
           type: string
       type: object
+    model.DeviceAddressSnapshot:
+      properties:
+        egress:
+          $ref: "#/components/schemas/model.DeviceEgress"
+        lan:
+          items:
+            $ref: "#/components/schemas/model.LANAddress"
+          type: array
+      type: object
+    model.DeviceAddressesResponse:
+      properties:
+        cf_url:
+          type: string
+        egress:
+          $ref: "#/components/schemas/model.DeviceEgress"
+        hostname:
+          type: string
+        lan:
+          items:
+            $ref: "#/components/schemas/model.LANAddress"
+          type: array
+        last_seen:
+          type: string
+        mac:
+          type: string
+        sampled_at:
+          type: string
+      type: object
     model.DeviceCommand:
       properties:
         acked_at:
@@ -6553,8 +6809,31 @@ components:
         status:
           type: string
       type: object
+    model.DeviceEgress:
+      properties:
+        ipv4:
+          type: string
+        ipv6:
+          type: string
+        sampled_at:
+          type: string
+      type: object
+    model.DeviceServicesResponse:
+      properties:
+        sampled_at:
+          type: string
+        services:
+          items:
+            $ref: "#/components/schemas/model.ServiceStatus"
+          type: array
+      type: object
     model.HeartbeatRequest:
       properties:
+        addresses:
+          allOf:
+            - $ref: "#/components/schemas/model.DeviceAddressSnapshot"
+          description: Addresses is omitted by legacy agents; receipt time must remain
+            unchanged.
         country:
           description: >-
             Country is the node's egress country (ISO-3166 alpha-2). Empty on
@@ -6570,8 +6849,27 @@ components:
           type: string
         mem_pct:
           type: number
+        services:
+          description: Services is omitted by legacy agents; nil must not invent a fresh
+            sample.
+          items:
+            $ref: "#/components/schemas/model.ServiceStatus"
+          type: array
         uptime_sec:
           type: integer
+      type: object
+    model.LANAddress:
+      properties:
+        address:
+          type: string
+        interface:
+          type: string
+        prefix_length:
+          type: integer
+        role:
+          description: wan/lan from main-table default routes; empty on legacy/unknown
+            samples.
+          type: string
       type: object
     model.Line:
       properties:
@@ -6823,6 +7121,17 @@ components:
         id:
           type: integer
         ip:
+          type: string
+      type: object
+    model.ServiceStatus:
+      properties:
+        active_state:
+          type: string
+        load_state:
+          type: string
+        name:
+          type: string
+        sub_state:
           type: string
       type: object
     model.SubscriptionGroup:

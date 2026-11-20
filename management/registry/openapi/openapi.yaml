@@ -551,6 +551,47 @@ definitions:
         example: 1
         type: integer
     type: object
+  handler.PortalDevice:
+    properties:
+      bound_subscription_id:
+        type: integer
+      cf_url:
+        type: string
+      claimed_at:
+        type: string
+      country:
+        type: string
+      country_override:
+        type: string
+      enabled:
+        type: boolean
+      exit_enabled:
+        type: boolean
+      gateway_direction:
+        type: string
+      gateway_enabled:
+        type: boolean
+      gateway_upstream_mode:
+        type: string
+      gateway_upstream_nodes:
+        type: string
+      hostname:
+        type: string
+      last_seen:
+        type: string
+      mac:
+        type: string
+      mac6:
+        type: string
+      owner_exit_enabled:
+        type: boolean
+      probe_status:
+        type: string
+      registered_at:
+        type: string
+      status:
+        type: string
+    type: object
   handler.PortalDeviceExitRequest:
     properties:
       enabled:
@@ -1286,12 +1327,8 @@ definitions:
     properties:
       cf_url:
         type: string
-      easytier_ip:
-        type: string
       egress:
         $ref: '#/definitions/model.DeviceEgress'
-      frp:
-        $ref: '#/definitions/model.DeviceFRPAddress'
       hostname:
         type: string
       lan:
@@ -1302,11 +1339,7 @@ definitions:
         type: string
       mac:
         type: string
-      mesh_ip:
-        type: string
       sampled_at:
-        type: string
-      tailscale_ip:
         type: string
     type: object
   model.DeviceCommand:
@@ -1340,13 +1373,6 @@ definitions:
         type: string
       sampled_at:
         type: string
-    type: object
-  model.DeviceFRPAddress:
-    properties:
-      host:
-        type: string
-      port:
-        type: integer
     type: object
   model.DeviceServicesResponse:
     properties:
@@ -5296,7 +5322,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/model.Node'
+              $ref: '#/definitions/handler.PortalDevice'
             type: array
         "500":
           description: Internal Server Error
@@ -5322,7 +5348,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.Node'
+            $ref: '#/definitions/handler.PortalDevice'
         "404":
           description: Not Found
           schema:
@@ -5430,8 +5456,8 @@ paths:
   /portal/devices/{mac}/dashboard:
     get:
       description: |-
-        返回网关节点 Mihomo 面板的候选地址与 per-node secret。客户在节点
-        WiFi（10.42.x）、EasyTier（172.20.x）或 Tailscale（100.64.x）内时可直接打开。
+        返回网关节点 Mihomo 面板的物理地址候选（WAN/LAN/热点）与 per-node secret。
+        overlay（EasyTier/Tailscale/mesh）地址不下发；不在节点网内时走门户代理接口。
       operationId: PortalDeviceDashboard
       parameters:
       - description: 设备 MAC

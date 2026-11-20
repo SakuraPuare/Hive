@@ -13,15 +13,15 @@ import (
 
 // 客户门户里的网关可视化（Mihomo / MetaCubeXD）。
 //
-// 面板本身跑在节点的 :9090（external-controller），带 per-node secret。客户浏览器
-// 通常既不在节点 LAN、也不在 mesh 里，所以门户不能只丢一个内网 URL：这里提供两条路
-//  1. GET /portal/devices/{mac}/dashboard —— 面板地址候选 + secret（客户在节点
-//     WiFi/EasyTier/Tailscale 内时直接打开）；
+// 面板本身跑在节点的 :9090（external-controller），带 per-node secret。门户对客户
+// 只暴露物理网段地址（WAN/LAN/热点）；EasyTier/Tailscale/mesh 属于运维内部通道，
+// 不出现在客户视图里。这里提供两条路：
+//  1. GET /portal/devices/{mac}/dashboard —— 物理地址候选 + secret；
 //  2. GET /portal/devices/{mac}/mihomo/{version|connections} —— 由 registry 代理到
 //     节点的 9090，客户在任何地方都能在门户里看到实时速率/会话数。
 //
-// 节点地址优先 easytier_ip（集群内 easytier pod 能到 172.20.0.0/16），退到
-// tailscale_ip。节点防火墙只对管理网段/内网段放行 9090（setup-firewall.sh）。
+// registry 侧的代理目标（nodeManagementAddr）仍走 overlay 地址；节点防火墙只对
+// 管理网段/内网段放行 9090（setup-firewall.sh）。
 var mihomoProxyPaths = map[string]bool{
 	"version":     true,
 	"connections": true,
@@ -59,14 +59,17 @@ type DashboardEndpoint struct {
 	URL       string `json:"url"`
 }
 
-// dashboardEndpoints never treats HTTPS egress observations as controller addresses.
+// dashboardEndpoints never treats HTTPS egress observations as controller addresses,
+// and never offers overlay (EasyTier/Tailscale/mesh) addresses to customers.
 // A nil snapshot is legacy/unknown; an observed empty snapshot has no physical candidates.
-func dashboardEndpoints(n model.Node, sample *model.DeviceAddressSnapshot) []DashboardEndpoint {
-	endpoints := make([]DashboardEndpoint, 0, 8)
+func dashboardEndpoints(sample *model.DeviceAddressSnapshot) []DashboardEndpoint {
+	endpoints := make([]DashboardEndpoint, 0, 6)
 	seen := make(map[string]bool)
 	add := func(network, iface, raw string) {
 		ip, valid := validObservedIP(strings.TrimSpace(raw))
-		if !valid {
+		// Panel links stay IPv4-only: observed IPv6 is public but commonly
+		// blocked inbound, so offering it would produce dead one-click links.
+		if !valid || !ip.Is4() {
 			return
 		}
 		address := ip.String()
@@ -80,9 +83,6 @@ func dashboardEndpoints(n model.Node, sample *model.DeviceAddressSnapshot) []Das
 			URL: "http://" + net.JoinHostPort(address, "9090") + "/ui/",
 		})
 	}
-	add("easytier", "", n.EasytierIP)
-	add("tailscale", "", n.TailscaleIP)
-	add("mesh", "", n.MeshIP)
 	if sample == nil {
 		add("lan-fallback", "", "10.42.2.1")
 		add("hotspot5g-fallback", "", "10.42.1.1")
@@ -108,8 +108,8 @@ func dashboardEndpoints(n model.Node, sample *model.DeviceAddressSnapshot) []Das
 // HandlePortalDeviceDashboard godoc
 // @Summary      我的设备的 Mihomo 面板地址
 // @ID           PortalDeviceDashboard
-// @Description  返回网关节点 Mihomo 面板的候选地址与 per-node secret。客户在节点
-// @Description  WiFi（10.42.x）、EasyTier（172.20.x）或 Tailscale（100.64.x）内时可直接打开。
+// @Description  返回网关节点 Mihomo 面板的物理地址候选（WAN/LAN/热点）与 per-node secret。
+// @Description  overlay（EasyTier/Tailscale/mesh）地址不下发；不在节点网内时走门户代理接口。
 // @Tags         portal
 // @Security     CustomerSessionCookie
 // @Produce      json
@@ -159,7 +159,7 @@ func (h *Handler) HandlePortalDeviceDashboard(w http.ResponseWriter, r *http.Req
 		snapshot = &normalized
 		result.Egress, result.SampledAt = normalized.Egress, row.AddressesSampledAt
 	}
-	result.Endpoints = dashboardEndpoints(n, snapshot)
+	result.Endpoints = dashboardEndpoints(snapshot)
 	h.jsonOK(w, result)
 }
 

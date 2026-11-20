@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -10,6 +12,61 @@ func portalGatewayNode(t *testing.T, mac string, customerID uint) {
 	t.Helper()
 	insertTestNode(t, mac)
 	mustExec(t, "UPDATE nodes SET owner_customer_id = ?, gateway_enabled = 1 WHERE mac = ?", customerID, mac)
+}
+
+func TestPortalDeviceEndpointsExposeOnlyCustomerFields(t *testing.T) {
+	resetDB(t)
+	cid := insertTestCustomer(t, "portal-view@example.com")
+	other := insertTestCustomer(t, "portal-view-other@example.com")
+	mac := "aabbccddeeff"
+	portalGatewayNode(t, mac, cid)
+	mustExec(t, `UPDATE nodes SET tunnel_id = ?, easytier_ip = ?, tailscale_ip = ?, mesh_ip = ?, mesh_tunnel_id = ?,
+		frp_port = ?, location = ?, note = ?, region = ?, weight = ?, subscription_sync = 1, country = ?, country_override = ?
+		WHERE mac = ?`,
+		"tunnel-secret-id", "172.20.1.2", "100.64.1.2", "172.20.1.3", "mesh-secret-id",
+		22222, "Hong Kong", "operator note", "hk", 7, "HK", "US", mac)
+
+	forbidden := []string{
+		"tailscale_ip", "easytier_ip", "mesh_ip", "mesh_tunnel_id", "frp_port",
+		"tunnel_id", "xray_uuid", "server_enabled", "subscription_sync",
+		"location", "note", "region", "weight", "owner_customer_id",
+		"address_snapshot", "addresses_sampled_at", "claim_code",
+		"100.64.1.2", "172.20.1.2", "172.20.1.3", "tunnel-secret-id", "mesh-secret-id",
+		"operator note",
+	}
+	assertNoLeak := func(label, body string) {
+		t.Helper()
+		for _, key := range forbidden {
+			if strings.Contains(body, key) {
+				t.Fatalf("%s leaked %q: %s", label, key, body)
+			}
+		}
+	}
+
+	list := readBody(doJSON("GET", "/portal/devices", nil, customerCookie(cid)))
+	assertNoLeak("portal list", list)
+	var devices []PortalDevice
+	if err := json.Unmarshal([]byte(list), &devices); err != nil {
+		t.Fatal(err)
+	}
+	if len(devices) != 1 || devices[0].MAC != mac || devices[0].MAC6 != "ddeeff" || devices[0].Hostname == "" ||
+		devices[0].ProbeStatus == "" || !devices[0].GatewayEnabled || devices[0].Country != "HK" || devices[0].CountryOverride != "US" {
+		t.Fatalf("portal list view = %+v", devices)
+	}
+
+	single := readBody(doJSON("GET", "/portal/devices/"+mac, nil, customerCookie(cid)))
+	assertNoLeak("portal get", single)
+	var device PortalDevice
+	if err := json.Unmarshal([]byte(single), &device); err != nil {
+		t.Fatal(err)
+	}
+	if device.MAC != mac || device.CFURL != "https://"+mac+".example.com" || device.CountryOverride != "US" || len(device.GatewayUpstreamNodes) != 0 {
+		t.Fatalf("portal get view = %+v", device)
+	}
+
+	resp := doJSON("GET", "/portal/devices/"+mac, nil, customerCookie(other))
+	assertStatus(t, resp, http.StatusNotFound)
+	resp.Body.Close()
 }
 
 func TestPortalSetDeviceExit(t *testing.T) {

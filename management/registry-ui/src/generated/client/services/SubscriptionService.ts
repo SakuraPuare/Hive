@@ -109,6 +109,56 @@ export class SubscriptionService {
         });
     }
     /**
+     * 获取自有设备免费 Clash 订阅
+     * 仅当前有效归属的单台设备；按设备出口方向分流，不依赖付费套餐。出口关闭时返回无凭据直连配置。
+     * @returns string Clash subscription
+     * @throws ApiError
+     */
+    public static ownerSubscriptionClash({
+        token,
+    }: {
+        /**
+         * 设备私密 token
+         */
+        token: string,
+    }): CancelablePromise<string> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/d/{token}',
+            path: {
+                'token': token,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 获取自有设备免费 VLESS 订阅
+     * 返回单台自有设备的 base64 VLESS 链接；出口关闭时仅返回无凭据说明。
+     * @returns string VLESS subscription
+     * @throws ApiError
+     */
+    public static ownerSubscriptionVless({
+        token,
+    }: {
+        /**
+         * 设备私密 token
+         */
+        token: string,
+    }): CancelablePromise<string> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/d/{token}/vless',
+            path: {
+                'token': token,
+            },
+            errors: {
+                404: `Not Found`,
+            },
+        });
+    }
+    /**
      * 获取线路 Clash 订阅
      * 返回 Clash/Mihomo YAML 格式订阅配置
      * @returns string Clash subscription

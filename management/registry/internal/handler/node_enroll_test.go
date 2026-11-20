@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"reflect"
 	"regexp"
@@ -356,7 +357,7 @@ func TestNodeEnroll_AppearsInAdminNodeListAsOnline(t *testing.T) {
 	}
 }
 
-func TestPortalDeviceDashboard_ReturnsMeshURLAndSecret(t *testing.T) {
+func TestPortalDeviceDashboard_ReturnsSecretWithoutOverlayAddresses(t *testing.T) {
 	resetDB(t)
 	cid := insertTestCustomer(t, "gw@example.com")
 	mac := "a1a2a3a4a5a6"
@@ -364,19 +365,25 @@ func TestPortalDeviceDashboard_ReturnsMeshURLAndSecret(t *testing.T) {
 
 	resp := doJSON("GET", "/portal/devices/"+mac+"/dashboard", nil, customerCookie(cid))
 	assertStatus(t, resp, http.StatusOK)
+	raw := readBody(resp)
 	var body DashboardResponse
-	decodeBody(t, resp, &body)
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		t.Fatal(err)
+	}
 	if body.Secret != testH.gatewaySecret(mac) {
 		t.Fatalf("secret does not match the per-node controller secret")
 	}
-	found := false
+	// Legacy node without an address snapshot: physical fallbacks only.
 	for _, endpoint := range body.Endpoints {
-		if endpoint.Network == "easytier" && endpoint.URL == "http://172.20.1.7:9090/ui/" {
-			found = true
+		switch endpoint.Network {
+		case "easytier", "tailscale", "mesh":
+			t.Fatalf("overlay endpoint offered to customer: %v", body.Endpoints)
 		}
 	}
-	if !found {
-		t.Fatalf("mesh dashboard URL missing: %v", body.Endpoints)
+	for _, overlay := range []string{"172.20.1.7", "100.64.0.9"} {
+		if strings.Contains(raw, overlay) {
+			t.Fatalf("overlay address %s leaked: %s", overlay, raw)
+		}
 	}
 }
 

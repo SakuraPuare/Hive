@@ -487,10 +487,10 @@ export default function PortalDevicesPage() {
   };
 
   const dashboard = dashInfo?.mac === dashDevice?.mac ? dashInfo : null;
-  const sampleNote = (sampledAt: string | null) => {
+  const sampleNote = (sampledAt: string | null, staleAfterMs: number) => {
     const sampleTime = sampledAt ? Date.parse(sampledAt) : NaN;
     if (!Number.isFinite(sampleTime)) return t('mihomoSampleUnknown');
-    return `${t('mihomoSampledAt', { time: fmt.dateTime(sampledAt) })}${Date.now() - sampleTime > 150_000 ? ` · ${t('mihomoSampleStale')}` : ''}`;
+    return `${t('mihomoSampledAt', { time: fmt.dateTime(sampledAt) })}${Date.now() - sampleTime > staleAfterMs ? ` · ${t('mihomoSampleStale')}` : ''}`;
   };
   if (authLoading) return (
     <div className="flex items-center justify-center py-24" role="status" aria-live="polite" aria-busy="true">
@@ -550,7 +550,6 @@ export default function PortalDevicesPage() {
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colExit')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colSubscription')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colDirection')}</TableHead>
-                  <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colAddress')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colLastSeen')}</TableHead>
                   <TableHead scope="col" className="text-xs font-500 uppercase tracking-wide text-muted-foreground">{t('colClaimedAt')}</TableHead>
                   <TableHead scope="col" className="text-right text-xs font-500 uppercase tracking-wide text-muted-foreground">{tCommon('actions')}</TableHead>
@@ -614,7 +613,6 @@ export default function PortalDevicesPage() {
                         </div>
                       ) : '—'}
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{d.easytier_ip || d.tailscale_ip || '—'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{d.last_seen ? fmt.dateTime(d.last_seen) : '—'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{d.claimed_at ? fmt.dateTime(d.claimed_at) : '—'}</TableCell>
                     <TableCell className="text-right">
@@ -875,7 +873,7 @@ export default function PortalDevicesPage() {
                     <div className="flex gap-2"><dt>IPv4</dt><dd className="break-all font-mono">{dashboard.egress.ipv4 || t('mihomoNotObserved')}</dd></div>
                     <div className="flex gap-2"><dt>IPv6</dt><dd className="break-all font-mono">{dashboard.egress.ipv6 || t('mihomoNotObserved')}</dd></div>
                   </dl>
-                  <p className="text-xs text-muted-foreground">{sampleNote(dashboard.egress.sampled_at)}</p>
+                  <p className="text-xs text-muted-foreground">{sampleNote(dashboard.egress.sampled_at, 7_200_000)}</p>
                 </section>
                 <div className="space-y-1.5">
                   <Label htmlFor="mihomo-secret">{t('mihomoSecret')}</Label>
@@ -889,7 +887,7 @@ export default function PortalDevicesPage() {
                 </div>
                 <div className="space-y-1.5">
                   <p className="text-sm font-500">{t('mihomoOpen')}</p>
-                  <p className="text-xs text-muted-foreground">{sampleNote(dashboard.sampled_at)}</p>
+                  <p className="text-xs text-muted-foreground">{sampleNote(dashboard.sampled_at, 150_000)}</p>
                   <ul className="space-y-2">
                     {dashboard.endpoints.map((endpoint) => {
                       const url = new URL(endpoint.url);

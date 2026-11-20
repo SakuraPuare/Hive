@@ -42,8 +42,6 @@ const gatewayNode = {
   mac: 'aabbccddeeff',
   hostname: 'hive-cdeeff',
   probe_status: 'online',
-  tailscale_ip: '100.64.0.9',
-  easytier_ip: '172.20.1.7',
   gateway_enabled: true,
   exit_enabled: true,
   owner_exit_enabled: true,
@@ -62,7 +60,7 @@ const dashboardInfo: DashboardInfo = {
   mac: gatewayNode.mac,
   secret: 'deadbeefsecret',
   sampled_at: '2026-11-14T10:00:00Z',
-  endpoints: [{ network: 'easytier', interface: '', address: '172.20.1.7', url: 'http://172.20.1.7:9090/ui' }],
+  endpoints: [{ network: 'wan', interface: 'end0', address: '192.168.5.226', url: 'http://192.168.5.226:9090/ui' }],
   egress: { ipv4: '203.0.113.7', ipv6: '2001:db8::7', sampled_at: '2026-11-14T10:00:00Z' },
 };
 
@@ -88,17 +86,18 @@ describe('PortalDevicesPage', () => {
     global.fetch = mockFetch as unknown as typeof fetch;
   });
 
-  it('shows the mesh address and online state from the heartbeat probe', async () => {
+  it('shows online state without exposing overlay or management addresses', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
-    mockListDevices.mockResolvedValue([gatewayNode]);
+    mockListDevices.mockResolvedValue([{ ...gatewayNode, tailscale_ip: '100.64.0.9', easytier_ip: '172.20.1.7' }]);
 
     render(<PortalDevicesPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('172.20.1.7')).toBeInTheDocument();
+      expect(screen.getByText('hive-cdeeff')).toBeInTheDocument();
     });
     expect(screen.getByText('portal.statusOnline')).toBeInTheDocument();
-    expect(screen.getByText('hive-cdeeff')).toBeInTheDocument();
+    expect(screen.queryByText('100.64.0.9')).not.toBeInTheDocument();
+    expect(screen.queryByText('172.20.1.7')).not.toBeInTheDocument();
   });
 
   it('lets the owner turn the device exit switch off', async () => {
@@ -133,11 +132,11 @@ describe('PortalDevicesPage', () => {
     expect(secret).toHaveAttribute('type', 'password');
     fireEvent.click(screen.getByRole('button', { name: 'portal.mihomoCopy' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('deadbeefsecret'));
-    expect(screen.getByText('portal.mihomoNetwork_easytier')).toBeInTheDocument();
-    expect(screen.getByText('172.20.1.7:9090')).toBeInTheDocument();
+    expect(screen.getByText('portal.mihomoNetwork_wan')).toBeInTheDocument();
+    expect(screen.getByText('192.168.5.226:9090')).toBeInTheDocument();
     const link = screen.getByRole('link', { name: 'portal.mihomoOneClick' });
     const url = new URL(link.getAttribute('href')!);
-    expect(url.origin).toBe('http://172.20.1.7:9090');
+    expect(url.origin).toBe('http://192.168.5.226:9090');
     expect(url.pathname).toBe('/ui/');
     expect(url.search).toBe('');
     expect(new URLSearchParams(url.hash.slice(3)).get('secret')).toBe('deadbeefsecret');
@@ -157,7 +156,7 @@ describe('PortalDevicesPage', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
     mockListDevices.mockResolvedValue([gatewayNode]);
     const networks: DashboardInfo['endpoints'][number]['network'][] = [
-      'wan', 'lan', 'physical', 'hotspot5g', 'hotspot2g', 'easytier', 'tailscale', 'mesh',
+      'wan', 'lan', 'physical', 'hotspot5g', 'hotspot2g',
       'lan-fallback', 'hotspot5g-fallback', 'hotspot2g-fallback',
     ];
     const secret = 'key + &?#/=中文';
@@ -190,6 +189,23 @@ describe('PortalDevicesPage', () => {
     expect(within(dialog).getByText('2001:db8::7').closest('a')).toBeNull();
     expect(within(dialog).getByText('portal.mihomoEgressHint')).toBeInTheDocument();
     expect(within(dialog).getAllByText(/portal.mihomoSampleStale/)).toHaveLength(2);
+  });
+
+  it('treats a 30-minute-old egress observation as fresh while the address snapshot is stale', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60_000).toISOString();
+    mockFetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => (
+      url.endsWith('/dashboard') ? {
+        ...dashboardInfo,
+        sampled_at: thirtyMinutesAgo,
+        egress: { ...dashboardInfo.egress, sampled_at: thirtyMinutesAgo },
+      } : {}
+    ) }));
+    render(<PortalDevicesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'portal.mihomoPanel' }));
+    await screen.findByLabelText('portal.mihomoSecret');
+    expect(screen.getAllByText(/portal.mihomoSampleStale/)).toHaveLength(1);
   });
 
   it('marks absent egress and address samples unknown while retaining explicit fallback labels', async () => {

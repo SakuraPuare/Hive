@@ -2,15 +2,13 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { handler_DashboardEndpoint } from './handler_DashboardEndpoint';
+import type { model_DeviceEgress } from './model_DeviceEgress';
 export type handler_DashboardResponse = {
+    egress?: model_DeviceEgress;
+    endpoints?: Array<handler_DashboardEndpoint>;
     mac?: string;
-    /**
-     * 面板 API 密钥（per-node，HMAC(server key, mac)）
-     */
+    sampled_at?: string;
     secret?: string;
-    /**
-     * 直接打开面板的候选地址（需在节点 LAN/mesh 内）
-     */
-    urls?: Array<string>;
 };
 

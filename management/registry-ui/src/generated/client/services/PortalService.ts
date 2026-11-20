@@ -10,8 +10,10 @@ import type { handler_PortalCreateOrderRequest } from '../models/handler_PortalC
 import type { handler_PortalCreateOrderResponse } from '../models/handler_PortalCreateOrderResponse';
 import type { handler_PortalCreateTicketRequest } from '../models/handler_PortalCreateTicketRequest';
 import type { handler_PortalCreateTicketResponse } from '../models/handler_PortalCreateTicketResponse';
+import type { handler_PortalDevice } from '../models/handler_PortalDevice';
 import type { handler_PortalDeviceExitRequest } from '../models/handler_PortalDeviceExitRequest';
 import type { handler_PortalDeviceGatewayRequest } from '../models/handler_PortalDeviceGatewayRequest';
+import type { handler_PortalDeviceSubscriptionAccessResponse } from '../models/handler_PortalDeviceSubscriptionAccessResponse';
 import type { handler_PortalMeResponse } from '../models/handler_PortalMeResponse';
 import type { handler_PortalOrderListResponse } from '../models/handler_PortalOrderListResponse';
 import type { handler_PortalReferralRecordsResponse } from '../models/handler_PortalReferralRecordsResponse';
@@ -22,8 +24,9 @@ import type { handler_PortalTicketDetail } from '../models/handler_PortalTicketD
 import type { handler_PortalTicketListResponse } from '../models/handler_PortalTicketListResponse';
 import type { handler_PortalUpdateMeRequest } from '../models/handler_PortalUpdateMeRequest';
 import type { handler_StatusResponse } from '../models/handler_StatusResponse';
+import type { model_DeviceAddressesResponse } from '../models/model_DeviceAddressesResponse';
 import type { model_DeviceCommand } from '../models/model_DeviceCommand';
-import type { model_Node } from '../models/model_Node';
+import type { model_DeviceServicesResponse } from '../models/model_DeviceServicesResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -31,10 +34,10 @@ export class PortalService {
     /**
      * 列出我的设备
      * 返回当前登录客户名下认领的所有设备
-     * @returns model_Node OK
+     * @returns handler_PortalDevice OK
      * @throws ApiError
      */
-    public static portalListDevices(): CancelablePromise<Array<model_Node>> {
+    public static portalListDevices(): CancelablePromise<Array<handler_PortalDevice>> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/portal/devices',
@@ -45,7 +48,7 @@ export class PortalService {
     }
     /**
      * 获取我的单台设备详情
-     * @returns model_Node OK
+     * @returns handler_PortalDevice OK
      * @throws ApiError
      */
     public static portalGetDevice({
@@ -55,7 +58,7 @@ export class PortalService {
          * 设备 MAC
          */
         mac: string,
-    }): CancelablePromise<model_Node> {
+    }): CancelablePromise<handler_PortalDevice> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/portal/devices/{mac}',
@@ -64,6 +67,32 @@ export class PortalService {
             },
             errors: {
                 404: `Not Found`,
+            },
+        });
+    }
+    /**
+     * 我的设备网络地址快照
+     * LAN为物理接口地址；sampled_at为registry接收时间。egress为节点HTTPS请求所见出口，不保证直连WAN；缓存约一小时，失败保留原样本时间。旧节点无样本为null及空数组。
+     * @returns model_DeviceAddressesResponse OK
+     * @throws ApiError
+     */
+    public static portalDeviceAddresses({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<model_DeviceAddressesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/portal/devices/{mac}/addresses',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
             },
         });
     }
@@ -126,8 +155,8 @@ export class PortalService {
     }
     /**
      * 我的设备的 Mihomo 面板地址
-     * 返回网关节点 Mihomo 面板的候选地址与 per-node secret。客户在节点
-     * WiFi（10.42.x）、EasyTier（172.20.x）或 Tailscale（100.64.x）内时可直接打开。
+     * 返回网关节点 Mihomo 面板的物理地址候选（WAN/LAN/热点）与 per-node secret。
+     * overlay（EasyTier/Tailscale/mesh）地址不下发；不在节点网内时走门户代理接口。
      * @returns handler_DashboardResponse OK
      * @throws ApiError
      */
@@ -147,6 +176,7 @@ export class PortalService {
             },
             errors: {
                 404: `Not Found`,
+                500: `Internal Server Error`,
             },
         });
     }
@@ -251,6 +281,32 @@ export class PortalService {
         });
     }
     /**
+     * 我的设备最新服务状态快照
+     * 状态随节点约60秒心跳更新；sampled_at为registry接收时间，旧节点无样本为null及unknown。读取不会下发命令。
+     * @returns model_DeviceServicesResponse OK
+     * @throws ApiError
+     */
+    public static portalDeviceServices({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<model_DeviceServicesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/portal/devices/{mac}/services',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
      * 解绑网关设备的订阅配置
      * 客户解除网关设备与订阅的绑定；设备下一次同步后去掉全部代理，退化为直连兜底。
      * @returns handler_StatusResponse OK
@@ -306,6 +362,32 @@ export class PortalService {
                 400: `Bad Request`,
                 404: `Not Found`,
                 409: `Conflict`,
+            },
+        });
+    }
+    /**
+     * 获取我的设备免费订阅入口
+     * 独立于付费套餐和额度；每台自有设备一个私密 token。仅设备当前主人可获取。
+     * @returns handler_PortalDeviceSubscriptionAccessResponse OK
+     * @throws ApiError
+     */
+    public static portalDeviceSubscriptionAccess({
+        mac,
+    }: {
+        /**
+         * 设备 MAC
+         */
+        mac: string,
+    }): CancelablePromise<handler_PortalDeviceSubscriptionAccessResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/portal/devices/{mac}/subscription-access',
+            path: {
+                'mac': mac,
+            },
+            errors: {
+                404: `Not Found`,
+                500: `Internal Server Error`,
             },
         });
     }
