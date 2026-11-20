@@ -5999,8 +5999,6 @@ components:
       properties:
         bound_subscription_id:
           type: integer
-        cf_url:
-          type: string
         claimed_at:
           type: string
         country:
@@ -6769,8 +6767,6 @@ components:
       type: object
     model.DeviceAddressesResponse:
       properties:
-        cf_url:
-          type: string
         egress:
           $ref: "#/components/schemas/model.DeviceEgress"
         hostname:

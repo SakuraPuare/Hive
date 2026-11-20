@@ -451,6 +451,5 @@ type DeviceAddressesResponse struct {
 	LastSeen  string       `json:"last_seen"`
 	SampledAt *string      `json:"sampled_at"`
 	LAN       []LANAddress `json:"lan"`
-	CFURL     string       `json:"cf_url"`
 	Egress    DeviceEgress `json:"egress"`
 }

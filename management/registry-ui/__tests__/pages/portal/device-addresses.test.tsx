@@ -21,7 +21,6 @@ const fullAddresses = {
     { interface: 'eth0', address: '2001:db8:1::228', prefix_length: 64 },
     { interface: 'wlan0', address: '10.42.0.1', prefix_length: 24 },
   ],
-  cf_url: 'https://device.example.com',
   egress: { ipv4: '203.0.113.9', ipv6: '2001:db8:3::9', sampled_at: '2026-11-20T11:00:00Z' },
 };
 
@@ -62,7 +61,7 @@ describe('DeviceAddressesPage', () => {
     });
     const values = [
       fullAddresses.mac, '192.168.5.228/24', '2001:db8:1::228/64', '10.42.0.1/24',
-      fullAddresses.cf_url, fullAddresses.egress.ipv4, fullAddresses.egress.ipv6,
+      fullAddresses.egress.ipv4, fullAddresses.egress.ipv6,
     ];
     for (const value of values) {
       const row = screen.getByText(value).parentElement!.parentElement!;
@@ -71,7 +70,6 @@ describe('DeviceAddressesPage', () => {
     }
     expect(screen.getAllByText('eth0')).toHaveLength(2);
     expect(screen.getByText('wlan0')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: fullAddresses.cf_url })).toHaveAttribute('href', fullAddresses.cf_url);
     expect(screen.getByRole('link', { name: 'deviceAddresses.back' })).toHaveAttribute('href', '/portal/devices');
     expect(screen.getByText(/deviceAddresses.lastSeen/)).toBeInTheDocument();
     expect(screen.getByText(/deviceAddresses.lanSampledAt/)).toBeInTheDocument();
@@ -83,7 +81,7 @@ describe('DeviceAddressesPage', () => {
   it('distinguishes unknown LAN data from a current empty snapshot and blank endpoints', async () => {
     const empty = {
       ...fullAddresses, last_seen: '', sampled_at: null, lan: [],
-      cf_url: '', egress: { ipv4: '', ipv6: '', sampled_at: null },
+      egress: { ipv4: '', ipv6: '', sampled_at: null },
     };
     mockFetch.mockResolvedValueOnce(response(empty)).mockResolvedValueOnce(response({ ...empty, sampled_at: fullAddresses.sampled_at }));
     render(<DeviceAddressesPage />);
@@ -187,15 +185,6 @@ describe('DeviceAddressesPage', () => {
     const signal = mockFetch.mock.calls[1][1].signal as AbortSignal;
     view.unmount();
     expect(signal.aborted).toBe(true);
-  });
-
-  it('keeps unsafe Cloudflare schemes as copyable text rather than links', async () => {
-    mockFetch.mockResolvedValue(response({ ...fullAddresses, cf_url: 'javascript:alert(1)' }));
-    render(<DeviceAddressesPage />);
-    const text = await screen.findByText('javascript:alert(1)');
-    expect(screen.queryByRole('link', { name: 'javascript:alert(1)' })).not.toBeInTheDocument();
-    fireEvent.click(within(text.parentElement!.parentElement!).getByRole('button'));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('javascript:alert(1)'));
   });
 
   it('redirects a settled unauthenticated customer without fetching addresses', async () => {

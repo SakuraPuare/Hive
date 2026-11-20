@@ -18,28 +18,18 @@ interface DeviceAddresses {
   last_seen: string;
   sampled_at: string | null;
   lan: Array<{ interface: string; address: string; prefix_length: number }>;
-  cf_url: string;
   egress: { ipv4: string; ipv6: string; sampled_at: string | null };
 }
 
-function AddressRow({ label, value, link = false }: { label: string; value: string; link?: boolean }) {
+function AddressRow({ label, value }: { label: string; value: string }) {
   const t = useTranslations('deviceAddresses');
   const { copy, copied } = useClipboard();
   const [copyFailed, setCopyFailed] = useState(false);
-  let safeLink = false;
-  if (link && value) {
-    try {
-      const url = new URL(value);
-      safeLink = ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password;
-    } catch { /* Non-URL values remain copyable text, never navigation targets. */ }
-  }
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b py-3 last:border-0">
       <div className="min-w-0 space-y-1">
         <p className="text-sm text-muted-foreground">{label}</p>
-        {value ? safeLink ? (
-          <a className="break-all font-mono text-sm text-primary underline" href={value} target="_blank" rel="noopener noreferrer">{value}</a>
-        ) : <p className="break-all font-mono text-sm">{value}</p> : <p className="text-sm text-muted-foreground">{t('unknown')}</p>}
+        {value ? <p className="break-all font-mono text-sm">{value}</p> : <p className="text-sm text-muted-foreground">{t('unknown')}</p>}
       </div>
       {value && (
         <div>
@@ -150,12 +140,6 @@ export default function DeviceAddressesPage() {
               {!data.sampled_at && <p className="py-3 text-sm text-muted-foreground">{t('lanUnknown')}</p>}
               {data.sampled_at && data.lan.length === 0 && <p className="py-3 text-sm text-muted-foreground">{t('lanEmpty')}</p>}
               {data.lan.map((address) => <AddressRow key={`${address.interface}-${address.address}-${address.prefix_length}`} label={address.interface} value={`${address.address}/${address.prefix_length}`} />)}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>{t('remoteAccess')}</CardTitle></CardHeader>
-            <CardContent>
-              <AddressRow label={t('cloudflare')} value={data.cf_url} link />
             </CardContent>
           </Card>
           <Card>

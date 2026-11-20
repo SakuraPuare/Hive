@@ -8,7 +8,7 @@
 //   Circular references: 0
 //   Discriminated unions: 0
 //   With constraints: 1
-//   Generated at: 2026-11-20T11:36:50.140Z
+//   Generated at: 2026-11-20T12:15:27.604Z
 
 import { z } from "zod";
 
@@ -504,7 +504,6 @@ export type HandlerPortalCreateTicketResponse = z.infer<typeof handlerPortalCrea
 
 export const handlerPortalDeviceSchema = z.object({
   bound_subscription_id: z.number().int().optional(),
-  cf_url: z.string().optional(),
   claimed_at: z.string().optional(),
   country: z.string().optional(),
   country_override: z.string().optional(),
@@ -1017,7 +1016,6 @@ export const modelDeviceAddressSnapshotSchema = z.object({
 export type ModelDeviceAddressSnapshot = z.infer<typeof modelDeviceAddressSnapshotSchema>;
 
 export const modelDeviceAddressesResponseSchema = z.object({
-  cf_url: z.string().optional(),
   egress: modelDeviceEgressSchema.optional(),
   hostname: z.string().optional(),
   lan: z.array(modelLANAddressSchema).optional(),

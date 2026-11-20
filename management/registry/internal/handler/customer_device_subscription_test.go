@@ -29,7 +29,7 @@ func TestPortalDeviceEndpointsExposeOnlyCustomerFields(t *testing.T) {
 	forbidden := []string{
 		"tailscale_ip", "easytier_ip", "mesh_ip", "mesh_tunnel_id", "frp_port",
 		"tunnel_id", "xray_uuid", "server_enabled", "subscription_sync",
-		"location", "note", "region", "weight", "owner_customer_id",
+		"location", "note", "region", "weight", "owner_customer_id", "cf_url",
 		"address_snapshot", "addresses_sampled_at", "claim_code",
 		"100.64.1.2", "172.20.1.2", "172.20.1.3", "tunnel-secret-id", "mesh-secret-id",
 		"operator note",
@@ -60,7 +60,7 @@ func TestPortalDeviceEndpointsExposeOnlyCustomerFields(t *testing.T) {
 	if err := json.Unmarshal([]byte(single), &device); err != nil {
 		t.Fatal(err)
 	}
-	if device.MAC != mac || device.CFURL != "https://"+mac+".example.com" || device.CountryOverride != "US" || len(device.GatewayUpstreamNodes) != 0 {
+	if device.MAC != mac || device.CountryOverride != "US" || len(device.GatewayUpstreamNodes) != 0 {
 		t.Fatalf("portal get view = %+v", device)
 	}
 

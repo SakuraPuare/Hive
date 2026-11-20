@@ -843,8 +843,6 @@
     "lanStale": "局域网快照已超过 150 秒，地址可能已变化。",
     "lanUnknown": "未知：设备尚未上报局域网地址快照。",
     "lanEmpty": "当前局域网快照中没有地址。",
-    "remoteAccess": "远程访问入口",
-    "cloudflare": "Cloudflare 访问链接",
     "egress": "观测出口地址",
     "egressHint": "这些地址来自节点出站探测请求的实际路径，可能经过代理，不一定是 WAN 直连公网 IP。结果缓存约一小时；刷新页面不会强制重新探测。",
     "egressSampledAt": "出口探测观测时间",

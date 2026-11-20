@@ -5,7 +5,6 @@
 import type { model_DeviceEgress } from './model_DeviceEgress';
 import type { model_LANAddress } from './model_LANAddress';
 export type model_DeviceAddressesResponse = {
-    cf_url?: string;
     egress?: model_DeviceEgress;
     hostname?: string;
     lan?: Array<model_LANAddress>;

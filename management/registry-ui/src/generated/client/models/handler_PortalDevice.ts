@@ -4,7 +4,6 @@
 /* eslint-disable */
 export type handler_PortalDevice = {
     bound_subscription_id?: number;
-    cf_url?: string;
     claimed_at?: string;
     country?: string;
     country_override?: string;

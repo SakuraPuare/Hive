@@ -456,8 +456,8 @@ journalctl _COMM=sshd --since "24 hours ago" | grep "Accepted\|Failed"
 
 客户门户「我的设备」的独立地址页读取 `GET /api/portal/devices/{mac}/addresses`，仅设备所有者可访问；接口不返回设备凭证、订阅 token、Xray UUID，也不返回 Tailscale/EasyTier/Cloudflare Mesh 地址或 FRP 主机端口，不会下发命令、重启服务。
 
-- `hostname`、`mac`、`last_seen` 为节点身份和最后心跳；`cf_url` 为注册的 Cloudflare 访问链接，尚未就绪的 `pending` 显示为空。
-- `lan` 为 `ip -j address` 中具有 `/sys/class/net/<接口>/device` 的物理网卡 IPv4/IPv6 地址（含前缀长度），最多 32 项；不包含回环、链路本地、虚拟隧道及 fake-IP 地址。
+- `hostname`、`mac`、`last_seen` 为节点身份和最后心跳；接口不返回 Cloudflare 访问链接。
+- `lan` 为物理网卡，以及带 `phy80211` 的无线 AP 接口的 IPv4/IPv6 地址（含前缀长度），最多 32 项；包含虚拟 AP 接口，不包含回环、链路本地、非 AP 虚拟隧道及 fake-IP 地址。
 - `sampled_at` 是 registry 收到网络快照的 RFC3339 时间，与 `last_seen` 独立。旧 agent 不上报时为 `null`、`lan: []`；旧心跳不会刷新已有网络样本。
 - `egress.ipv4` / `egress.ipv6` 为节点分别使用 IPv4/IPv6 HTTPS 请求 Cloudflare trace 的实际 `ip=`。探测禁用环境 HTTP 代理，但仍可能经过系统透明代理、隧道或上游 NAT：这是**节点请求路径所见出口，不保证直连 WAN 地址**。
 - 出口按地址族缓存并最多每小时重试一次，失败保留上次成功地址和原始时间；从未成功则为空及 `sampled_at: null`。当两族成功时间不同，`egress.sampled_at` 取较旧时间，避免把旧地址标成新采样。LAN 每次心跳重新采集，出口时间不能用于判断 LAN 新鲜度。

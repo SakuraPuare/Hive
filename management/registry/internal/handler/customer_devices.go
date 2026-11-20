@@ -39,7 +39,6 @@ type PortalDevice struct {
 	MAC                  string  `json:"mac"`
 	MAC6                 string  `json:"mac6"`
 	Hostname             string  `json:"hostname"`
-	CFURL                string  `json:"cf_url"`
 	ProbeStatus          string  `json:"probe_status"`
 	LastSeen             string  `json:"last_seen"`
 	RegisteredAt         string  `json:"registered_at"`
@@ -63,7 +62,6 @@ func portalDevice(n model.Node) PortalDevice {
 		MAC:                  n.MAC,
 		MAC6:                 n.MAC6,
 		Hostname:             n.Hostname,
-		CFURL:                n.CFURL,
 		ProbeStatus:          n.ProbeStatus,
 		LastSeen:             n.LastSeen,
 		RegisteredAt:         n.RegisteredAt,

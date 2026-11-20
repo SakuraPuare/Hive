@@ -82,7 +82,7 @@ func TestDeviceAddressesOwnershipAndSnapshot(t *testing.T) {
 	other := insertTestCustomer(t, "addresses-other@example.com")
 	mac := "aabbccddeeff"
 	portalGatewayNode(t, mac, cid)
-	mustExec(t, "UPDATE nodes SET tailscale_ip = ?, easytier_ip = ?, mesh_ip = ?, cf_url = ?, frp_port = ?, tunnel_id = ? WHERE mac = ?", "100.64.1.2", "172.20.1.2", "172.20.1.3", "https://node.example.com", 22222, "tunnel-secret-id", mac)
+	mustExec(t, "UPDATE nodes SET tailscale_ip = ?, easytier_ip = ?, mesh_ip = ?, frp_port = ?, tunnel_id = ? WHERE mac = ?", "100.64.1.2", "172.20.1.2", "172.20.1.3", 22222, "tunnel-secret-id", mac)
 	path := "/portal/devices/" + mac + "/addresses"
 	get := func() model.DeviceAddressesResponse {
 		t.Helper()
@@ -93,7 +93,7 @@ func TestDeviceAddressesOwnershipAndSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, secret := range []string{"xray_uuid", "token", "claim_code", "tunnel_id", "address_snapshot", "tailscale_ip", "easytier_ip", "mesh_ip", "frp_port"} {
+		for _, secret := range []string{"xray_uuid", "token", "claim_code", "tunnel_id", "address_snapshot", "tailscale_ip", "easytier_ip", "mesh_ip", "frp_port", "cf_url"} {
 			if strings.Contains(string(body), secret) {
 				t.Fatalf("private field leaked: %s", body)
 			}
@@ -105,7 +105,7 @@ func TestDeviceAddressesOwnershipAndSnapshot(t *testing.T) {
 		return result
 	}
 	initial := get()
-	if initial.SampledAt != nil || initial.LAN == nil || len(initial.LAN) != 0 || initial.Egress.SampledAt != nil || initial.CFURL != "https://node.example.com" {
+	if initial.SampledAt != nil || initial.LAN == nil || len(initial.LAN) != 0 || initial.Egress.SampledAt != nil {
 		t.Fatalf("initial snapshot: %+v", initial)
 	}
 	resp := doBearer("POST", "/nodes/heartbeat", map[string]any{"mac": mac, "addresses": addressSample()}, deviceToken(t, mac))

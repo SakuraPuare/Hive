@@ -843,8 +843,6 @@
     "lanStale": "This LAN snapshot is more than 150 seconds old; addresses may have changed.",
     "lanUnknown": "Unknown: no LAN snapshot has been reported yet.",
     "lanEmpty": "The current LAN snapshot contains no addresses.",
-    "remoteAccess": "Remote access endpoints",
-    "cloudflare": "Cloudflare access URL",
     "egress": "Observed egress addresses",
     "egressHint": "Observed on the node's outbound probe request path, which may traverse a proxy. These are not necessarily the direct WAN IPs. Results are cached for about one hour; refreshing this page does not force a new probe.",
     "egressSampledAt": "Egress probe observed",

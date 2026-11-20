@@ -118,7 +118,6 @@ func (h *Handler) HandlePortalDeviceAddresses(w http.ResponseWriter, r *http.Req
 		MAC:      node.MAC,
 		LastSeen: node.LastSeen,
 		LAN:      []model.LANAddress{},
-		CFURL:    knownAddress(node.CFURL),
 	}
 	if row.AddressSnapshot != nil && row.AddressesSampledAt != nil {
 		var sample model.DeviceAddressSnapshot
