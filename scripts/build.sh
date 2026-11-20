@@ -159,6 +159,8 @@ CACHE_DIR="${ARMBIAN_DIR}/cache"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ccache 配置（三机型共享缓存的关键）
+# 生效前提：compile.sh 必须带 ENABLE_EXTENSIONS=ccache（见下方参数区）。没有它 ccache 不参与
+# 编译，这里的配置文件写得再对也没用（实测 2668 次调用全部 uncacheable、命中 0）。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 背景：默认 ccache.conf（max_size=5G / sloppiness 空 / hash_dir=true / compiler_check=mtime）
 # 下，内核编译命中率实测 0%——Kbuild 注入 KBUILD_BUILD_TIMESTAMP 等时间宏，ccache 默认判定
@@ -437,7 +439,11 @@ echo ""
 
 cd "${ARMBIAN_DIR}"
 
-# 执行构建（USE_CCACHE=yes 让 Armbian 在 Docker 内启用 ccache）
+# 执行构建（ENABLE_EXTENSIONS=ccache 让 Armbian 在 Docker 内启用 ccache）
+# 注意：26.11 起框架把入口从 USE_CCACHE 换成了 compile-cache 扩展，USE_CCACHE=yes 只会打印
+# "USE_CCACHE / PRIVATE_CCACHE are ignored"；那时 ccache 只接管了链接步骤（make 的 link），
+# 真正的编译根本没经过 ccache：实测 cache/ccache 里 2668 次调用 100% uncacheable、0 次命中。
+# 换成扩展后 u-boot 编译 731 次调用走 ccache（首轮全 miss，65s→48s），后续构建才开始命中。
 # 优化内核 config 已写入 userpatches/config/kernel/，框架按 LINUXCONFIG 文件名
 # 自动采用，无需在此传参（KERNEL_CONFIGURE 是布尔开关，旧用法传文件名无效）
 #
@@ -489,7 +495,7 @@ time ./compile.sh build \
     BUILD_MINIMAL=no \
     BUILD_DESKTOP=no \
     KERNEL_CONFIGURE=no \
-    USE_CCACHE=yes \
+    ENABLE_EXTENSIONS=ccache \
     COMPRESS_OUTPUTIMAGE=sha,xz \
     IMAGE_XZ_COMPRESSION_RATIO=6 \
     COMPRESS_MAX_THREADS="${COMPRESS_THREADS}" \
