@@ -6468,7 +6468,9 @@ paths:
       - servers
   /subscription:
     get:
-      description: 返回 base64 编码的 VLESS 订阅链接。管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组导出凭据>；分组凭据只导出该分组且不计客户额度。
+      description: |-
+        返回 base64 编码的 VLESS 订阅链接
+        管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组 token>；分组 token 只导出该分组且不计客户额度。
       operationId: SubscriptionVless
       parameters:
       - description: 客户订阅 Token（额度和有效期校验）
