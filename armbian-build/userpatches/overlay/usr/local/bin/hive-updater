@@ -34,6 +34,7 @@ trap cleanup EXIT
 [ -f "${CONFIG_ENV}" ] && source "${CONFIG_ENV}" 2>/dev/null
 [ ! -s /etc/hive/device-token ] || NODE_REGISTRY_API_SECRET=$(cat /etc/hive/device-token)
 source /usr/local/bin/hive-node-info
+source /usr/local/bin/hive-registry-auth
 hive_load_node_info "$NODE_INFO"
 
 if [ ! -f "${PUBKEY_FILE}" ]; then log "OTA 公钥不存在: ${PUBKEY_FILE}"; exit 1; fi
@@ -67,6 +68,15 @@ fi
 if [ -n "${NODE_REGISTRY_API_SECRET:-}" ]; then
     AUTH="Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"
 fi
+
+# 401 = registry 不认设备凭据（节点行被删/凭据被轮换）。首启的 provision-node 不会
+# 再跑，用保存的令牌幂等 re-enroll 后重试一次，否则 OTA 与回执永久失败。
+ota_reauth() {
+    hive_registry_reauth || return 1
+    NODE_REGISTRY_API_SECRET=$(hive_registry_token)
+    AUTH="Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"
+    return 0
+}
 
 source /usr/local/bin/hive-ota-transaction
 ota_rollback false || { log "上次更新回滚未完成，停止安装"; exit 1; }
@@ -372,12 +382,21 @@ except SyntaxError as e:
 
 # Keep the exact assignment receipt until the registry confirms it, including
 # after process restarts or when a newer rollout has superseded the old one.
+ack_post() {
+    local raw rc
+    raw=$(curl -4 -s -o /dev/null -w '%{http_code}' --max-time 15 -H "$AUTH" -H 'Content-Type: application/json' \
+        --data-binary "@$ACK_FILE" "${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/ota-ack" 2>/dev/null); rc=$?
+    hive_http_code_from "$raw" "$rc"
+}
+
 flush_ack() {
     [ -s "$ACK_FILE" ] || return 0
     if [ -z "${NODE_REGISTRY_URL:-}" ] || [ -z "$MAC_NORM" ] || [ -z "$AUTH" ]; then return 1; fi
     local code
-    code=$(curl -4 -s -o /dev/null -w '%{http_code}' --max-time 15 -H "$AUTH" -H 'Content-Type: application/json' \
-        --data-binary "@$ACK_FILE" "${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/ota-ack" 2>/dev/null) || code=000
+    code=$(ack_post)
+    if [ "$code" = 401 ] && ota_reauth; then
+        code=$(ack_post)
+    fi
     case "$code" in
         2??)
             rm -f "$ACK_FILE"
@@ -452,12 +471,30 @@ if [ -z "${MAC_NORM}" ]; then log "MAC 未知，跳过"; exit 0; fi
 
 flush_ack || exit 0
 
-RESP=$(curl -4 -sf --max-time 15 \
-    -H "${AUTH}" \
-    "${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/ota-version" 2>/dev/null) || {
-    log "检查 OTA 版本失败（registry 不可达？）"
-    exit 0
+poll_version() {
+    local raw rc body
+    body="${WORK_DIR}/ota-version.json"
+    rm -f "$body"
+    raw=$(curl -4 -s --max-time 15 -o "$body" -w '%{http_code}' \
+        -H "${AUTH}" \
+        "${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/ota-version" 2>/dev/null); rc=$?
+    if [ -s "$body" ]; then
+        RESP=$(cat "$body")
+    else
+        RESP=$raw
+        raw=""
+    fi
+    POLL_CODE=$(hive_http_code_from "$raw" "$rc")
 }
+RESP=""; poll_version
+if [ "$POLL_CODE" = 401 ] && ota_reauth; then
+    RESP=""; poll_version
+fi
+poll_code=$POLL_CODE
+if [ "$poll_code" != 200 ]; then
+    log "检查 OTA 版本失败（HTTP ${poll_code}）"
+    exit 0
+fi
 
 TARGET_VERSION=$(echo "${RESP}" | jq -r '.version // empty' 2>/dev/null)
 BUNDLE_URL=$(echo "${RESP}" | jq -r '.url // empty' 2>/dev/null)

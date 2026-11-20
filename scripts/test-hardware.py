@@ -1114,7 +1114,7 @@ elif args[:2] == ['rule', 'del']:
     save()
 ''')
         for name in ['hive-command-agent', 'hive-hotspot.sh', 'hive-node-info',
-                     'hive-hotspot-dns.sh', 'hive-hotspot-firewall.sh']:
+                     'hive-registry-auth', 'hive-hotspot-dns.sh', 'hive-hotspot-firewall.sh']:
             source = (BIN / name).read_text()
             for path in ['/tmp/', '/etc/', '/run/', '/var/lib/hive/', '/sys/class/net', '/usr/local/bin/']:
                 source = source.replace(path, str(self.root) + path)
@@ -1198,6 +1198,76 @@ elif args[0] == 'status':
         ack = json.loads((self.root / 'acks').read_text())
         self.assertEqual(ack['status'], 'failed')
         self.assertIn('exit 124', ack['result'])
+
+    def registry_auth_fixture(self, enroll_code=200, enroll_body='{"claim_code":"AG24-F4XT"}'):
+        """Agent fixture whose registry answers 401 until a re-enroll happens."""
+        self.service_agent_fixture()
+        (self.root / 'commands.json').write_text('[]')
+        (self.root / 'etc/hive/node-info').write_text(
+            'MAC=aabbccddeeff\nMAC6=cdeeff\nHOSTNAME=hive-cdeeff\n'
+            'CF_URL=https://hive-cdeeff.example\n'
+            'XRAY_UUID=5890a36e-e877-41a3-8734-1bbf94e91533\n'
+            'FRP_PORT=30570\nTUNNEL_ID=21ea2883-ad62-4d3d-b9df-37235098b839\n'
+            'TAILSCALE_IP=100.71.47.43\n')
+        (self.root / 'enroll-code').write_text(str(enroll_code))
+        (self.root / 'enroll-body').write_text(enroll_body)
+        self.mock('curl', r'''#!/usr/bin/env python3
+import os, sys
+from pathlib import Path
+r = Path(os.environ['HIVE_TEST_ROOT']); args = sys.argv[1:]
+url = next((a for a in args if a.startswith('http')), '')
+with (r/'calls').open('a') as out:
+    out.write(url + '\t' + ('-d' in args and args[args.index('-d')+1] or '') + '\n')
+def reply(code, body=''):
+    if '-o' in args and args[args.index('-o')+1] != '/dev/null':
+        Path(args[args.index('-o')+1]).write_text(body)
+    sys.stdout.write(code if '-w' in args else body)
+    sys.exit(0)
+if url.endswith('/cdn-cgi/trace'):
+    reply('200', 'ip=203.0.113.9\nloc=US\n')
+if url.endswith('/nodes/enroll'):
+    (r/'enrolled').write_text('1')
+    reply((r/'enroll-code').read_text().strip(), (r/'enroll-body').read_text())
+if url.endswith('/nodes/register'):
+    (r/'registered').write_text(args[args.index('-d')+1])
+    reply('200', '{}')
+if url.endswith('/nodes/heartbeat'):
+    reply('200' if (r/'enrolled').exists() else '401', '{}')
+if url.endswith('/commands'):
+    reply('200', '[]')
+reply('404', '{}')
+''')
+        return (self.root / 'usr/local/bin/hive-command-agent').read_text()
+
+    def test_command_agent_reenrolls_when_registry_rejects_credentials(self):
+        agent = self.registry_auth_fixture()
+        result = self.run_script(agent)
+        calls = (self.root / 'calls').read_text().splitlines()
+        enroll = [c for c in calls if c.startswith('https://registry.invalid/nodes/enroll')]
+        heartbeats = [c for c in calls if '/nodes/heartbeat\t' in c]
+        self.assertEqual(len(enroll), 1, calls)
+        self.assertIn('test-device-token', enroll[0])
+        self.assertIn('aabbccddeeff', enroll[0])
+        self.assertEqual(len(heartbeats), 2, calls)  # 401, then retried 200
+        self.assertIn('re-enrolled', result.stdout)
+        self.assertIn('heartbeat ok', result.stdout)
+        self.assertEqual((self.root / 'etc/hive/claim-code').read_text().strip(), 'AG24-F4XT')
+        registered = json.loads((self.root / 'registered').read_text())
+        self.assertEqual(registered['xray_uuid'], '5890a36e-e877-41a3-8734-1bbf94e91533')
+        self.assertEqual(registered['cf_url'], 'https://hive-cdeeff.example')
+        self.assertEqual(registered['frp_port'], 30570)
+
+    def test_command_agent_does_not_retry_a_rejected_credential(self):
+        agent = self.registry_auth_fixture(enroll_code=409,
+                                           enroll_body='{"error":"device is claimed"}')
+        (self.root / 'enrolled').unlink(missing_ok=True)
+        first = self.run_script(agent)
+        self.run_script(agent)
+        calls = (self.root / 'calls').read_text().splitlines()
+        enroll = [c for c in calls if c.startswith('https://registry.invalid/nodes/enroll')]
+        self.assertEqual(len(enroll), 1, calls)  # second run is inside the backoff
+        self.assertFalse((self.root / 'registered').exists())
+        self.assertIn('409', first.stderr + first.stdout)
 
     def test_service_control_rejects_multi_service_input(self):
         agent = self.service_agent_fixture()

@@ -5,6 +5,7 @@ umask 077
 [ ! -f /etc/hive/config.env ] || source /etc/hive/config.env
 [ ! -s /etc/hive/device-token ] || NODE_REGISTRY_API_SECRET=$(cat /etc/hive/device-token)
 source /usr/local/bin/hive-node-info
+source /usr/local/bin/hive-registry-auth
 hive_load_node_info /etc/hive/node-info
 source /usr/local/bin/hive-subscription-state
 exec 9>"$HIVE_ACCESS_DIR/gateway.sync.lock"
@@ -23,8 +24,21 @@ tmp=$(mktemp /etc/mihomo/.sync.XXXXXX)
 headers=$(mktemp "$HIVE_ACCESS_DIR/headers.XXXXXX")
 trap 'rm -f "$tmp" "$headers"' EXIT
 request_started=$(hive_now)
-curl -4 -fsS --max-time 5 -H "Authorization: Bearer $NODE_REGISTRY_API_SECRET" \
-    -D "$headers" -o "$tmp" "${NODE_REGISTRY_URL}/nodes/${MAC}/clash-config" || fail 'configuration request failed'
+fetch_config() {  # $1=body $2=headers → prints HTTP status, never fails
+    local raw rc
+    raw=$(curl -4 -sS --max-time 5 -H "Authorization: Bearer $NODE_REGISTRY_API_SECRET" \
+        -D "$2" -o "$1" -w '%{http_code}' "${NODE_REGISTRY_URL}/nodes/${MAC}/clash-config" 2>/dev/null); rc=$?
+    hive_http_code_from "$raw" "$rc"
+}
+code=$(fetch_config "$tmp" "$headers")
+# 401 = registry 不认这个凭据（节点行被删/凭据被轮换）：用保存的令牌幂等 re-enroll
+# 后重试一次，否则设备会永久 fail-closed。
+if [ "$code" = 401 ] && hive_registry_reauth; then
+    NODE_REGISTRY_API_SECRET=$(hive_registry_token)
+    : > "$tmp"; : > "$headers"
+    code=$(fetch_config "$tmp" "$headers")
+fi
+[ "$code" = 200 ] || fail 'configuration request failed'
 lease=$(awk 'tolower($1)=="x-hive-lease-seconds:" {gsub("\r", "", $2); print $2}' "$headers")
 access=$(awk 'tolower($1)=="x-hive-access:" {gsub("\r", "", $2); print $2}' "$headers")
 [[ "$access" = active || "$access" = blocked ]] || fail 'missing access decision'

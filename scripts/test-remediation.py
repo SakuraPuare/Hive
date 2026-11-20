@@ -26,6 +26,9 @@ class DeviceRegressionTests(unittest.TestCase):
         self.node_info = self.root / 'hive-node-info'
         shutil.copyfile(BIN / 'hive-node-info', self.node_info)
         self.node_info.chmod(0o755)
+        self.registry_auth = self.root / 'hive-registry-auth'
+        shutil.copyfile(BIN / 'hive-registry-auth', self.registry_auth)
+        self.registry_auth.chmod(0o755)
         self.env = dict(os.environ, HIVE_TEST_ROOT=str(self.root),
                         PATH=str(self.root / 'mock') + ':' + os.environ['PATH'])
         (self.root / 'etc/hive/config.env').write_text('NODE_REGISTRY_URL=https://test.invalid\nNODE_REGISTRY_API_SECRET=test-token\n')
@@ -33,25 +36,35 @@ class DeviceRegressionTests(unittest.TestCase):
         self.mock('logger', '#!/bin/sh\nexit 0\n')
         self.mock('chown', '#!/bin/sh\nexit 0\n')
         self.mock('systemctl', '#!/bin/sh\n[ "$1" != show ] || echo 123\nexit 0\n')
+        # Faithful curl: -o takes the body (even /dev/null), -w prints the status
+        # after it, so callers can rely on both without a status-only mock.
         self.mock('curl', '''#!/usr/bin/env python3
 import json,os,sys,shutil
 from pathlib import Path
-r=Path(os.environ['HIVE_TEST_ROOT']);args=sys.argv[1:];url=args[-1]
-def emit(code):
+r=Path(os.environ['HIVE_TEST_ROOT']);args=sys.argv[1:]
+url=next((a for a in args if a.startswith('http')), '')
+def reply(code, body=''):
+    if '-o' in args:
+        dest=Path(args[args.index('-o')+1])
+        if str(dest) != '/dev/null':
+            dest.write_text(body)
+    else:
+        sys.stdout.write(body)
     if '-w' in args:
-        sys.stdout.write(code);sys.stdout.flush();return True
-    return False
+        sys.stdout.write(code)
+    sys.exit(0)
 if url.endswith('/xray-users'):
-    if not emit('200'): print((r/'desired.json').read_text())
+    reply('200', (r/'desired.json').read_text())
 elif url.endswith('/ota-version'):
-    if not emit('200'): print((r/'assignment.json').read_text())
+    reply('200', (r/'assignment.json').read_text())
 elif url.endswith('/ota-ack'):
     payload=Path(args[args.index('--data-binary')+1][1:]).read_text()
     with (r/'acks').open('a') as f:f.write(json.dumps(json.loads(payload))+'\\n')
     if (r/'fail-ack').exists():sys.exit(22)
-    if '-w' in args:emit((r/'ack-code').read_text() if (r/'ack-code').exists() else '200')
+    reply((r/'ack-code').read_text() if (r/'ack-code').exists() else '200')
 else:
     shutil.copyfile(r/'bundle.tar.gz',args[args.index('-o')+1])
+    if '-w' in args: sys.stdout.write('200')
 ''')
         self.mock('xray', '''#!/usr/bin/env python3
 import os,sys
@@ -77,6 +90,7 @@ if flag.exists():flag.unlink();sys.exit(1)
         text = text.replace('OTA_ROOT=""', 'OTA_ROOT="' + str(self.root) + '"')
         text = text.replace('FW_ROOT=""', 'FW_ROOT="' + str(self.root) + '"')
         text = text.replace('/usr/local/bin/hive-node-info', str(self.node_info))
+        text = text.replace('/usr/local/bin/hive-registry-auth', str(self.registry_auth))
         for prefix in ['/etc/hive', '/etc/ssh', '/var/lib/hive', '/run', '/tmp/hive-ota', '/tmp/hive-xray-adu']:
             pattern = rf'(?<![A-Za-z0-9_.-]){re.escape(prefix)}(?=$|[/\s"\'])'
             text = re.sub(pattern, str(self.root) + prefix, text)

@@ -115,6 +115,19 @@ GET /api/portal/devices/{mac}/services
 状态心跳的 UTC 时间，不会因页面刷新或旧版心跳而更新。页面刷新不下发状态命令，
 不会增加节点轮询频率。快照与控制动作共用白名单，不能查询或控制任意 unit。
 
+### 设备凭据被 registry 拒绝时的自愈
+
+`hive-command-agent`、`hive-clash-sync`、`hive-xray-sync` 与 `hive-updater` 收到 HTTP 401
+（服务端删掉了节点行，或管理员轮换了凭据）时，会用 `/etc/hive/device-token` 调一次
+幂等 `POST /nodes/enroll`，成功后立刻重试原请求；enroll 只写 mac/hostname/认领码，
+随后再用 `/nodes/register` 回填 `cf_url`、`tunnel_id`、`frp_port`、`xray_uuid`、
+`tailscale_ip` 等身份字段（值取自 `node-info`，`easytier_ip` 由 registry 重新分配）。
+
+- registry 返回 409 表示设备已认领/是服务端身份，或令牌被换过：只记日志并退避
+  10 分钟（`/var/lib/hive/registry-auth.attempt`），不会抢所有权，需要管理员重新下发凭据。
+- 认领码由 `mac + token` 确定，重建的节点行沿用原码，客户可以照原样认领。
+- 这条自愈只解决“行被删”的情况；数据库整体重置时，设备会在下一轮定时任务里逐台恢复。
+
 ### Mihomo 面板地址与一键连接
 
 「我的设备 → Mihomo 面板」只展示自动检测到的物理网络地址：WAN 上联接口、LAN、热点地址；

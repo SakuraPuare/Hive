@@ -148,7 +148,7 @@ class SubscriptionScripts(unittest.TestCase):
         self.env = dict(os.environ,HIVE_TEST_ROOT=str(self.root),PATH=str(self.root/'mock')+':'+os.environ['PATH'])
         for name in ['systemctl','xray','curl','iptables','ip6tables','mihomo']:
             p=self.root/'mock'/name;p.write_text(MOCK);p.chmod(0o755)
-        for name in ['hive-node-info','hive-subscription-state','hive-xray-prepare','hive-gateway-prepare','hive-subscription-guard','hive-xray-sync','hive-clash-sync']:
+        for name in ['hive-node-info','hive-registry-auth','hive-subscription-state','hive-xray-prepare','hive-gateway-prepare','hive-subscription-guard','hive-xray-sync','hive-clash-sync']:
             source=(OVERLAY/'usr/local/bin'/name).read_text()
             for old,new in [('/usr/local/bin',str(self.root/'bin')),('/etc/hive',str(self.root/'etc/hive')),('/etc/xray',str(self.root/'etc/xray')),('/etc/mihomo',str(self.root/'etc/mihomo')),('/var/lib/hive',str(self.root/'var/lib/hive')),('/run/hive-subscriptions',str(self.root/'run/hive-subscriptions'))]:source=source.replace(old,new)
             p=self.root/'bin'/name;p.write_text(source);p.chmod(0o755)

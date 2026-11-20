@@ -307,27 +307,35 @@ exit 0
 
     def probe_curl(self):
         # First /ota-version fetch is the poll; every later one is the probe.
+        # First /ota-version fetch is the poll; every later one is the probe.
         self.mock('curl', '''#!/usr/bin/env python3
 import json,os,sys,shutil
 from pathlib import Path
-r=Path(os.environ['HIVE_TEST_ROOT']);args=sys.argv[1:];url=args[-1]
-def emit(code):
+r=Path(os.environ['HIVE_TEST_ROOT']);args=sys.argv[1:]
+url=next((a for a in args if a.startswith('http')), '')
+def reply(code, body=''):
+    if '-o' in args:
+        dest=Path(args[args.index('-o')+1])
+        if str(dest) != '/dev/null':
+            dest.write_text(body)
+    else:
+        sys.stdout.write(body)
     if '-w' in args:
-        sys.stdout.write(code);sys.stdout.flush();return True
-    return False
+        sys.stdout.write(code)
+    sys.exit(0)
 if url.endswith('/ota-version'):
     seen=r/'probe-calls'
     n=int(seen.read_text()) if seen.exists() else 0
     seen.write_text(str(n+1))
-    if not (('-w' in args) and emit('200')):
-        if n: sys.exit(22)
-        print((r/'assignment.json').read_text())
+    if n: sys.exit(22)
+    reply('200', (r/'assignment.json').read_text())
 elif url.endswith('/ota-ack'):
     payload=Path(args[args.index('--data-binary')+1][1:]).read_text()
     with (r/'acks').open('a') as f:f.write(json.dumps(json.loads(payload))+'\\n')
-    if '-w' in args:emit('200')
+    reply((r/'ack-code').read_text() if (r/'ack-code').exists() else '200')
 else:
     shutil.copyfile(r/'bundle.tar.gz',args[args.index('-o')+1])
+    if '-w' in args: sys.stdout.write('200')
 ''')
 
     def test_broken_management_path_rolls_back_the_bundle(self):

@@ -7,6 +7,7 @@ set -euo pipefail
 umask 077
 [ ! -f /etc/hive/config.env ] || source /etc/hive/config.env
 source /usr/local/bin/hive-node-info
+source /usr/local/bin/hive-registry-auth
 hive_load_node_info /etc/hive/node-info
 source /usr/local/bin/hive-subscription-state
 exec 9>"$HIVE_ACCESS_DIR/xray.sync.lock"
@@ -22,20 +23,31 @@ fail() {
 # unclaimed/customer nodes keep the pre-2026-10-27 plug-and-play behaviour.
 if [ -s /etc/hive/server-token ]; then
     AUTH_TOKEN=$(cat /etc/hive/server-token)
+    AUTH_SOURCE=server
     ACCOUNTING_URL="${NODE_REGISTRY_URL%/}/servers/${MAC}/accounting"
     ACCOUNTING_STATE_URL="${ACCOUNTING_URL}/state"
 elif [ -s /etc/hive/device-token ]; then
     AUTH_TOKEN=$(cat /etc/hive/device-token)
+    AUTH_SOURCE=device
     ACCOUNTING_URL="${NODE_REGISTRY_URL%/}/nodes/${MAC}/xray-users"
     ACCOUNTING_STATE_URL="${NODE_REGISTRY_URL%/}/nodes/${MAC}/accounting/state"
 elif [ -n "${NODE_REGISTRY_API_SECRET:-}" ]; then
     AUTH_TOKEN="$NODE_REGISTRY_API_SECRET"
+    AUTH_SOURCE=device
     ACCOUNTING_URL="${NODE_REGISTRY_URL%/}/nodes/${MAC}/xray-users"
     ACCOUNTING_STATE_URL="${NODE_REGISTRY_URL%/}/nodes/${MAC}/accounting/state"
 else
     fail 'device or server credentials missing'
 fi
 [ -n "$AUTH_TOKEN" ] || fail 'empty device or server credential'
+# 401 = registry 不认设备凭据（节点行被删/凭据被轮换）。首启的 provision-node 不会
+# 再跑，用保存的令牌幂等 re-enroll 后重试一次；服务端凭据（server-token）不参与。
+xray_reauth() {
+    [ "$AUTH_SOURCE" = device ] || return 1
+    hive_registry_reauth || return 1
+    AUTH_TOKEN=$(hive_registry_token)
+    return 0
+}
 systemctl is-active --quiet hive-subscription-guard.timer || fail 'subscription watchdog is not running'
 # One-time cutover: old runtime counters were billed by Prometheus. Start a
 # fresh epoch instead of charging the entire pre-upgrade lifetime again.
@@ -58,10 +70,19 @@ post_report() {
     ' "$source" > "$request"; then
         rm -f "$body" "$request"; return 1
     fi
-    if ! status=$(curl -4 -sS --max-time 5 -o "$body" -w '%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" \
+    if ! raw=$(curl -4 -sS --max-time 5 -o "$body" -w '%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" \
       -H 'Content-Type: application/json' --data-binary "@$request" \
       "$ACCOUNTING_URL"); then
-        rm -f "$body" "$request"; return 1
+        raw=""; rc=1
+    else rc=0; fi
+    status=$(hive_http_code_from "$raw" "$rc")
+    if [ "$status" = 401 ] && xray_reauth; then
+        if ! raw=$(curl -4 -sS --max-time 5 -o "$body" -w '%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" \
+          -H 'Content-Type: application/json' --data-binary "@$request" \
+          "$ACCOUNTING_URL"); then
+            raw=""; rc=1
+        else rc=0; fi
+        status=$(hive_http_code_from "$raw" "$rc")
     fi
     case "$status" in
         200) cat "$body"; rm -f "$body" "$request" ;;
@@ -91,11 +112,32 @@ replay_reports() {
     rm -f "$order"
 }
 prepare_generation() {
-    local state generation tmp
+    local state generation tmp code
     # Only called for a fresh, empty Xray runtime; never relabel existing traffic.
     replay_reports || return 1
-    state=$(curl -4 -fsS --max-time 5 -H "Authorization: Bearer $AUTH_TOKEN" \
-      "$ACCOUNTING_STATE_URL") || return 1
+    local raw rc
+    if ! raw=$(curl -4 -sS --max-time 5 -w '\n%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" \
+      "$ACCOUNTING_STATE_URL"); then
+        raw=""; rc=1
+    else rc=0; fi
+    if [[ $raw =~ $'\n'([0-9]{3})$ ]]; then
+        code=${BASH_REMATCH[1]}; state=${raw%$'\n'*}
+    else
+        # 被替换的 curl 只回正文：退出码 0 视为 200，正文原样使用。
+        state=$raw; code=$(hive_http_code_from "" "$rc")
+    fi
+    if [ "$code" = 401 ] && xray_reauth; then
+        if ! raw=$(curl -4 -sS --max-time 5 -w '\n%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" \
+          "$ACCOUNTING_STATE_URL"); then
+            raw=""; rc=1
+        else rc=0; fi
+        if [[ $raw =~ $'\n'([0-9]{3})$ ]]; then
+            code=${BASH_REMATCH[1]}; state=${raw%$'\n'*}
+        else
+            state=$raw; code=$(hive_http_code_from "" "$rc")
+        fi
+    fi
+    [ "$code" = 200 ] || return 1
     generation=$(printf '%s' "$state" | jq -er '.generation | select(type == "string" and test("^(0|[1-9][0-9]{0,18})$"))') || return 1
     # Keep shell arithmetic exact, including values beyond JSON's 53-bit range.
     if [ "${#generation}" -eq 19 ] && [[ "$generation" > 9223372036854775806 ]]; then return 1; fi

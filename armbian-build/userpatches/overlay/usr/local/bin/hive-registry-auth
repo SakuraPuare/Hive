@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# hive-registry-auth —— registry 设备凭据自愈（source 使用，加载时无副作用）
+#
+# 服务端删掉节点行或轮换凭据后，设备保存的 device-token 会被 401 拒绝，而首启的
+# provision-node 只跑一次（/etc/hive/provisioned），设备于是永久掉线：心跳失败、
+# xray/clash sync 失败、面板看不到、认领码匹配不到任何设备。
+#
+# 这里用同一个令牌做幂等 re-enroll（registry 对同 token 重试是安全的：台账保留，
+# 认领码由 mac+token 确定，重算相等；已认领/服务端身份或凭据被换过时返回 409，
+# 这里只记录，不重试、不抢所有权）。enroll 只写 mac/hostname/claim_code，CF、FRP、
+# Xray、Tailscale 身份由 /nodes/register 写入，所以恢复后立即回填。
+#
+# 调用方在收到 401 时调用 hive_registry_reauth；成功返回 0，可重试一次原请求。
+
+HIVE_REGISTRY_AUTH_STATE=/var/lib/hive/registry-auth.attempt
+HIVE_REGISTRY_AUTH_BACKOFF=${HIVE_REGISTRY_AUTH_BACKOFF:-600}
+
+hive_registry_auth_log() { echo "[hive-registry-auth] $*"; logger -t hive-registry-auth "$*" 2>/dev/null || true; }
+
+# HTTP status from a curl -w '%{http_code}' capture. 拿不到三位状态码（旧 stub/被替换的
+# curl）时退回 curl 退出码：0=成功，其余=不可达。
+hive_http_code_from() {  # $1=raw output $2=curl exit code
+    local raw=$1 rc=$2 last
+    last=${raw##*$'\n'}
+    if [[ $last =~ ^[0-9]{3}$ ]]; then
+        printf '%s' "$last"
+    elif [ "$rc" -eq 0 ]; then
+        printf '200'
+    else
+        printf '000'
+    fi
+}
+
+hive_registry_token() {
+    local token=''
+    [ ! -s /etc/hive/device-token ] || token=$(cat /etc/hive/device-token 2>/dev/null || true)
+    [ -n "$token" ] || [ ! -s /etc/hive/enrollment-token ] || token=$(cat /etc/hive/enrollment-token 2>/dev/null || true)
+    printf '%s' "$token"
+}
+
+# Write a secret atomically with 0600 and a directory sync, like provision-node.
+hive_registry_persist_secret() {
+    local path=$1 value=$2 tmp
+    tmp=$(mktemp "${path}.tmp.XXXXXX") || return 1
+    if ! { umask 077; printf '%s\n' "$value" > "$tmp"; } || ! sync "$tmp" ||
+        ! mv -f "$tmp" "$path" || ! sync "${path%/*}"; then
+        rm -f "$tmp"
+        return 1
+    fi
+}
+
+# enroll 之后回填 /nodes/register 才写的身份字段。node-info 缺少 CF_URL 或
+# XRAY_UUID 时跳过（例如未做 CF 的节点），不值得为它发一个注定 400 的请求。
+hive_registry_republish_identity() {
+    local token=$1 mac=$2 body code
+    [ -n "${CF_URL:-}" ] && [ -n "${XRAY_UUID:-}" ] && [ -n "${HOSTNAME:-}" ] || return 0
+    body=$(printf '{"mac":"%s","mac6":"%s","hostname":"%s","cf_url":"%s","tunnel_id":"%s","frp_port":%s,"xray_uuid":"%s","mesh_tunnel_id":"%s","mesh_ip":"%s","tailscale_ip":"%s"}' \
+        "$mac" "${MAC6:-${mac: -6}}" "$HOSTNAME" "$CF_URL" "${TUNNEL_ID:-}" "${FRP_PORT:-0}" \
+        "$XRAY_UUID" "${MESH_TUNNEL_ID:-}" "${MESH_IP:-}" "${TAILSCALE_IP:-}")
+    if ! code=$(curl -4 -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST \
+        "${NODE_REGISTRY_URL%/}/nodes/register" -H "Authorization: Bearer ${token}" \
+        -H 'Content-Type: application/json' -d "$body" 2>/dev/null); then
+        code=000
+    fi
+    [ "$code" = 200 ] || { hive_registry_auth_log "identity republish failed (HTTP ${code})"; return 1; }
+}
+
+# hive_registry_reauth: 0=现在可以重试 1=没恢复（409/网络/无令牌）
+hive_registry_reauth() {
+    local token mac body code claim now recent response
+    [ -n "${NODE_REGISTRY_URL:-}" ] || { hive_registry_auth_log 'NODE_REGISTRY_URL missing'; return 1; }
+    token=$(hive_registry_token)
+    [ -n "$token" ] || { hive_registry_auth_log 'no device token; administrator must re-issue the credential'; return 1; }
+    mac=$(printf '%s' "${MAC:-}" | tr 'A-F' 'a-f' | tr -cd 'a-f0-9')
+    mac=${mac: -12}
+    [ ${#mac} -eq 12 ] || { hive_registry_auth_log 'MAC unknown (node-info missing)'; return 1; }
+    now=$(date +%s)
+    recent=$(stat -c %Y "$HIVE_REGISTRY_AUTH_STATE" 2>/dev/null || echo 0)
+    if [ $((now - recent)) -lt "$HIVE_REGISTRY_AUTH_BACKOFF" ]; then
+        return 1
+    fi
+    mkdir -p "${HIVE_REGISTRY_AUTH_STATE%/*}" 2>/dev/null
+    : > "$HIVE_REGISTRY_AUTH_STATE" 2>/dev/null || true
+    body=$(printf '{"mac":"%s","mac6":"%s","hostname":"%s","token":"%s"}' "$mac" "${MAC6:-${mac: -6}}" "${HOSTNAME:-hive-${mac: -6}}" "$token")
+    response=$(mktemp "${HIVE_REGISTRY_AUTH_STATE}.XXXXXX") || return 1
+    if ! code=$(curl -4 -s -o "$response" -w '%{http_code}' --max-time 15 -X POST \
+        "${NODE_REGISTRY_URL%/}/nodes/enroll" -H 'Content-Type: application/json' -d "$body" 2>/dev/null); then
+        code=000
+    fi
+    case "$code" in
+        200)
+            claim=$(jq -r '.claim_code // empty' "$response" 2>/dev/null || true)
+            rm -f "$response"
+            if [ -n "$claim" ] && [ "$claim" != "$(cat /etc/hive/claim-code 2>/dev/null || true)" ]; then
+                hive_registry_persist_secret /etc/hive/claim-code "$claim" || true
+            fi
+            hive_registry_auth_log "re-enrolled ${mac}; claim code ${claim:-<stable>}"
+            hive_registry_republish_identity "$token" "$mac" || true
+            return 0
+            ;;
+        409)
+            hive_registry_auth_log "credential rejected (409): device is claimed or its token was rotated; an administrator must re-issue it"
+            ;;
+        000)
+            hive_registry_auth_log 're-enroll failed: registry unreachable'
+            ;;
+        *)
+            hive_registry_auth_log "re-enroll failed (HTTP ${code})"
+            ;;
+    esac
+    rm -f "$response"
+    return 1
+}

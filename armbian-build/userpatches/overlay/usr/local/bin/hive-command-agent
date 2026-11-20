@@ -19,6 +19,7 @@ log() { echo "[hive-command-agent] $*"; logger -t "hive-command-agent" "$*" 2>/d
 [ -f "${CONFIG_ENV}" ] && source "${CONFIG_ENV}" 2>/dev/null
 [ ! -s /etc/hive/device-token ] || NODE_REGISTRY_API_SECRET=$(cat /etc/hive/device-token)
 source /usr/local/bin/hive-node-info
+source /usr/local/bin/hive-registry-auth
 hive_load_node_info "$NODE_INFO"
 
 if [ -z "${NODE_REGISTRY_URL:-}" ]; then log "NODE_REGISTRY_URL 未配置，跳过"; exit 0; fi
@@ -302,30 +303,75 @@ heartbeat() {
     addresses=$(jq -c 'if .collection_ok == true then del(.country, .collection_ok) else null end' <<< "$addresses")
     country=$(country_code)
     services=$(service_states)
-    curl -4 -sf --max-time 10 -H "${AUTH}" -H 'Content-Type: application/json' \
-        -d "$(jq -nc --arg mac "${MAC_NORM}" --argjson cpu "${cpu:-0}" --argjson mem "${mem:-0}" \
-              --argjson disk "${disk:-0}" --argjson up "${up:-0}" --arg country "${country:-}" \
-              --argjson services "$services" --argjson addresses "${addresses:-null}" \
-              '{mac:$mac,cpu_pct:$cpu,mem_pct:$mem,disk_pct:$disk,uptime_sec:$up,services:$services} + (if $addresses == null then {} else {addresses:$addresses} end) + (if $country == "" then {} else {country:$country} end)')" \
-        "${NODE_REGISTRY_URL}/nodes/heartbeat" >/dev/null 2>&1 \
-        && log "heartbeat ok (cpu=${cpu}% mem=${mem}% disk=${disk}%)" \
-        || log "heartbeat failed（registry 不可达，下轮重试）"
+    payload=$(jq -nc --arg mac "${MAC_NORM}" --argjson cpu "${cpu:-0}" --argjson mem "${mem:-0}" \
+          --argjson disk "${disk:-0}" --argjson up "${up:-0}" --arg country "${country:-}" \
+          --argjson services "$services" --argjson addresses "${addresses:-null}" \
+          '{mac:$mac,cpu_pct:$cpu,mem_pct:$mem,disk_pct:$disk,uptime_sec:$up,services:$services} + (if $addresses == null then {} else {addresses:$addresses} end) + (if $country == "" then {} else {country:$country} end)')
+    hb_code=$(heartbeat_post "$payload")
+    # 401 = registry 不认这个凭据（节点行被删/凭据被轮换），首启的 provision-node
+    # 不会再跑，所以这里用保存的令牌幂等 re-enroll，成功就重试一次。
+    if [ "$hb_code" = 401 ] && hive_registry_reauth; then
+        AUTH="Authorization: Bearer $(hive_registry_token)"
+        hb_code=$(heartbeat_post "$payload")
+    fi
+    case "$hb_code" in
+        200) log "heartbeat ok (cpu=${cpu}% mem=${mem}% disk=${disk}%)" ;;
+        401) log "heartbeat rejected (401)：registry 不认设备凭据，已尝试 re-enroll（见 hive-registry-auth 日志）" ;;
+        000) log "heartbeat failed（registry 不可达，下轮重试）" ;;
+        *) log "heartbeat failed（HTTP ${hb_code}，下轮重试）" ;;
+    esac
+}
+
+# Echoes the HTTP status (000 when the registry is unreachable).
+heartbeat_post() {
+    local raw rc
+    raw=$(curl -4 -s -o /dev/null -w '%{http_code}' --max-time 10 -H "${AUTH}" \
+        -H 'Content-Type: application/json' -d "$1" "${NODE_REGISTRY_URL}/nodes/heartbeat" 2>/dev/null); rc=$?
+    hive_http_code_from "$raw" "$rc"
 }
 heartbeat
 
 # ── 领取待执行命令 ─────────────────────────────────────────────────────
 # -4 强制 IPv4：避开 IPv6+Mihomo 半开死路（详见 provision-node.sh 注册段注释）。
-RESP=$(curl -4 -sf --max-time 15 -H "${AUTH}" "${BASE}" 2>/dev/null) || { log "拉取命令失败（registry 不可达？）"; exit 0; }
+pull_commands() {  # prints raw body + '\n' + status line; sets nothing
+    local raw rc
+    raw=$(curl -4 -s --max-time 15 -H "${AUTH}" -w '\n%{http_code}' "${BASE}" 2>/dev/null); rc=$?
+    if [[ ${raw##*$'\n'} =~ ^[0-9]{3}$ ]]; then
+        printf '%s' "$raw"
+    else
+        # 旧 stub 不实现 -w：退出码 0 视为 200（与改动前的 -f 语义一致）。
+        printf '%s\n%s' "$raw" "$([ "$rc" -eq 0 ] && echo 200 || echo 000)"
+    fi
+}
+RESP=$(pull_commands)
+pull_code=${RESP##*$'\n'}
+RESP=${RESP%$'\n'*}
+if [ "$pull_code" = 401 ] && hive_registry_reauth; then
+    AUTH="Authorization: Bearer $(hive_registry_token)"
+    RESP=$(pull_commands)
+    pull_code=${RESP##*$'\n'}
+    RESP=${RESP%$'\n'*}
+fi
+[ "$pull_code" = 200 ] || { log "拉取命令失败（HTTP ${pull_code}）"; exit 0; }
 [ -z "${RESP}" ] || [ "${RESP}" = "[]" ] && exit 0
 command -v jq >/dev/null 2>&1 || { log "缺 jq，无法解析命令"; exit 0; }
 
 # ack <id> <status> <result>
 ack() {
-    local id="$1" status="$2" result="$3"
-    curl -4 -sf --max-time 15 -H "${AUTH}" -H "Content-Type: application/json" \
-        -d "$(jq -n --arg s "$status" --arg r "$result" '{status:$s,result:$r}')" \
-        "${BASE}/${id}/ack" >/dev/null 2>&1 \
-        && log "已回传 #${id} ${status}" || log "回传 #${id} 失败（下轮由 registry 端超时兜底）"
+    local id="$1" status="$2" result="$3" body raw code rc
+    body=$(jq -n --arg s "$status" --arg r "$result" '{status:$s,result:$r}')
+    raw=$(curl -4 -s -o /dev/null -w '%{http_code}' --max-time 15 -H "${AUTH}" -H "Content-Type: application/json" \
+        -d "$body" "${BASE}/${id}/ack" 2>/dev/null); rc=$?
+    code=$(hive_http_code_from "$raw" "$rc")
+    if [ "$code" = 401 ] && hive_registry_reauth; then
+        AUTH="Authorization: Bearer $(hive_registry_token)"
+        raw=$(curl -4 -s -o /dev/null -w '%{http_code}' --max-time 15 -H "${AUTH}" -H "Content-Type: application/json" \
+            -d "$body" "${BASE}/${id}/ack" 2>/dev/null); rc=$?
+        code=$(hive_http_code_from "$raw" "$rc")
+    fi
+    [ "$code" = 200 ] \
+        && log "已回传 #${id} ${status}" \
+        || log "回传 #${id} 失败（HTTP ${code}，下轮由 registry 端超时兜底）"
 }
 
 # 逐条执行。jq -c 每行一个对象，避免命令里空格/换行破坏循环。
