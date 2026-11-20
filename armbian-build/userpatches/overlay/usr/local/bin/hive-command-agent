@@ -143,7 +143,7 @@ try:
             prefix = entry.get('prefixlen')
             if address and type(prefix) is int and 0 <= prefix <= (32 if ':' not in address else 128):
                 item = {'interface': iface, 'address': address, 'prefix_length': prefix}
-                if item not in lan and len(lan) < 32:
+                if item not in lan:
                     lan.append(item)
     # Only main-table physical default devices identify uplinks; overlay/TUN
     # policy routes do not. Failed route inspection leaves the role unknown.
@@ -187,11 +187,12 @@ try:
         # iw could not enumerate modes; a present wireless NIC is the best
         # available signal that the user can configure a hotspot.
         hotspot_capable = True
-    # AP interfaces are detected from iw mode, so 2.4G/5G APs and virtual Wi-Fi
-    # interfaces are covered without matching any board-specific address.
+    # Wireless is AP-only on Hive. Only interfaces iw reports as type AP (2.4G/5G
+    # and virtual AP interfaces, no board-specific addresses) are kept, as
+    # hotspot; station/monitor or unreadable-mode wireless interfaces are not
+    # part of the customer topology and must not become panel candidates.
     ap_interfaces = set()
-    for item in lan:
-        iface = item['interface']
+    for iface in {item['interface'] for item in lan}:
         if not pathlib.Path('/sys/class/net', iface, 'phy80211').exists():
             continue
         try:
@@ -200,17 +201,13 @@ try:
             continue
         if re.search(r'^\s*type\s+AP\s*$', info, re.M):
             ap_interfaces.add(iface)
-    if routes_ok:
-        for item in lan:
-            if item['interface'] in uplinks:
-                item['role'] = 'wan'
+    lan = [item for item in lan if item['interface'] in ap_interfaces
+           or not pathlib.Path('/sys/class/net', item['interface'], 'phy80211').exists()][:32]
     for item in lan:
-        if 'role' not in item and item['interface'] in ap_interfaces:
+        if item['interface'] in ap_interfaces:
             item['role'] = 'hotspot'
-    if routes_ok:
-        for item in lan:
-            if 'role' not in item and not pathlib.Path('/sys/class/net', item['interface'], 'phy80211').exists():
-                item['role'] = 'lan'
+        elif routes_ok:
+            item['role'] = 'wan' if item['interface'] in uplinks else 'lan'
     collection_ok = True
 except (OSError, ValueError, TypeError, subprocess.SubprocessError):
     pass

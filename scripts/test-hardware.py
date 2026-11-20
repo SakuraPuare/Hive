@@ -173,6 +173,25 @@ class HardwareTests(unittest.TestCase):
             {'interface': 'lan0', 'address': '10.42.2.1', 'prefix_length': 24, 'role': 'lan'},
             {'interface': 'wlan1', 'address': '10.42.0.1', 'prefix_length': 24, 'role': 'hotspot'}])
 
+    def test_command_addresses_drop_wireless_interfaces_that_are_not_ap(self):
+        # Wireless is AP-only: a station-mode interface with an address (even one
+        # holding a default route) must not reach the customer address page or
+        # become a Mihomo panel candidate.
+        (self.root / 'net' / 'eth0' / 'device').mkdir(parents=True)
+        for iface in ['wlan0', 'wlan1']:
+            (self.root / 'net' / iface / 'phy80211').mkdir(parents=True)
+        rows = [
+            {'ifname': 'eth0', 'addr_info': [{'local': '192.168.5.2', 'prefixlen': 24}]},
+            {'ifname': 'wlan0', 'addr_info': [{'local': '10.42.1.1', 'prefixlen': 24}]},
+            {'ifname': 'wlan1', 'addr_info': [{'local': '192.168.9.7', 'prefixlen': 24}]},
+        ]
+        sample, _ = self.address_collector(rows, 1700000000,
+            {4: subprocess.CalledProcessError(7, 'curl'), 6: subprocess.CalledProcessError(7, 'curl')},
+            {4: [{'dev': 'eth0'}, {'dev': 'wlan1'}]}, ap_interfaces={'wlan0'}, ap_capable=True)
+        self.assertEqual(sample['lan'], [
+            {'interface': 'eth0', 'address': '192.168.5.2', 'prefix_length': 24, 'role': 'wan'},
+            {'interface': 'wlan0', 'address': '10.42.1.1', 'prefix_length': 24, 'role': 'hotspot'}])
+
     def test_command_addresses_reports_added_ap_capable_adapter(self):
         (self.root / 'net' / 'eth0' / 'device').mkdir(parents=True)
         # A USB Wi-Fi adapter appears as phy80211 before any AP is configured.
