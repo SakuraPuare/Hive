@@ -137,8 +137,10 @@ export function NodeCommandsDialog({ nodes, open, onOpenChange }: {
       return;
     }
     let stopped = false;
-    let timer: number | undefined;
+    let inFlight = false;
     const tick = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const snapshot = await sessionApi(AdminService.adminDeviceServices({ mac }));
         if (stopped) return;
@@ -148,11 +150,12 @@ export function NodeCommandsDialog({ nodes, open, onOpenChange }: {
       } catch (error) {
         if (!stopped) setServiceError(getErrorMessage(error, t('serviceStatusUnavailable')));
       } finally {
-        if (!stopped) timer = window.setTimeout(() => { void tick(); }, 5000);
+        inFlight = false;
       }
     };
     void tick();
-    return () => { stopped = true; window.clearTimeout(timer); };
+    const timer = window.setInterval(() => { void tick(); }, 5000);
+    return () => { stopped = true; window.clearInterval(timer); };
   }, [open, canRead, targetKey, t]);
 
   function commandLabel(command: handler_enqueueCommandRequest | model_DeviceCommand) {

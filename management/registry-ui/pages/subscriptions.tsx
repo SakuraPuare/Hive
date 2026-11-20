@@ -5,7 +5,7 @@ import {
   SubscriptionService,
 } from '@/src/generated/client';
 import type { model_Node, model_SubscriptionGroup } from '@/src/generated/client';
-import { apiUrl, sessionApi } from '@/lib/openapi-session';
+import { apiPath, sessionApi } from '@/lib/openapi-session';
 import { getErrorMessage } from '@/lib/i18n';
 import { useClipboard } from '@/lib/use-clipboard';
 import { Button } from '@/components/ui/button';
@@ -51,7 +51,18 @@ export default function Subscriptions() {
   const toast = useToast();
   const [customerSubscription, setCustomerSubscription] = useState('');
   const customerToken = customerSubscriptionToken(customerSubscription);
-  const scopedURL = (path: string) => customerToken ? apiUrl(`${path}?subscription=${encodeURIComponent(customerToken)}`) : undefined;
+  // The origin is resolved after mount: reading window during render would make
+  // the server (relative paths) and the first client render (absolute URLs)
+  // disagree. Empty origin keeps the first client render identical to the
+  // server's; links appear once the effect runs.
+  const [origin, setOrigin] = useState('');
+  useEffect(() => { setOrigin(window.location.origin); }, []);
+  const shareURL = (path: string) => {
+    const rel = apiPath(path);
+    if (/^https?:\/\//i.test(rel)) return rel;
+    return origin ? `${origin}${rel}` : undefined;
+  };
+  const scopedURL = (path: string) => customerToken ? shareURL(`${path}?subscription=${encodeURIComponent(customerToken)}`) : undefined;
   // Operator (admin) link for a group: exports the group with node UUIDs and no
   // customer quota, using the group-scoped credential derived server-side. When
   // a customer subscription is entered, the link is scoped to that customer
@@ -59,7 +70,7 @@ export default function Subscriptions() {
   const groupURL = (group: model_SubscriptionGroup) => {
     if (customerToken) return scopedURL(`/s/${group.token}`);
     if (!group.token || !group.export_token) return undefined;
-    return apiUrl(`/s/${group.token}?token=${encodeURIComponent(group.export_token)}`);
+    return shareURL(`/s/${group.token}?token=${encodeURIComponent(group.export_token)}`);
   };
 
   const createNameId = useId();
