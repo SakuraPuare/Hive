@@ -5451,7 +5451,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: 客户对自己名下设备下发白名单命令（重启、配置同步、热点配置或 allowlisted service-control）。节点下次心跳周期拉取执行并回传结果。
+      description: 客户对自己名下设备下发命令：重启、热点配置，或对 hive-mihomo/hive-hotspot/hive-gateway
+        的 service-control。其余动作与服务返回 403。节点下次心跳周期拉取执行并回传结果。
       operationId: PortalEnqueueDeviceCommand
       parameters:
       - description: 设备 MAC
@@ -5475,6 +5476,10 @@ paths:
             type: object
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
         "404":

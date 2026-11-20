@@ -364,6 +364,49 @@ func TestEnqueueCommandReturnsInsertedID(t *testing.T) {
 	}
 }
 
+func TestPortalCommandsLimitedToCustomerSubset(t *testing.T) {
+	// The portal UI only offers reboot, hotspot config and the gateway/hotspot
+	// services; the API must enforce the same subset, or a customer can stop
+	// hive-command-agent.timer and cut the operator's remote channel.
+	resetDB(t)
+	const mac = "aabbccddee75"
+	insertTestNode(t, mac)
+	cid := insertTestCustomer(t, "commands-owner@example.com")
+	mustExec(t, "UPDATE nodes SET owner_customer_id=? WHERE mac=?", cid, mac)
+	service := func(name string) string {
+		return `{"service":"` + name + `","operation":"stop"}`
+	}
+	for _, body := range []enqueueCommandRequest{
+		{Action: "restart-xray"},
+		{Action: "restart-mihomo"},
+		{Action: "resync"},
+		{Action: "service-control", Params: service("hive-command-agent.timer")},
+		{Action: "service-control", Params: service("xray")},
+		{Action: "service-control", Params: service("frpc")},
+	} {
+		resp := doJSON("POST", "/portal/devices/"+mac+"/commands", body, customerCookie(cid))
+		assertStatus(t, resp, http.StatusForbidden)
+		resp.Body.Close()
+	}
+	if n := scalar(t, "SELECT COUNT(*) FROM node_commands"); n != 0 {
+		t.Fatalf("customer enqueued %d admin-only commands", n)
+	}
+	for _, body := range []enqueueCommandRequest{
+		{Action: "reboot"},
+		{Action: "service-control", Params: service("hive-hotspot")},
+		{Action: "service-control", Params: service("hive-gateway")},
+		{Action: "service-control", Params: service("hive-mihomo")},
+	} {
+		resp := doJSON("POST", "/portal/devices/"+mac+"/commands", body, customerCookie(cid))
+		assertStatus(t, resp, http.StatusOK)
+		resp.Body.Close()
+	}
+	// Admin path keeps the full allowlist.
+	resp := doJSON("POST", "/admin/nodes/"+mac+"/commands", enqueueCommandRequest{Action: "service-control", Params: service("xray")}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+}
+
 func TestProbeWithoutPrometheusKeepsHeartbeat(t *testing.T) {
 	// The probe used to write status='unknown' plus NULL metrics whenever a
 	// series was missing, erasing a heartbeat that had just reported the node

@@ -122,7 +122,7 @@ export class PortalService {
     }
     /**
      * 给我的设备下发命令
-     * 客户对自己名下设备下发白名单命令（重启、配置同步、热点配置或 allowlisted service-control）。节点下次心跳周期拉取执行并回传结果。
+     * 客户对自己名下设备下发命令：重启、热点配置，或对 hive-mihomo/hive-hotspot/hive-gateway 的 service-control。其余动作与服务返回 403。节点下次心跳周期拉取执行并回传结果。
      * @returns number OK
      * @throws ApiError
      */
@@ -149,6 +149,7 @@ export class PortalService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request`,
+                403: `Forbidden`,
                 404: `Not Found`,
             },
         });

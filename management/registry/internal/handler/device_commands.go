@@ -40,6 +40,19 @@ var serviceControlOperations = map[string]bool{
 	"start": true, "stop": true, "restart": true, "status": true,
 }
 
+// portalCommandActions / portalServiceControlServices are the customer-facing
+// subset: reboot, Wi-Fi hotspot configuration and the gateway/hotspot stack.
+// Management, tunnel and sync units stay admin-only; stopping e.g.
+// hive-command-agent.timer from the portal would cut the operator's only
+// remote channel to the device.
+var portalCommandActions = map[string]bool{
+	"reboot": true, "hotspot-config": true, "service-control": true,
+}
+
+var portalServiceControlServices = map[string]bool{
+	"hive-mihomo": true, "hive-hotspot": true, "hive-gateway": true,
+}
+
 var (
 	hotspotTextPattern    = regexp.MustCompile(`^[ -~]+$`)
 	hotspotCountryPattern = regexp.MustCompile(`^[A-Za-z]{2}$`)
@@ -166,7 +179,7 @@ func (h *Handler) listCommands(w http.ResponseWriter, mac string) {
 // HandlePortalEnqueueCommand godoc
 // @Summary      给我的设备下发命令
 // @ID           PortalEnqueueDeviceCommand
-// @Description  客户对自己名下设备下发白名单命令（重启、配置同步、热点配置或 allowlisted service-control）。节点下次心跳周期拉取执行并回传结果。
+// @Description  客户对自己名下设备下发命令：重启、热点配置，或对 hive-mihomo/hive-hotspot/hive-gateway 的 service-control。其余动作与服务返回 403。节点下次心跳周期拉取执行并回传结果。
 // @Tags         portal
 // @Security     CustomerSessionCookie
 // @Accept       json
@@ -174,6 +187,7 @@ func (h *Handler) listCommands(w http.ResponseWriter, mac string) {
 // @Param        body body enqueueCommandRequest true "命令"
 // @Success      200 {object} map[string]uint64
 // @Failure      400 {object} ErrorResponse
+// @Failure      403 {object} ErrorResponse
 // @Failure      404 {object} ErrorResponse
 // @Router       /portal/devices/{mac}/commands [post]
 func (h *Handler) HandlePortalEnqueueCommand(w http.ResponseWriter, r *http.Request) {
@@ -187,9 +201,18 @@ func (h *Handler) HandlePortalEnqueueCommand(w http.ResponseWriter, r *http.Requ
 		h.jsonErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if body.Action == "ota-update" {
-		h.jsonErr(w, http.StatusForbidden, "OTA updates require administrator release permission")
+	if !portalCommandActions[body.Action] {
+		h.jsonErr(w, http.StatusForbidden, "action is not available from the customer portal")
 		return
+	}
+	if body.Action == "service-control" {
+		var params struct {
+			Service string `json:"service"`
+		}
+		if json.Unmarshal([]byte(body.Params), &params) == nil && !portalServiceControlServices[params.Service] {
+			h.jsonErr(w, http.StatusForbidden, "service is not controllable from the customer portal")
+			return
+		}
 	}
 	id, ok := h.enqueueCommand(w, mac, customerActor(cid), body, getClientIP(r))
 	if !ok {
