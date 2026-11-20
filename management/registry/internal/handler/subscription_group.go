@@ -325,51 +325,38 @@ func (h *Handler) HandlePublicGroupClash(w http.ResponseWriter, r *http.Request)
 // groupByExportCredential resolves a group-scoped operator credential (as
 // emitted by the panel) back to its group. Only the subscription export routes
 // call this; customer subscriptions and the master/legacy secrets never match.
-func (h *Handler) groupByExportCredential(credential string) (name string, nodes []model.Node, ok bool) {
+// found=false means no group has this credential (404); err is a database
+// failure (500) and must not masquerade as an unknown link.
+func (h *Handler) groupByExportCredential(credential string) (name string, nodes []model.Node, found bool, err error) {
 	if credential == "" {
-		return "", nil, false
+		return "", nil, false, nil
 	}
 	var groups []struct {
+		ID    uint
 		Token string
 		Name  string
 	}
-	if err := h.DB.Raw("SELECT token, name FROM subscription_groups").Scan(&groups).Error; err != nil {
-		return "", nil, false
+	if err := h.DB.Raw("SELECT id, token, name FROM subscription_groups").Scan(&groups).Error; err != nil {
+		return "", nil, false, err
 	}
 	for _, g := range groups {
-		if subtle.ConstantTimeCompare([]byte(credential), []byte(g.Token)) != 1 {
+		if len(g.Token) != 64 || subtle.ConstantTimeCompare([]byte(credential), []byte(g.Token)) != 1 {
 			continue
 		}
-		return h.loadGroupNodes(g.Token)
+		var macs []string
+		if err := h.DB.Model(&model.SubscriptionGroupNode{}).Where("group_id=?", g.ID).Pluck("node_mac", &macs).Error; err != nil {
+			return "", nil, false, err
+		}
+		nodes, err := h.queryNodesByMACs(macs)
+		if err != nil {
+			return "", nil, false, err
+		}
+		if nodes == nil {
+			nodes = []model.Node{}
+		}
+		return g.Name, nodes, true, nil
 	}
-	return "", nil, false
-}
-
-// loadGroupNodes returns the group name and its nodes, or ok=false when the
-// token does not identify a group.
-func (h *Handler) loadGroupNodes(groupToken string) (name string, nodes []model.Node, ok bool) {
-	if len(groupToken) != 64 {
-		return "", nil, false
-	}
-	var sg struct {
-		ID   uint
-		Name string
-	}
-	if err := h.DB.Raw("SELECT id, name FROM subscription_groups WHERE token=?", groupToken).Scan(&sg).Error; err != nil || sg.ID == 0 {
-		return "", nil, false
-	}
-	var macs []string
-	if err := h.DB.Model(&model.SubscriptionGroupNode{}).Where("group_id=?", sg.ID).Pluck("node_mac", &macs).Error; err != nil {
-		return "", nil, false
-	}
-	nodes, err := h.queryNodesByMACs(macs)
-	if err != nil {
-		return "", nil, false
-	}
-	if nodes == nil {
-		nodes = []model.Node{}
-	}
-	return sg.Name, nodes, true
+	return "", nil, false, nil
 }
 
 // serveGroupOperatorVless is the VLESS counterpart of serveGroupOperatorClash:

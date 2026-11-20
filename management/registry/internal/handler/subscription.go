@@ -25,11 +25,16 @@ import (
 // @Router       /subscription [get]
 func (h *Handler) HandleSubscriptionVless(w http.ResponseWriter, r *http.Request) {
 	if q := r.URL.Query().Get("token"); q != "" && !h.masterExportToken(q) {
-		if _, nodes, ok := h.groupByExportCredential(q); ok {
-			h.serveGroupOperatorVless(w, r, nodes)
+		_, nodes, found, err := h.groupByExportCredential(q)
+		if err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return
 		}
-		http.NotFound(w, r)
+		if !found {
+			http.NotFound(w, r)
+			return
+		}
+		h.serveGroupOperatorVless(w, r, nodes)
 		return
 	}
 	if middleware.IsAutomationRequest(r) {
@@ -52,11 +57,16 @@ func (h *Handler) HandleSubscriptionVless(w http.ResponseWriter, r *http.Request
 // @Router       /subscription/clash [get]
 func (h *Handler) HandleSubscriptionClash(w http.ResponseWriter, r *http.Request) {
 	if q := r.URL.Query().Get("token"); q != "" && !h.masterExportToken(q) {
-		if name, nodes, ok := h.groupByExportCredential(q); ok {
-			h.serveGroupOperatorClash(w, r, name, nodes)
+		name, nodes, found, err := h.groupByExportCredential(q)
+		if err != nil {
+			h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 			return
 		}
-		http.NotFound(w, r)
+		if !found {
+			http.NotFound(w, r)
+			return
+		}
+		h.serveGroupOperatorClash(w, r, name, nodes)
 		return
 	}
 	if middleware.IsAutomationRequest(r) {
