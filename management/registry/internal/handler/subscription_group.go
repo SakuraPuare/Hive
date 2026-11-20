@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,7 +23,8 @@ type SetGroupNodesRequest struct {
 }
 
 type ResetTokenResponse struct {
-	Token string `json:"token"`
+	Token       string `json:"token"`
+	ExportToken string `json:"export_token,omitempty"`
 }
 
 // clashRenderOptions assembles the render options shared by every client-facing
@@ -50,6 +52,9 @@ func (h *Handler) HandleListGroups(w http.ResponseWriter, r *http.Request) {
 	if err := h.DB.Raw("SELECT g.id, g.name, g.token, COUNT(gn.node_mac) AS node_count, g.created_at, g.updated_at FROM subscription_groups g LEFT JOIN subscription_group_nodes gn ON gn.group_id = g.id GROUP BY g.id ORDER BY g.id").Scan(&groups).Error; err != nil {
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
+	}
+	for i := range groups {
+		groups[i].ExportToken = h.Auth.GroupExportToken(groups[i].Token)
 	}
 	h.jsonOK(w, groups)
 }
@@ -99,12 +104,13 @@ func (h *Handler) HandleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.jsonOK(w, model.SubscriptionGroup{
-		ID:        id,
-		Name:      req.Name,
-		Token:     token,
-		NodeCount: 0,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:          id,
+		Name:        req.Name,
+		Token:       token,
+		NodeCount:   0,
+		ExportToken: h.Auth.GroupExportToken(token),
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	})
 }
 
@@ -258,13 +264,14 @@ func (h *Handler) HandleResetGroupToken(w http.ResponseWriter, r *http.Request) 
 		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
 		return
 	}
-	h.jsonOK(w, ResetTokenResponse{Token: token})
+	h.jsonOK(w, ResetTokenResponse{Token: token, ExportToken: h.Auth.GroupExportToken(token)})
 }
 
 // HandlePublicGroupClash handles GET /s/{token}
 // @Summary      公开订阅组 Clash 配置
 // @ID           PublicGroupClash
-// @Description  通过 Token 获取订阅组的 Clash YAML 配置（必须提供客户订阅 Token）
+// @Description  通过 Token 获取订阅组的 Clash YAML 配置。客户订阅用 ?subscription=<客户 Token>；
+// @Description  管理导出可改用 ?token=<ADMIN_API_SECRET 或分组导出凭据>，返回分组内全部节点（节点自身 UUID，不计客户额度）。
 // @Tags         subscription
 // @Produce      plain
 // @Param        token path string true "订阅组 Token"
@@ -307,5 +314,41 @@ func (h *Handler) HandlePublicGroupClash(w http.ResponseWriter, r *http.Request)
 	if nodes == nil {
 		nodes = []model.Node{}
 	}
+	// Operator links (the panel's "订阅链接" column) carry the derived export
+	// credential; they export the group with node UUIDs and no customer quota,
+	// mirroring /subscription/clash?token=. Without that credential the group
+	// stays a filter over a paid customer subscription (?subscription=).
+	if h.Auth.CheckGroupExportCredential(token, r) {
+		h.serveGroupOperatorClash(w, r, sg.Name, nodes)
+		return
+	}
 	h.serveScopedSubscription(w, r, nodes, false)
+}
+
+// serveGroupOperatorClash renders one subscription group as an operator export.
+// Same trust boundary as serveAllNodesClash: the caller proved possession of an
+// automation credential, so nodes are rendered with their public node UUIDs and
+// the customer quota is not consulted.
+func (h *Handler) serveGroupOperatorClash(w http.ResponseWriter, r *http.Request, name string, nodes []model.Node) {
+	direction, ok := normalizeDirection(r.URL.Query().Get("direction"))
+	if !ok {
+		h.jsonErr(w, http.StatusBadRequest, "direction must be overseas or domestic")
+		return
+	}
+	nodes = filterNodesByDirection(nodes, direction)
+	name = strings.NewReplacer("\r", " ", "\n", " ").Replace(name)
+
+	title := "Hive nodes · " + name
+	if direction == DirectionDomestic {
+		title += " · 回国"
+	}
+	opts := h.clashRenderOptions("")
+	opts.Direction = direction
+	filename := "hive-group-nodes.yaml"
+	if direction == DirectionDomestic {
+		filename = "hive-group-nodes-cn.yaml"
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	fmt.Fprint(w, buildFullClashYAML(title, nodes, opts))
 }

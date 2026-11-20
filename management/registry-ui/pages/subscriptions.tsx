@@ -52,6 +52,15 @@ export default function Subscriptions() {
   const [customerSubscription, setCustomerSubscription] = useState('');
   const customerToken = customerSubscriptionToken(customerSubscription);
   const scopedURL = (path: string) => customerToken ? apiUrl(`${path}?subscription=${encodeURIComponent(customerToken)}`) : undefined;
+  // Operator (admin) link for a group: exports the group with node UUIDs and no
+  // customer quota, using the group-scoped credential derived server-side. When
+  // a customer subscription is entered, the link is scoped to that customer
+  // instead (metered, plan ∩ group nodes).
+  const groupURL = (group: model_SubscriptionGroup) => {
+    if (customerToken) return scopedURL(`/s/${group.token}`);
+    if (!group.token || !group.export_token) return undefined;
+    return apiUrl(`/s/${group.token}?token=${encodeURIComponent(group.export_token)}`);
+  };
 
   const createNameId = useId();
   const createErrorId = useId();
@@ -117,7 +126,7 @@ export default function Subscriptions() {
   const { copy: copyToClipboard } = useClipboard();
   const [copiedId, setCopiedId] = useState<number | null>(null);
   async function copyLink(group: model_SubscriptionGroup) {
-    const url = scopedURL('/s/' + group.token!);
+    const url = groupURL(group);
     if (!url) return;
     const ok = await copyToClipboard(url);
     if (ok) {
@@ -482,8 +491,8 @@ export default function Subscriptions() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <code className="max-w-[200px] truncate rounded-lg bg-md-surface-container-high px-2 py-1 text-xs text-foreground font-mono" title={(scopedURL('/s/' + g.token) ?? '')}>
-                            {(scopedURL('/s/' + g.token) ?? '')}
+                          <code className="max-w-[280px] truncate rounded-lg bg-md-surface-container-high px-2 py-1 text-xs text-foreground font-mono" title={groupURL(g) ?? ''}>
+                            {groupURL(g) ?? ''}
                           </code>
                           <Button
                             variant="ghost"
@@ -493,7 +502,7 @@ export default function Subscriptions() {
                                 ? 'bg-md-tertiary-container text-md-on-tertiary-container'
                                 : 'text-muted-foreground'
                             }`}
-                            disabled={!customerToken}
+                            disabled={!groupURL(g)}
                             onClick={() => copyLink(g)}
                           >
                             {copiedId === g.id ? t('copied') : t('copyLink')}
@@ -504,7 +513,7 @@ export default function Subscriptions() {
                                 variant="ghost"
                                 size="sm"
                                 aria-label={t('showQr')}
-                                disabled={!customerToken}
+                                disabled={!groupURL(g)}
                                 className="state-layer size-6 p-0 rounded-lg text-muted-foreground focus-visible:ring-2 focus-visible:ring-md-primary focus-visible:ring-offset-1"
                               >
                                 <QrCode className="size-3.5" aria-hidden="true" />
@@ -513,7 +522,7 @@ export default function Subscriptions() {
                             <PopoverContent className="w-auto p-4" align="end">
                               <div className="flex flex-col items-center gap-2">
                                 <div className="rounded-lg bg-white p-3">
-                                  {customerToken && <QRCodeSVG value={(scopedURL('/s/' + g.token) ?? '')} size={160} level="M" />}
+                                  {groupURL(g) && <QRCodeSVG value={groupURL(g) ?? ''} size={160} level="M" />}
                                 </div>
                                 <p className="max-w-[180px] text-center text-xs text-muted-foreground">{t('qrHint')}</p>
                               </div>

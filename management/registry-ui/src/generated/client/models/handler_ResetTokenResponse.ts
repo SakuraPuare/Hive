@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export type handler_ResetTokenResponse = {
+    export_token?: string;
     token?: string;
 };
 

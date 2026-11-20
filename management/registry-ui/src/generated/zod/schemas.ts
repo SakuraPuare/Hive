@@ -1194,6 +1194,7 @@ export type ModelPromoCode = z.infer<typeof modelPromoCodeSchema>;
 
 export const modelSubscriptionGroupSchema = z.object({
   created_at: z.string().optional(),
+  export_token: z.string().optional(),
   id: z.number().int().optional(),
   name: z.string().optional(),
   node_count: z.number().int().optional(),

@@ -4,6 +4,7 @@
 /* eslint-disable */
 export type model_SubscriptionGroup = {
     created_at?: string;
+    export_token?: string;
     id?: number;
     name?: string;
     node_count?: number;

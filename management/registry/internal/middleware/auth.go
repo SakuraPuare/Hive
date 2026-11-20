@@ -279,6 +279,52 @@ func (a *Auth) automationCredentials(r *http.Request) []string {
 	return out
 }
 
+// GroupExportToken derives a group-scoped operator credential from the
+// automation secret. The panel copies this credential into group subscription
+// links so administrators can import per-group exports without ever seeing
+// ADMIN_API_SECRET in the browser, and rotating the secret invalidates every
+// previously copied group link. Returns "" when no automation secret exists.
+func (a *Auth) GroupExportToken(groupToken string) string {
+	secret := a.Config.AdminAPISecret
+	if secret == "" || groupToken == "" {
+		return ""
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte("hive-group-export\x00"))
+	mac.Write([]byte(groupToken))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// CheckGroupExportCredential reports whether the request carries a credential
+// that permits exporting one subscription group as an operator subscription
+// (node UUIDs, unmetered), rather than scoping it to a paid customer.
+//
+// Accepted: ADMIN_API_SECRET, the legacy API_SECRET baked into firmware and
+// older mihomo configs, and the group-scoped derived token. All may arrive as
+// ?token= because mihomo proxy-providers and pasted links cannot set headers.
+func (a *Auth) CheckGroupExportCredential(groupToken string, r *http.Request) bool {
+	if groupToken == "" {
+		return false
+	}
+	token, hasHeader := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !hasHeader || token == "" {
+		token = r.URL.Query().Get("token")
+	}
+	if token == "" {
+		return false
+	}
+	for _, c := range []string{a.Config.AdminAPISecret, a.Config.APISecret} {
+		if c != "" && subtle.ConstantTimeCompare([]byte(token), []byte(c)) == 1 {
+			return true
+		}
+	}
+	derived := a.GroupExportToken(groupToken)
+	if derived == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(token), []byte(derived)) == 1
+}
+
 func (a *Auth) checkAPISecret(r *http.Request) bool {
 	credentials := a.automationCredentials(r)
 	if len(credentials) == 0 {

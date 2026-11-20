@@ -38,6 +38,7 @@
 | DELETE | /api/nodes/{mac} | Cookie 或 Bearer | 删除节点 |
 | GET | /api/subscription | Cookie 或 Bearer | 节点订阅（Base64）；`?direction=domestic` 导出回国方向 |
 | GET | /api/subscription/clash | Cookie 或 Bearer | Clash/Mihomo YAML 订阅；`?direction=domestic` 导出回国方向 |
+| GET | /api/s/{token} | 客户订阅 token / 分组导出凭据 | 订阅分组 Clash 配置：`?subscription=<客户Token>` 按客户额度与套餐过滤；`?token=<ADMIN_API_SECRET\|API_SECRET\|分组导出凭据>` 管理员导出整组（节点 UUID，不计额度）；`?direction=domestic` 导出回国方向 |
 | GET | /api/prometheus-targets | Cookie 或 Bearer | Prometheus file_sd JSON |
 | GET | /api/labels | Cookie 或 Bearer | 可打印标签 HTML |
 | GET | /api/portal/devices/{mac}/dashboard | 客户会话 | 网关节点 Mihomo 面板地址 + per-node secret |

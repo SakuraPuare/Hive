@@ -6283,6 +6283,8 @@ components:
       type: object
     handler.ResetTokenResponse:
       properties:
+        export_token:
+          type: string
         token:
           type: string
       type: object
@@ -7168,6 +7170,8 @@ components:
     model.SubscriptionGroup:
       properties:
         created_at:
+          type: string
+        export_token:
           type: string
         id:
           type: integer

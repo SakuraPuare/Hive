@@ -124,8 +124,12 @@ type SubscriptionGroup struct {
 	Name      string `json:"name"`
 	Token     string `json:"token"`
 	NodeCount int    `json:"node_count"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	// ExportToken is the group-scoped operator credential derived from
+	// ADMIN_API_SECRET. It is not stored: rotating the secret rotates every
+	// group export link. Empty when no automation secret is configured.
+	ExportToken string `json:"export_token,omitempty" gorm:"-"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // ── Plan & Line ──────────────────────────────────────────────────────────────

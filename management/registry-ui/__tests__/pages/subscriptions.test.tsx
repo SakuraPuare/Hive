@@ -56,8 +56,8 @@ vi.mock('@/lib/auth', () => ({
 import Subscriptions from '@/pages/subscriptions';
 
 const mockGroups = [
-  { id: 1, name: '基础组', token: 'tok1', node_macs: ['aabbccddeeff'], created_at: '2024-06-01T00:00:00Z' },
-  { id: 2, name: '高级组', token: 'tok2', node_macs: ['112233445566', 'ffeeddccbbaa'], created_at: '2024-06-02T00:00:00Z' },
+  { id: 1, name: '基础组', token: 'tok1', export_token: 'etok1', node_macs: ['aabbccddeeff'], created_at: '2024-06-01T00:00:00Z' },
+  { id: 2, name: '高级组', token: 'tok2', export_token: 'etok2', node_macs: ['112233445566', 'ffeeddccbbaa'], created_at: '2024-06-02T00:00:00Z' },
 ];
 
 describe('Subscriptions page', () => {
@@ -144,6 +144,40 @@ describe('Subscriptions page', () => {
 
     await waitFor(() => {
       expect(screen.getByText('DB error')).toBeInTheDocument();
+    });
+  });
+
+  it('shows operator group links without a customer subscription', async () => {
+    render(<Subscriptions />);
+
+    await waitFor(() => {
+      expect(screen.getByText('基础组')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('https://test.local/api/s/tok1?token=etok1')).toBeInTheDocument();
+    expect(screen.getByText('https://test.local/api/s/tok2?token=etok2')).toBeInTheDocument();
+
+    // Copy and QR are usable without pasting a customer subscription link.
+    expect(screen.getAllByText('subscriptions.copyLink')[0]).toBeEnabled();
+    expect(screen.getAllByLabelText('subscriptions.showQr')[0]).toBeEnabled();
+  });
+
+  it('scopes group links to the entered customer subscription', async () => {
+    const user = userEvent.setup();
+    render(<Subscriptions />);
+    await waitFor(() => {
+      expect(screen.getByText('基础组')).toBeInTheDocument();
+    });
+
+    await user.type(
+      screen.getByLabelText('common.customerSubscription'),
+      'https://example.test/api/c/' + 'a'.repeat(64),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/\/api\/s\/tok1\?subscription=a{64}$/),
+      ).toBeInTheDocument();
     });
   });
 

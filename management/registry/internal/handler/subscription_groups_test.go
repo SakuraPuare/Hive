@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -197,6 +198,80 @@ func TestPublicGroupClash_InvalidToken(t *testing.T) {
 	fakeToken := strings.Repeat("a", 64)
 	resp = doJSON("GET", "/s/"+fakeToken, nil, nil)
 	assertStatus(t, resp, http.StatusNotFound)
+}
+
+func TestPublicGroupClash_OperatorExport(t *testing.T) {
+	resetDB(t)
+	insertSubTestNode(t, "aabbccddeeff")
+
+	resp := doJSON("POST", "/admin/subscription-groups", map[string]any{"name": "Ops"}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	body := parseJSON(resp)
+	groupID := fmt.Sprintf("%.0f", body["id"].(float64))
+	groupToken := body["token"].(string)
+	exportToken, _ := body["export_token"].(string)
+	if len(exportToken) != 64 {
+		t.Fatalf("expected 64-char export_token, got %q", body["export_token"])
+	}
+
+	resp = doJSON("PUT", "/admin/subscription-groups/"+groupID+"/nodes", map[string]any{
+		"nodes": []string{"aabbccddeeff"},
+	}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+
+	// The panel link: group-scoped derived credential, no customer subscription.
+	resp = doJSON("GET", "/s/"+groupToken+"?token="+exportToken, nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+	text := readBody(resp)
+	if !strings.Contains(text, "test-aabbccddeeff") {
+		t.Fatalf("expected the group node in the export, got: %s", text[:min(len(text), 300)])
+	}
+	// Operator export uses the node's own UUID, not a customer subscription UUID.
+	if !strings.Contains(text, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") {
+		t.Fatalf("expected node UUID in the export, got: %s", text[:min(len(text), 300)])
+	}
+
+	// Legacy firmware/mihomo secret and the admin automation secret keep working
+	// on group links, matching /subscription/clash?token=.
+	resp = doJSON("GET", "/s/"+groupToken+"?token="+testCfg.APISecret, nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+	resp = doJSON("GET", "/s/"+groupToken+"?token="+testCfg.AdminAPISecret, nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+
+	// A wrong credential is not silently accepted as an operator export.
+	resp = doJSON("GET", "/s/"+groupToken+"?token=bogus", nil, nil)
+	assertStatus(t, resp, http.StatusUnauthorized)
+	resp = doJSON("GET", "/s/"+groupToken, nil, nil)
+	assertStatus(t, resp, http.StatusUnauthorized)
+}
+
+func TestListSubscriptionGroups_ExportToken(t *testing.T) {
+	resetDB(t)
+
+	resp := doJSON("POST", "/admin/subscription-groups", map[string]any{"name": "G"}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	created := parseJSON(resp)
+	groupToken := created["token"].(string)
+
+	resp = doJSON("GET", "/admin/subscription-groups", nil, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	groups := parseJSONArray(resp)
+	if len(groups) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(groups))
+	}
+	exportToken, _ := groups[0]["export_token"].(string)
+	if len(exportToken) != 64 {
+		t.Fatalf("expected 64-char export_token in list, got %q", groups[0]["export_token"])
+	}
+	if exportToken != created["export_token"] {
+		t.Fatalf("list export_token %q differs from create %q", exportToken, created["export_token"])
+	}
+	if !testAuth.CheckGroupExportCredential(groupToken, httptest.NewRequest(http.MethodGet, "/s/x?token="+exportToken, nil)) {
+		t.Fatal("expected derived export token to validate")
+	}
+	if testAuth.CheckGroupExportCredential(strings.Repeat("f", 64), httptest.NewRequest(http.MethodGet, "/s/x?token="+exportToken, nil)) {
+		t.Fatal("export token must not validate for another group")
+	}
 }
 
 func TestDeleteSubscriptionGroup(t *testing.T) {
