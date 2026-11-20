@@ -325,6 +325,27 @@ func (a *Auth) CheckGroupExportCredential(groupToken string, r *http.Request) bo
 	return subtle.ConstantTimeCompare([]byte(token), []byte(derived)) == 1
 }
 
+// groupExportCredentialValid reports whether token is a group-scoped operator
+// credential minted by GroupExportToken. It is consulted only when the
+// credential arrived as ?token= on an export route, so a leaked group link can
+// never be replayed as a Bearer credential on management endpoints.
+func (a *Auth) groupExportCredentialValid(token string) bool {
+	if token == "" || a.Config.AdminAPISecret == "" || a.DB == nil {
+		return false
+	}
+	var groupTokens []string
+	if err := a.DB.Raw("SELECT token FROM subscription_groups").Scan(&groupTokens).Error; err != nil {
+		return false
+	}
+	for _, gt := range groupTokens {
+		derived := a.GroupExportToken(gt)
+		if derived != "" && subtle.ConstantTimeCompare([]byte(token), []byte(derived)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *Auth) checkAPISecret(r *http.Request) bool {
 	credentials := a.automationCredentials(r)
 	if len(credentials) == 0 {
@@ -332,11 +353,13 @@ func (a *Auth) checkAPISecret(r *http.Request) bool {
 	}
 
 	token, hasHeader := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	usedQuery := false
 	if !hasHeader || token == "" {
 		if !queryTokenPaths[r.URL.Path] {
 			return false
 		}
 		token = r.URL.Query().Get("token")
+		usedQuery = true
 	}
 	if token == "" {
 		return false
@@ -347,6 +370,12 @@ func (a *Auth) checkAPISecret(r *http.Request) bool {
 		if subtle.ConstantTimeCompare([]byte(token), []byte(c)) == 1 {
 			ok = true
 		}
+	}
+	// Group-scoped export credentials are accepted exactly like the master
+	// secret on the subscription export routes, so a group link can keep the
+	// historical /subscription/clash?token=<credential> shape.
+	if !ok && usedQuery {
+		ok = a.groupExportCredentialValid(token)
 	}
 	return ok
 }

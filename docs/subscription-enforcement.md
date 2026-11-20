@@ -26,7 +26,7 @@
 - 显式设置 `GATEWAY_ENABLED=off`（也接受 `0/false/no`）时停止 Mihomo、清除网关租约及 Hive 自己添加的 `hive-subscription` FORWARD DROP，不改动其他转发/NAT 规则；服务启动条件和租约守护同样遵守此开关；`ExecCondition` 只有禁用网关（或首次启动时尚无配置）返回 1–254 跳过，清理失败或直连兜底配置写入失败返回 255，让单元失败并由 `Restart=on-failure` 重试，不会把故障静默当成“已禁用”。重新开启后必须取得新授权才恢复代理（无效时直连兜底）。该开关不影响可信出口的 Xray 租约执行。
 - Xray 启动前清空静态 VLESS 客户端，公共节点 UUID 不再提供代理访问。网关必须绑定有效客户订阅，无订阅的内部网关也不再提供免费出口（只保留直连兜底，下游不断网）。
 - 线路和分组仍可组织节点。客户导出需提供 `?subscription=<客户订阅Token>`，结果取线路/分组、客户套餐和已启用出口的交集，并使用客户 UUID；后台输入客户订阅链接后，分组链接按该客户生成。
-- 管理员导出保持与 `/api/subscription/clash?token=<ADMIN_API_SECRET>` 相同的信任边界：`GET /s/<分组Token>?token=<凭据>` 返回该分组全部节点，使用节点自身 UUID，不计客户额度。凭据可以是 `ADMIN_API_SECRET`、旧版 `API_SECRET`，或后台「订阅链接」列给出的分组导出凭据（由 `ADMIN_API_SECRET` 派生，轮换密钥即失效）。不带凭据的 `/s/<分组Token>` 仍要求 `?subscription=`，历史链接不会因此变成免费导出。
+- 管理员导出保持与 `/api/subscription/clash?token=<ADMIN_API_SECRET>` 相同的信任边界。后台「订阅链接」列对每个分组给出旧格式链接 `GET /api/subscription/clash?token=<分组导出凭据>`（VLESS 为 `/api/subscription?token=...`），返回该分组全部节点，使用节点自身 UUID，不计客户额度；`/api/s/<分组Token>?token=<凭据>` 同样可用。凭据是 `ADMIN_API_SECRET`、旧版 `API_SECRET`，或由 `ADMIN_API_SECRET` 派生的分组导出凭据（轮换密钥即失效）。分组凭据仅作为导出凭据使用，不能用作 Bearer 调用管理接口；不带凭据的 `/s/<分组Token>` 仍要求 `?subscription=`，历史链接不会因此变成免费导出。
 
 ### 自有设备免费订阅
 

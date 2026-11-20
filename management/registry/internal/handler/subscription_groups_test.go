@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -242,6 +243,52 @@ func TestPublicGroupClash_OperatorExport(t *testing.T) {
 	resp = doJSON("GET", "/s/"+groupToken+"?token=bogus", nil, nil)
 	assertStatus(t, resp, http.StatusUnauthorized)
 	resp = doJSON("GET", "/s/"+groupToken, nil, nil)
+	assertStatus(t, resp, http.StatusUnauthorized)
+}
+
+func TestSubscriptionGroupExportLegacyShape(t *testing.T) {
+	resetDB(t)
+	insertSubTestNode(t, "aabbccddeeff")
+
+	resp := doJSON("POST", "/admin/subscription-groups", map[string]any{"name": "Ops"}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+	body := parseJSON(resp)
+	groupID := fmt.Sprintf("%.0f", body["id"].(float64))
+	exportToken := body["export_token"].(string)
+
+	resp = doJSON("PUT", "/admin/subscription-groups/"+groupID+"/nodes", map[string]any{
+		"nodes": []string{"aabbccddeeff"},
+	}, adminCookie())
+	assertStatus(t, resp, http.StatusOK)
+
+	// The panel keeps the historical URL shape: /subscription/clash?token=<credential>
+	resp = doJSON("GET", "/subscription/clash?token="+exportToken, nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+	text := readBody(resp)
+	if !strings.Contains(text, "test-aabbccddeeff") || !strings.Contains(text, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") {
+		t.Fatalf("expected the group node and node UUID in the export, got: %s", text[:min(len(text), 300)])
+	}
+
+	// VLESS keeps the same shape and uses the node UUID.
+	resp = doJSON("GET", "/subscription?token="+exportToken, nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(readBody(resp)))
+	if err != nil {
+		t.Fatalf("decode vless export: %v", err)
+	}
+	if !strings.Contains(string(decoded), "vless://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee@") {
+		t.Fatalf("expected vless link with node UUID, got: %s", string(decoded))
+	}
+
+	// The master secret still means the all-nodes export.
+	resp = doJSON("GET", "/subscription/clash?token="+testCfg.APISecret, nil, nil)
+	assertStatus(t, resp, http.StatusOK)
+	if !strings.Contains(readBody(resp), "test-aabbccddeeff") {
+		t.Fatal("expected the master export to include the node")
+	}
+
+	// A group credential is export-only: it must not authenticate management APIs.
+	resp = doBearer("GET", "/admin/users", nil, exportToken)
 	assertStatus(t, resp, http.StatusUnauthorized)
 }
 

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 // @Summary      获取 VLESS 订阅
 // @ID           SubscriptionVless
 // @Description  返回 base64 编码的 VLESS 订阅链接
+// @Description  管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组导出凭据>；分组凭据只导出该分组且不计客户额度。
 // @Tags         subscription
 // @Produce      plain
 // @Success      200 {string} string "VLESS subscription"
@@ -22,6 +24,14 @@ import (
 // @Param        subscription query string true "客户订阅 Token（额度和有效期校验）"
 // @Router       /subscription [get]
 func (h *Handler) HandleSubscriptionVless(w http.ResponseWriter, r *http.Request) {
+	if q := r.URL.Query().Get("token"); q != "" && !h.masterExportToken(q) {
+		if _, nodes, ok := h.groupByExportCredential(q); ok {
+			h.serveGroupOperatorVless(w, r, nodes)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
 	if middleware.IsAutomationRequest(r) {
 		h.serveAllNodesVless(w, r)
 		return
@@ -33,6 +43,7 @@ func (h *Handler) HandleSubscriptionVless(w http.ResponseWriter, r *http.Request
 // @Summary      获取 Clash 订阅
 // @ID           SubscriptionClash
 // @Description  返回 Clash/Mihomo YAML 格式订阅配置
+// @Description  管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组导出凭据>；分组凭据只导出该分组且不计客户额度。
 // @Tags         subscription
 // @Produce      plain
 // @Success      200 {string} string "Clash subscription"
@@ -40,11 +51,31 @@ func (h *Handler) HandleSubscriptionVless(w http.ResponseWriter, r *http.Request
 // @Param        subscription query string true "客户订阅 Token（额度和有效期校验）"
 // @Router       /subscription/clash [get]
 func (h *Handler) HandleSubscriptionClash(w http.ResponseWriter, r *http.Request) {
+	if q := r.URL.Query().Get("token"); q != "" && !h.masterExportToken(q) {
+		if name, nodes, ok := h.groupByExportCredential(q); ok {
+			h.serveGroupOperatorClash(w, r, name, nodes)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
 	if middleware.IsAutomationRequest(r) {
 		h.serveAllNodesClash(w, r)
 		return
 	}
 	h.serveScopedSubscription(w, r, nil, false)
+}
+
+// masterExportToken reports whether token is one of the automation secrets,
+// i.e. it really is the all-nodes export rather than a group credential whose
+// group disappeared between authentication and rendering.
+func (h *Handler) masterExportToken(token string) bool {
+	for _, c := range []string{h.Config.AdminAPISecret, h.Config.APISecret} {
+		if c != "" && subtle.ConstantTimeCompare([]byte(token), []byte(c)) == 1 {
+			return true
+		}
+	}
+	return false
 }
 
 // serveAllNodesClash exports every node as a Clash/Mihomo config, using the

@@ -154,8 +154,8 @@ describe('Subscriptions page', () => {
       expect(screen.getByText('基础组')).toBeInTheDocument();
     });
 
-    expect(screen.getByText(`http://localhost:3000/api/s/tok1?token=etok1`)).toBeInTheDocument();
-    expect(screen.getByText(`http://localhost:3000/api/s/tok2?token=etok2`)).toBeInTheDocument();
+    expect(screen.getByText(`http://localhost:3000/api/subscription/clash?token=etok1`)).toBeInTheDocument();
+    expect(screen.getByText(`http://localhost:3000/api/subscription/clash?token=etok2`)).toBeInTheDocument();
 
     // Copy and QR are usable without pasting a customer subscription link.
     expect(screen.getAllByText('subscriptions.copyLink')[0]).toBeEnabled();

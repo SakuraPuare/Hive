@@ -36,8 +36,8 @@
 | GET | /api/nodes/{mac} | Cookie 或 Bearer | 单节点详情 |
 | PATCH | /api/nodes/{mac} | Cookie 或 Bearer | 更新 location/note/tailscale_ip/gateway_*/exit_*（含 `exit_direction`） |
 | DELETE | /api/nodes/{mac} | Cookie 或 Bearer | 删除节点 |
-| GET | /api/subscription | Cookie 或 Bearer | 节点订阅（Base64）；`?direction=domestic` 导出回国方向 |
-| GET | /api/subscription/clash | Cookie 或 Bearer | Clash/Mihomo YAML 订阅；`?direction=domestic` 导出回国方向 |
+| GET | /api/subscription | Cookie / Bearer / `?token=` | 节点订阅（Base64）；`?direction=domestic` 导出回国方向；`?token=` 也接受分组导出凭据，返回该分组 |
+| GET | /api/subscription/clash | Cookie / Bearer / `?token=` | Clash/Mihomo YAML 订阅；`?direction=domestic` 导出回国方向；`?token=` 也接受分组导出凭据，返回该分组 |
 | GET | /api/s/{token} | 客户订阅 token / 分组导出凭据 | 订阅分组 Clash 配置：`?subscription=<客户Token>` 按客户额度与套餐过滤；`?token=<ADMIN_API_SECRET\|API_SECRET\|分组导出凭据>` 管理员导出整组（节点 UUID，不计额度）；`?direction=domestic` 导出回国方向 |
 | GET | /api/prometheus-targets | Cookie 或 Bearer | Prometheus file_sd JSON |
 | GET | /api/labels | Cookie 或 Bearer | 可打印标签 HTML |

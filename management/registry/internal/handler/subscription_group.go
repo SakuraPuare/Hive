@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -323,6 +325,84 @@ func (h *Handler) HandlePublicGroupClash(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	h.serveScopedSubscription(w, r, nodes, false)
+}
+
+// groupByExportCredential resolves a group-scoped operator credential (as
+// emitted by the panel) back to its group. Only the subscription export routes
+// call this; customer subscriptions and the master/legacy secrets never match.
+func (h *Handler) groupByExportCredential(credential string) (name string, nodes []model.Node, ok bool) {
+	if credential == "" {
+		return "", nil, false
+	}
+	var groups []struct {
+		Token string
+		Name  string
+	}
+	if err := h.DB.Raw("SELECT token, name FROM subscription_groups").Scan(&groups).Error; err != nil {
+		return "", nil, false
+	}
+	for _, g := range groups {
+		derived := h.Auth.GroupExportToken(g.Token)
+		if derived == "" || subtle.ConstantTimeCompare([]byte(credential), []byte(derived)) != 1 {
+			continue
+		}
+		return h.loadGroupNodes(g.Token)
+	}
+	return "", nil, false
+}
+
+// loadGroupNodes returns the group name and its nodes, or ok=false when the
+// token does not identify a group.
+func (h *Handler) loadGroupNodes(groupToken string) (name string, nodes []model.Node, ok bool) {
+	if len(groupToken) != 64 {
+		return "", nil, false
+	}
+	var sg struct {
+		ID   uint
+		Name string
+	}
+	if err := h.DB.Raw("SELECT id, name FROM subscription_groups WHERE token=?", groupToken).Scan(&sg).Error; err != nil || sg.ID == 0 {
+		return "", nil, false
+	}
+	var macs []string
+	if err := h.DB.Model(&model.SubscriptionGroupNode{}).Where("group_id=?", sg.ID).Pluck("node_mac", &macs).Error; err != nil {
+		return "", nil, false
+	}
+	nodes, err := h.queryNodesByMACs(macs)
+	if err != nil {
+		return "", nil, false
+	}
+	if nodes == nil {
+		nodes = []model.Node{}
+	}
+	return sg.Name, nodes, true
+}
+
+// serveGroupOperatorVless is the VLESS counterpart of serveGroupOperatorClash:
+// same node UUIDs, same no-quota trust boundary.
+func (h *Handler) serveGroupOperatorVless(w http.ResponseWriter, r *http.Request, nodes []model.Node) {
+	direction, ok := normalizeDirection(r.URL.Query().Get("direction"))
+	if !ok {
+		h.jsonErr(w, http.StatusBadRequest, "direction must be overseas or domestic")
+		return
+	}
+	nodes = filterNodesByDirection(nodes, direction)
+	links := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		if link := vlessLink(n, n.XrayUUID, h.Config.XrayPath, h.Config.CFPreferredHost); link != "" {
+			links = append(links, link)
+		}
+	}
+	if len(links) == 0 && direction == DirectionDomestic {
+		links = append(links, "# 本分组暂无可用的回国节点")
+	}
+	filename := "hive-group-nodes.txt"
+	if direction == DirectionDomestic {
+		filename = "hive-group-nodes-cn.txt"
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	fmt.Fprint(w, base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n"))))
 }
 
 // serveGroupOperatorClash renders one subscription group as an operator export.
