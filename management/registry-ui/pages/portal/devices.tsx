@@ -610,8 +610,9 @@ export default function PortalDevicesPage() {
                         </div>
                       ) : '—'}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{d.last_seen ? fmt.dateTime(d.last_seen) : '—'}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{d.claimed_at ? fmt.dateTime(d.claimed_at) : '—'}</TableCell>
+                    {/* last_seen / claimed_at are zone-less UTC ("YYYY-MM-DD HH:MM:SS"). */}
+                    <TableCell className="text-sm text-muted-foreground">{d.last_seen ? fmt.dateTime(d.last_seen.replace(' ', 'T') + 'Z') : '—'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{d.claimed_at ? fmt.dateTime(d.claimed_at.replace(' ', 'T') + 'Z') : '—'}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button variant="ghost" size="sm" disabled={!d.mac}

@@ -14,7 +14,7 @@ const mockFetch = vi.fn();
 const writeText = vi.fn();
 const now = Date.parse('2026-11-20T12:00:00Z');
 const fullAddresses = {
-  hostname: 'hive-cdeeff', mac: 'aabbccddeeff', last_seen: '2026-11-20T11:59:45Z',
+  hostname: 'hive-cdeeff', mac: 'aabbccddeeff', last_seen: '2026-11-20 11:59:45',
   sampled_at: '2026-11-20T11:59:30Z',
   lan: [
     { interface: 'eth0', address: '192.168.5.228', prefix_length: 24 },
@@ -76,6 +76,20 @@ describe('DeviceAddressesPage', () => {
     expect(screen.getByText(/deviceAddresses.egressSampledAt/)).toBeInTheDocument();
     expect(screen.queryByText('deviceAddresses.lanStale')).not.toBeInTheDocument();
     expect(screen.queryByText('deviceAddresses.egressStale')).not.toBeInTheDocument();
+  });
+
+  it('reads the zone-less UTC last_seen as UTC regardless of the viewer timezone', async () => {
+    const tz = process.env.TZ;
+    process.env.TZ = 'Asia/Shanghai';
+    try {
+      render(<DeviceAddressesPage />);
+      const line = await screen.findByText(/deviceAddresses.lastSeen/);
+      // 11:59:45 UTC is 15 s before the mocked now, not 8 h 15 s.
+      const expected = new Intl.RelativeTimeFormat('zh-CN', { numeric: 'auto' }).format(-15, 'second');
+      expect(line.closest('p')!.textContent).toContain(expected);
+    } finally {
+      if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz;
+    }
   });
 
   it('distinguishes unknown LAN data from a current empty snapshot and blank endpoints', async () => {

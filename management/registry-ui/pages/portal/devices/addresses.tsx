@@ -128,7 +128,8 @@ export default function DeviceAddressesPage() {
           <CardHeader><CardTitle>{data.hostname || t('unknown')}</CardTitle></CardHeader>
           <CardContent>
             <AddressRow label={t('mac')} value={data.mac} />
-            <p className="pt-3 text-sm"><span className="text-muted-foreground">{t('lastSeen')}: </span>{sampleTime(data.last_seen)}</p>
+            {/* last_seen is the registry's zone-less UTC column ("YYYY-MM-DD HH:MM:SS"); sampled_at fields are RFC3339. */}
+            <p className="pt-3 text-sm"><span className="text-muted-foreground">{t('lastSeen')}: </span>{sampleTime(data.last_seen ? `${data.last_seen.replace(' ', 'T')}Z` : null)}</p>
           </CardContent>
         </Card>
         <div className="grid gap-4 lg:grid-cols-2">

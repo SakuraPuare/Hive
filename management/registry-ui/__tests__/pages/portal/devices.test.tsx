@@ -45,7 +45,7 @@ const gatewayNode = {
   gateway_enabled: true,
   exit_enabled: true,
   owner_exit_enabled: true,
-  last_seen: '2026-11-14T10:00:00Z',
+  last_seen: '2026-11-14 10:00:00',
 };
 
 const plainNode = {
