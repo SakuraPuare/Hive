@@ -27,7 +27,7 @@ func normalizeDeviceAddresses(sample model.DeviceAddressSnapshot) (model.DeviceA
 	lan := make([]model.LANAddress, 0, len(sample.LAN))
 	seen := make(map[model.LANAddress]bool, len(sample.LAN))
 	for _, entry := range sample.LAN {
-		if entry.Role != "" && entry.Role != "wan" && entry.Role != "lan" {
+		if entry.Role != "" && entry.Role != "wan" && entry.Role != "lan" && entry.Role != "hotspot" {
 			return sample, false
 		}
 		if entry.Interface == "" || len(entry.Interface) > 15 || strings.IndexFunc(entry.Interface, func(r rune) bool {

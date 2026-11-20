@@ -16,16 +16,16 @@ func TestDashboardEndpointsIPv4Only(t *testing.T) {
 		{Interface: "wan", Address: "192.168.1.2", Role: "wan"},
 		{Interface: "wan", Address: "2001:db8::2", Role: "wan"},
 		{Interface: "lan", Address: "10.42.2.1", Role: "lan"},
-		{Interface: "wlan0", Address: "10.42.1.1", Role: "lan"},
-		{Interface: "wlan1", Address: "10.42.0.1", Role: "lan"},
+		{Interface: "wlan0", Address: "10.42.1.1", Role: "hotspot"},
+		{Interface: "wlan1", Address: "10.42.0.1", Role: "hotspot"},
 		{Interface: "duplicate", Address: "192.168.1.2", Role: "wan"},
 	}, Egress: model.DeviceEgress{IPv4: "1.1.1.1", IPv6: "2606:4700:4700::1111"}}
 	got := dashboardEndpoints(&sample)
 	want := []DashboardEndpoint{
 		{Network: "wan", Interface: "wan", Address: "192.168.1.2", URL: "http://192.168.1.2:9090/ui/"},
 		{Network: "lan", Interface: "lan", Address: "10.42.2.1", URL: "http://10.42.2.1:9090/ui/"},
-		{Network: "hotspot5g", Interface: "wlan0", Address: "10.42.1.1", URL: "http://10.42.1.1:9090/ui/"},
-		{Network: "hotspot2g", Interface: "wlan1", Address: "10.42.0.1", URL: "http://10.42.0.1:9090/ui/"},
+		{Network: "hotspot", Interface: "wlan0", Address: "10.42.1.1", URL: "http://10.42.1.1:9090/ui/"},
+		{Network: "hotspot", Interface: "wlan1", Address: "10.42.0.1", URL: "http://10.42.0.1:9090/ui/"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("endpoints = %+v, want %+v", got, want)
@@ -39,13 +39,8 @@ func TestDashboardEndpointsIPv4Only(t *testing.T) {
 
 func TestDashboardEndpointsLegacyAndObservedEmpty(t *testing.T) {
 	legacy := dashboardEndpoints(nil)
-	want := []DashboardEndpoint{
-		{Network: "lan-fallback", Address: "10.42.2.1", URL: "http://10.42.2.1:9090/ui/"},
-		{Network: "hotspot5g-fallback", Address: "10.42.1.1", URL: "http://10.42.1.1:9090/ui/"},
-		{Network: "hotspot2g-fallback", Address: "10.42.0.1", URL: "http://10.42.0.1:9090/ui/"},
-	}
-	if !reflect.DeepEqual(legacy, want) {
-		t.Fatalf("legacy fallback = %+v", legacy)
+	if legacy == nil || len(legacy) != 0 {
+		t.Fatalf("legacy sample fabricated addresses: %+v", legacy)
 	}
 	sample := model.DeviceAddressSnapshot{LAN: []model.LANAddress{{Interface: "wan", Address: "192.168.1.2"}}}
 	observed := dashboardEndpoints(&sample)

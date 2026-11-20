@@ -1,6 +1,4 @@
-export type MihomoNetwork =
-  | 'wan' | 'lan' | 'physical' | 'hotspot5g' | 'hotspot2g'
-  | 'lan-fallback' | 'hotspot5g-fallback' | 'hotspot2g-fallback';
+export type MihomoNetwork = 'wan' | 'lan' | 'physical' | 'hotspot';
 
 export type DashboardInfo = {
   mac: string;

@@ -92,7 +92,9 @@ try:
         if not isinstance(row, dict) or not isinstance(row.get('addr_info', []), list):
             raise ValueError('invalid interface data')
         iface = row.get('ifname', '')
-        if not re.fullmatch(r'[A-Za-z0-9_.-]{1,15}', iface) or not pathlib.Path('/sys/class/net', iface, 'device').exists():
+        physical = pathlib.Path('/sys/class/net', iface, 'device').exists()
+        wireless = pathlib.Path('/sys/class/net', iface, 'phy80211').exists()
+        if not re.fullmatch(r'[A-Za-z0-9_.-]{1,15}', iface) or not (physical or wireless):
             continue
         for entry in row.get('addr_info', []):
             if not isinstance(entry, dict):
@@ -121,9 +123,30 @@ try:
                         uplinks.add(hop['dev'])
         except (OSError, ValueError, TypeError, subprocess.SubprocessError):
             routes_ok = False
+    # AP interfaces are detected from iw mode, so 2.4G/5G APs and virtual Wi-Fi
+    # interfaces are covered without matching any board-specific address.
+    ap_interfaces = set()
+    for item in lan:
+        iface = item['interface']
+        if not pathlib.Path('/sys/class/net', iface, 'phy80211').exists():
+            continue
+        try:
+            info = subprocess.check_output(['iw', 'dev', iface, 'info'], timeout=2).decode()
+        except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
+            continue
+        if re.search(r'^\s*type\s+AP\s*$', info, re.M):
+            ap_interfaces.add(iface)
     if routes_ok:
         for item in lan:
-            item['role'] = 'wan' if item['interface'] in uplinks else 'lan'
+            if item['interface'] in uplinks:
+                item['role'] = 'wan'
+    for item in lan:
+        if 'role' not in item and item['interface'] in ap_interfaces:
+            item['role'] = 'hotspot'
+    if routes_ok:
+        for item in lan:
+            if 'role' not in item and not pathlib.Path('/sys/class/net', item['interface'], 'phy80211').exists():
+                item['role'] = 'lan'
     collection_ok = True
 except (OSError, ValueError, TypeError, subprocess.SubprocessError):
     pass

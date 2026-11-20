@@ -117,11 +117,11 @@ GET /api/portal/devices/{mac}/services
 
 ### Mihomo 面板地址与一键连接
 
-「我的设备 → Mihomo 面板」只展示设备物理网络的 WAN 上联接口、LAN、2.4G/5G 热点；
+「我的设备 → Mihomo 面板」只展示自动检测到的物理网络地址：WAN 上联接口、LAN、热点地址；
 Tailscale、EasyTier、Cloudflare Mesh 和 FRP 属于管理通道，不在客户 API 或页面暴露。
-WAN 是物理接口在主路由表中的默认路由角色，
-可能是家庭路由器分配的私网地址；旧样本无法确定角色时明确标为物理接口，不猜测 WAN。
-缺少快照时的固定网关地址仅作为默认候选，不代表热点已经启动。
+WAN 是物理接口在主路由表中的默认路由角色，可能是家庭路由器分配的私网地址；
+热点由 `iw` 报告的 AP 模式识别，2.4G/5G 及虚拟 AP 接口都适用，不匹配固定 IP。
+双网口无 AP 的设备只显示 WAN 与 LAN；旧样本无法确定角色时标为物理接口，不猜测。
 
 「一键打开」在节点自己的 MetaCubeXD 地址中使用 `#/?hostname=…&port=9090&http=true&secret=…`
 自动连接后端。面板候选只列 IPv4：节点公网 IPv6 默认被 UFW 拦截入向 9090，

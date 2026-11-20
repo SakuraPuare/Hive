@@ -84,21 +84,12 @@ func dashboardEndpoints(sample *model.DeviceAddressSnapshot) []DashboardEndpoint
 		})
 	}
 	if sample == nil {
-		add("lan-fallback", "", "10.42.2.1")
-		add("hotspot5g-fallback", "", "10.42.1.1")
-		add("hotspot2g-fallback", "", "10.42.0.1")
 		return endpoints
 	}
 	for _, entry := range sample.LAN {
 		network := entry.Role
 		if network == "" {
 			network = "physical"
-		}
-		switch entry.Address {
-		case "10.42.1.1":
-			network = "hotspot5g"
-		case "10.42.0.1":
-			network = "hotspot2g"
 		}
 		add(network, entry.Interface, entry.Address)
 	}

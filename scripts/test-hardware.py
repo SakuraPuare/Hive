@@ -38,7 +38,7 @@ class HardwareTests(unittest.TestCase):
         p.write_text(text)
         p.chmod(0o755)
 
-    def address_collector(self, rows, now, traces, routes=None):
+    def address_collector(self, rows, now, traces, routes=None, ap_interfaces=()):
         source = (BIN / 'hive-command-agent').read_text()
         code = source.split("address_snapshot() {\n    python3 - <<'PY'\n", 1)[1].split('\nPY\n}', 1)[0]
         code = code.replace('/var/lib/hive/egress-addresses.json', str(self.root / 'egress.json'))
@@ -46,6 +46,9 @@ class HardwareTests(unittest.TestCase):
         calls = []
         def command(args, **kwargs):
             calls.append(args)
+            if args[0] == 'iw':
+                mode = 'AP' if args[2] in ap_interfaces else 'managed'
+                return f'Interface {args[2]}\n\ttype {mode}\n'.encode()
             if args[0] == 'ip':
                 if args != ['ip', '-j', 'address', 'show']:
                     self.assertIn(args, [
@@ -147,6 +150,24 @@ class HardwareTests(unittest.TestCase):
                     {4: [{'dev': 'wan'}], 6: failure})
                 self.assertTrue(sample['collection_ok'])
                 self.assertNotIn('role', sample['lan'][0])
+
+    def test_command_addresses_detects_virtual_ap_and_dual_nic_lan(self):
+        for iface in ['end0', 'lan0']:
+            (self.root / 'net' / iface / 'device').mkdir(parents=True)
+        # A 2.4G AP interface may be an added virtual interface without /device.
+        (self.root / 'net' / 'wlan1' / 'phy80211').mkdir(parents=True)
+        rows = [
+            {'ifname': 'end0', 'addr_info': [{'local': '192.168.5.2', 'prefixlen': 24}]},
+            {'ifname': 'lan0', 'addr_info': [{'local': '10.42.2.1', 'prefixlen': 24}]},
+            {'ifname': 'wlan1', 'addr_info': [{'local': '10.42.0.1', 'prefixlen': 24}]},
+        ]
+        sample, _ = self.address_collector(rows, 1700000000,
+            {4: subprocess.CalledProcessError(7, 'curl'), 6: subprocess.CalledProcessError(7, 'curl')},
+            {4: [{'dev': 'end0'}]}, ap_interfaces={'wlan1'})
+        self.assertEqual(sample['lan'], [
+            {'interface': 'end0', 'address': '192.168.5.2', 'prefix_length': 24, 'role': 'wan'},
+            {'interface': 'lan0', 'address': '10.42.2.1', 'prefix_length': 24, 'role': 'lan'},
+            {'interface': 'wlan1', 'address': '10.42.0.1', 'prefix_length': 24, 'role': 'hotspot'}])
 
     def test_command_lan_collection_failure_omits_snapshot_but_refreshes_cache(self):
         for index, failure in enumerate([subprocess.CalledProcessError(1, 'ip'),

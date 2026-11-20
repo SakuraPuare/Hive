@@ -888,7 +888,7 @@ export default function PortalDevicesPage() {
                 <div className="space-y-1.5">
                   <p className="text-sm font-500">{t('mihomoOpen')}</p>
                   <p className="text-xs text-muted-foreground">{sampleNote(dashboard.sampled_at, 150_000)}</p>
-                  <ul className="space-y-2">
+                  {dashboard.endpoints.length === 0 ? <p className="text-sm text-muted-foreground">{t('mihomoNoAddresses')}</p> : <ul className="space-y-2">
                     {dashboard.endpoints.map((endpoint) => {
                       const url = new URL(endpoint.url);
                       return (
@@ -909,7 +909,7 @@ export default function PortalDevicesPage() {
                         </li>
                       );
                     })}
-                  </ul>
+                  </ul>}
                   <p className="text-xs text-muted-foreground">{t('mihomoHint')}</p>
                 </div>
               </>

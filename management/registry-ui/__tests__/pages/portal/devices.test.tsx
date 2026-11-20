@@ -156,8 +156,7 @@ describe('PortalDevicesPage', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
     mockListDevices.mockResolvedValue([gatewayNode]);
     const networks: DashboardInfo['endpoints'][number]['network'][] = [
-      'wan', 'lan', 'physical', 'hotspot5g', 'hotspot2g',
-      'lan-fallback', 'hotspot5g-fallback', 'hotspot2g-fallback',
+      'wan', 'lan', 'physical', 'hotspot',
     ];
     const secret = 'key + &?#/=中文';
     const endpoints = networks.map((network, index) => ({
@@ -208,13 +207,12 @@ describe('PortalDevicesPage', () => {
     expect(screen.getAllByText(/portal.mihomoSampleStale/)).toHaveLength(1);
   });
 
-  it('marks absent egress and address samples unknown while retaining explicit fallback labels', async () => {
+  it('marks absent egress and address samples unknown without inventing fallback addresses', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
     mockListDevices.mockResolvedValue([gatewayNode]);
     mockFetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => (
       url.endsWith('/dashboard') ? {
-        ...dashboardInfo, sampled_at: null,
-        endpoints: [{ network: 'lan-fallback', interface: '', address: '10.42.2.1', url: 'http://10.42.2.1:9090/ui' }],
+        ...dashboardInfo, sampled_at: null, endpoints: [],
         egress: { ipv4: '', ipv6: '', sampled_at: null },
       } : {}
     ) }));
@@ -223,7 +221,8 @@ describe('PortalDevicesPage', () => {
     await screen.findByLabelText('portal.mihomoSecret');
     expect(screen.getAllByText('portal.mihomoNotObserved')).toHaveLength(2);
     expect(screen.getAllByText('portal.mihomoSampleUnknown')).toHaveLength(2);
-    expect(screen.getByText('portal.mihomoNetwork_lan-fallback')).toBeInTheDocument();
+    expect(screen.getByText('portal.mihomoNoAddresses')).toBeInTheDocument();
+    expect(screen.queryByText(/10\.42\./)).not.toBeInTheDocument();
   });
 
   it('aborts a closed dashboard request and ignores its late key after switching devices', async () => {
