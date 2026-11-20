@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -118,37 +117,13 @@ func (h *Handler) HandlePortalDeviceDashboard(w http.ResponseWriter, r *http.Req
 		h.jsonErr(w, http.StatusNotFound, "device has no gateway dashboard")
 		return
 	}
-	var row struct {
-		AddressSnapshot    *string
-		AddressesSampledAt *string
-	}
-	if err := h.DB.Table("nodes").Select("address_snapshot, addresses_sampled_at").Where("mac = ?", n.MAC).Take(&row).Error; err != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+	snapshot, sampledAt, ok := h.loadAddressSnapshot(w, n.MAC)
+	if !ok {
 		return
 	}
 	result := DashboardResponse{MAC: n.MAC, Secret: h.gatewaySecret(n.MAC)}
-	var snapshot *model.DeviceAddressSnapshot
-	if row.AddressSnapshot != nil || row.AddressesSampledAt != nil {
-		if row.AddressSnapshot == nil || row.AddressesSampledAt == nil {
-			h.jsonErr(w, http.StatusInternalServerError, "invalid stored address snapshot")
-			return
-		}
-		var sample model.DeviceAddressSnapshot
-		if err := json.Unmarshal([]byte(*row.AddressSnapshot), &sample); err != nil || strings.TrimSpace(*row.AddressSnapshot) == "null" {
-			h.jsonErr(w, http.StatusInternalServerError, "invalid stored address snapshot")
-			return
-		}
-		normalized, valid := normalizeDeviceAddresses(sample)
-		if !valid {
-			h.jsonErr(w, http.StatusInternalServerError, "invalid stored address snapshot")
-			return
-		}
-		if _, err := time.Parse(time.RFC3339, *row.AddressesSampledAt); err != nil {
-			h.jsonErr(w, http.StatusInternalServerError, "invalid stored address snapshot")
-			return
-		}
-		snapshot = &normalized
-		result.Egress, result.SampledAt = normalized.Egress, row.AddressesSampledAt
+	if snapshot != nil {
+		result.Egress, result.SampledAt = snapshot.Egress, sampledAt
 	}
 	result.Endpoints = dashboardEndpoints(snapshot)
 	h.jsonOK(w, result)

@@ -110,12 +110,8 @@ func (h *Handler) HandlePortalDeviceAddresses(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	var row struct {
-		AddressSnapshot    *string
-		AddressesSampledAt *string
-	}
-	if err := h.DB.Table("nodes").Select("address_snapshot, addresses_sampled_at").Where("mac = ?", mac).Take(&row).Error; err != nil {
-		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+	snapshot, sampledAt, ok := h.loadAddressSnapshot(w, mac)
+	if !ok {
 		return
 	}
 	result := model.DeviceAddressesResponse{
@@ -124,18 +120,46 @@ func (h *Handler) HandlePortalDeviceAddresses(w http.ResponseWriter, r *http.Req
 		LastSeen: node.LastSeen,
 		LAN:      []model.LANAddress{},
 	}
-	if row.AddressSnapshot != nil && row.AddressesSampledAt != nil {
-		var sample model.DeviceAddressSnapshot
-		if err := json.Unmarshal([]byte(*row.AddressSnapshot), &sample); err != nil {
-			h.jsonErr(w, http.StatusInternalServerError, "invalid stored address snapshot")
-			return
-		}
-		normalized, valid := normalizeDeviceAddresses(sample)
-		if !valid {
-			h.jsonErr(w, http.StatusInternalServerError, "invalid stored address snapshot")
-			return
-		}
-		result.LAN, result.Egress, result.SampledAt = normalized.LAN, normalized.Egress, row.AddressesSampledAt
+	if snapshot != nil {
+		result.LAN, result.Egress, result.SampledAt = snapshot.LAN, snapshot.Egress, sampledAt
 	}
 	h.jsonOK(w, result)
+}
+
+// loadAddressSnapshot reads the stored heartbeat address snapshot for mac.
+// Both columns NULL means a legacy/unsampled node (nil, nil, true). Anything
+// else must be a complete, valid sample: a half-written or corrupt row is a
+// 500 rather than being silently shown as "no data" on one page and failing
+// on another.
+func (h *Handler) loadAddressSnapshot(w http.ResponseWriter, mac string) (*model.DeviceAddressSnapshot, *string, bool) {
+	var row struct {
+		AddressSnapshot    *string
+		AddressesSampledAt *string
+	}
+	if err := h.DB.Table("nodes").Select("address_snapshot, addresses_sampled_at").Where("mac = ?", mac).Take(&row).Error; err != nil {
+		h.jsonErr(w, http.StatusInternalServerError, "db: "+err.Error())
+		return nil, nil, false
+	}
+	if row.AddressSnapshot == nil && row.AddressesSampledAt == nil {
+		return nil, nil, true
+	}
+	invalid := func() (*model.DeviceAddressSnapshot, *string, bool) {
+		h.jsonErr(w, http.StatusInternalServerError, "invalid stored address snapshot")
+		return nil, nil, false
+	}
+	if row.AddressSnapshot == nil || row.AddressesSampledAt == nil || strings.TrimSpace(*row.AddressSnapshot) == "null" {
+		return invalid()
+	}
+	if _, err := time.Parse(time.RFC3339, *row.AddressesSampledAt); err != nil {
+		return invalid()
+	}
+	var sample model.DeviceAddressSnapshot
+	if err := json.Unmarshal([]byte(*row.AddressSnapshot), &sample); err != nil {
+		return invalid()
+	}
+	normalized, valid := normalizeDeviceAddresses(sample)
+	if !valid {
+		return invalid()
+	}
+	return &normalized, row.AddressesSampledAt, true
 }

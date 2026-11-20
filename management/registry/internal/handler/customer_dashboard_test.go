@@ -174,12 +174,16 @@ func TestPortalDeviceDashboardCorruptSnapshot(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			mustExec(t, "UPDATE nodes SET address_snapshot = ?, addresses_sampled_at = ? WHERE mac = ?", test.snapshot, test.stamp, mac)
-			resp := doJSON("GET", "/portal/devices/"+mac+"/dashboard", nil, customerCookie(owner))
-			assertStatus(t, resp, http.StatusInternalServerError)
-			data, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if strings.Contains(string(data), testH.gatewaySecret(mac)) || strings.Contains(string(data), "endpoints") {
-				t.Fatalf("corrupt snapshot leaked secret or fallback: %s", data)
+			// Both snapshot readers share one decoder: a corrupt row is a 500 on
+			// each, never "no data" on one page and an error on the other.
+			for _, path := range []string{"/dashboard", "/addresses"} {
+				resp := doJSON("GET", "/portal/devices/"+mac+path, nil, customerCookie(owner))
+				assertStatus(t, resp, http.StatusInternalServerError)
+				data, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if strings.Contains(string(data), testH.gatewaySecret(mac)) || strings.Contains(string(data), "endpoints") || strings.Contains(string(data), "lan") {
+					t.Fatalf("%s: corrupt snapshot leaked secret or fallback: %s", path, data)
+				}
 			}
 		})
 	}
