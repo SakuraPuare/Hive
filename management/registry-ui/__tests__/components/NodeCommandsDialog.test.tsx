@@ -78,9 +78,9 @@ describe('NodeCommandsDialog', () => {
     enqueue.mockResolvedValue({ id: 42 });
     render(<NodeCommandsDialog nodes={[nodes[0]]} open onOpenChange={() => {}} />);
     await settle();
-    fireEvent.change(screen.getByRole('combobox', { name: 'nodeCommands.command' }), { target: { value: 'service-control' } });
-    expect(screen.getByRole('combobox', { name: 'nodeCommands.service' }).children).toHaveLength(18);
-    fireEvent.click(screen.getByRole('button', { name: 'nodeCommands.send' }));
+    expect(screen.queryByRole('option', { name: 'nodeCommands.action_service-control' })).not.toBeInTheDocument();
+    const card = screen.getByText('nodeCommands.service_xray').closest('div')!.parentElement!;
+    fireEvent.click(within(card).getByRole('button', { name: 'nodeCommands.serviceOp_status' }));
     await settle();
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(enqueue).toHaveBeenCalledWith({ mac: nodes[0].mac, requestBody: {
@@ -101,6 +101,15 @@ describe('NodeCommandsDialog', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(within(batch).getByText('nodeCommands.notInHistory')).toBeInTheDocument();
     expect(within(batch).getByText(/nodeCommands.status_done/)).toBeInTheDocument();
+  });
+
+  it('keeps the generic service command for batch targets', async () => {
+    render(<NodeCommandsDialog nodes={nodes} open onOpenChange={() => {}} />);
+    await settle();
+    fireEvent.change(screen.getByRole('combobox', { name: 'nodeCommands.command' }), { target: { value: 'service-control' } });
+    expect(screen.getByRole('combobox', { name: 'nodeCommands.service' }).children).toHaveLength(17);
+    expect(screen.getByRole('combobox', { name: 'nodeCommands.operation' })).toBeInTheDocument();
+    expect(screen.queryByText('nodeCommands.serviceControls')).not.toBeInTheDocument();
   });
 
   it('shows sampled service states and confirms mutating service actions', async () => {
@@ -154,8 +163,8 @@ describe('NodeCommandsDialog', () => {
     const onOpenChange = vi.fn();
     const view = render(<NodeCommandsDialog nodes={[nodes[0]]} open onOpenChange={onOpenChange} />);
     await settle();
-    fireEvent.change(screen.getByRole('combobox', { name: 'nodeCommands.command' }), { target: { value: 'service-control' } });
-    fireEvent.click(screen.getByRole('button', { name: 'nodeCommands.send' }));
+    const card = screen.getByText('nodeCommands.service_xray').closest('div')!.parentElement!;
+    fireEvent.click(within(card).getByRole('button', { name: 'nodeCommands.serviceOp_status' }));
     expect(screen.getAllByRole('button', { name: 'common.close' }).every((button) => button.hasAttribute('disabled'))).toBe(true);
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape', code: 'Escape', keyCode: 27 });
     expect(onOpenChange).not.toHaveBeenCalled();

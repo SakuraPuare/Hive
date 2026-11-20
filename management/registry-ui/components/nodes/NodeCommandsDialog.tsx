@@ -16,13 +16,13 @@ import {
 const ACTIONS = ['reboot', 'resync', 'restart-xray', 'restart-mihomo', 'service-control'] as const;
 const SERVICES = [
   'xray', 'xray-exporter', 'cloudflared', 'frpc', 'easytier', 'hive-mihomo',
-  'hive-hotspot', 'hive-hotspot-5g', 'hive-gateway', 'hive-firewall', 'hive-fail2ban',
+  'hive-hotspot', 'hive-gateway', 'hive-firewall', 'hive-fail2ban',
   'nginx', 'tailscaled', 'warp-svc', 'hive-xray-sync.timer', 'hive-clash-sync.timer',
   'hive-command-agent.timer', 'hive-updater.timer',
 ] as const;
 const SERVICE_GROUPS = [
   { key: 'proxy', services: ['xray', 'xray-exporter', 'cloudflared', 'frpc', 'easytier'] },
-  { key: 'network', services: ['hive-mihomo', 'hive-hotspot', 'hive-hotspot-5g', 'hive-gateway'] },
+  { key: 'network', services: ['hive-mihomo', 'hive-hotspot', 'hive-gateway'] },
   { key: 'security', services: ['hive-firewall', 'hive-fail2ban'] },
   { key: 'system', services: ['nginx', 'tailscaled', 'warp-svc'] },
   { key: 'automation', services: ['hive-xray-sync.timer', 'hive-clash-sync.timer', 'hive-command-agent.timer', 'hive-updater.timer'] },
@@ -184,6 +184,9 @@ export function NodeCommandsDialog({ nodes, open, onOpenChange }: {
     if (session.active) { busyRef.current = false; setBusy(false); }
   }
 
+  const actionOptions = nodes.length === 1
+    ? ACTIONS.filter((value) => value !== 'service-control')
+    : ACTIONS;
   const selected: handler_enqueueCommandRequest = {
     action,
     ...(action === 'service-control' ? { params: JSON.stringify({ service, operation }) } : {}),
@@ -241,7 +244,7 @@ export function NodeCommandsDialog({ nodes, open, onOpenChange }: {
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="space-y-1 text-sm">{t('command')}
             <select aria-label={t('command')} className="h-10 w-full rounded-md border bg-background px-2" value={action} disabled={busy || !canWrite} onChange={(event) => setAction(event.target.value as Action)}>
-              {ACTIONS.map((value) => <option key={value} value={value}>{t(`action_${value}`)}</option>)}
+              {actionOptions.map((value) => <option key={value} value={value}>{t(`action_${value}`)}</option>)}
             </select>
           </label>
           {action === 'service-control' && <>
