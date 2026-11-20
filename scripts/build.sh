@@ -233,7 +233,17 @@ if $IS_LOCAL; then
 fi
 
 # 内存优化策略
-if [ $TOTAL_RAM_GB -ge 16 ]; then
+# HIVE_TMPDIR 可强制指定暂存目录：构建机的 /tmp 是固定大小 tmpfs（本机 7.9G），
+# 被别的东西占满时，OTA 打包（build-ota.sh 的 mktemp -d 展开 boot payload，约 2G）
+# 会以 "tar: Cannot write: No space left on device" 失败，而工厂镜像早已生成完毕，
+# 只剩签名包缺失——很难从日志看出是 tmpfs 满而不是磁盘满。指到磁盘目录即可绕开。
+if [ -n "${HIVE_TMPDIR:-}" ]; then
+  export TMPDIR="${HIVE_TMPDIR}"
+  mkdir -p "${TMPDIR}" 2>/dev/null || true
+  export USE_TMPFS=no
+  export CCACHE_TEMPDIR="${CCACHE_TEMPDIR:-${TMPDIR}}"
+  echo "  I/O加速: 自定义暂存目录 TMPDIR=${TMPDIR}"
+elif [ $TOTAL_RAM_GB -ge 16 ]; then
   export USE_TMPFS=yes
   export TMPDIR="/dev/shm"
   mkdir -p /dev/shm/armbian-tmp 2>/dev/null || true
