@@ -806,8 +806,6 @@ definitions:
     type: object
   handler.ResetTokenResponse:
     properties:
-      export_token:
-        type: string
       token:
         type: string
     type: object
@@ -1693,8 +1691,6 @@ definitions:
   model.SubscriptionGroup:
     properties:
       created_at:
-        type: string
-      export_token:
         type: string
       id:
         type: integer
@@ -6357,7 +6353,9 @@ paths:
       - admin
   /s/{token}:
     get:
-      description: 通过 Token 获取订阅组的 Clash YAML 配置（必须提供客户订阅 Token）
+      description: |-
+        通过 Token 获取订阅组的 Clash YAML 配置。客户订阅用 ?subscription=<客户 Token>；
+        管理导出可改用 ?token=<ADMIN_API_SECRET 或该分组 token>，返回分组内全部节点（节点自身 UUID，不计客户额度）。
       operationId: PublicGroupClash
       parameters:
       - description: 订阅组 Token
@@ -6494,7 +6492,9 @@ paths:
       - subscription
   /subscription/clash:
     get:
-      description: 返回 Clash/Mihomo YAML 格式订阅配置。管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组导出凭据>；分组凭据只导出该分组且不计客户额度。
+      description: |-
+        返回 Clash/Mihomo YAML 格式订阅配置
+        管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组 token>；分组 token 只导出该分组且不计客户额度。
       operationId: SubscriptionClash
       parameters:
       - description: 客户订阅 Token（额度和有效期校验）

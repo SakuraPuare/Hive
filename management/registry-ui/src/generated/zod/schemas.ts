@@ -8,7 +8,7 @@
 //   Circular references: 0
 //   Discriminated unions: 0
 //   With constraints: 1
-//   Generated at: 2026-11-20T12:24:46.256Z
+//   Generated at: 2026-11-20T16:14:37.210Z
 
 import { z } from "zod";
 
@@ -1198,7 +1198,6 @@ export type ModelPromoCode = z.infer<typeof modelPromoCodeSchema>;
 
 export const modelSubscriptionGroupSchema = z.object({
   created_at: z.string().optional(),
-  export_token: z.string().optional(),
   id: z.number().int().optional(),
   name: z.string().optional(),
   node_count: z.number().int().optional(),

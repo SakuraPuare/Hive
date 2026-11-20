@@ -226,7 +226,8 @@ export class SubscriptionService {
     }
     /**
      * 公开订阅组 Clash 配置
-     * 通过 Token 获取订阅组的 Clash YAML 配置（必须提供客户订阅 Token）
+     * 通过 Token 获取订阅组的 Clash YAML 配置。客户订阅用 ?subscription=<客户 Token>；
+     * 管理导出可改用 ?token=<ADMIN_API_SECRET 或该分组 token>，返回分组内全部节点（节点自身 UUID，不计客户额度）。
      * @returns string Clash subscription
      * @throws ApiError
      */
@@ -261,6 +262,7 @@ export class SubscriptionService {
     /**
      * 获取 VLESS 订阅
      * 返回 base64 编码的 VLESS 订阅链接
+     * 管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组 token>；分组 token 只导出该分组且不计客户额度。
      * @returns string VLESS subscription
      * @throws ApiError
      */
@@ -286,6 +288,7 @@ export class SubscriptionService {
     /**
      * 获取 Clash 订阅
      * 返回 Clash/Mihomo YAML 格式订阅配置
+     * 管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组 token>；分组 token 只导出该分组且不计客户额度。
      * @returns string Clash subscription
      * @throws ApiError
      */
