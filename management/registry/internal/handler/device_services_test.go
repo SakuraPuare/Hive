@@ -177,11 +177,17 @@ func TestPortalDeviceServicesHeartbeat(t *testing.T) {
 		assertStatus(t, resp, want)
 		resp.Body.Close()
 	}
+	// An unknown unit (e.g. an agent newer than this registry) drops only the
+	// service snapshot; the heartbeat still counts and keeps the node online.
+	mustExec(t, "UPDATE nodes SET last_seen = ? WHERE mac = ?", "2020-01-01 00:00:00", mac)
 	resp = doBearer("POST", "/nodes/heartbeat", map[string]any{"mac": mac, "services": []model.ServiceStatus{{Name: "sshd"}}}, deviceToken(t, mac))
-	assertStatus(t, resp, http.StatusBadRequest)
+	assertStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	if got := get(); got.SampledAt == nil || *got.SampledAt != oldTime {
 		t.Fatalf("invalid heartbeat changed snapshot: %+v", got)
+	}
+	if scalar(t, "SELECT COUNT(*) FROM nodes WHERE mac = ? AND last_seen = ?", mac, "2020-01-01 00:00:00") != 0 {
+		t.Fatal("heartbeat with invalid service snapshot did not update last_seen")
 	}
 	resp = doBearer("POST", "/nodes/heartbeat", map[string]any{"mac": mac, "services": sample}, "wrong-token")
 	assertStatus(t, resp, http.StatusUnauthorized)

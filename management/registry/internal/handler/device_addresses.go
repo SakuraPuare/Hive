@@ -12,6 +12,11 @@ import (
 
 var fakeIPRange = netip.MustParsePrefix("198.18.0.0/15")
 
+// addressClockSkew bounds how far a node's egress sample time may lead the
+// registry clock. The agent samples egress right before the heartbeat, so any
+// node clock even slightly ahead would otherwise be rejected.
+const addressClockSkew = 5 * time.Minute
+
 func validObservedIP(raw string) (netip.Addr, bool) {
 	if len(raw) > 45 {
 		return netip.Addr{}, false
@@ -69,7 +74,7 @@ func normalizeDeviceAddresses(sample model.DeviceAddressSnapshot) (model.DeviceA
 			return sample, false
 		}
 		stamp, err := time.Parse(time.RFC3339, *sample.Egress.SampledAt)
-		if err != nil || stamp.After(time.Now()) {
+		if err != nil || stamp.After(time.Now().Add(addressClockSkew)) {
 			return sample, false
 		}
 		utc := stamp.UTC().Format(time.RFC3339)

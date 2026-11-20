@@ -60,10 +60,6 @@ func TestNormalizeDeviceAddresses(t *testing.T) {
 			stamp := time.Now().Add(time.Hour).Format(time.RFC3339)
 			s.Egress.SampledAt = &stamp
 		},
-		func(s *model.DeviceAddressSnapshot) {
-			stamp := time.Now().Add(time.Minute).Format(time.RFC3339)
-			s.Egress.SampledAt = &stamp
-		},
 	} {
 		sample := addressSample()
 		mutate(&sample)
@@ -73,6 +69,14 @@ func TestNormalizeDeviceAddresses(t *testing.T) {
 	}
 	if empty, ok := normalizeDeviceAddresses(model.DeviceAddressSnapshot{}); !ok || empty.LAN == nil {
 		t.Fatalf("unknown sample: %+v %v", empty, ok)
+	}
+	// The agent samples egress just before the heartbeat; a node clock slightly
+	// ahead of the registry must not invalidate the snapshot.
+	ahead := addressSample()
+	stamp := time.Now().Add(time.Minute).Format(time.RFC3339)
+	ahead.Egress.SampledAt = &stamp
+	if _, ok := normalizeDeviceAddresses(ahead); !ok {
+		t.Fatal("egress sampled one minute ahead rejected")
 	}
 }
 
@@ -148,15 +152,20 @@ func TestHeartbeatAddressesValidationAndPreservation(t *testing.T) {
 	oldTime := "2020-02-01T00:00:00Z"
 	mustExec(t, "UPDATE nodes SET addresses_sampled_at = ? WHERE mac = ?", oldTime, mac)
 	beat(map[string]any{"mac": mac}, http.StatusOK)
+	mustExec(t, "UPDATE nodes SET last_seen = ? WHERE mac = ?", "2020-01-01 00:00:00", mac)
 	invalid := addressSample()
 	invalid.LAN[0].Address = "not-an-ip"
-	beat(map[string]any{"mac": mac, "addresses": invalid}, http.StatusBadRequest)
+	// An invalid snapshot is dropped, but the heartbeat itself still counts.
+	beat(map[string]any{"mac": mac, "addresses": invalid}, http.StatusOK)
 	var node model.Node
 	if err := testDB.Where("mac = ?", mac).Take(&node).Error; err != nil {
 		t.Fatal(err)
 	}
 	if node.AddressesSampledAt == nil || *node.AddressesSampledAt != oldTime || node.AddressSnapshot == nil {
 		t.Fatalf("old/invalid heartbeat changed sample: %+v", node)
+	}
+	if node.LastSeen == "2020-01-01 00:00:00" {
+		t.Fatal("heartbeat with invalid address snapshot did not update last_seen")
 	}
 	encoded, err := json.Marshal(node)
 	if err != nil {

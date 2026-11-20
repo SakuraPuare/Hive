@@ -38,23 +38,25 @@ func (h *Handler) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		h.jsonErr(w, http.StatusBadRequest, "mac required")
 		return
 	}
+	// Service and address snapshots are auxiliary: an invalid one (e.g. an agent
+	// that already knows a unit this registry has not whitelisted yet, or a node
+	// clock ahead before NTP sync) is dropped and the previous sample kept, but
+	// it must never cost the heartbeat itself and mark the node offline.
 	var serviceJSON []byte
 	if req.Services != nil {
-		states, ok := normalizeServiceStates(req.Services)
-		if !ok {
-			h.jsonErr(w, http.StatusBadRequest, "invalid service states")
-			return
+		if states, ok := normalizeServiceStates(req.Services); ok {
+			serviceJSON, _ = json.Marshal(states)
+		} else {
+			log.Printf("heartbeat: dropping invalid service snapshot for mac=%s", req.MAC)
 		}
-		serviceJSON, _ = json.Marshal(states)
 	}
 	var addressJSON []byte
 	if req.Addresses != nil {
-		snapshot, ok := normalizeDeviceAddresses(*req.Addresses)
-		if !ok {
-			h.jsonErr(w, http.StatusBadRequest, "invalid address snapshot")
-			return
+		if snapshot, ok := normalizeDeviceAddresses(*req.Addresses); ok {
+			addressJSON, _ = json.Marshal(snapshot)
+		} else {
+			log.Printf("heartbeat: dropping invalid address snapshot for mac=%s", req.MAC)
 		}
-		addressJSON, _ = json.Marshal(snapshot)
 	}
 
 	now := time.Now().UTC().Format(model.TimeLayout)
