@@ -16,7 +16,7 @@ import (
 // @Summary      获取 VLESS 订阅
 // @ID           SubscriptionVless
 // @Description  返回 base64 编码的 VLESS 订阅链接
-// @Description  管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组导出凭据>；分组凭据只导出该分组且不计客户额度。
+// @Description  管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组 token>；分组 token 只导出该分组且不计客户额度。
 // @Tags         subscription
 // @Produce      plain
 // @Success      200 {string} string "VLESS subscription"
@@ -43,7 +43,7 @@ func (h *Handler) HandleSubscriptionVless(w http.ResponseWriter, r *http.Request
 // @Summary      获取 Clash 订阅
 // @ID           SubscriptionClash
 // @Description  返回 Clash/Mihomo YAML 格式订阅配置
-// @Description  管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组导出凭据>；分组凭据只导出该分组且不计客户额度。
+// @Description  管理导出可用 ?token=<ADMIN_API_SECRET|API_SECRET|分组 token>；分组 token 只导出该分组且不计客户额度。
 // @Tags         subscription
 // @Produce      plain
 // @Success      200 {string} string "Clash subscription"

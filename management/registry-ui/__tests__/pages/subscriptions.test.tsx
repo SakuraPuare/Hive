@@ -56,8 +56,8 @@ vi.mock('@/lib/auth', () => ({
 import Subscriptions from '@/pages/subscriptions';
 
 const mockGroups = [
-  { id: 1, name: '基础组', token: 'tok1', export_token: 'etok1', node_macs: ['aabbccddeeff'], created_at: '2024-06-01T00:00:00Z' },
-  { id: 2, name: '高级组', token: 'tok2', export_token: 'etok2', node_macs: ['112233445566', 'ffeeddccbbaa'], created_at: '2024-06-02T00:00:00Z' },
+  { id: 1, name: '基础组', token: 'tok1', node_macs: ['aabbccddeeff'], created_at: '2024-06-01T00:00:00Z' },
+  { id: 2, name: '高级组', token: 'tok2', node_macs: ['112233445566', 'ffeeddccbbaa'], created_at: '2024-06-02T00:00:00Z' },
 ];
 
 describe('Subscriptions page', () => {
@@ -154,8 +154,8 @@ describe('Subscriptions page', () => {
       expect(screen.getByText('基础组')).toBeInTheDocument();
     });
 
-    expect(screen.getByText(`http://localhost:3000/api/subscription/clash?token=etok1`)).toBeInTheDocument();
-    expect(screen.getByText(`http://localhost:3000/api/subscription/clash?token=etok2`)).toBeInTheDocument();
+    expect(screen.getByText(`http://localhost:3000/api/subscription/clash?token=tok1`)).toBeInTheDocument();
+    expect(screen.getByText(`http://localhost:3000/api/subscription/clash?token=tok2`)).toBeInTheDocument();
 
     // Copy and QR are usable without pasting a customer subscription link.
     expect(screen.getAllByText('subscriptions.copyLink')[0]).toBeEnabled();

@@ -279,29 +279,14 @@ func (a *Auth) automationCredentials(r *http.Request) []string {
 	return out
 }
 
-// GroupExportToken derives a group-scoped operator credential from the
-// automation secret. The panel copies this credential into group subscription
-// links so administrators can import per-group exports without ever seeing
-// ADMIN_API_SECRET in the browser, and rotating the secret invalidates every
-// previously copied group link. Returns "" when no automation secret exists.
-func (a *Auth) GroupExportToken(groupToken string) string {
-	secret := a.Config.AdminAPISecret
-	if secret == "" || groupToken == "" {
-		return ""
-	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte("hive-group-export\x00"))
-	mac.Write([]byte(groupToken))
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
 // CheckGroupExportCredential reports whether the request carries a credential
 // that permits exporting one subscription group as an operator subscription
 // (node UUIDs, unmetered), rather than scoping it to a paid customer.
 //
-// Accepted: ADMIN_API_SECRET, the legacy API_SECRET baked into firmware and
-// older mihomo configs, and the group-scoped derived token. All may arrive as
-// ?token= because mihomo proxy-providers and pasted links cannot set headers.
+// Accepted: the group's own token (the value the panel has always called the
+// group link token), ADMIN_API_SECRET, and the legacy API_SECRET. All may
+// arrive as ?token= because mihomo proxy-providers and pasted links cannot set
+// headers.
 func (a *Auth) CheckGroupExportCredential(groupToken string, r *http.Request) bool {
 	if groupToken == "" {
 		return false
@@ -313,24 +298,20 @@ func (a *Auth) CheckGroupExportCredential(groupToken string, r *http.Request) bo
 	if token == "" {
 		return false
 	}
-	for _, c := range []string{a.Config.AdminAPISecret, a.Config.APISecret} {
+	for _, c := range []string{groupToken, a.Config.AdminAPISecret, a.Config.APISecret} {
 		if c != "" && subtle.ConstantTimeCompare([]byte(token), []byte(c)) == 1 {
 			return true
 		}
 	}
-	derived := a.GroupExportToken(groupToken)
-	if derived == "" {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(token), []byte(derived)) == 1
+	return false
 }
 
-// groupExportCredentialValid reports whether token is a group-scoped operator
-// credential minted by GroupExportToken. It is consulted only when the
-// credential arrived as ?token= on an export route, so a leaked group link can
-// never be replayed as a Bearer credential on management endpoints.
+// groupExportCredentialValid reports whether token is one of the stored group
+// tokens. It is consulted only when the credential arrived as ?token= on an
+// export route, so a group link can never be replayed as a Bearer credential on
+// management endpoints.
 func (a *Auth) groupExportCredentialValid(token string) bool {
-	if token == "" || a.Config.AdminAPISecret == "" || a.DB == nil {
+	if token == "" || a.DB == nil {
 		return false
 	}
 	var groupTokens []string
@@ -338,8 +319,7 @@ func (a *Auth) groupExportCredentialValid(token string) bool {
 		return false
 	}
 	for _, gt := range groupTokens {
-		derived := a.GroupExportToken(gt)
-		if derived != "" && subtle.ConstantTimeCompare([]byte(token), []byte(derived)) == 1 {
+		if gt != "" && subtle.ConstantTimeCompare([]byte(token), []byte(gt)) == 1 {
 			return true
 		}
 	}
@@ -348,9 +328,6 @@ func (a *Auth) groupExportCredentialValid(token string) bool {
 
 func (a *Auth) checkAPISecret(r *http.Request) bool {
 	credentials := a.automationCredentials(r)
-	if len(credentials) == 0 {
-		return false
-	}
 
 	token, hasHeader := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	usedQuery := false
@@ -371,9 +348,9 @@ func (a *Auth) checkAPISecret(r *http.Request) bool {
 			ok = true
 		}
 	}
-	// Group-scoped export credentials are accepted exactly like the master
-	// secret on the subscription export routes, so a group link can keep the
-	// historical /subscription/clash?token=<credential> shape.
+	// Group tokens are accepted like the master secret on the subscription
+	// export routes, so a group link keeps the historical
+	// /subscription/clash?token=<group token> shape.
 	if !ok && usedQuery {
 		ok = a.groupExportCredentialValid(token)
 	}

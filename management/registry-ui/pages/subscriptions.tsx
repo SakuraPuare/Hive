@@ -69,10 +69,10 @@ export default function Subscriptions() {
   // instead (metered, plan ∩ group nodes).
   const groupURL = (group: model_SubscriptionGroup) => {
     if (customerToken) return scopedURL(`/s/${group.token}`);
-    if (!group.export_token) return undefined;
+    if (!group.token) return undefined;
     // Keep the historical shape administrators already use:
-    // /api/subscription/clash?token=<credential>
-    return shareURL(`/subscription/clash?token=${encodeURIComponent(group.export_token)}`);
+    // /api/subscription/clash?token=<group token> — same token as the old panel.
+    return shareURL(`/subscription/clash?token=${encodeURIComponent(group.token)}`);
   };
 
   const createNameId = useId();

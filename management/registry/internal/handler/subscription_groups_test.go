@@ -210,9 +210,8 @@ func TestPublicGroupClash_OperatorExport(t *testing.T) {
 	body := parseJSON(resp)
 	groupID := fmt.Sprintf("%.0f", body["id"].(float64))
 	groupToken := body["token"].(string)
-	exportToken, _ := body["export_token"].(string)
-	if len(exportToken) != 64 {
-		t.Fatalf("expected 64-char export_token, got %q", body["export_token"])
+	if len(groupToken) != 64 {
+		t.Fatalf("expected 64-char group token, got %q", groupToken)
 	}
 
 	resp = doJSON("PUT", "/admin/subscription-groups/"+groupID+"/nodes", map[string]any{
@@ -220,8 +219,8 @@ func TestPublicGroupClash_OperatorExport(t *testing.T) {
 	}, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 
-	// The panel link: group-scoped derived credential, no customer subscription.
-	resp = doJSON("GET", "/s/"+groupToken+"?token="+exportToken, nil, nil)
+	// The panel link uses the group's own (unchanged) token as the credential.
+	resp = doJSON("GET", "/s/"+groupToken+"?token="+groupToken, nil, nil)
 	assertStatus(t, resp, http.StatusOK)
 	text := readBody(resp)
 	if !strings.Contains(text, "test-aabbccddeeff") {
@@ -254,7 +253,7 @@ func TestSubscriptionGroupExportLegacyShape(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 	body := parseJSON(resp)
 	groupID := fmt.Sprintf("%.0f", body["id"].(float64))
-	exportToken := body["export_token"].(string)
+	groupToken := body["token"].(string)
 
 	resp = doJSON("PUT", "/admin/subscription-groups/"+groupID+"/nodes", map[string]any{
 		"nodes": []string{"aabbccddeeff"},
@@ -262,7 +261,7 @@ func TestSubscriptionGroupExportLegacyShape(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 
 	// The panel keeps the historical URL shape: /subscription/clash?token=<credential>
-	resp = doJSON("GET", "/subscription/clash?token="+exportToken, nil, nil)
+	resp = doJSON("GET", "/subscription/clash?token="+groupToken, nil, nil)
 	assertStatus(t, resp, http.StatusOK)
 	text := readBody(resp)
 	if !strings.Contains(text, "test-aabbccddeeff") || !strings.Contains(text, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") {
@@ -270,7 +269,7 @@ func TestSubscriptionGroupExportLegacyShape(t *testing.T) {
 	}
 
 	// VLESS keeps the same shape and uses the node UUID.
-	resp = doJSON("GET", "/subscription?token="+exportToken, nil, nil)
+	resp = doJSON("GET", "/subscription?token="+groupToken, nil, nil)
 	assertStatus(t, resp, http.StatusOK)
 	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(readBody(resp)))
 	if err != nil {
@@ -288,17 +287,20 @@ func TestSubscriptionGroupExportLegacyShape(t *testing.T) {
 	}
 
 	// A group credential is export-only: it must not authenticate management APIs.
-	resp = doBearer("GET", "/admin/users", nil, exportToken)
+	resp = doBearer("GET", "/admin/users", nil, groupToken)
 	assertStatus(t, resp, http.StatusUnauthorized)
 }
 
-func TestListSubscriptionGroups_ExportToken(t *testing.T) {
+func TestSubscriptionGroupTokenIsTheExportCredential(t *testing.T) {
 	resetDB(t)
 
 	resp := doJSON("POST", "/admin/subscription-groups", map[string]any{"name": "G"}, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
 	created := parseJSON(resp)
 	groupToken := created["token"].(string)
+	if _, ok := created["export_token"]; ok {
+		t.Fatal("groups must not expose a separate export token")
+	}
 
 	resp = doJSON("GET", "/admin/subscription-groups", nil, adminCookie())
 	assertStatus(t, resp, http.StatusOK)
@@ -306,18 +308,18 @@ func TestListSubscriptionGroups_ExportToken(t *testing.T) {
 	if len(groups) != 1 {
 		t.Fatalf("expected 1 group, got %d", len(groups))
 	}
-	exportToken, _ := groups[0]["export_token"].(string)
-	if len(exportToken) != 64 {
-		t.Fatalf("expected 64-char export_token in list, got %q", groups[0]["export_token"])
+	if groups[0]["token"] != groupToken {
+		t.Fatalf("list token %q differs from create %q", groups[0]["token"], groupToken)
 	}
-	if exportToken != created["export_token"] {
-		t.Fatalf("list export_token %q differs from create %q", exportToken, created["export_token"])
+	if _, ok := groups[0]["export_token"]; ok {
+		t.Fatal("groups must not expose a separate export token")
 	}
-	if !testAuth.CheckGroupExportCredential(groupToken, httptest.NewRequest(http.MethodGet, "/s/x?token="+exportToken, nil)) {
-		t.Fatal("expected derived export token to validate")
+
+	if !testAuth.CheckGroupExportCredential(groupToken, httptest.NewRequest(http.MethodGet, "/s/x?token="+groupToken, nil)) {
+		t.Fatal("expected the group token to validate")
 	}
-	if testAuth.CheckGroupExportCredential(strings.Repeat("f", 64), httptest.NewRequest(http.MethodGet, "/s/x?token="+exportToken, nil)) {
-		t.Fatal("export token must not validate for another group")
+	if testAuth.CheckGroupExportCredential(strings.Repeat("f", 64), httptest.NewRequest(http.MethodGet, "/s/x?token="+groupToken, nil)) {
+		t.Fatal("a group token must not validate for another group")
 	}
 }
 
