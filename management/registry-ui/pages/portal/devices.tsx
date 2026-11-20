@@ -32,15 +32,12 @@ import {
   Play, Square, RotateCw, Activity, Settings2, Wifi, Gauge, ExternalLink,
 } from 'lucide-react';
 
-// 白名单命令动作（与后端 commandActions 一致）。
-const COMMAND_ACTIONS = ['reboot', 'restart-xray', 'restart-mihomo', 'resync'] as const;
+// 客户白名单动作：仅保留设备重启；热点配置和服务控制使用专用入口。
+const COMMAND_ACTIONS = ['reboot'] as const;
 
+// 客户只能控制网关与热点相关服务。
 const SERVICE_GROUPS = [
-  { key: 'proxy', services: ['xray', 'xray-exporter', 'cloudflared', 'frpc', 'easytier'] },
   { key: 'network', services: ['hive-mihomo', 'hive-hotspot', 'hive-gateway'] },
-  { key: 'security', services: ['hive-firewall', 'hive-fail2ban'] },
-  { key: 'system', services: ['nginx', 'tailscaled', 'warp-svc'] },
-  { key: 'automation', services: ['hive-xray-sync.timer', 'hive-clash-sync.timer', 'hive-command-agent.timer', 'hive-updater.timer'] },
 ] as const;
 
 const SERVICE_OPERATIONS = ['start', 'stop', 'restart', 'status'] as const;
@@ -120,7 +117,7 @@ export default function PortalDevicesPage() {
 
   // 命令对话框（针对某台设备）
   const [cmdDevice, setCmdDevice] = useState<model_Node | null>(null);
-  const [cmdAction, setCmdAction] = useState<string>('resync');
+  const [cmdAction, setCmdAction] = useState<string>('reboot');
   const [cmdHistory, setCmdHistory] = useState<model_DeviceCommand[]>([]);
   const [cmdSending, setCmdSending] = useState(false);
   const [serviceSending, setServiceSending] = useState('');
@@ -221,7 +218,7 @@ export default function PortalDevicesPage() {
 
   const openCommands = useCallback((device: model_Node) => {
     setCmdDevice(device);
-    setCmdAction('resync');
+    setCmdAction('reboot');
     setHotspotConfig(DEFAULT_HOTSPOT_CONFIG);
     setCmdHistory([]);
     setCmdHistoryError(false);

@@ -441,7 +441,7 @@ describe('PortalDevicesPage', () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
     mockListDevices.mockResolvedValue([gatewayNode]);
     mockCommands.mockResolvedValue([]);
-    const services = [{ name: 'xray', load_state: 'loaded', active_state: 'active', sub_state: 'running' }];
+    const services = [{ name: 'hive-mihomo', load_state: 'loaded', active_state: 'active', sub_state: 'running' }];
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ sampled_at: new Date().toISOString(), services }) })
       .mockResolvedValue({ ok: true, json: async () => ({ sampled_at: new Date(Date.now() - 180_000).toISOString(), services }) });
     render(<PortalDevicesPage />);
@@ -451,6 +451,25 @@ describe('PortalDevicesPage', () => {
     expect(screen.queryByText('active / running')).not.toBeInTheDocument();
     expect(mockEnqueue).not.toHaveBeenCalled();
   }, 9000);
+
+  it('limits customer commands to reboot and gateway/hotspot services', async () => {
+    mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
+    mockListDevices.mockResolvedValue([gatewayNode]);
+    mockCommands.mockResolvedValue([]);
+    render(<PortalDevicesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'portal.cmdManage' }));
+
+    expect(await screen.findByRole('button', { name: 'portal.cmdAction_reboot' })).toBeInTheDocument();
+    for (const action of ['restart-xray', 'restart-mihomo', 'resync']) {
+      expect(screen.queryByRole('button', { name: `portal.cmdAction_${action}` })).not.toBeInTheDocument();
+    }
+    expect(screen.getByText('portal.serviceGroup_network')).toBeInTheDocument();
+    for (const group of ['proxy', 'security', 'system', 'automation']) {
+      expect(screen.queryByText(`portal.serviceGroup_${group}`)).not.toBeInTheDocument();
+    }
+    expect(screen.getByText('portal.service_hive-gateway')).toBeInTheDocument();
+    expect(screen.queryByText('portal.service_hive-firewall')).not.toBeInTheDocument();
+  });
 
   it('does not put a late response from another device into the current dialog', async () => {
     mockUseCustomer.mockReturnValue({ customer: mockCustomer, subscriptions: [], loading: false });
