@@ -842,7 +842,7 @@
   },
   "deviceAddresses": {
     "title": "设备地址",
-    "description": "查看设备上报的网络地址与远程访问入口。",
+    "description": "查看设备上报的局域网地址与观测到的公网出口。",
     "back": "返回我的设备",
     "refresh": "刷新",
     "loading": "正在加载地址…",

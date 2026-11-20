@@ -842,7 +842,7 @@
   },
   "deviceAddresses": {
     "title": "Device addresses",
-    "description": "Reported network addresses and remote access endpoints for this device.",
+    "description": "Reported LAN addresses and observed public egress for this device.",
     "back": "Back to my devices",
     "refresh": "Refresh",
     "loading": "Loading addresses…",
