@@ -12,17 +12,12 @@ import (
 // normalizeServiceStates shares the command whitelist and fills unreported
 // units with unknown, so partial or older samples cannot imply healthy units.
 func normalizeServiceStates(states []model.ServiceStatus) ([]model.ServiceStatus, bool) {
-	if len(states) > len(serviceControlServices) {
+	if len(states) > len(serviceControlServices)+1 {
 		return nil, false
 	}
 	byName := make(map[string]model.ServiceStatus, len(states))
+	var legacyHotspot *model.ServiceStatus
 	for _, state := range states {
-		if !serviceControlServices[state.Name] {
-			return nil, false
-		}
-		if _, exists := byName[state.Name]; exists {
-			return nil, false
-		}
 		for _, value := range []string{state.ActiveState, state.SubState, state.LoadState} {
 			if value == "" || len(value) > 32 || strings.IndexFunc(value, func(r rune) bool {
 				return !(r >= 'a' && r <= 'z') && r != '-'
@@ -32,6 +27,20 @@ func normalizeServiceStates(states []model.ServiceStatus) ([]model.ServiceStatus
 		}
 		if state.LoadState == "not-found" {
 			state.ActiveState, state.SubState = "not-found", "not-found"
+		}
+		// Older agents reported the 5G hostapd unit separately. Coalesce it
+		// into the single logical hive-hotspot service instead of rejecting
+		// heartbeats during a rolling upgrade.
+		if state.Name == "hive-hotspot-5g" {
+			copy := state
+			legacyHotspot = &copy
+			continue
+		}
+		if !serviceControlServices[state.Name] {
+			return nil, false
+		}
+		if _, exists := byName[state.Name]; exists {
+			return nil, false
 		}
 		byName[state.Name] = state
 	}
@@ -46,9 +55,32 @@ func normalizeServiceStates(states []model.ServiceStatus) ([]model.ServiceStatus
 		if !ok {
 			state = model.ServiceStatus{Name: name, ActiveState: "unknown", SubState: "unknown", LoadState: "unknown"}
 		}
+		if name == "hive-hotspot" && legacyHotspot != nil {
+			state = mergeHotspotState(state, *legacyHotspot)
+		}
 		result = append(result, state)
 	}
 	return result, true
+}
+
+// mergeHotspotState folds the 5G unit into the hotspot stack: active wins,
+// then failed, then not-found only when both units are absent.
+func mergeHotspotState(base, five model.ServiceStatus) model.ServiceStatus {
+	merged := base
+	for _, state := range []model.ServiceStatus{base, five} {
+		if state.ActiveState == "active" {
+			return model.ServiceStatus{Name: "hive-hotspot", ActiveState: "active", SubState: state.SubState, LoadState: "loaded"}
+		}
+	}
+	for _, state := range []model.ServiceStatus{base, five} {
+		if state.ActiveState == "failed" {
+			return model.ServiceStatus{Name: "hive-hotspot", ActiveState: "failed", SubState: "failed", LoadState: "loaded"}
+		}
+	}
+	if base.LoadState == "not-found" && five.LoadState == "not-found" {
+		return model.ServiceStatus{Name: "hive-hotspot", ActiveState: "not-found", SubState: "not-found", LoadState: "not-found"}
+	}
+	return merged
 }
 
 func (h *Handler) readServiceSnapshot(w http.ResponseWriter, mac string) (model.DeviceServicesResponse, bool) {

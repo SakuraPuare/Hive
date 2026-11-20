@@ -287,7 +287,7 @@ export function NodeCommandsDialog({ nodes, open, onOpenChange }: {
                         <div className="mb-2 flex items-center justify-between gap-2">
                           <span className="truncate text-sm font-500">{t(`service_${serviceName.replaceAll('.', '_')}`)}</span>
                           <span className={`text-xs ${statusClass}`}>
-                            {unknown ? t('serviceStatusUnknown') : state.load_state === 'not-found' ? t('serviceStatusNotFound') : `${state.active_state} / ${state.sub_state}`}
+                            {unknown ? t('serviceStatusUnknown') : state.load_state === 'not-found' ? t('serviceStatusNotFound') : state.sub_state === 'not-applicable' ? t('serviceStatusNotApplicable') : `${state.active_state} / ${state.sub_state}`}
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-1.5">

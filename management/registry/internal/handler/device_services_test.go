@@ -24,6 +24,21 @@ func TestNormalizeServiceStates(t *testing.T) {
 		}
 	}
 	valid := model.ServiceStatus{Name: "xray", ActiveState: "active", SubState: "running", LoadState: "loaded"}
+	legacy, ok := normalizeServiceStates([]model.ServiceStatus{
+		{Name: "hive-hotspot", ActiveState: "inactive", SubState: "dead", LoadState: "loaded"},
+		{Name: "hive-hotspot-5g", ActiveState: "active", SubState: "running", LoadState: "loaded"},
+	})
+	if !ok {
+		t.Fatal("legacy 5G snapshot rejected")
+	}
+	for _, state := range legacy {
+		if state.Name == "hive-hotspot" && (state.ActiveState != "active" || state.SubState != "running") {
+			t.Fatalf("hotspot not coalesced: %+v", state)
+		}
+		if state.Name == "hive-hotspot-5g" {
+			t.Fatalf("legacy hotspot still exposed: %+v", state)
+		}
+	}
 	for _, invalid := range [][]model.ServiceStatus{
 		{valid, valid},
 		{{Name: "arbitrary.service", ActiveState: "active", SubState: "running", LoadState: "loaded"}},

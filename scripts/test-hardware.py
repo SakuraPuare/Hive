@@ -1126,7 +1126,9 @@ elif args[0] == 'status':
         states = {s['name']: s for s in json.loads((self.root / 'heartbeat').read_text())['services']}
         self.assertEqual(states['xray']['active_state'], 'active')
         self.assertEqual(states['xray']['sub_state'], 'running')
-        self.assertEqual(states['hive-hotspot-5g']['active_state'], 'active')
+        self.assertEqual(states['hive-hotspot']['active_state'], 'active')
+        self.assertEqual(states['hive-hotspot']['sub_state'], 'running')
+        self.assertNotIn('hive-hotspot-5g', states)
         self.assertEqual(states['frpc']['active_state'], 'failed')
         self.assertEqual(states['warp-svc']['load_state'], 'not-found')
         self.assertEqual(states['warp-svc']['active_state'], 'not-found')
@@ -1138,6 +1140,17 @@ elif args[0] == 'status':
         self.assertEqual(ack['status'], 'done')
         self.assertIn('Active: failed (Result: exit-code)', ack['result'])
         self.assertLessEqual(len(ack['result'].encode()), 850 + len('xray status: '))
+
+    def test_service_status_hotspot_reports_both_bands(self):
+        agent = self.service_agent_fixture()
+        (self.root / 'commands.json').write_text(json.dumps([
+            {'id': 44, 'action': 'service-control',
+             'params': json.dumps({'service': 'hive-hotspot', 'operation': 'status'})}]))
+        self.run_script(agent)
+        ack = json.loads((self.root / 'acks').read_text())
+        self.assertEqual(ack['status'], 'done')
+        self.assertIn('5g=active', ack['result'])
+        self.assertIn('2g=inactive', ack['result'])
 
     def test_service_status_execution_failure_is_failed(self):
         agent = self.service_agent_fixture()

@@ -31,7 +31,7 @@ AUTH="Authorization: Bearer ${NODE_REGISTRY_API_SECRET}"
 BASE="${NODE_REGISTRY_URL}/nodes/${MAC_NORM}/commands"
 
 # One whitelist for status snapshots and remote service-control operations.
-SERVICES=(xray xray-exporter cloudflared frpc easytier hive-mihomo hive-hotspot hive-hotspot-5g
+SERVICES=(xray xray-exporter cloudflared frpc easytier hive-mihomo hive-hotspot
     hive-gateway hive-firewall hive-fail2ban nginx tailscaled warp-svc
     hive-xray-sync.timer hive-clash-sync.timer hive-command-agent.timer hive-updater.timer)
 
@@ -41,9 +41,48 @@ supported_service() {
     return 1
 }
 
+hotspot_2g_active() {
+    command -v nmcli >/dev/null 2>&1 || return 1
+    timeout 2 nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx hive-hotspot-2g
+}
+
+hotspot_5g_active() {
+    local state
+    state=$(timeout 2 systemctl show hive-hotspot-5g --property=ActiveState 2>/dev/null || true)
+    printf '%s\n' "$state" | grep -qx 'ActiveState=active'
+}
+
 service_states() {
-    local svc out key value active sub load
+    local svc out key value active sub load state
     for svc in "${SERVICES[@]}"; do
+        if [ "$svc" = "hive-gateway" ]; then
+            # The gateway unit is a one-shot configurator. Report whether the
+            # gateway is actually configured; on hotspot-only topology it is
+            # intentionally not applicable rather than a dead service.
+            if grep -qE '^GATEWAY_(LAN_IP|ONE_ARM_IFACE)=.' "$NODE_INFO" 2>/dev/null; then
+                printf '%s\t%s\t%s\t%s\n' "$svc" active running loaded
+            elif iw dev 2>/dev/null | grep -q 'type AP'; then
+                printf '%s\t%s\t%s\t%s\n' "$svc" inactive not-applicable loaded
+            else
+                printf '%s\t%s\t%s\t%s\n' "$svc" inactive dead loaded
+            fi
+            continue
+        fi
+        if [ "$svc" = "hive-hotspot" ]; then
+            # One logical service covers the 2.4G NetworkManager AP and the
+            # 5G hostapd unit; the configurator oneshot itself exits normally.
+            if hotspot_5g_active || hotspot_2g_active; then
+                printf '%s\t%s\t%s\t%s\n' "$svc" active running loaded
+            else
+                state=$(timeout 2 systemctl show hive-hotspot-5g --property=ActiveState 2>/dev/null || true)
+                if printf '%s\n' "$state" | grep -qx 'ActiveState=failed'; then
+                    printf '%s\t%s\t%s\t%s\n' "$svc" failed failed loaded
+                else
+                    printf '%s\t%s\t%s\t%s\n' "$svc" inactive dead loaded
+                fi
+            fi
+            continue
+        fi
         active=unknown sub=unknown load=unknown
         out=$(timeout 2 systemctl show "$svc" --property=LoadState,ActiveState,SubState 2>/dev/null || true)
         while IFS='=' read -r key value; do
@@ -308,6 +347,38 @@ echo "${RESP}" | jq -c '.[]' 2>/dev/null | while read -r cmd; do
                     ;;
                 *) ack "$id" "failed" "unsupported operation: ${op}"; continue ;;
             esac
+            if [ "$svc" = "hive-hotspot" ]; then
+                case "$op" in
+                    status)
+                        five=$(timeout 3 systemctl show hive-hotspot-5g --property=ActiveState 2>/dev/null | sed -n 's/^ActiveState=//p' | head -1 || true)
+                        five=${five:-unknown}
+                        if hotspot_2g_active; then two=active; else two=inactive; fi
+                        ack "$id" "done" "hive-hotspot status: 5g=${five} 2g=${two}"
+                        ;;
+                    stop)
+                        out=$( { systemctl stop hive-hotspot-5g 2>&1; systemctl stop hive-hotspot-5g-dnsmasq 2>&1; if command -v nmcli >/dev/null 2>&1; then nmcli connection down hive-hotspot-2g 2>&1 || true; fi; } )
+                        if hotspot_5g_active || hotspot_2g_active; then
+                            ack "$id" "failed" "hive-hotspot stop: ${out:0:850}"
+                        else
+                            ack "$id" "done" "hive-hotspot stopped: ${out:0:850}"
+                        fi
+                        ;;
+                    start|restart)
+                        if [ ! -x /usr/local/bin/hive-hotspot.sh ]; then
+                            ack "$id" "failed" "hive-hotspot script missing"
+                            continue
+                        fi
+                        out=$(timeout 90 /usr/local/bin/hive-hotspot.sh 2>&1)
+                        rc=$?
+                        if [ "$rc" -ne 0 ]; then
+                            ack "$id" "failed" "hive-hotspot ${op} (exit ${rc}): ${out:0:850}"
+                        else
+                            ack "$id" "done" "hive-hotspot ${op}: ${out:0:850}"
+                        fi
+                        ;;
+                esac
+                continue
+            fi
             if [ "$op" = "status" ]; then
                 # Inactive/missing units return 3/4; timeout or execution errors
                 # are failures, not successful status observations.

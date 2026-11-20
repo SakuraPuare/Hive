@@ -766,7 +766,7 @@ export default function PortalDevicesPage() {
                               const state = serviceSnapshot?.services.find((s) => s.name === service);
                               const unknown = serviceStatusError || serviceStatusStale || !state;
                               return <span className={`text-xs ${unknown ? 'text-muted-foreground' : state.active_state === 'active' ? 'text-green-600' : state.active_state === 'failed' ? 'text-md-error' : 'text-muted-foreground'}`}>
-                                {unknown ? t('serviceStatusUnknown') : state.load_state === 'not-found' ? t('serviceStatusNotFound') : `${state.active_state} / ${state.sub_state}`}
+                                {unknown ? t('serviceStatusUnknown') : state.load_state === 'not-found' ? t('serviceStatusNotFound') : state.sub_state === 'not-applicable' ? t('serviceStatusNotApplicable') : `${state.active_state} / ${state.sub_state}`}
                               </span>;
                             })()}
                           </div>

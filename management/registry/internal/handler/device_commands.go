@@ -29,7 +29,7 @@ var commandActions = map[string]bool{
 
 var serviceControlServices = map[string]bool{
 	"xray": true, "xray-exporter": true, "cloudflared": true, "frpc": true, "easytier": true,
-	"hive-mihomo": true, "hive-hotspot": true, "hive-hotspot-5g": true, "hive-gateway": true,
+	"hive-mihomo": true, "hive-hotspot": true, "hive-gateway": true,
 	"hive-firewall": true, "hive-fail2ban": true, "nginx": true,
 	"tailscaled": true, "warp-svc": true, "hive-xray-sync.timer": true,
 	"hive-clash-sync.timer": true, "hive-command-agent.timer": true,
