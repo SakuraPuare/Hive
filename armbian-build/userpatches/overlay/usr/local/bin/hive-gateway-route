@@ -18,7 +18,12 @@ PORT=7893
 NODE_INFO=/etc/hive/node-info
 
 [ -f /etc/hive/config.env ] && source /etc/hive/config.env 2>/dev/null || true
-enabled=${GATEWAY_ENABLED:-on}
+# Same switch semantics as hive-gateway.sh: only off/0/false/no (any case)
+# disable; anything else (on/ON/1/true/yes) keeps the gateway enabled.
+case "$(printf '%s' "${GATEWAY_ENABLED:-on}" | tr 'A-Z' 'a-z')" in
+    off|0|false|no) enabled=off ;;
+    *) enabled=on ;;
+esac
 
 read_field() { { sed -n "s/^$1=//p" "$NODE_INFO" 2>/dev/null || true; } | head -1; }
 

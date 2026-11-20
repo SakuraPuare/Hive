@@ -1587,6 +1587,30 @@ exit 0
         self.assertNotIn('GATEWAY_', info)
         self.assertIn('MAC=aabbccddeeff', info)
 
+    def test_gateway_route_switch_matches_hive_gateway(self):
+        # hive-gateway.sh disables only on off/0/false/no in any case; the TPROXY
+        # data path must agree, or ON/1/true configures the topology while
+        # leaving clients un-proxied.
+        for path in ['etc/hive', 'etc/mihomo', 'sys/class/net']:
+            (self.root / path).mkdir(parents=True, exist_ok=True)
+        (self.root / 'etc/hive/node-info').write_text('GATEWAY_WAN_IFACE=eth0\nGATEWAY_LAN_IFACES=eth1\n')
+        (self.root / 'etc/mihomo/config.yaml').write_text('mixed-port: 7890\n')
+        for name in ['nft', 'ip', 'iptables', 'ip6tables']:
+            self.mock(name, '#!/bin/sh\nexit 0\n')
+        source = (BIN / 'hive-gateway-route').read_text()
+        for path in ['/etc/hive/', '/etc/mihomo/', '/etc/ufw/', '/sys/class/net/']:
+            source = source.replace(path, str(self.root) + path)
+        for value, enabled in [('on', True), ('ON', True), ('1', True), ('true', True), ('Yes', True),
+                               ('', True), ('off', False), ('OFF', False), ('0', False),
+                               ('false', False), ('No', False)]:
+            with self.subTest(value=value):
+                (self.root / 'etc/hive/config.env').write_text(f'GATEWAY_ENABLED={value}\n' if value else '')
+                out = self.run_script(source, 0, 'start').stdout
+                if enabled:
+                    self.assertIn('tproxy ifaces=eth1', out)
+                else:
+                    self.assertIn('gateway disabled', out)
+
     def test_motd_claim_survives_named_ports_and_missing_identity(self):
         hive = self.root / 'etc/hive'
         hive.mkdir(parents=True)
