@@ -1,9 +1,10 @@
 # Embedded into U-Boot's default bootcmd. No mutable slot script controls slot
 # selection. Environment offsets are reserved by build-factory-image.sh.
 echo HIVE_AB_V1;
-# The first SD probe can time out on this board. Reload the persistent boot
-# state after warming the controller, before inspecting any slot variables.
-mmc dev 0; mmc dev 1; mmc rescan; env load;
+# The warmup command is board-specific. RK3528 probes mmc0 and mmc1 because
+# the first SD probe can time out. Orange Pi 4 LTS probes only the SD
+# controller: its eMMC (mmc0) still reports "Card stuck being busy".
+@HIVE_MMC_WARMUP@; env load;
 fdt addr ${fdtcontroladdr};
 fdt get value hive_bootpath /chosen u-boot,spl-boot-device;
 fdt get value hive_sdpath /aliases mmc1;

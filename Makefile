@@ -1,6 +1,6 @@
 .PHONY: help setup setup-armbian download-binaries env setup-docker-btrfs \
        build build-r28s build-r3s build-r3s-lts build-opi4 build-all build-qemu run-qemu \
-       build-ota build-ota-bootstrap build-ab build-ab-r28s build-ab-r3s-lts gen-ota-keys \
+       build-ota build-ota-bootstrap build-ab build-ab-r28s build-ab-r3s-lts build-ab-opi4 gen-ota-keys \
        registry registry-arm64 registry-test registry-test-short registry-openapi registry-seed registry-clean \
        ui-dev ui-build ui-gen-api ui-typecheck ui-test \
        monitoring-up monitoring-down monitoring-logs \
@@ -85,6 +85,9 @@ build-ab-r28s: ## NanoPi R28S 1 GB A/B 出厂镜像和系统 OTA 包（VERSION �
 
 build-ab-r3s-lts: ## NanoPi R3S LTS 独立引导载荷 A/B 出厂镜像和系统 OTA 包（VERSION 必填）
 	HIVE_AB=yes HIVE_IMAGE_VERSION=$(VERSION) ./scripts/build.sh nanopi-r3s-lts
+
+build-ab-opi4: ## Orange Pi 4 LTS microSD 引导 A/B 出厂镜像和系统 OTA 包（VERSION 必填；eMMC 不可用）
+	HIVE_AB=yes HIVE_IMAGE_VERSION=$(VERSION) ./scripts/build.sh orangepi4-lts
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 gen-ota-keys: ## 生成 OTA 签名 Ed25519 密钥对

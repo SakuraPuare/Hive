@@ -235,12 +235,14 @@ class HardwareTests(unittest.TestCase):
         for compatible, board, soc in [('friendlyarm,nanopi-zero2','nanopi-zero2','rk3528'),
                                        ('friendlyarm,nanopi-r28s','nanopi-r28s','rk3528'),
                                        ('friendlyelec,nanopi-r28s','nanopi-r28s','rk3528'),
-                                       ('friendlyarm,nanopi-r3s-lts','nanopi-r3s-lts','rk3566')]:
+                                       ('friendlyarm,nanopi-r3s-lts','nanopi-r3s-lts','rk3566'),
+                                       ('xunlong,orangepi-4-lts','orangepi4-lts','rk3399')]:
             (self.root / 'compatible').write_bytes(compatible.encode()+b'\0rockchip,'+soc.encode()+b'\0')
             result = self.run_script(source+'\nhive_detect_board && echo "$HIVE_BOARD:$HIVE_LAYOUT"')
             self.assertEqual(result.stdout.strip(), f'{board}:{board}-bootab-v1')
         for compatible in ['friendlyarm,nanopi-r3s', 'friendlyelec,nanopi-r3s-lts',
-                           'friendlyarm,nanopi-r3s-lts-extra']:
+                           'friendlyarm,nanopi-r3s-lts-extra', 'xunlong,orangepi-4',
+                           'friendlyarm,orangepi4-lts', 'xunlong,orangepi-4-lts-extra']:
             with self.subTest(compatible=compatible):
                 (self.root / 'compatible').write_bytes(compatible.encode()+b'\0rockchip,rk3566\0')
                 self.run_script(source+'\nhive_detect_board', 1)
@@ -617,13 +619,18 @@ with (r/'downloads').open('a') as out:
         self.assertIn('sudo', r.stdout + r.stderr)
 
     def test_boot_policy_contains_matching_kernel_dtb(self):
-        for board, dtb, console in [('nanopi-zero2','rk3528-nanopi-zero2.dtb','ttyS0,1500000'),
-                                    ('nanopi-r28s','rk3528-nanopi-rev03.dtb','ttyS0,1500000'),
-                                    ('nanopi-r3s-lts','rk3566-nanopi-r3s-lts.dtb','ttyS2,1500000')]:
+        for board, dtb, console, warmup in [
+                ('nanopi-zero2','rk3528-nanopi-zero2.dtb','ttyS0,1500000','mmc dev 0; mmc dev 1; mmc rescan'),
+                ('nanopi-r28s','rk3528-nanopi-rev03.dtb','ttyS0,1500000','mmc dev 0; mmc dev 1; mmc rescan'),
+                ('nanopi-r3s-lts','rk3566-nanopi-r3s-lts.dtb','ttyS2,1500000','mmc dev 0; mmc dev 1; mmc rescan'),
+                ('orangepi4-lts','rk3399-orangepi-4-lts.dtb','ttyS2,1500000','mmc dev 1; mmc rescan')]:
             text = subprocess.check_output([str(REPO/'scripts/render-ab-boot.sh'),board],text=True)
             self.assertIn('console='+console,text)
             self.assertIn('/boot/dtb.${hive_slot}/rockchip/'+dtb,text)
             self.assertIn('${hive_slot}',text)  # Not expanded by the host shell.
+            self.assertIn(warmup+'; env load;', text)
+            if board == 'orangepi4-lts':
+                self.assertNotIn('mmc dev 0', text)
 
     def easytier_launcher(self, node_info, config_env):
         text = (BIN / 'start-easytier.sh').read_text()

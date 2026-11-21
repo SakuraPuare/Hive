@@ -650,7 +650,7 @@ class FirmwareTests(unittest.TestCase):
         # hive_active remains the confirmed letter during a trial boot.
         (self.root / 'proc/device-tree').mkdir(parents=True)
         (self.root / 'proc/device-tree/compatible').write_bytes(
-            ('friendlyarm,' + self.board + '\0rockchip,' + self.soc + '\0').encode())
+            (getattr(self, 'compatible_id', 'friendlyarm,' + self.board) + '\0rockchip,' + self.soc + '\0').encode())
         self.set_running_slot(slot)
         (self.root / 'dev').mkdir()
         for part in (1, 2):
@@ -1148,6 +1148,24 @@ class R3SLTSFirmwareTests(FirmwareTests):
         self.assertEqual((self.root / 'boot/Image.A').read_bytes(), b'current system must remain unchanged')
 
 
+class OPi4LTSFirmwareTests(FirmwareTests):
+    board = "orangepi4-lts"
+    soc = "rk3399"
+    dtb = "rk3399-orangepi-4-lts.dtb"
+    compatible_id = "xunlong,orangepi-4-lts"
+
+    def test_nanopi_manifest_is_rejected_before_writing(self):
+        runner = self.firmware_fixture()
+        path = self.root / 'firmware/manifest.json'
+        manifest = json.loads(path.read_text())
+        manifest.update(board='nanopi-zero2', layout='nanopi-zero2-bootab-v1')
+        path.write_text(json.dumps(manifest))
+        self.run_script(runner, 'stage', expected=1)
+        self.assertFalse((self.root / 'environment-writes').exists())
+        self.assertFalse((self.root / 'boot/Image.B').exists())
+        self.assertEqual((self.root / 'boot/Image.A').read_bytes(), b'current system must remain unchanged')
+
+
 class BootPolicyTests(unittest.TestCase):
     board = 'nanopi-zero2'
 
@@ -1383,6 +1401,16 @@ reset() { echo RESET; exit 9; }
 
 class R28SBootPolicyTests(BootPolicyTests):
     board = 'nanopi-r28s'
+
+
+class OPi4BootPolicyTests(BootPolicyTests):
+    board = 'orangepi4-lts'
+
+    def test_sd_warmup_does_not_probe_the_stuck_emmc(self):
+        rendered = subprocess.check_output(
+            [str(base.REPO / 'scripts/render-ab-boot.sh'), self.board], text=True)
+        self.assertIn('mmc dev 1; mmc rescan; env load;', rendered)
+        self.assertNotIn('mmc dev 0', rendered)
 
 
 class BootloaderEnvGateTests(unittest.TestCase):

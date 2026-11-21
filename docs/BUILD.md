@@ -110,6 +110,14 @@ NanoPi R3S LTS 要求框架包含以下上游文件；`build.sh` 会逐项检查
 
 LTS 设备树由 Armbian 的 6.18 patch 目录提供，不是 Linux 6.18 原生板级支持；U-Boot 沿用上游 LTS 的 v2026.04 板级补丁。
 
+Orange Pi 4 LTS 要求框架已经包含 2026-10-23 之后的板级目标，`build.sh` 同样缺文件即停止：
+
+- `config/boards/orangepi4-lts.conf`
+- `patch/u-boot/v2026.10/defconfig/orangepi-4-lts-rk3399_defconfig`
+- `patch/kernel/archive/rockchip64-6.18/dt/rk3399-orangepi-4-lts.dts`
+
+这套目标把有线 PHY 配成 Motorcomm YT8531C。更早的通用 Orange Pi RK3399 设备树使用 RTL8211E，U-Boot 里 DHCP 会失败。
+
 ### 步骤 4：下载 arm64 二进制
 
 ```bash
@@ -220,10 +228,11 @@ NanoPi R3S LTS 的 canonical profile 是 `nanopi-r3s-lts`，与 `nanopi-r3s` 不
 ```bash
 make build-r3s-lts                         # 普通镜像
 make build-ab-r3s-lts VERSION=1.0.0        # 独立引导载荷 A/B 出厂镜像 + 系统 OTA 包
-make build-all                            # 包含 R3S LTS 的所有普通板型镜像
+make build-ab-opi4 VERSION=1.0.0           # Orange Pi 4 LTS，microSD；eMMC 不能当启动盘
+make build-all                            # 包含 R3S LTS 与 Orange Pi 4 LTS 的所有普通板型镜像
 ```
 
-A/B 构建仍需先生成并保留 OTA 签名密钥（`make gen-ota-keys`），`VERSION` 必填。R3S LTS 沿用 Hive 单根分区、独立数据分区和 `/boot` 内双份引导载荷的 A/B 方案，不是整套双 rootfs；首次接入需离线整盘刷写对应板型的出厂镜像。普通镜像 CI 的 `build-image.yml` 与 GitHub 分发入口 `request-image-build.yml` 均可选择 `nanopi-r3s-lts`，`all` 包含该板型。
+A/B 构建仍需先生成并保留 OTA 签名密钥（`make gen-ota-keys`），`VERSION` 必填。R3S LTS 与 Orange Pi 4 LTS 沿用 Hive 单根分区、独立数据分区和 `/boot` 内双份引导载荷的 A/B 方案，不是整套双 rootfs；首次接入需离线整盘刷写对应板型的出厂镜像。Orange Pi 4 LTS 的引导介质是 microSD。普通镜像 CI 的 `build-image.yml` 与 GitHub 分发入口 `request-image-build.yml` 均可选择这两块板，`all` 包含它们。普通 `make build-opi4` 不会改成分区 A/B。
 
 适配验证：R3S LTS 独立固件打包、写入校验、试启动确认与回滚，以及 Zero2/R28S 兼容回归共 85 项通过；板型识别、DTB/串口渲染与 WAN 选择共 5 项通过。隔离交叉编译的 U-Boot v2026.04（叠加 Armbian LTS 补丁和 Hive A/B hook）通过非空 FIT 与冗余 MMC 环境门禁；6.18 LTS DTB 编译通过，看门狗节点可用。这不代表完整出厂镜像已构建或真机已验收。
 

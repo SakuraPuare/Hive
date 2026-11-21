@@ -2,6 +2,9 @@
 # Shared by image builders and the device. Do not source mutable node config here.
 hive_board_config() {
     HIVE_BOARD="$1"
+    # RK3528's first SD probe can time out, so warm both controllers. Orange
+    # Pi 4 LTS overrides this: its eMMC is mmc0 and still sticks "busy".
+    HIVE_MMC_WARMUP='mmc dev 0; mmc dev 1; mmc rescan'
     case "$HIVE_BOARD" in
         nanopi-zero2)
             HIVE_DTB=rockchip/rk3528-nanopi-zero2.dtb
@@ -14,6 +17,14 @@ hive_board_config() {
         nanopi-r3s-lts)
             HIVE_DTB=rockchip/rk3566-nanopi-r3s-lts.dtb
             HIVE_CONSOLE=ttyS2,1500000
+            ;;
+        orangepi4-lts)
+            HIVE_DTB=rockchip/rk3399-orangepi-4-lts.dtb
+            HIVE_CONSOLE=ttyS2,1500000
+            # mmc0 is the onboard eMMC. The 2026-10-23 bring-up still fails it
+            # with "Card stuck being busy", and probing it before env load can
+            # stall every boot, including each OTA trial. SD is mmc1.
+            HIVE_MMC_WARMUP='mmc dev 1; mmc rescan'
             ;;
         *) return 1;;
     esac
@@ -33,6 +44,8 @@ hive_detect_board() {
         hive_board_config nanopi-r28s
     elif grep -Fxq friendlyarm,nanopi-r3s-lts <<< "$compatible"; then
         hive_board_config nanopi-r3s-lts
+    elif grep -Fxq xunlong,orangepi-4-lts <<< "$compatible"; then
+        hive_board_config orangepi4-lts
     else
         return 1
     fi

@@ -72,7 +72,7 @@ flowchart LR
 | `nanopi-r28s` | NanoPi R28S / RK3528，1 GB | `make build-r28s` |
 | `nanopi-r3s` | NanoPi R3S / RK3566 | `make build-r3s` |
 | `nanopi-r3s-lts` | NanoPi R3S LTS / RK3566，独立 headless 板型 | `make build-r3s-lts` |
-| `orangepi4-lts` | Orange Pi 4 LTS / RK3399 | `make build-opi4` |
+| `orangepi4-lts` | Orange Pi 4 LTS / RK3399，单千兆口 + 2.4 GHz 板载无线；A/B 只烧录 microSD | `make build-opi4` |
 | QEMU | ARM64 UEFI 测试镜像 | `make build-qemu`、`make run-qemu` |
 
 Wi-Fi 热点和双频能力取决于无线芯片、驱动及 AP 支持。
@@ -166,6 +166,7 @@ make build-ota VERSION=1.0.0      # 应用包：备份、安装、健康检查�
 make build-ab VERSION=1.0.0       # Zero2 1 GB / 2 GB：引导 A/B 出厂镜像 + 固件包
 make build-ab-r28s VERSION=1.0.0  # R28S 1 GB：独立引导 A/B 出厂镜像 + 固件包
 make build-ab-r3s-lts VERSION=1.0.0 # R3S LTS：独立引导载荷 A/B 出厂镜像 + 固件包
+make build-ab-opi4 VERSION=1.0.0    # Orange Pi 4 LTS：microSD 引导 A/B 出厂镜像 + 固件包；eMMC 不能当启动盘
 make build-ota-bootstrap VERSION=1.0.0  # 已上线设备首次接入应用 OTA
 ```
 
@@ -173,9 +174,9 @@ make build-ota-bootstrap VERSION=1.0.0  # 已上线设备首次接入应用 OTA
 
 NanoPi 本地**不长期保存 OTA 包**，安装时从服务器下载到临时目录，完成或失败退出后删除包及解压文件；断电残留在下次 updater 启动时清理。单次下载最多 2 GiB，下载和解压前检查可用空间。应用回滚使用事务备份，固件回滚使用旧字母的引导载荷，无需保留下载包。详见 [设备临时下载](docs/OTA.md#设备临时下载与包大小)。
 
-应用更新支持失败回滚和进程中断后的开机恢复。NanoPi Zero2 / R28S / R3S LTS 的引导 A/B 路径包含单根分区、独立数据分区、冗余启动环境、`/boot` 内双份内核载荷、三次试启动和健康确认；现有单分区设备须先离线整盘刷写对应板型的新镜像，之后使用系统 OTA 包升级。
+应用更新支持失败回滚和进程中断后的开机恢复。NanoPi Zero2 / R28S / R3S LTS / Orange Pi 4 LTS 的引导 A/B 路径包含单根分区、独立数据分区、冗余启动环境、`/boot` 内双份内核载荷、三次试启动和健康确认；现有单分区设备须先离线整盘刷写对应板型的新镜像，之后使用系统 OTA 包升级。Orange Pi 4 LTS 的出厂镜像只写 microSD。
 
-**Zero2 / R28S 两种板型的 A/B 引导器已交叉编译验证，Zero2 出厂镜像与引导载荷包已实编译并校验产物结构；三组既有设备的真机验收仍待完成。R3S LTS 新增独立构建与引导载荷 A/B 路径，不代表已经通过编译或实机验收。** 内核完全卡死且无法自行重启时，仍需要硬件看门狗或人工重启，不能仅靠启动次数保证无人值守恢复。出厂镜像约 4.5 GB，8 GB 及以上 TF 卡即可写入。构建、上传、首刷、回切边界及验收步骤见 [OTA 与 A/B 升级说明](docs/OTA.md)。
+**Zero2 / R28S 两种板型的 A/B 引导器已交叉编译验证，Zero2 出厂镜像与引导载荷包已实编译并校验产物结构；三组既有设备的真机验收仍待完成。R3S LTS 与 Orange Pi 4 LTS 已接入同一套引导载荷 A/B 路径，不代表已经通过完整镜像编译或实机验收。** 内核完全卡死且无法自行重启时，仍需要硬件看门狗或人工重启，不能仅靠启动次数保证无人值守恢复。出厂镜像约 4.5 GB，8 GB 及以上 TF 卡即可写入。构建、上传、首刷、回切边界及验收步骤见 [OTA 与 A/B 升级说明](docs/OTA.md)。
 
 ## 功能边界
 

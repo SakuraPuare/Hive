@@ -1,7 +1,7 @@
 # Hive OTA 升级方案调研
 
 > 状态：历史调研，写于 2026-06-17，不是当前实现。
-> 当前行为以 [OTA.md](./OTA.md) 为准：签名的 application / firmware 包，以及 NanoPi Zero2、R28S、R3S LTS 的引导 A/B。
+> 当前行为以 [OTA.md](./OTA.md) 为准：签名的 application / firmware 包，以及 NanoPi Zero2、R28S、R3S LTS、Orange Pi 4 LTS 的引导 A/B。Orange Pi 4 LTS 只从 microSD 启动。
 > 下文是当时的架构约束和方案比较。第 2 节的「现状」和第 6 节的建议已经与后来的实现不同，不要当成现网事实。
 
 ## 1. 目标

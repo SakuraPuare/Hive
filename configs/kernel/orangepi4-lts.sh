@@ -8,7 +8,8 @@
 #       in-tree 内核模块 sprdwl_ng（CONFIG_SPRDWL_NG / CONFIG_WLAN_UWE5622），
 #       由 board 配置的 MODULES_CURRENT="sprdbt_tty sprdwl_ng" 开机加载；
 #       蓝牙走 UART 的 sprdbt_tty。这些 WiFi 符号必须保留，否则板载无线失效。
-#       板载有线网卡是 RK3399 内置 GMAC + RTL8211F GbE PHY，保留不禁用。
+#       板载有线网卡是 RK3399 内置 GMAC + Motorcomm YT8531C。通用 Orange Pi
+#       RK3399 设备树里的 RTL8211E 不是这块 LTS 板的 PHY，不能拿来替代。
 #
 # 用法: ./apply.sh <input.config> <output.config>
 set -e
@@ -138,6 +139,7 @@ force CONFIG_WLAN_UWE5621 m        # Unisoc UWE5621（板载，含 sprdwl_ng）
 force CONFIG_WLAN_UWE5622 m        # Unisoc UWE5622（香橙派 4 LTS 实际板载芯片）
 force CONFIG_SPRDWL_NG m           # Spreadtrum WLAN 主驱动
 force CONFIG_RK_WIFI_DEVICE_UWE5621 y
+force CONFIG_DWMAC_MOTORCOMM y     # GMAC PHY 是 YT8531C，不是 RTL8211
 
 # ── 透明代理网关栈保活 ───────────────────────────────────────────────────
 # 香橙派 4 LTS 单网口，但网关默认全启用：Mihomo(Clash.Meta) 的 TUN +

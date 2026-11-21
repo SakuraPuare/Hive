@@ -3,7 +3,7 @@
 function post_config_uboot_target__zz_hive_ab() {
     [[ "${HIVE_AB:-no}" == yes ]] || return 0
     case "$BOARD:$BOOTCONFIG" in
-        nanopi-zero2:nanopi-zero2-rk3528_defconfig|nanopi-r28s:nanopi-r28s-rk3528_defconfig|nanopi-r3s-lts:nanopi-r3s-lts-rk3566_defconfig) ;;
+        nanopi-zero2:nanopi-zero2-rk3528_defconfig|nanopi-r28s:nanopi-r28s-rk3528_defconfig|nanopi-r3s-lts:nanopi-r3s-lts-rk3566_defconfig|orangepi4-lts:orangepi-4-lts-rk3399_defconfig) ;;
         *) exit_with_error "Hive A/B: unsupported board/bootloader $BOARD:$BOOTCONFIG"; return 1;;
     esac
     python3 - .config "${USERPATCHES_PATH}/hive-ab-boot.cmd" <<'PYCODE'

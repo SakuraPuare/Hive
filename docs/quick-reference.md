@@ -24,7 +24,7 @@
 | [BUILD.md](./BUILD.md) | 镜像构建全流程（环境准备、构建、烧录） |
 | [PROVISION.md](./PROVISION.md) | 首次启动配置详解（provision 流程） |
 | [NODE-OPERATIONS.md](./NODE-OPERATIONS.md) | 节点日常运维（SSH、服务管理、Ansible 批量操作） |
-| [OTA.md](./OTA.md) | 签名 OTA 与 Zero2 / R28S / R3S LTS 引导 A/B |
+| [OTA.md](./OTA.md) | 签名 OTA 与 Zero2 / R28S / R3S LTS / Orange Pi 4 LTS 引导 A/B |
 | [HOTSPOT.md](./HOTSPOT.md) | WiFi 热点（自动，双频） |
 | [GATEWAY.md](./GATEWAY.md) | 透明代理网关（路由器角色） |
 | [subscription-enforcement.md](./subscription-enforcement.md) | 订阅授权、计费与在线设备数限制 |

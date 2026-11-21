@@ -56,7 +56,7 @@ nanopi-r3s.sh 额外优化：
 
 orangepi4-lts.sh 特别说明：
 - `NR_CPUS` 从 256 降到 8（RK3399 只有 6 核：2×Cortex-A72 + 4×Cortex-A53）
-- 板载 WiFi/BT 是 **Spreadtrum 芯片**（sprdwl_ng / sprdbt_tty out-of-tree 模块，由 Armbian board 配置加载），禁用各类内置 PCIe/USB WiFi 驱动不影响板载无线；保留 RK3399 内置 GMAC（板载 RTL8211F GbE PHY）
+- 板载 WiFi/BT 是 **Spreadtrum UWE5622**（`sprdwl_ng` / `sprdbt_tty`，由 Armbian board 配置加载），禁用各类内置 PCIe/USB WiFi 驱动不影响板载无线；有线网是 RK3399 GMAC + Motorcomm YT8531C（`CONFIG_DWMAC_MOTORCOMM`），不是通用 Orange Pi 设备树里的 RTL8211E
 - 禁用 DRM（含 rockchip drm / analogix-dp / dw-hdmi）——本项目作为 headless 边缘节点不接屏幕
 
 ## 如何更新

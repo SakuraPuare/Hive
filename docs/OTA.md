@@ -1,4 +1,4 @@
-# OTA 更新与 NanoPi Zero2 / R28S / R3S LTS A/B 镜像
+# OTA 更新与 NanoPi Zero2 / R28S / R3S LTS / Orange Pi 4 LTS A/B 镜像
 
 Hive 支持两类签名更新包，均通过后台「OTA 更新」上传并分配设备。
 
@@ -7,7 +7,7 @@ Hive 支持两类签名更新包，均通过后台「OTA 更新」上传并分�
 | 类型 | 更新范围 | 生效与回滚 |
 |---|---|---|
 | application | 脚本、程序、服务单元、静态资源 | 备份后替换；安装、服务重启或健康检查失败时恢复；进程中断后在下次运行或开机时恢复 |
-| firmware | NanoPi Zero2 / R28S / R3S LTS 各自的内核、DTB、initramfs 及配套内核模块 | 写未激活引导载荷，读回校验后试启动；健康检查通过才确认；试启动失败后由 U-Boot 回到原载荷 |
+| firmware | NanoPi Zero2 / R28S / R3S LTS / Orange Pi 4 LTS 各自的内核、DTB、initramfs 及配套内核模块 | 写未激活引导载荷，读回校验后试启动；健康检查通过才确认；试启动失败后由 U-Boot 回到原载荷 |
 
 **原有 Zero2 / R28S 两种板型已接入引导 A/B，U-Boot v2026.07-rc4 的对应产物已实际交叉编译并校验 FIT、设备树和保留区边界；Zero2 的出厂镜像与引导载荷包已实编译并校验产物结构，历史三组设备尚未真机验收。** 应用回滚、固件写入/回切在隔离环境中测试；TF 扩容还验证了真实 `sfdisk` 对普通镜像文件保留系统分区及 UUID。不能把这些检查当成批量上线验收。
 
@@ -28,6 +28,8 @@ Hive 支持两类签名更新包，均通过后台「OTA 更新」上传并分�
 [Armbian 的 R28S 配置](https://github.com/armbian/build/blob/main/config/boards/nanopi-r28s.csc)使用 `vendor` 6.1 内核、`rk3528-nanopi-rev03.dtb` 和 `radxa-aic8800` 扩展。Hive 为其接入固定版本主线 U-Boot，并在 `userpatches/u-boot/hive-r28s-v2026.07/` 保存板级回移补丁；Linux 设备树来源固定到提交 `c1e23f3425c4`，配置依据 [R28S U-Boot 上游 RFC](https://mail-archive.com/u-boot%40lists.u-boot-project.org/msg07609.html)。该固定版本的引导器设备树不含新 USB 节点，因此补丁省略这些节点，只用于 SD/eMMC 引导；不影响厂商 Linux 中的 USB 驱动。该补丁是本仓库适配，不代表 R28S 配置已被 U-Boot 上游合入。
 
 新增 NanoPi R3S LTS 使用独立 canonical profile/board `nanopi-r3s-lts`、布局 `nanopi-r3s-lts-bootab-v1`，内核为 `current` / `linux-rockchip64-current`（6.18），DTB 为 `rockchip/rk3566-nanopi-r3s-lts.dtb`，串口为 `ttyS2,1500000`。Armbian 的 LTS 内核设备树和 U-Boot v2026.04 板级补丁供应该适配，Hive 通过 `config/hive-bootab.inc` 接入共享引导 A/B 策略。普通 `nanopi-r3s` 不支持此布局；不得互刷两者镜像或 firmware 包。LTS 后续须独立首刷验收，不改变上述三组设备的状态与迁移安排。
+
+Orange Pi 4 LTS 使用 profile `orangepi4-lts`、布局 `orangepi4-lts-bootab-v1`。设备树兼容串是 `xunlong,orangepi-4-lts`，DTB 为 `rockchip/rk3399-orangepi-4-lts.dtb`，串口为 `ttyS2,1500000`。引导器沿用 Armbian 2026-10-23 之后的上游目标：U-Boot `tag:v2026.10`、`orangepi-4-lts-rk3399_defconfig`、TF-A `lts-v2.14.11`（`binman-atf-mainline`）。有线 PHY 是 Motorcomm YT8531C。出厂镜像和 firmware 包只从 **microSD** 启动。板载 eMMC 的设备树节点在，但该次上游实测初始化失败（`Card stuck being busy`），A/B 引导脚本因此不在读环境之前探测 eMMC。普通 `nanopi-r3s`、非 LTS 的 Orange Pi 4、USB 根盘都不能装这个包。尚未构建完整出厂镜像，也未做真机启动或 OTA 回切验收。
 
 **1 GB / 2 GB 是运行内存，引导载荷占用的是 TF 卡存储。** 本批设备均使用 32 GB 或 64 GB TF 卡，使用同一板型出厂镜像。首次启动的 `hive-data-grow` 校验 GPT、两个分区名称与边界，仅扩大最后的数据分区并调整 ext4；根文件系统、设备标识和分区 UUID 不变。写入 GPT 后中断可在下次启动继续扩展文件系统；不允许改动非 Hive 分区或已挂载的数据分区。
 
@@ -72,7 +74,7 @@ sudo bash hive-ota-bootstrap-1.0.0/install.sh --install
 Registry 启动时及每小时自动清理一次；也可在「OTA 更新 → 存储管理」查看受管包、上传暂存和可清理空间，并执行相同规则的即时清理。查看需要 `ota:read`，清理需要 `ota:write`；手动清理记入审计日志。
 
 - **默认保留 30 天**：只有超过保留期且没有任何当前设备任务引用的包才可清理。`pending`、`installing`、`done`、`failed`、`rolled_back` 的当前分配都保护其包；多个发布记录共享 SHA256 时，只要任一记录被设备引用，就保留同一个文件。
-- **保留最近 3 个不同版本**：按 `(kind, board)` 分组，应用包（`application`，无目标板型）、Zero2 固件（`firmware, nanopi-zero2`）、R28S 固件（`firmware, nanopi-r28s`）和 R3S LTS 固件（`firmware, nanopi-r3s-lts`）分别保留；按最近上传/使用时间排序，不按版本字符串排序。同一版本重复构建只占本组一个版本名额，默认保留其中最新的一份包；其余包仍受 30 天期限及任务引用保护。
+- **保留最近 3 个不同版本**：按 `(kind, board)` 分组，应用包（`application`，无目标板型）、Zero2 固件（`firmware, nanopi-zero2`）、R28S 固件（`firmware, nanopi-r28s`）、R3S LTS 固件（`firmware, nanopi-r3s-lts`）和 Orange Pi 4 LTS 固件（`firmware, orangepi4-lts`）分别保留；按最近上传/使用时间排序，不按版本字符串排序。同一版本重复构建只占本组一个版本名额，默认保留其中最新的一份包；其余包仍受 30 天期限及任务引用保护。
 - 保留期依据文件最后上传/分配时间及最新发布记录创建时间。重复上传相同包、重试完成上传、创建新发布记录或再次分配会续期。旧数据直接扫描现有目录和数据库，无需新增数据库迁移。
 - 废弃的单次上传临时文件、分片会话、完成回执在 **24 小时无活动后**回收，不依赖再次上传来触发。正在接收的单次上传使用独立文件锁，慢上传不会阻止其他包清理；分片写入、组装、发布、分配及清理也有互斥保护。
 - 清理只移除受管的包文件和已过期上传目录，**保留发布记录与当前任务记录**。后台显示「包已清理或缺失」，并禁止再次分配；重新上传相同 SHA256 的包后可继续使用该发布记录。外部 HTTP(S) 下载地址的文件不由 Hive 删除。
@@ -141,7 +143,7 @@ make build-ota VERSION=1.0.0
 
 没有 Hive 布局的普通 Armbian 设备不能直接接收 firmware 包：`hive-firmware` 会校验 `/usr/lib/hive/ab-layout`、两个分区标签（`hive-root`、`hive-data`）和 U-Boot 环境 stamp，缺任何一项都拒绝。这类设备需要先构建并**离线整盘刷写**出厂镜像；这会覆盖原有分区与数据。已有身份、配置如需保留，须先另行备份并在首刷前注入根分区，不能指望整盘 `dd` 自动保留。
 
-适配路径为 **NanoPi Zero2 / current 内核**、**NanoPi R28S / vendor 6.1 内核** 与 **NanoPi R3S LTS / current 6.18 内核**，均使用板型固定版本的主线 U-Boot 加 Hive A/B 配置。Zero2 的 1 GB / 2 GB 沿用同一构建配置；R3S LTS 使用独立 profile 和布局，完整镜像尚未构建。普通 R3S、Orange Pi、USB 根盘和自定义分区未启用这条固件升级路径。
+适配路径为 **NanoPi Zero2 / current 内核**、**NanoPi R28S / vendor 6.1 内核**、**NanoPi R3S LTS / current 6.18 内核** 与 **Orange Pi 4 LTS / current 6.18 内核**，均使用板型固定版本的主线 U-Boot 加 Hive A/B 配置。Zero2 的 1 GB / 2 GB 沿用同一构建配置；R3S LTS 与 Orange Pi 4 LTS 各用独立 profile 和布局，完整镜像尚未构建。Orange Pi 4 LTS 只烧录 microSD。普通 R3S、非 LTS 的 Orange Pi 4、USB 根盘和自定义分区未启用这条固件升级路径。
 
 ```bash
 make env
@@ -152,6 +154,7 @@ make gen-ota-keys
 make build-ab VERSION=1.0.0       # Zero2 1 GB / 2 GB
 make build-ab-r28s VERSION=1.0.0  # R28S 1 GB
 make build-ab-r3s-lts VERSION=1.0.0  # R3S LTS，独立板型；尚未完成整机验收
+make build-ab-opi4 VERSION=1.0.0     # Orange Pi 4 LTS，microSD；eMMC 不作为启动盘
 ```
 
 除了原有 Armbian 构建依赖，镜像转换主机需要 `rsync`、`jq`、`binutils`、`util-linux`、`udev`、`e2fsprogs`。转换通过 `sudo` 创建临时 loop 设备，只接受普通镜像文件作为输入输出，不接受块设备路径。
@@ -169,6 +172,8 @@ R28S 产物将文件名中的 `nanopi-zero2` 替换为 `nanopi-r28s`。R3S LTS �
 - `output/ab/hive-nanopi-r3s-lts-boot-1.0.0.tar`：引导载荷包，不能直接刷写。
 - `output/ota/hive-firmware-nanopi-r3s-lts-v1.0.0.tar.gz`：签名固件包，上传后台使用。
 - 相应 SHA256 校验文件；这些是构建输出约定，当前尚无完整 LTS 出厂镜像构建验收。
+
+Orange Pi 4 LTS 把文件名中的板型换成 `orangepi4-lts`：`hive-orangepi4-lts-factory-<version>.img`、`hive-orangepi4-lts-boot-<version>.tar`、`hive-firmware-orangepi4-lts-v<version>.tar.gz`。固件只匹配 `orangepi4-lts` / `orangepi4-lts-bootab-v1` 和设备树 `xunlong,orangepi-4-lts`。同样尚未完成整机镜像构建和真机验收。
 
 后台上传完成后显示固件目标板型；设备同时校验实际设备树、已安装布局及签名清单板型，拒绝跨板型安装。LTS 固件只匹配 `nanopi-r3s-lts` / `nanopi-r3s-lts-bootab-v1`，不能分配为普通 R3S 固件。
 
@@ -199,7 +204,7 @@ test -b /dev/目标整盘 && sudo dd if=output/ab/hive-nanopi-zero2-factory-1.0.
 sync
 ```
 
-首刷后按 README 为每台设备安装独立 `/etc/hive/device-token`，完成注册和网络配置，再进行 OTA 验收。普通 `make build` / `make build-r28s` / `make build-r3s-lts` 仍生成普通镜像，不会隐式改变现有板型的分区方案。
+首刷后按 README 为每台设备安装独立 `/etc/hive/device-token`，完成注册和网络配置，再进行 OTA 验收。普通 `make build` / `make build-r28s` / `make build-r3s-lts` / `make build-opi4` 仍生成普通镜像，不会隐式改变现有板型的分区方案。
 
 ## 后续系统更新与回切
 
@@ -209,6 +214,7 @@ sync
 make build-ab VERSION=1.1.0
 # R28S 使用 make build-ab-r28s VERSION=1.1.0
 # R3S LTS 使用 make build-ab-r3s-lts VERSION=1.1.0，上传对应 nanopi-r3s-lts 固件包
+# Orange Pi 4 LTS 使用 make build-ab-opi4 VERSION=1.1.0，上传 orangepi4-lts 固件包；只烧录 microSD
 # 上传 output/ota/hive-firmware-nanopi-zero2-v1.1.0.tar.gz；无需再 dd 整盘镜像
 ```
 
@@ -239,6 +245,8 @@ U-Boot 在每次试启动前先持久化扣减尝试次数。新内核/DTB/initr
 5. 验证真实内核卡死与硬件看门狗。**看门狗节点不在主线 6.18（v7.0 才合入 `rk3528.dtsi`），由 `userpatches/kernel/archive/rockchip64-6.18/` 的补丁回移，构建期 `scripts/verify-kernel-dtb.py` 断言它确实进了镜像；PID 1 用 `RuntimeWatchdogSec=30s` 打开 `/dev/watchdog0`。** systemd 起来之后的卡死 30 秒内由 SoC 硬复位，`hive_tries` 随后递减。仍未覆盖：systemd 启动之前的卡死（U-Boot 没有 WDT 驱动，SPL→内核早期没有喂狗者）只能断电，断电后已扣减的 `hive_tries` 继续生效。30 秒超时在慢卡 fsck/介质探测下是否误复位，须在真机确认。
 
 新增 R3S LTS 需在完整镜像构建后独立执行上述首刷、升级、断电和回切场景，并核对 `wan` / `lan` 双网口及 `ttyS2,1500000` 串口。其 RK3566 看门狗 DTB 隔离验证已通过，但 `/dev/watchdog0` 的实际喂狗、卡死复位与超时行为仍需真机验收；不要将上方历史三组设备或 RK3528 补丁的事实套用到 LTS。
+
+Orange Pi 4 LTS 也要在完整镜像构建后单独做首刷、升级、断电和回切，串口为 `ttyS2,1500000`，介质只使用 microSD。核对单千兆口（YT8531C）和板载 2.4 GHz UWE5622。不要把 eMMC 当成启动盘或数据盘，当前初始化会停在 `Card stuck being busy`。RK3399 看门狗节点在主线设备树里，镜像用同一份 `RuntimeWatchdogSec=30s`，但复位行为尚未在这块板上验收。
 
 引导 A/B 不能修复损坏的 U-Boot、介质物理故障或两套引导载荷同时损坏。固件安装阶段不修改 GPT 或引导器；首启数据扩容仅增大最后一个分区。改变根文件系统大小、分区顺序或引导器仍需离线维护。
 

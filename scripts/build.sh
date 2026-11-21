@@ -67,7 +67,7 @@ HIVE_AB="${HIVE_AB:-no}"
 HIVE_IMAGE_VERSION="${HIVE_IMAGE_VERSION:-}"
 if [ "$HIVE_AB" = yes ]; then
     source "${ROOT_DIR}/armbian-build/userpatches/overlay/usr/local/bin/hive-board"
-    hive_board_config "$PROFILE" || { echo 'A/B requires NanoPi Zero2, R28S or R3S LTS'; exit 1; }
+    hive_board_config "$PROFILE" || { echo 'A/B requires NanoPi Zero2, R28S, R3S LTS or Orange Pi 4 LTS'; exit 1; }
     [[ "$HIVE_IMAGE_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || { echo 'Set HIVE_IMAGE_VERSION'; exit 1; }
 fi
 
@@ -303,6 +303,19 @@ if [ "$PROFILE" = nanopi-r3s-lts ]; then
         patch/u-boot/v2026.04/board_nanopi-r3s-lts/Add-board-NanoPi-R3S-LTS.patch; do
         if [ ! -f "${ARMBIAN_DIR}/${prerequisite}" ]; then
             echo "ERROR: Update Armbian for NanoPi R3S LTS; missing ${prerequisite}."
+            echo "Run: ./scripts/setup-armbian.sh"
+            exit 1
+        fi
+    done
+fi
+if [ "$PROFILE" = orangepi4-lts ]; then
+    for prerequisite in \
+        config/boards/orangepi4-lts.conf \
+        patch/u-boot/v2026.10/defconfig/orangepi-4-lts-rk3399_defconfig \
+        patch/kernel/archive/rockchip64-6.18/dt/rk3399-orangepi-4-lts.dts; do
+        if [ ! -f "${ARMBIAN_DIR}/${prerequisite}" ]; then
+            echo "ERROR: Update Armbian for Orange Pi 4 LTS; missing ${prerequisite}."
+            echo "The v2026.10 board target (Motorcomm YT8531C, not the generic RTL8211E tree) is required."
             echo "Run: ./scripts/setup-armbian.sh"
             exit 1
         fi
